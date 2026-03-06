@@ -1,0 +1,54 @@
+﻿
+> client@0.0.0 lint
+> eslint .
+
+
+C:\Users\andre\App de consulta nutricional\client\src\components\DashboardTabs\TabClinicalHistory.jsx
+   6:5  error  'setPatientData' is defined but never used  no-unused-vars
+   7:5  error  'isEditing' is defined but never used       no-unused-vars
+   9:5  error  'onEditToggle' is defined but never used    no-unused-vars
+  11:5  error  'CardHeader' is defined but never used      no-unused-vars
+  12:5  error  'Accordion' is defined but never used       no-unused-vars
+
+C:\Users\andre\App de consulta nutricional\client\src\components\DashboardTabs\TabIdentity.jsx
+  11:5  error  'CardHeader' is defined but never used  no-unused-vars
+  12:5  error  'Accordion' is defined but never used   no-unused-vars
+
+C:\Users\andre\App de consulta nutricional\client\src\components\DashboardTabs\TabIntervention.jsx
+  4:35  error  'patientData' is defined but never used  no-unused-vars
+  4:48  error  'isEditing' is defined but never used    no-unused-vars
+
+C:\Users\andre\App de consulta nutricional\client\src\components\DashboardTabs\TabLogistics.jsx
+   6:5  error  'setPatientData' is defined but never used       no-unused-vars
+   7:5  error  'isEditing' is defined but never used            no-unused-vars
+   9:5  error  'onEditToggle' is defined but never used         no-unused-vars
+  10:5  error  'renderEditableField' is defined but never used  no-unused-vars
+  11:5  error  'CardHeader' is defined but never used           no-unused-vars
+  12:5  error  'Accordion' is defined but never used            no-unused-vars
+  15:5  error  'currentStep' is defined but never used          no-unused-vars
+
+C:\Users\andre\App de consulta nutricional\client\src\components\DashboardTabs\TabNotes.jsx
+  4:28  error  'patientData' is defined but never used  no-unused-vars
+  4:41  error  'isEditing' is defined but never used    no-unused-vars
+
+C:\Users\andre\App de consulta nutricional\client\src\components\DashboardTabs\TabNutrition.jsx
+   6:5  error  'setPatientData' is defined but never used       no-unused-vars
+   7:5  error  'isEditing' is defined but never used            no-unused-vars
+   9:5  error  'onEditToggle' is defined but never used         no-unused-vars
+  10:5  error  'renderEditableField' is defined but never used  no-unused-vars
+  11:5  error  'CardHeader' is defined but never used           no-unused-vars
+  12:5  error  'Accordion' is defined but never used            no-unused-vars
+  15:5  error  'currentStep' is defined but never used          no-unused-vars
+
+C:\Users\andre\App de consulta nutricional\client\src\components\DashboardTabs\TabRestrictions.jsx
+   6:5  error  'setPatientData' is defined but never used  no-unused-vars
+   7:5  error  'isEditing' is defined but never used       no-unused-vars
+   9:5  error  'onEditToggle' is defined but never used    no-unused-vars
+  11:5  error  'CardHeader' is defined but never used      no-unused-vars
+  12:5  error  'Accordion' is defined but never used       no-unused-vars
+
+C:\Users\andre\App de consulta nutricional\client\src\components\DashboardTabs\TabVitals.jsx
+  7:5  error  'CardHeader' is defined but never used  no-unused-vars
+
+Ô£û 31 problems (31 errors, 0 warnings)
+

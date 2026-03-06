@@ -1,0 +1,19 @@
+
+> client@0.0.0 build
+> vite build
+
+[36mvite v7.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+
+/fonts/Prototype.ttf referenced in /fonts/Prototype.ttf didn't resolve at build time, it will remain unchanged to be resolved at runtime
+
+/fonts/Sansation.ttf referenced in /fonts/Sansation.ttf didn't resolve at build time, it will remain unchanged to be resolved at runtime
+[32m✓[39m 1796 modules transformed.
+[31m✗[39m Build failed in 3.25s
+[31merror during build:
+[31mCould not resolve "../dashboard/VisualBodyMap" from "src/components/interview/Fase3_MotivoConsulta.jsx"[31m
+file: [36mC:/Users/andre/App de consulta nutricional/client/src/components/interview/Fase3_MotivoConsulta.jsx[31m
+    at getRollupError (file:///C:/Users/andre/App%20de%20consulta%20nutricional/client/node_modules/rollup/dist/es/shared/parseAst.js:401:41)
+    at error (file:///C:/Users/andre/App%20de%20consulta%20nutricional/client/node_modules/rollup/dist/es/shared/parseAst.js:397:42)
+    at ModuleLoader.handleInvalidResolvedId (file:///C:/Users/andre/App%20de%20consulta%20nutricional/client/node_modules/rollup/dist/es/shared/node-entry.js:21710:24)
+    at file:///C:/Users/andre/App%20de%20consulta%20nutricional/client/node_modules/rollup/dist/es/shared/node-entry.js:21670:26[39m

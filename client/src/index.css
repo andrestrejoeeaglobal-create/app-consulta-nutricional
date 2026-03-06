@@ -1,0 +1,276 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-background: #f8fafc;
+  --color-accent: #2563eb;
+  --font-sans: "Sansation", "Inter", "Roboto", sans-serif;
+  --font-prototype: "Prototype", "Inter", sans-serif;
+}
+
+@font-face {
+  font-family: 'Prototype';
+  src: url('/fonts/Prototype.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Sansation';
+  src: url('/fonts/Sansation.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+:root {
+  color-scheme: light;
+  /* --- TILO DESIGN TOKENS (v1.0) --- */
+  /* Brand Colors */
+  --tilo-brand-blue: #1a73e8;
+  /* Primary Interaction */
+  --tilo-brand-dark: #0f172a;
+  /* Deep Text / Backgrounds */
+  --tilo-brand-success: #10b981;
+  /* Positive Actions */
+  --tilo-brand-warning: #f59e0b;
+  /* Alerts */
+  --tilo-brand-danger: #ef4444;
+  /* Critical */
+
+  /* Text Colors */
+  --tilo-text-primary: #334155;
+  /* Main Body (Slate-700) */
+  --tilo-text-secondary: #64748b;
+  /* Metadata (Slate-500) */
+  --tilo-text-on-dark: #f8fafc;
+  /* White/Light on Dark */
+
+  /* Surface Colors */
+  --tilo-bg-main: #f8fafc;
+  /* 60% - Zen Empty Space (Slate-50) */
+  --tilo-bg-card: #ffffff;
+  /* Card Background */
+  --tilo-bg-hover: #f1f5f9;
+  /* Item Hover (Slate-100) */
+  --tilo-bg-secondary: #e2e8f0;
+  /* 30% - Secondary structure (Slate-200) */
+
+  /* Borders & Shadows */
+  --tilo-border-light: #f1f5f9;
+  /* Softer borders for Bento Grids */
+  --tilo-shadow-soft: 0 4px 20px -2px rgb(0 0 0 / 0.03), 0 2px 4px -2px rgb(0 0 0 / 0.02);
+  /* Apple-like soft shadow */
+  --tilo-shadow-hover: 0 10px 25px -4px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+
+  /* Glassmorphism / Neumorphism */
+  --tilo-glass-bg: rgba(255, 255, 255, 0.65);
+  --tilo-glass-border: rgba(255, 255, 255, 0.7);
+  --tilo-glass-blur: 16px;
+
+  /* Terminal A - Clinical Look Strict Overrides */
+  --tilo-clinical-white: #ffffff;
+  --tilo-clinical-gray-50: #f8fafc;
+  --tilo-clinical-gray-100: #f1f5f9;
+}
+
+body {
+  margin: 0;
+  background-color: var(--tilo-bg-main);
+  color: var(--tilo-text-primary);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  /* App-like feel */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- BRAND TYPOGRAPHY CLASSES --- */
+.font-prototype {
+  font-family: var(--font-prototype);
+}
+
+.font-sansation {
+  font-family: var(--font-sans);
+}
+
+/* --- TERMINAL A: AMBIENT BLOBS & ANIMATIONS --- */
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* --- MEDICAL ALERTS & SURFACES --- */
+.medical-alert {
+  /* Subtle alert border as requested */
+  /* Replaces full red background */
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.2) !important;
+}
+
+/* --- BLUE GLOW EFFECT (Data Sync) --- */
+@keyframes syncGlow {
+  0% {
+    box-shadow: 0 0 0px transparent;
+  }
+
+  20% {
+    box-shadow: 0 0 15px #1C75BC;
+    border-color: #1C75BC;
+  }
+
+  80% {
+    box-shadow: 0 0 15px #1C75BC;
+    border-color: #1C75BC;
+  }
+
+  100% {
+    box-shadow: 0 0 0px transparent;
+  }
+}
+
+.animate-blue-glow {
+  animation: syncGlow 1.5s ease-out forwards;
+}
+
+/* Custom scrollbar for a cleaner tech look */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 99px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Global scrollbar defaults */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  /* slate-300 */
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  /* slate-400 */
+}
+
+/* --- UTILITY CLASSES --- */
+
+.glass-morphism {
+  background: var(--tilo-glass-bg);
+  -webkit-backdrop-filter: blur(var(--tilo-glass-blur));
+  backdrop-filter: blur(var(--tilo-glass-blur));
+  border: 1px solid var(--tilo-glass-border);
+  box-shadow: var(--tilo-shadow-soft);
+}
+
+.tilo-card {
+  background-color: var(--tilo-bg-card);
+  border-radius: 1rem;
+  /* 16px */
+  border: 1px solid var(--tilo-border-light);
+  box-shadow: var(--tilo-shadow-soft);
+  transition: all 0.3s ease;
+}
+
+.tilo-card:hover {
+  box-shadow: var(--tilo-shadow-hover);
+  transform: translateY(-2px);
+}
+
+/* --- TILO SMART SELECT (DESIGN SYSTEM V1.0) --- */
+.tilo-select-container {
+  position: relative;
+  width: 100%;
+  flex: 1;
+}
+
+.tilo-select {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: var(--tilo-text-primary);
+  background-color: var(--tilo-bg-card);
+  border: 1px solid var(--tilo-border-light);
+  border-radius: 0.5rem;
+  /* 8px */
+  padding: 0.6rem 1rem;
+  padding-right: 2.5rem;
+  /* Space for icon */
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.tilo-select:hover {
+  border-color: #cbd5e1;
+  /* slate-300 */
+  background-color: var(--tilo-bg-hover);
+}
+
+.tilo-select:focus {
+  outline: none;
+  border-color: var(--tilo-brand-blue);
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
+  /* Brand Glow */
+}
+
+.tilo-select:invalid {
+  color: var(--tilo-text-secondary);
+}
+
+.tilo-select-icon {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--tilo-text-secondary);
+  width: 1.25rem;
+  height: 1.25rem;
+}

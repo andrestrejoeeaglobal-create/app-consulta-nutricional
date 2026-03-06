@@ -1,0 +1,11 @@
+node_modules/
+.venv/
+.gemini/
+.agent/
+.vscode/
+.env
+dist/
+build/
+*.bak
+*.log
+database.sqlite

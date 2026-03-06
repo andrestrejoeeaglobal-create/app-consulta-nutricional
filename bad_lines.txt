@@ -1,0 +1,1959 @@
+1: import { use\, use\ } from 'react';
+2: import tilo\ from "../assets/tilo.png";
+3: import { format\, strict\\, check\, get\\, fuzzy\, calculate\, clean\\, build\\, infer\\\ } from "../utils/utils";
+4: import use\\ from './use\\';
+12: content: "\, soy \, el \ \ de \ en \ón. \ listo para procesar una nueva consulta. ¿\ía proporcionarme su número de cita para validarlo aquí en el sistema, por favor?",
+13: avatar: tilo\,
+31: emergency\: { name: "", kin: "", phone: "" },
+40: apellido\: "",
+41: apellido\: "",
+55: evaluacion\: {
+118: imc\: "",
+122: icc\: "",
+123: signos\: {
+135: * normalize\\ - \ valor numérico para métricas biológicas (p.ej "160" o "160 cm" -> 1.60)
+137: const normalize\\ = (text) => {
+138: const match = text.match(/\d+(\.\d+)?/);
+140: let val = parse\(match[0]);
+150: * use\ - \ de Lógica \ T.I.L.O.
+151: * \ el estado de la entrevista clínica interactiva y sincroniza el \.
+153: export const use\ = () => {
+154: const { validate\ } = use\\();
+156: const get\\ = (key, initial\) => {
+158: const item = window.local\.get\('tilo_session_data');
+161: return parsed[key] !== undefined ? parsed[key] : initial\;
+166: return initial\;
+170: const [current\, set\\] = use\(() => get\\('current\', INITIAL_CURRENT_PHASE));
+173: const [active\, set\\] = use\(() => get\\('active\', INITIAL_ACTIVE_TAB));
+176: const [messages, set\] = use\(() => get\\('messages', INITIAL_MESSAGES));
+179: const [patient\, set\\] = use\(() => get\\('patient\', INITIAL_PATIENT_DATA));
+182: const [api\, set\\] = use\(() => get\\('api\', {}));
+185: const [auth\, set\\] = use\(() => get\\('auth\', 0));
+188: const [temp\, set\\] = use\({ name: '', dose_freq: '', duration: '' });
+191: const [temp\, set\\] = use\({ agent: '', reaction: '' });
+194: const [temp\, set\\] = use\({});
+197: use\(() => {
+199: const session\ = {
+200: current\,
+201: active\,
+203: patient\,
+204: api\,
+205: auth\
+207: window.local\.set\('tilo_session_data', JSON.stringify(session\));
+212: }, [current\, active\, messages, patient\, api\, auth\]);
+215: const clear\ = () => {
+217: window.local\.remove\('tilo_session_data');
+218: set\\(INITIAL_CURRENT_PHASE);
+219: set\\(INITIAL_ACTIVE_TAB);
+220: set\(INITIAL_MESSAGES);
+221: set\\(INITIAL_PATIENT_DATA);
+222: set\\({});
+223: set\\(0);
+232: * \ la tarjeta de inferencia médica basada en el alert_level
+234: const dispatch\ = (alert\, specific\, sex, age, is\, is\) => {
+235: const ailment = (specific\ || "").to\\();
+236: let inferred\ = '\ a comer / \';
+238: const has\ = ['ansiedad', 'ansiosa', 'miedo', 'panico', 'nervios', 'deprimida', 'triste', 'angustia'].some(kw => ailment.includes(kw));
+240: const is\ = alert\ === 'WARNING' && ailment === 'salud sexual masculina';
+242: if (is\) inferred\ = '\ \ y \ón \ólica';
+243: else if (alert\ === 'PRETERM') inferred\ = '\ón para el \';
+244: else if (is\ && alert\ !== 'ACUTE') inferred\ = '\ y \ \';
+245: else if (alert\ === 'NEURO') inferred\ = '\ \ y \';
+246: else if (alert\ === 'BIOLOGICAL') inferred\ = '\ / \';
+247: else if (alert\ === 'ACUTE') inferred\ = '\ de Síntomas \';
+248: else if (alert\ === 'WARNING' || alert\ === 'CRITICAL' || ailment.includes('orinar') || ailment.includes('dolor')) {
+249: inferred\ = has\ ? '\ \ (\ \)' : '\ \';
+252: let options\;
+253: if (alert\ === 'PRETERM' || is\) {
+254: options\ = [
+255: { label: "\ón para el \", value: "\ón para el \" },
+256: { label: "\ y \ \", value: "\ y \ \" },
+257: { label: "\ de Síntomas \", value: "\ de Síntomas \" }
+259: } else if (alert\ === 'NEURO') {
+260: options\ = [
+261: { label: "\ \ y \", value: "\ \ y \" },
+262: { label: "\ \", value: "\ \" },
+263: { label: "\ a comer / \", value: "\ a comer / \" }
+265: } else if (alert\ === 'ACUTE') {
+266: options\ = [
+267: { label: "\ de Síntomas \", value: "\ de Síntomas \" },
+268: { label: "\ \", value: "\ \" },
+269: { label: "\ a comer / \", value: "\ a comer / \" }
+271: } else if (alert\ === 'BIOLOGICAL') {
+272: options\ = [
+273: { label: "\ \", value: "\ \" },
+274: { label: "\ / \", value: "\ / \" },
+275: { label: "\ a comer / \", value: "\ a comer / \" }
+277: } else if (alert\ === 'CRITICAL' || alert\ === 'WARNING') {
+278: const primary\\ = is\ ? "\ \ y \ón \ólica" : (has\ ? "\ \ (\ \)" : "\ \");
+279: options\ = [
+280: { label: primary\\, value: primary\\ },
+281: { label: "\ \ de \", value: "\ \ de \" },
+282: { label: "\ de \ \", value: "\ de \ \" },
+283: { label: "\ a comer / \", value: "\ a comer / \" }
+286: options\ = [
+287: { label: "\ \ de \", value: "\ \ de \" },
+288: { label: "\ de \ \", value: "\ de \ \" },
+289: { label: "\ \", value: "\ \" },
+290: { label: "\ a comer / \", value: "\ a comer / \" }
+294: options\.push({ label: "\ / \", value: "\ / \" });
+297: const response\ = is\
+298: ? "\ por tu confianza. \ analizado tu situación y he determinado el enfoque ideal para tu caso."
+299: : "\ por su confianza. \ analizado su situación y he determinado el enfoque ideal para su caso.";
+301: set\(() => {
+302: set\(prev => [...prev, {
+304: content: response\,
+305: avatar: tilo\,
+306: input\: 'analyzing'
+309: set\(() => {
+310: set\(prev => {
+311: const new\ = [...prev];
+312: new\[new\.length - 1] = {
+315: avatar: tilo\,
+316: input\: 'inference_card',
+317: inferred\: inferred\,
+318: options: options\
+320: return new\;
+322: set\\('PHASE_3_MOTIVE_SELECT');
+329: * \ cualquier evaluación y protege al paciente inmediatamente.
+331: const trigger\\ = (text) => {
+332: const patient\\ = (patient\.identificacion?.nombre || "\").split(' ')[0];
+333: const age = patient\.profile.age || 0;
+334: const is\ = age >= 12 && age <= 17;
+336: const p1 = `**${patient\\}**, lamento mucho leer esto. \ que una noticia así genera mucha incertidumbre y preocupación.`;
+338: const p2 = is\
+339: ? `\ marcado tu caso como **\ Médica Máxima**. \ nutriólogo revisará esto con especial cuidado antes de iniciar la sesión para darte el soporte que necesitas.`
+340: : `\ marcado su caso como **\ Médica Máxima**. \ nutriólogo revisará esto con especial cuidado antes de iniciar la sesión para darle el soporte que necesita.`;
+342: const p3 = is\
+343: ? `\ es un tema de suma importancia. \ fundamental para mí que diseñemos un plan que sea 100% seguro para ti y que considere cada aspecto de tu salud.`
+344: : `\ es un tema de suma importancia. \ fundamental para mí que diseñemos un plan que sea 100% seguro para usted y que considere cada aspecto de su salud.`;
+346: set\\(prev => ({
+357: suspicion: "\ \ógico \"
+363: set\(prev => [...prev, { role: 'user', content: text }, { role: 'assistant', content: p1, avatar: tilo\, input\: 'text', is\: true }]);
+365: set\(() => {
+366: set\(prev => [...prev, { role: 'assistant', content: p2, avatar: tilo\, input\: 'text' }]);
+367: set\(() => {
+368: set\(prev => [...prev, { role: 'assistant', content: p3, avatar: tilo\, input\: 'text' }]);
+369: set\\('PHASE_3_MIRACLE_QUESTION');
+371: const miracle\ = is\
+372: ? `\, imagina que logramos controlar este malestar y recuperas tu tranquilidad. ¿\é es lo primero que vas a notar en tu bienestar diario?`
+373: : `\, imagine que logramos controlar este malestar y usted recupera su tranquilidad. ¿\é es lo primero que va a notar en su bienestar diario?`;
+375: set\(() => {
+376: set\(prev => [...prev, { role: 'assistant', content: miracle\, avatar: tilo\, input\: 'text' }]);
+383: * CORE ENGINE: \ la entrada del usuario y determina el siguiente paso.
+384: * @param {string} input - \ ingresado por el usuario
+385: * @param {boolean} is\\ - \ para evitar eco doble cuando viene de botones programáticos
+387: const process\\ = (input, is\\ = false) => {
+391: let display\ = text;
+395: display\ = payload.identity_extraction.birth_entity.full_name;
+402: if (!is\\) {
+404: if (current\.starts\('PHASE_3_')) {
+405: const critical\ = ['cancer', 'tumor', 'biopsia', 'maligno', 'oncologo'];
+406: const has\\ = critical\.some(kw => text.to\\().includes(kw));
+409: const time\ = /\d|mes|año|semana|dia|siempre|hace|joven/i;
+410: const found\ = text.match(time\);
+412: if (found\ && text.length > 5) {
+413: set\\(prev => {
+414: const current\ = prev.profile?.clinical_motive?.detective_radiography?.chronology;
+423: chronology: current\ ? `${current\} + ${text}` : text
+432: if (has\\ && patient\.profile?.clinical_motive?.alert_level !== 'CRITICAL') {
+433: trigger\\(display\);
+438: set\(prev => [...prev, { role: 'user', content: display\ }]);
+442: set\(async () => {
+443: switch (current\) {
+447: if (/^\d+$/.test(text)) {
+448: const api\ = await validate\(text);
+449: if (!api\) {
+450: set\(prev => [...prev, { role: "assistant", content: "⚠️  \ de conexión con el servidor de citas. \ nuevamente." }]);
+454: const cita\ = api\.data\ && api\.data\[0];
+455: const status = cita\ ? cita\.estatus : 'ERROR_NET';
+459: const formatted\ = clean\\(cita\.info);
+462: let extracted\ = cita\.name || cita\.paciente || "";
+463: if (formatted\.patient\) {
+464: if (extracted\) {
+465: const first\ = extracted\.trim().split(' ')[0].to\\();
+466: if (formatted\.patient\.to\\().includes(first\)) {
+467: extracted\ = formatted\.patient\;
+470: extracted\ = formatted\.patient\;
+475: set\\({
+476: raw\: extracted\,
+477: user\: cita\.user\,
+478: cita\: cita\.cita || cita\.folio,
+479: sucursal: formatted\.sede
+482: const titular\ = format\(extracted\);
+486: set\(prev => [...prev, {
+489: avatar: tilo\,
+490: input\: 'buttons',
+496: set\\('PHASE_0_IDENTITY_CHECK');
+498: const new\ = auth\ + 1;
+499: set\\(new\);
+501: if (new\ >= 3) {
+502: set\(prev => [...prev, {
+505: avatar: tilo\,
+512: const formatted\\ = clean\\(cita\.info);
+514: let extracted\\ = cita\.name || cita\.paciente || "";
+515: if (formatted\\.patient\) {
+516: if (extracted\\) {
+517: const first\\ = extracted\\.trim().split(' ')[0].to\\();
+518: if (formatted\\.patient\.to\\().includes(first\\)) {
+519: extracted\\ = formatted\\.patient\;
+522: extracted\\ = formatted\\.patient\;
+526: const titular\ = format\(extracted\\);
+528: set\(prev => [...prev, {
+531: avatar: tilo\,
+532: input\: 'number'
+535: set\(prev => [...prev, {
+538: avatar: tilo\,
+539: input\: 'number'
+544: set\(prev => [...prev, {
+546: content: "\ favor, ingrese un número de cita válido (numérico).",
+547: avatar: tilo\,
+548: input\: 'number'
+555: set\(prev => [...prev, {
+557: content: "\. \ activar su expediente, es obligatorio leer y aceptar nuestro **\ de \**.",
+558: avatar: tilo\,
+561: set\\('PHASE_0_PRIVACY');
+564: set\\({});
+565: set\(prev => [...prev, {
+568: avatar: tilo\,
+569: input\: 'number'
+571: set\\('PHASE_0_AUTH');
+580: const raw\\ = (api\ && typeof api\.raw\ === 'string') ? api\.raw\ : "\";
+581: const safe\ = raw\\ || "\";
+583: const parts\ = safe\.split(' ');
+585: let safe\\ = "\";
+586: let safe\\\ = "";
+587: let safe\\\ = "";
+589: if (parts\.length >= 3) {
+590: safe\\\ = parts\.pop();
+591: safe\\\ = parts\.pop();
+592: safe\\ = parts\.join(' ');
+593: } else if (parts\.length === 2) {
+594: safe\\\ = parts\[1];
+595: safe\\ = parts\[0];
+596: } else if (parts\.length === 1) {
+597: safe\\ = parts\[0];
+601: set\\(prev => ({
+603: extracted\: format\(safe\\),
+604: extracted\: format\(safe\\\),
+605: extracted\: format\(safe\\\)
+608: set\(prev => [...prev, {
+611: avatar: tilo\,
+612: input\: 'buttons',
+615: { label: '❌ \, corregir', value: 'no' }
+619: set\\('PHASE_1_PROFILE_NAME_CONFIRM');
+626: set\\(prev => ({
+629: profile: { ...prev.profile, first_name: api\.extracted\, name: api\.raw\ },
+633: set\(prev => [...prev, {
+635: content: `\. ¿\ **${api\.extracted\}** su \ \?`,
+636: avatar: tilo\,
+637: input\: 'buttons',
+640: { label: '❌ \, corregir', value: 'no' }
+643: set\\('PHASE_1_PROFILE_LAST_NAME_PAT');
+645: set\(prev => [...prev, {
+647: content: "\ favor, escriba estrictamente su **\(s) de \** (sin apellidos):",
+648: avatar: tilo\,
+649: input\: 'text'
+651: set\\('PHASE_1_PROFILE_NAME_MANUAL');
+656: const parsed\ = format\(text);
+658: const is\ = fuzzy\(text, api\.extracted\) || fuzzy\(text, api\.raw\);
+660: if (!is\) {
+661: set\(prev => [...prev, {
+664: avatar: tilo\,
+665: input\: 'text'
+671: set\\(prev => ({
+673: profile: { ...prev.profile, first_name: parsed\, name: api\.raw\ },
+677: set\(prev => [...prev, {
+679: content: `\. ¿\ **${api\.extracted\}** su \ \?`,
+680: avatar: tilo\,
+681: input\: 'buttons',
+684: { label: '❌ \, corregir', value: 'no' }
+687: set\\('PHASE_1_PROFILE_LAST_NAME_PAT');
+692: let final\\\ = "";
+695: final\\\ = api\.extracted\;
+697: set\(prev => [...prev, {
+699: content: "\ favor, escriba su **\ \** correcto:",
+700: avatar: tilo\,
+701: input\: 'text'
+703: set\\('PHASE_1_PROFILE_LAST_NAME_PAT_MANUAL');
+707: set\\(prev => ({
+709: profile: { ...prev.profile, last_name_pat: final\\\ },
+713: const mat\ = api\.extracted\ || "";
+714: const has\\\ = mat\.trim().length > 0 && !mat\.includes("*");
+716: if (has\\\) {
+717: set\(prev => [...prev, {
+719: content: `Y por último, ¿\ **${mat\}** su \ \?`,
+720: avatar: tilo\,
+721: input\: 'buttons',
+724: { label: '❌ \, corregir', value: 'no' }
+727: set\\('PHASE_1_PROFILE_LAST_NAME_MAT');
+729: set\(prev => [...prev, {
+731: content: `Y por último, el sistema no me muestra un segundo apellido. \ usted cuenta con un \ \, por favor dígame cuál es.`,
+732: avatar: tilo\,
+733: input\: 'text',
+735: { label: '➖ \ usa \ \', value: 'CONFIRM_MAT_NONE' }
+738: set\\('PHASE_1_PROFILE_LAST_NAME_MAT_MANUAL');
+744: const parsed\\ = format\(text);
+746: const is\ = fuzzy\(text, api\.extracted\) || fuzzy\(text, api\.raw\);
+748: if (!is\) {
+749: set\(prev => [...prev, {
+751: content: "⚠️ **\ \:** \ apellido paterno difiere significativamente de la cita. \ favor verifique e ingrese su **\ \** nuevamente:",
+752: avatar: tilo\,
+753: input\: 'text'
+758: set\\(prev => ({
+760: profile: { ...prev.profile, last_name_pat: parsed\\ },
+761: identificacion: { ...prev.identificacion, apellido\: parsed\\ }
+764: const mat\ = api\.extracted\ || "";
+765: const has\\\ = mat\.trim().length > 0 && !mat\.includes("*");
+767: if (has\\\) {
+768: set\(prev => [...prev, {
+770: content: `\. ¿Y es **${mat\}** su \ \?`,
+771: avatar: tilo\,
+772: input\: 'buttons',
+775: { label: '❌ \, corregir', value: 'no' }
+778: set\\('PHASE_1_PROFILE_LAST_NAME_MAT');
+780: set\(prev => [...prev, {
+782: content: `\. Y por último, el sistema no me muestra un segundo apellido. \ usted cuenta con un \ \, por favor dígame cuál es.`,
+783: avatar: tilo\,
+784: input\: 'text',
+786: { label: '➖ \ usa \ \', value: 'CONFIRM_MAT_NONE' }
+789: set\\('PHASE_1_PROFILE_LAST_NAME_MAT_MANUAL');
+795: let final\\\ = "";
+798: final\\\ = api\.extracted\;
+800: set\(prev => [...prev, {
+802: content: "\ favor, escriba su **\ \** correcto:",
+803: avatar: tilo\,
+804: input\: 'text'
+806: set\\('PHASE_1_PROFILE_LAST_NAME_MAT_MANUAL');
+811: set\\(prev => {
+812: const new\ = { ...prev.profile, last_name_mat: final\\\ };
+813: new\.name = `${new\.first_name} ${new\.last_name_pat} ${new\.last_name_mat}`.trim();
+815: const new\ = {
+817: apellido\: final\\\
+820: return { ...prev, profile: new\, identificacion: new\ };
+823: set\(prev => [...prev, {
+826: avatar: tilo\,
+827: input\: 'number'
+830: set\\('PHASE_1_PROFILE_DOB_DAY');
+837: set\\(prev => {
+838: const new\ = { ...prev.profile, last_name_mat: null };
+839: new\.name = `${new\.first_name} ${new\.last_name_pat}`.trim().to\\();
+841: const new\ = {
+843: apellido\: null
+846: return { ...prev, profile: new\, identificacion: new\ };
+849: set\(prev => [...prev, {
+852: avatar: tilo\,
+853: input\: 'number'
+856: set\\('PHASE_1_PROFILE_DOB_DAY');
+860: const parsed\\\ = format\(text);
+863: set\\(prev => {
+864: const new\ = { ...prev.profile, last_name_mat: parsed\\\ };
+865: new\.name = `${new\.first_name} ${new\.last_name_pat} ${new\.last_name_mat}`.trim().to\\();
+867: const new\ = {
+869: apellido\: parsed\\\
+872: return { ...prev, profile: new\, identificacion: new\ };
+876: set\(prev => [...prev, {
+879: avatar: tilo\,
+880: input\: 'number'
+884: set\\('PHASE_1_PROFILE_DOB_DAY');
+889: const day = parse\(text, 10);
+890: if (is\N(day) || day < 1 || day > 31) {
+891: set\(prev => [...prev, { role: 'assistant', content: "\ favor indique un día válido (1-31).", avatar: tilo\ }]);
+894: set\\(prev => ({
+896: profile: { ...prev.profile, dob\: text.pad\(2, '0') }
+898: set\(prev => [...prev, {
+900: content: "¿\ qué **mes**? (\: \)",
+901: avatar: tilo\,
+902: input\: 'text'
+904: set\\('PHASE_1_PROFILE_DOB_MONTH');
+909: const raw\ = text.trim().to\\();
+924: const month\ = months[raw\];
+925: if (!month\) {
+926: set\(prev => [...prev, { role: 'assistant', content: "\ reconocí ese mes. \ escribirlo completo (ej: \) o el número.", avatar: tilo\ }]);
+929: set\\(prev => ({
+931: profile: { ...prev.profile, dob\: month\ }
+933: set\(prev => [...prev, {
+935: content: "¿\ qué **año**? (\: 1990)",
+936: avatar: tilo\,
+937: input\: 'number'
+939: set\\('PHASE_1_PROFILE_DOB_YEAR');
+944: const year = parse\(text, 10);
+945: const current\ = new \().get\\();
+946: if (is\N(year) || year < 1920 || year > current\) {
+947: set\(prev => [...prev, { role: 'assistant', content: "\ favor indique un año válido (4 dígitos).", avatar: tilo\ }]);
+951: const dob\ = patient\.profile.dob\;
+952: const dob\ = patient\.profile.dob\;
+953: const d = parse\(dob\, 10);
+954: const m = parse\(dob\, 10);
+956: const check\ = new \(year, m - 1, d);
+957: if (check\.get\\() !== year || check\.get\() !== (m - 1) || check\.get\() !== d) {
+959: set\\('PHASE_1_PROFILE_DOB_DAY');
+963: const full\ = `${dob\}/${dob\}/${year}`;
+964: const today = new \();
+965: let age = today.get\\() - check\.get\\();
+966: const m\ = today.get\() - check\.get\();
+967: if (m\ < 0 || (m\ === 0 && today.get\() < check\.get\())) {
+972: const pediatric\ = build\\(full\);
+978: const first\ = patient\.profile.first_name || api\.extracted\ || "el paciente";
+982: system_prompt_addon = `\ paciente es un niño/a de ${age} años llamado ${first\}. \ usuario interactuando con la pantalla es su padre/tutor. \ígete al tutor de 'USTED' de forma respetuosa, y refiérete al paciente por su nombre en tercera persona.`;
+985: system_prompt_addon = `\ paciente es un adolescente de ${age} años llamado ${first\}. \ígete a él/ella directamente de 'TÚ', usando un tono empático, amigable y accesible, sin perder la autoridad clínica.`;
+988: system_prompt_addon = `\ paciente es un adulto de ${age} años llamado ${first\}. \ígete a él/ella directamente de 'USTED', usando un tono profesional, empático y respetuoso en todo momento.`;
+992: set\\(prev => {
+993: const new\ = {
+995: birthdate: full\,
+997: pediatric_profile: pediatric\
+999: delete new\.dob\;
+1000: delete new\.dob\;
+1004: profile: new\,
+1013: const format\ = { year: 'numeric', month: 'long', day: 'numeric' };
+1014: const formattedDOB = check\.to\\\('es-ES', format\);
+1016: const is\ = pediatric\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1017: set\(prev => [...prev, {
+1020: avatar: tilo\,
+1021: input\: 'buttons',
+1023: { label: "\", value: "\" },
+1024: { label: "\", value: "\" }
+1027: set\\('PHASE_1_PROFILE_SEX');
+1033: if (['mujer', 'femenino', 'f', 'la paciente'].includes(sex.to\\())) sex = "\";
+1034: if (['hombre', 'masculino', 'm', 'el paciente', 'varon'].includes(sex.to\\())) sex = "\";
+1036: if (sex === "\" || sex === "\") {
+1037: set\\(prev => ({
+1042: const pt\ = patient\.profile.pediatric_profile;
+1045: if (pt\ && pt\.is_minor) {
+1046: if (pt\.category === 'ADOLESCENTE') {
+1047: occupation\ = "\ tu registro oficial, ¿en qué semestre de secundaria o preparatoria te encuentras?";
+1048: } else if (pt\.category === 'ESCOLAR') {
+1049: occupation\ = `\ el expediente de ${patient\.profile.first_name || "el menor"}, ¿me indican en qué grado escolar va?`;
+1050: } else if (pt\.category === 'PREESCOLAR' || pt\.category === 'LACTANTE') {
+1051: occupation\ = `¿${patient\.profile.first_name || "\ menor"} asiste a guardería o kínder actualmente?`;
+1055: set\(prev => [...prev, {
+1057: content: occupation\,
+1058: avatar: tilo\,
+1059: input\: 'text'
+1061: set\\('PHASE_1_PROFILE_JOB');
+1063: set\(prev => [...prev, { role: 'assistant', content: "\ favor seleccione una opción válida.", avatar: tilo\ }]);
+1069: const job = format\(text);
+1070: set\\(prev => ({
+1074: const pt\ = patient\.profile.pediatric_profile;
+1075: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1076: set\(prev => [...prev, {
+1078: content: is\ ? "¿\ podrías indicar tu \ Única de \ de \ón (CURP)? (\íbela o elige una opción)" : "¿\ía indicarme su \ Única de \ de \ón (CURP)? (\íbala o elija una opción)",
+1079: avatar: tilo\,
+1080: input\: 'buttons',
+1082: { label: "\ (\)", value: "\" },
+1083: { label: "Búscala por mí (\)", value: "\" },
+1084: { label: is\ ? "\ \/a" : "\ \", value: "\" }
+1087: set\\('PHASE_1_PROFILE_CURP_GATE');
+1093: const is\ = patient\.profile?.pediatric_profile?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1094: if (text === '\') {
+1095: set\(prev => [...prev, { role: 'assistant', content: is\ ? "\. \ favor, escribe tu CURP a 18 caracteres:" : "\. \ favor, escriba su CURP a 18 caracteres:", avatar: tilo\, input\: 'text' }]);
+1096: set\\('PHASE_1_PROFILE_CURP_MANUAL');
+1097: } else if (text === '\') {
+1098: set\(prev => [...prev, { role: 'assistant', content: is\ ? "\ tu ID de \ o ID oficial de tu país:" : "\ su ID de \ o ID oficial de su país:", avatar: tilo\, input\: 'text' }]);
+1099: set\\('PHASE_1_PROFILE_ID_EXTRANJERO');
+1100: } else if (text === '\') {
+1102: { label: '\', value: 'AS' }, { label: '\ \', value: 'BC' }, { label: '\ \ \', value: 'BS' }, { label: '\', value: 'CC' },
+1103: { label: '\', value: 'CL' }, { label: '\', value: 'CM' }, { label: '\', value: 'CS' }, { label: '\', value: 'CH' },
+1104: { label: '\ de México', value: 'DF' }, { label: '\', value: 'DG' }, { label: '\', value: 'GT' }, { label: '\', value: 'GR' },
+1105: { label: '\', value: 'HG' }, { label: '\', value: 'JC' }, { label: '\ de México', value: 'MC' }, { label: '\án', value: 'MN' },
+1106: { label: '\', value: 'MS' }, { label: '\', value: 'NT' }, { label: '\ \ón', value: 'NL' }, { label: '\', value: 'OC' },
+1107: { label: '\', value: 'PL' }, { label: '\étaro', value: 'QT' }, { label: '\ \', value: 'QR' }, { label: '\ \ \í', value: 'SP' },
+1108: { label: '\', value: 'SL' }, { label: '\', value: 'SR' }, { label: '\', value: 'TC' }, { label: '\', value: 'TS' },
+1109: { label: '\', value: 'TL' }, { label: '\', value: 'VZ' }, { label: '\án', value: 'YN' }, { label: '\', value: 'ZS' }
+1111: set\(prev => [...prev, { role: 'assistant', content: is\ ? "¿\ qué **\ de la \ública** naciste? (\. \, CDMX, \)" : "¿\ qué **\ de la \ública** nació? (\. \, CDMX, \)", avatar: tilo\, input\: 'buttons', options: ESTADO_OPTIONS_CURP }]);
+1112: set\\('PHASE_1_PROFILE_CURP_ASSIST');
+1115: const is\ = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z\d]\d$/.test(text.to\\());
+1116: if (is\) {
+1117: set\\(prev => ({ ...prev, profile: { ...prev.profile, curp: text.to\\() } }));
+1118: set\(prev => [...prev, { role: 'assistant', content: is\ ? "CURP \. ¿\ál es tu número de teléfono celular a 10 dígitos?" : "CURP \. ¿\ál es su número de teléfono celular a 10 dígitos?", avatar: tilo\, input\: 'tel' }]);
+1119: set\\('PHASE_1_PROFILE_PHONE');
+1121: set\(prev => [...prev, { role: 'assistant', content: "\ incorrecto o respuesta inválida. \ una opción.", avatar: tilo\ }]);
+1129: let state\ = '';
+1133: state\ = payload.identity_extraction.birth_entity.renapo_code;
+1138: if (!state\) {
+1142: const p = patient\.profile;
+1143: const is\ = p?.pediatric_profile?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1144: const calculated\ = calculate\(p.first_name, p.last_name_pat, p.last_name_mat, p.birthdate, p.sex, state\);
+1146: set\\(prev => ({ ...prev, profile: { ...prev.profile, curp: calculated\ } }));
+1147: set\(prev => [...prev, {
+1150: avatar: tilo\,
+1151: input\: 'buttons',
+1154: { label: '❌ \, ingresar manualmente', value: 'no' }
+1157: set\\('PHASE_1_PROFILE_CURP_CONFIRM');
+1162: const is\ = patient\.profile?.pediatric_profile?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1164: set\(prev => [...prev, {
+1166: content: is\ ? "\. ¿\ál es tu **número de celular** a 10 dígitos?" : "\. ¿\ál es su **número de teléfono celular** a 10 dígitos?",
+1167: avatar: tilo\,
+1168: input\: 'tel'
+1170: set\\('PHASE_1_PROFILE_PHONE');
+1173: set\\(prev => ({ ...prev, profile: { ...prev.profile, curp: '' } }));
+1174: set\(prev => [...prev, {
+1176: content: is\ ? "\. \ favor, escribe tu CURP a 18 caracteres:" : "\. \ favor, escriba su CURP a 18 caracteres:",
+1177: avatar: tilo\,
+1178: input\: 'text'
+1180: set\\('PHASE_1_PROFILE_CURP_MANUAL');
+1186: const curp\ = text.trim().to\\();
+1188: const curp\ = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]{2}$/;
+1190: if (!curp\.test(curp\)) {
+1196: const p = patient\.profile;
+1197: let calculated\ = "";
+1199: calculated\ = calculate\(p.first_name, p.last_name_pat, p.last_name_mat, p.birthdate, p.sex, "XX");
+1202: if (calculated\ && calculated\.length === 18) {
+1203: const expected\\\ = calculated\.substring(4, 11);
+1204: const input\\\ = curp\.substring(4, 11);
+1206: if (expected\\\ !== input\\\) {
+1212: const is\ = p?.pediatric_profile?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1213: set\\(prev => ({
+1215: profile: { ...prev.profile, curp: curp\ }
+1218: set\(prev => [...prev, {
+1221: avatar: tilo\,
+1222: input\: 'tel'
+1224: set\\('PHASE_1_PROFILE_PHONE');
+1229: const id\ = text.trim().to\\();
+1230: if (id\.length < 5) {
+1231: set\(prev => [...prev, { role: 'assistant', content: "\ ID o \ debe tener al menos 5 caracteres. \ favor verifique e intente nuevamente:", avatar: tilo\ }]);
+1235: set\\(prev => ({
+1237: profile: { ...prev.profile, curp: `EXT-${id\}` }
+1240: const pt\ = patient\.profile.pediatric_profile;
+1241: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1242: const msg\ = is\
+1246: set\(prev => [...prev, {
+1248: content: msg\,
+1249: avatar: tilo\,
+1250: input\: 'tel'
+1252: set\\('PHASE_1_PROFILE_PHONE');
+1257: const phone\ = /^[0-9]{10}$/;
+1258: if (!phone\.test(text.replace(/\D/g, ''))) {
+1259: set\(prev => [...prev, { role: 'assistant', content: "\ número debe tener exactamente 10 dígitos. \ favor verifíquelo.", avatar: tilo\ }]);
+1262: set\\(prev => ({
+1264: profile: { ...prev.profile, phone: text.replace(/\D/g, '') }
+1267: const pt\ = patient\.profile.pediatric_profile;
+1268: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1269: const msg\ = is\
+1270: ? "¿\ alguna religión o creencia que deba saber?"
+1271: : "¿\ usted alguna religión?";
+1273: set\(prev => [...prev, {
+1275: content: msg\,
+1276: avatar: tilo\,
+1277: input\: 'buttons',
+1280: { label: "❌ \ / \", value: "NO_NINGUNA" }
+1283: set\\('PHASE_1_PROFILE_RELIGION');
+1288: const has\ = text === "SI" || text.to\\() === "sí" || text.to\\() === "si" || text === "✅ Sí";
+1290: const is\ = patient\.profile?.pediatric_profile?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1291: if (has\) {
+1292: set\\(prev => ({
+1296: set\(prev => [...prev, {
+1298: content: is\ ? "\ considerar cualquier restricción alimentaria en tu menú, ¿me podrías indicar cuál es?" : "\ considerar cualquier restricción alimentaria en su menú, ¿me podría indicar cuál es?",
+1299: avatar: tilo\,
+1300: input\: 'text'
+1302: set\\('PHASE_1_PROFILE_RELIGION_SPEC');
+1304: set\\(prev => ({
+1306: profile: { ...prev.profile, has_religion: false, religion: "\" }
+1309: const pt\ = patient\.profile.pediatric_profile;
+1310: if (pt\ && pt\.ui_controls && pt\.ui_controls.show_marital_status === false) {
+1311: set\\(prev => ({
+1313: profile: { ...prev.profile, marital_status: pt\.ui_controls.auto_fill_marital }
+1315: set\(prev => [...prev, {
+1317: content: is\ ? "\. \ a tu domicilio. ¿\ podrías indicar tu **Código \**?" : "\. \ a su domicilio. ¿\ía indicarme su **Código \**?",
+1318: avatar: tilo\,
+1319: input\: 'number'
+1321: set\\('PHASE_1_PROFILE_ZIPCODE');
+1323: const sx = patient\.profile?.sex || patient\.identificacion?.sexo || "";
+1324: set\(prev => [...prev, {
+1326: content: is\ ? "¿\ál es tu **\ \** legal?" : "¿\ál es su **\ \** legal?",
+1327: avatar: tilo\,
+1329: { label: get\\('\', sx), value: "\" },
+1330: { label: get\\('\', sx), value: "\" },
+1331: { label: "\ón \", value: "\ \" },
+1332: { label: get\\('\', sx), value: "\" },
+1333: { label: get\\('\', sx), value: "\" }
+1336: set\\('PHASE_1_PROFILE_MARITAL');
+1343: set\\(prev => ({
+1345: profile: { ...prev.profile, religion: format\(text) }
+1348: const pt\ = patient\.profile.pediatric_profile;
+1349: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1350: if (pt\ && pt\.ui_controls && pt\.ui_controls.show_marital_status === false) {
+1351: set\\(prev => ({
+1353: profile: { ...prev.profile, marital_status: pt\.ui_controls.auto_fill_marital }
+1355: set\(prev => [...prev, {
+1357: content: is\ ? "\. \ a tu domicilio. ¿\ podrías indicar tu **Código \**?" : "\. \ a su domicilio. ¿\ía indicarme su **Código \**?",
+1358: avatar: tilo\,
+1359: input\: 'number'
+1361: set\\('PHASE_1_PROFILE_ZIPCODE');
+1363: const sx = patient\.profile?.sex || patient\.identificacion?.sexo || "";
+1364: set\(prev => [...prev, {
+1366: content: is\ ? "¿\ál es tu **\ \** legal?" : "¿\ál es su **\ \** legal?",
+1367: avatar: tilo\,
+1369: { label: get\\('\', sx), value: "\" },
+1370: { label: get\\('\', sx), value: "\" },
+1371: { label: "\ón \", value: "\ \" },
+1372: { label: get\\('\', sx), value: "\" },
+1373: { label: get\\('\', sx), value: "\" }
+1376: set\\('PHASE_1_PROFILE_MARITAL');
+1382: const age = patient\.profile.age || 0;
+1383: const is\ = age < 18;
+1384: set\\(prev => ({
+1389: set\(prev => [...prev, {
+1391: content: is\
+1392: ? "\. \ vamos a registrar tu domicilio. ¿\ podrías indicar tu **Código \**?"
+1393: : "\. \ vamos a registrar su domicilio. ¿\ podría indicar su **Código \**?",
+1394: avatar: tilo\,
+1395: input\: 'number'
+1397: set\\('PHASE_1_PROFILE_ZIPCODE');
+1402: const zip\ = text.trim();
+1403: if (!/^\d{5}$/.test(zip\)) {
+1404: set\(prev => [...prev, { role: 'assistant', content: "\ Código \ debe ser numérico y tener exactamente 5 dígitos. \ favor intente nuevamente:", avatar: tilo\ }]);
+1409: set\(prev => [...prev, { role: 'assistant', content: "\ colonias...", avatar: tilo\ }]);
+1412: fetch(`${api\}/api/cp/${zip\}`)
+1416: throw new \("\ colonies found");
+1419: set\\(prev => ({
+1425: zip_code: zip\,
+1432: cp: zip\,
+1438: set\(prev => {
+1439: const without\ = prev.slice(0, prev.length - 1);
+1440: const age = patient\.profile.age || 0;
+1441: const is\ = age < 18;
+1442: return [...without\, {
+1444: content: is\
+1445: ? `¡\! \ ubicado tu zona en **${data.municipio}, ${data.estado}**. ¿\ías indicarme a qué colonia perteneces?`
+1446: : `¡\! \ ubicado su zona en **${data.municipio}, ${data.estado}**. ¿\ía indicarme a qué colonia pertenece?`,
+1447: avatar: tilo\,
+1448: input\: 'strict_select',
+1452: set\\('PHASE_1_PROFILE_COLONY');
+1456: set\(prev => {
+1457: const without\ = prev.slice(0, prev.length - 1);
+1458: const age = patient\.profile.age || 0;
+1459: const is\ = age < 18;
+1460: return [...without\, {
+1462: content: is\ ? "\ pude encontrar ese código postal en nuestra base de datos. \ favor verifica e ingresa tu **Código \** nuevamente:" : "\ pude encontrar ese código postal en nuestra base de datos. \ favor verifique e ingrese su **Código \** nuevamente:",
+1463: avatar: tilo\,
+1464: input\: 'number'
+1474: const age = patient\.profile.age || 0;
+1475: const is\ = age < 18;
+1476: set\\(prev => ({
+1478: profile: { ...prev.profile, address: { ...prev.profile.address, state: format\(text) } },
+1479: domicilio: { ...prev.domicilio, estado: format\(text) }
+1482: set\(prev => [...prev, {
+1484: content: is\ ? "¡\! \ dime, ¿\ál es tu **\ o \ón**?" : "¡\! \ indíqueme, ¿\ál es su **\ o \ón**?",
+1485: avatar: tilo\,
+1486: input\: 'text'
+1488: set\\('PHASE_1_PROFILE_MUNICIPALITY_MANUAL');
+1493: const age = patient\.profile.age || 0;
+1494: const is\ = age < 18;
+1495: set\\(prev => ({
+1497: profile: { ...prev.profile, address: { ...prev.profile.address, municipality: format\(text) } },
+1498: domicilio: { ...prev.domicilio, municipio: format\(text) }
+1501: set\(prev => [...prev, {
+1503: content: is\ ? "\ bien. \ casi terminamos con esto, ¿Cómo se llama tu **\ o \**?" : "\ bien. \ continuar, ¿Cómo se llama su **\ o \**?",
+1504: avatar: tilo\,
+1505: input\: 'text'
+1508: set\\('PHASE_1_PROFILE_COLONY');
+1513: const age = patient\.profile.age || 0;
+1514: const is\ = age < 18;
+1515: set\\(prev => ({
+1517: profile: { ...prev.profile, address: { ...prev.profile.address, colony: format\(text) } },
+1518: domicilio: { ...prev.domicilio, colonia: format\(text) }
+1521: set\(prev => [...prev, {
+1523: content: is\
+1524: ? "\. \ último para el domicilio, ¿cuál es tu **\ y Número (exterior e interior)**?"
+1525: : "\. \ último para tener su expediente completo, ¿cuál es su **\ y Número (exterior e interior)**?",
+1526: avatar: tilo\,
+1527: input\: 'text'
+1529: set\\('PHASE_1_PROFILE_STREET');
+1534: const clean\ = format\(text);
+1538: if (!/^[a-zA-ZñÑáéíóúÁÉÍÓÚ0-9\s#\-.,]+$/.test(clean\) || clean\.length < 3) {
+1539: set\(prev => [...prev, {
+1541: content: "\ favor, ingrese un nombre de calle y número válidos (ej. \ 13).",
+1542: avatar: tilo\
+1547: set\\(prev => ({
+1549: profile: { ...prev.profile, address: { ...prev.profile.address, street: clean\ } },
+1550: domicilio: { ...prev.domicilio, calle: clean\ }
+1557: const age = patient\.profile.age || 0;
+1558: const patient\\ = (patient\.identificacion?.nombre || "\").split(' ')[0];
+1559: let msg\ = "";
+1561: msg\ = `¿\én es el contacto responsable de **${patient\\}**? \ su nombre completo.`;
+1563: msg\ = `**${patient\\}**, en caso de emergencia, ¿quién es tu contacto responsable? \ su **nombre completo**.`;
+1565: msg\ = `**${patient\\}**, en caso de emergencia, ¿quién es su contacto responsable? \ su **nombre completo**.`;
+1568: set\(prev => [...prev, {
+1570: content: msg\,
+1571: avatar: tilo\,
+1572: input\: 'text'
+1574: set\\('PHASE_2_EMERGENCY_NAME');
+1580: const e\ = format\(text);
+1581: const inferred\ = infer\\\(e\);
+1583: set\\(prev => ({
+1587: emergency\: {
+1588: ...prev.profile.emergency\,
+1589: name: e\,
+1590: inferred_sex: inferred\
+1593: emergencia: { ...prev.emergencia, nombre: e\ }
+1596: const age = patient\.profile.age || 0;
+1597: const patient\\ = (patient\.identificacion.nombre || "\").split(' ')[0];
+1598: let msg\ = "";
+1602: msg\ = `¿\é parentesco tiene **${e\}** con el pequeño(a) **${patient\\}**?`;
+1604: msg\ = `¿\é parentesco tiene **${e\}** contigo?`;
+1606: msg\ = `¿\é parentesco tiene **${e\}** con usted?`;
+1610: let kinship\ = [];
+1611: if (inferred\ === 'FEMALE') {
+1613: kinship\ = ['\', '\', 'Tía', '\ \', '\ \', '\ \'];
+1615: kinship\ = ['\ / \', '\', '\', '\', '\', '\ \'];
+1619: kinship\ = ['\', '\', 'Tío', '\ \', '\ \', '\ \'];
+1621: kinship\ = ['\ / \', '\', '\', '\', '\', '\ \'];
+1625: set\(prev => [...prev, {
+1627: content: msg\,
+1628: avatar: tilo\,
+1629: input\: '\\',
+1630: options: kinship\.map(opt => ({ label: opt, value: opt }))
+1633: set\\('PHASE_2_EMERGENCY_RELATION');
+1638: const e\ = format\(text);
+1639: set\\(prev => ({
+1643: emergency\: { ...prev.profile.emergency\, kin: e\ }
+1645: emergencia: { ...prev.emergencia, parentesco: e\ }
+1647: const pt\ = patient\.profile.pediatric_profile;
+1648: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+1649: const msg\ = is\
+1650: ? "¿\ compartes el **teléfono** a 10 dígitos de esa persona?"
+1651: : "¿\ dicta el **número de teléfono** a 10 dígitos de esa persona?";
+1653: set\(prev => [...prev, {
+1655: content: msg\,
+1656: avatar: tilo\,
+1657: input\: 'tel'
+1659: set\\('PHASE_2_EMERGENCY_PHONE');
+1664: const phone\ = /^[0-9]{10}$/;
+1665: const clean\ = text.replace(/\D/g, '');
+1667: if (!phone\.test(clean\)) {
+1668: set\(prev => [...prev, { role: 'assistant', content: "\ número debe tener exactamente 10 dígitos. \ favor verifíquelo.", avatar: tilo\ }]);
+1673: const age = patient\.profile.age || 0;
+1674: if (clean\ === patient\.profile.phone) {
+1676: set\(prev => [...prev, { role: 'assistant', content: "\ seguridad, el número de emergencia debe ser distinto al suyo. ¿\ algún otro número de contacto para su responsable?", avatar: tilo\ }]);
+1679: const patient\\ = (patient\.identificacion?.nombre || "\").split(' ')[0];
+1680: set\(prev => [...prev, {
+1682: content: `\ que, al ser **${patient\\}** tan pequeño(a), este sea el teléfono de contacto principal. ¿\ con algún segundo número de respaldo por seguridad o prefiere que registremos este mismo?`,
+1683: avatar: tilo\,
+1684: input\: 'buttons',
+1686: { label: "\ este mismo", value: "SAME" },
+1687: { label: "\ otro número", value: "OTHER" }
+1691: set\\(prev => ({
+1695: emergency\: { ...prev.profile.emergency\, phone: clean\ }
+1697: emergencia: { ...prev.emergencia, telefono: clean\ }
+1699: set\\('PHASE_2_EMERGENCY_REDUNDANCY');
+1704: set\\(prev => ({
+1708: emergency\: { ...prev.profile.emergency\, phone: clean\ }
+1710: emergencia: { ...prev.emergencia, telefono: clean\ }
+1715: const patient\\ = (patient\.identificacion?.nombre || "\").split(' ')[0];
+1716: let msg\\ = "";
+1719: msg\\ = `\ completada. ¿\ál es el objetivo principal de la visita de **${patient\\}** el día de hoy? \éntame con tus propias palabras.`;
+1721: msg\\ = `\ completada. **${patient\\}**, ¿qué es lo que más te motiva a estar aquí hoy? \éntame con tus propias palabras.`;
+1723: msg\\ = `\ completada. **${patient\\}**, ¿qué es lo que más le motiva a estar aquí hoy? \énteme con sus propias palabras.`;
+1726: set\(prev => [...prev, {
+1728: content: msg\\,
+1729: avatar: tilo\,
+1730: input\: 'text'
+1732: set\\('profile');
+1733: set\\('PHASE_3_MOTIVE_RESPONSE');
+1740: set\(prev => [...prev, { role: 'assistant', content: "¿\ál es el otro **número de teléfono** a 10 dígitos?", avatar: tilo\, input\: 'tel' }]);
+1741: set\\('PHASE_2_EMERGENCY_PHONE');
+1743: const age = patient\.profile.age || 0;
+1744: const patient\\ = (patient\.identificacion?.nombre || "\").split(' ')[0];
+1745: let msg\\ = "";
+1748: msg\\ = `\ completada. ¿\ál es el objetivo principal de la visita de **${patient\\}** el día de hoy? \éntame con tus propias palabras.`;
+1750: msg\\ = `\ completada. **${patient\\}**, ¿qué es lo que más te motiva a estar aquí hoy? \éntame con tus propias palabras.`;
+1752: msg\\ = `\ completada. **${patient\\}**, ¿qué es lo que más le motiva a estar aquí hoy? \énteme con sus propias palabras.`;
+1755: set\(prev => [...prev, {
+1757: content: msg\\,
+1758: avatar: tilo\,
+1759: input\: 'text'
+1761: set\\('profile');
+1762: set\\('PHASE_3_MOTIVE_RESPONSE');
+1769: const patient\ = format\(text);
+1770: const patient\\ = (patient\.identificacion?.nombre || "\").split(' ')[0];
+1771: const age = patient\.profile.age || 0;
+1782: const pediatric\KW = ['reflujo', 'diarrea', 'vomito', 'fiebre', 'no come', 'peso', 'llora mucho', 'colico'];
+1786: const has\ = bioKW.some(kw => patient\.to\\().includes(kw));
+1787: const has\ = dermaKW.some(kw => patient\.to\\().includes(kw));
+1788: const has\ = sexualKW.some(kw => patient\.to\\().includes(kw));
+1789: const has\ = acuteKW.some(kw => patient\.to\\().includes(kw));
+1790: const has\ = criticalKW.some(kw => patient\.to\\().includes(kw));
+1791: const has\ = warningKW.some(kw => patient\.to\\().includes(kw));
+1793: const is\ = patient\.profile.pediatric_profile?.is_minor;
+1794: const has\ = pretermKW.some(kw => patient\.to\\().includes(kw));
+1795: const has\\ = pediatric\KW.some(kw => patient\.to\\().includes(kw)) && is\;
+1797: const has\ = neuroKW.some(kw => patient\.to\\().includes(kw));
+1798: const has\ = psychKW.some(kw => patient\.to\\().includes(kw));
+1800: const sex = patient\.profile.sex || 'OTHER';
+1803: if (has\ && is\ && !patient\.profile?.clinical_motive?.alert_level) {
+1804: set\\(prev => ({
+1810: patient_own_words: patient\,
+1811: specific_ailment: patient\,
+1815: physiological_suspicion: "\ \ / \ \"
+1823: set\(() => {
+1824: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text', is\: true }]);
+1825: set\\('PHASE_3_PRETERM_PROBE');
+1831: if (has\\ && !patient\.profile?.clinical_motive?.alert_level) {
+1832: set\\(prev => ({
+1838: patient_own_words: patient\,
+1839: specific_ailment: patient\,
+1843: physiological_suspicion: "\ \átrico: " + patient\
+1851: set\(() => {
+1852: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text', is\: true }]);
+1853: set\\('PHASE_3_DETECTIVE_PROBE');
+1859: if (has\ && sex === 'FEMALE' && !patient\.profile?.clinical_motive?.alert_level) {
+1860: set\\(prev => ({
+1866: patient_own_words: patient\,
+1867: specific_ailment: patient\,
+1871: physiological_suspicion: "\ \ógico/\"
+1877: const response = is\
+1878: ? `**${patient\\}**, ese es un detalle clínico fundamental. \ de avanzar con tu plan nutricional, necesito preguntarte con mucha discreción: ¿\ alguna posibilidad de que estés cursando un embarazo o has tenido cambios hormonales recientemente?`
+1879: : `**${patient\\}**, ese es un detalle clínico fundamental. \ de avanzar con su plan nutricional, necesito preguntarle con mucha discreción: ¿\ alguna posibilidad de que esté cursando un embarazo o ha tenido cambios hormonales recientemente?`;
+1881: set\(() => {
+1882: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text', is\: true }]);
+1883: set\\('PHASE_3_BIO_PROBE');
+1889: if (has\ && !patient\.profile?.clinical_motive?.alert_level) {
+1890: set\\(prev => ({
+1896: patient_own_words: patient\,
+1897: specific_ailment: patient\,
+1901: physiological_suspicion: "\ \: " + patient\
+1907: const response = is\
+1911: set\(() => {
+1912: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text', is\: true }]);
+1913: set\\('PHASE_3_ACUTE_PROBE');
+1919: if (has\ && sex === 'MALE' && !patient\.profile?.clinical_motive?.alert_level) {
+1920: set\\(prev => ({
+1926: patient_own_words: patient\,
+1927: specific_ailment: "\ \ \",
+1931: physiological_suspicion: "\ / \"
+1937: const response = is\
+1941: set\(() => {
+1942: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text', is\: true }]);
+1943: set\\('PHASE_3_DETECTIVE_PROBE');
+1949: if (has\ && !patient\.profile?.clinical_motive?.alert_level) {
+1950: set\\(prev => ({
+1956: patient_own_words: patient\,
+1957: specific_ailment: patient\,
+1967: const response = is\
+1971: set\(() => {
+1972: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text', is\: true }]);
+1973: set\\('PHASE_3_DETECTIVE_PROBE');
+1979: if ((has\ || has\) && !patient\.profile?.clinical_motive?.alert_level) {
+1980: const level = has\ ? 'NEURO' : 'WARNING';
+1981: const suspicion = has\ ? "\ de \ída / \ógico" : "\ de \ \";
+1983: set\\(prev => ({
+1989: patient_own_words: patient\,
+1990: specific_ailment: patient\,
+2001: if (has\) {
+2002: response = is\
+2006: response = is\
+2011: set\(() => {
+2012: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text', is\: has\, is\: !has\ }]);
+2013: set\\('PHASE_3_DETECTIVE_PROBE');
+2019: if ((has\ || has\) && !patient\.profile?.clinical_motive?.alert_level) {
+2020: const level = has\ ? 'CRITICAL' : 'WARNING';
+2022: set\\(prev => ({
+2028: patient_own_words: patient\,
+2029: specific_ailment: patient\,
+2033: physiological_suspicion: patient\
+2049: response = is\
+2053: set\(() => {
+2054: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text', is\: true }]);
+2055: set\\('PHASE_3_SENSITIVE_DETAILS');
+2058: response = is\
+2062: set\(() => {
+2063: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text' }]);
+2064: set\\('PHASE_3_DETECTIVE_PROBE');
+2072: set\\(prev => ({
+2078: patient_own_words: patient\,
+2084: let response\ = "";
+2085: if (patient\.to\\().includes("peso")) {
+2086: response\ = is\
+2087: ? "\. ¿\ regresar a un peso donde te sentías con más energía en el pasado, o es por una recomendación médica reciente? ¿\ notado si esto ha cambiado bruscamente en los últimos meses?"
+2088: : "\. ¿\ regresar a un peso donde se sentía con más energía en el pasado, o es por una recomendación médica reciente? ¿\ notado si esto ha cambiado bruscamente en los últimos meses?";
+2090: response\ = is\
+2091: ? `\. ¿\ cuánto tiempo empezaste a notar estos cambios? ¿\ algún evento que te motivara a agendar hoy?`
+2092: : `\. ¿\ cuánto tiempo empezó a notar estos cambios? ¿\ algún evento que le motivara a agendar hoy?`;
+2095: set\(() => {
+2096: set\(prev => [...prev, { role: 'assistant', content: response\, avatar: tilo\, input\: 'text' }]);
+2097: set\\('PHASE_3_DETECTIVE_PROBE');
+2104: const bio\ = format\(text);
+2105: const age = patient\.profile.age || 0;
+2106: const is\ = age >= 12 && age <= 17;
+2108: set\\(prev => ({
+2116: chronology: bio\,
+2117: trigger: "\ón de estado fisiológico",
+2118: physiological_suspicion: "\ \ógico/\ \"
+2120: emotional_anchor: "\ñamiento en proceso biológico."
+2127: const specific\ = patient\.profile?.clinical_motive?.specific_ailment || "";
+2128: const is\ = patient\.profile.pediatric_profile?.is_minor;
+2129: dispatch\('BIOLOGICAL', specific\, patient\.profile.sex, age, is\, is\);
+2135: const extra\ = format\(text);
+2136: const specific\\ = patient\.profile?.clinical_motive?.specific_ailment || "";
+2139: set\\(prev => ({
+2145: specific_ailment: specific\\ + (extra\ && extra\.to\\() !== 'no' && extra\.to\\() !== 'ninguno' ? " / " + extra\ : "")
+2150: const patient\\ = (patient\.identificacion?.nombre || "\").split(' ')[0];
+2151: const age = patient\.profile.age || 0;
+2152: const is\ = age >= 12 && age <= 17;
+2154: const response = is\
+2155: ? `\, **${patient\\}**. \ registrado cada detalle con prioridad. \ dime, ¿hace cuánto tiempo empezaron estas molestias?`
+2156: : `\, **${patient\\}**. \ registrado cada detalle con prioridad. \ dígame, ¿hace cuánto tiempo empezaron estas molestias?`;
+2158: set\(() => {
+2159: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text' }]);
+2160: set\\('PHASE_3_DETECTIVE_PROBE');
+2166: const acute\ = format\(text);
+2168: set\\(prev => ({
+2176: chronology: acute\,
+2177: trigger: "\ón de síntomas agudos"
+2183: const age = patient\.profile.age || 0;
+2184: const is\ = age >= 12 && age <= 17;
+2185: const response = is\
+2186: ? "¿\ tenido fiebre o has notado signos de deshidratación como mucha sed o boca seca?"
+2187: : "¿\ tenido fiebre o ha notado signos de deshidratación como mucha sed o boca seca?";
+2189: set\(() => {
+2190: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text' }]);
+2191: set\\('PHASE_3_ACUTE_RED_FLAGS');
+2197: const fever\ = format\(text);
+2199: set\\(prev => ({
+2205: emotional_anchor: "\ón de bienestar inmediato y control de síntomas agudos.",
+2208: past_interventions: fever\
+2214: const age = patient\.profile.age || 0;
+2215: const is\ = age >= 12 && age <= 17;
+2218: const specific\ = patient\.profile?.clinical_motive?.specific_ailment || "";
+2219: const is\ = patient\.profile.pediatric_profile?.is_minor;
+2220: dispatch\('ACUTE', specific\, patient\.profile.sex, age, is\, is\);
+2226: const detective\ = format\(text);
+2229: const is\\ = /\d|mes|año|semana|dia|siempre|hace/.test(detective\.to\\());
+2230: if (!is\\ && detective\.length < 50) {
+2231: const is\ = (patient\.profile.age || 0) >= 12 && (patient\.profile.age || 0) <= 17;
+2233: const recovery\ = is\
+2234: ? `\ que lo más importante es encontrar la solución pronto. \ embargo, para que el médico sepa si es algo reciente o crónico, ¿podrías darme un estimado de cuánto tiempo llevas con esto?`
+2235: : `\ que lo más importante es encontrar la solución pronto. \ embargo, para que el médico sepa si es algo reciente o crónico, ¿podría darme un estimado de cuánto tiempo lleva con esto?`;
+2237: set\(() => {
+2238: set\(prev => [...prev, { role: 'assistant', content: recovery\, avatar: tilo\, input\: 'text' }]);
+2243: set\\(prev => ({
+2250: chronology: "\ón reportada por paciente",
+2251: trigger: detective\,
+2252: physiological_suspicion: "\ de evaluación clínica",
+2253: past_interventions: "\ especificadas",
+2254: intensity_perceived: "\",
+2255: core_driver: "\ón personal",
+2256: urgency: "\"
+2262: const age = patient\.profile.age || 0;
+2263: const is\ = age >= 12 && age <= 17;
+2264: const is\ = patient\.profile?.clinical_motive?.alert_level !== 'NONE';
+2267: if (is\) {
+2268: response = is\
+2269: ? "\ por la claridad. \, imagina que logramos controlar estos síntomas y te sientes en paz. ¿\é es lo primero que vas a notar en tu bienestar diario cuando ya no tengas este malestar?"
+2270: : "\ por la claridad. \, imagine que logramos controlar estos síntomas y usted se siente en paz. ¿\é es lo primero que va a notar en su bienestar diario cuando ya no tenga este malestar?";
+2272: response = is\
+2273: ? "\. \ que logramos este objetivo en 6 meses. ¿\é es lo primero que vas a poder hacer que hoy te cuesta trabajo?"
+2274: : "\. \ que logramos este objetivo en 6 meses. ¿\é es lo primero que va a poder hacer que hoy le cuesta trabajo?";
+2277: set\(() => {
+2278: set\(prev => [...prev, { role: 'assistant', content: response, avatar: tilo\, input\: 'text' }]);
+2279: set\\('PHASE_3_MIRACLE_TURN');
+2286: const miracle\ = format\(text);
+2287: const is\ = patient\.profile.pediatric_profile?.is_minor;
+2289: set\\(prev => ({
+2295: emotional_anchor: is\ ? "\ en el desarrollo y alivio de síntomas digestivos (\ por \)." : miracle\
+2300: const age = patient\.profile.age || 0;
+2301: const sex = patient\.profile.sex || '';
+2302: const is\ = age >= 12 && age <= 17;
+2304: const alert\ = patient\.profile?.clinical_motive?.alert_level || 'NONE';
+2305: const specific\ = patient\.profile?.clinical_motive?.specific_ailment || "";
+2307: dispatch\(alert\, specific\, sex, age, is\, is\);
+2312: const clinical\ = text;
+2313: if (clinical\ === 'REJECT_INFERENCE') {
+2314: const last\ = messages[messages.length - 1];
+2315: set\(prev => [...prev, {
+2317: content: "\. \ favor, seleccione el enfoque médico que considere más adecuado de la lista:",
+2318: avatar: tilo\,
+2319: input\: 'buttons',
+2320: options: last\?.options || []
+2325: const specific\ = patient\.profile?.clinical_motive?.specific_ailment || "";
+2327: if (clinical\ === '\ \' && !specific\) {
+2328: set\(prev => [...prev, {
+2330: content: "¿\é padecimiento buscamos controlar? (\. \, \ón, SOP...)",
+2331: avatar: tilo\,
+2332: input\: 'text'
+2334: set\\('PHASE_3_MOTIVE_DISEASE_SPECIFY');
+2336: const final\ = specific\ || "";
+2337: const standardized\ = final\ && clinical\ === '\ \' ? `\ \: ${final\}` : clinical\;
+2340: set\\(prev => ({
+2346: clinical_goal_standard: standardized\,
+2347: specific_ailment: final\,
+2351: physiological_suspicion: final\ || prev.profile?.clinical_motive?.detective_radiography?.physiological_suspicion || "\ de evaluación"
+2358: const age = patient\.profile.age || 0;
+2360: let msg\\ = "";
+2361: const is\ = patient\.profile?.clinical_motive?.alert_level === 'PRETERM';
+2362: const is\ = patient\.profile.pediatric_profile?.is_minor;
+2364: if (final\) {
+2365: if (is\ || is\) {
+2366: msg\\ = age < 18
+2370: msg\\ = age < 18
+2375: msg\\ = age < 18
+2380: set\(prev => [...prev, {
+2382: content: msg\\,
+2383: avatar: tilo\,
+2384: input\: 'text'
+2386: set\\('PHASE_4_HEREDO_START');
+2392: const specific\ = format\(text);
+2393: const standardized\ = `\ \: ${specific\}`;
+2396: set\\(prev => ({
+2402: clinical_goal_standard: standardized\,
+2409: const age = patient\.profile.age || 0;
+2411: let msg\\ = age < 18
+2415: set\(prev => [...prev, {
+2417: content: msg\\,
+2418: avatar: tilo\,
+2419: input\: 'text'
+2421: set\\('PHASE_4_HEREDO_START');
+2427: const raw\ = format\(text);
+2428: set\\(prev => ({
+2432: family_raw_text: raw\,
+2437: set\(prev => [...prev, {
+2439: content: "\ cumplir con la normativa clínica, ¿algún familiar directo padece alguna otra enfermedad de esta lista oficial?",
+2440: avatar: tilo\,
+2442: { label: "\", value: "\" },
+2443: { label: "\ón", value: "\ón" },
+2445: { label: "\ \íacas", value: "\ \íacas" },
+2446: { label: "\", value: "\" },
+2447: { label: "\", value: "\" }
+2450: set\\('PHASE_4_SAFETY_GATE');
+2455: if (text === "\") {
+2456: set\(prev => [...prev, {
+2458: content: "\ favor escriba qué otra enfermedad y qué familiar la padece.",
+2459: avatar: tilo\,
+2460: input\: 'text'
+2462: set\\('PHASE_4_OTHER_SPECIFIC');
+2463: } else if (text === "\") {
+2464: set\\(prev => ({
+2472: const pt\ = patient\.profile.pediatric_profile;
+2473: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2474: const msg\ = is\
+2478: set\(prev => [...prev, {
+2480: content: msg\,
+2481: avatar: tilo\,
+2482: input\: 'text'
+2484: set\\('PHASE_5_PERSONAL_START');
+2487: set\\(prev => ({
+2497: set\(prev => [...prev, {
+2499: content: `\: ${text}. ¿\ún familiar padece otra de la lista?`,
+2500: avatar: tilo\,
+2502: { label: "\", value: "\" },
+2503: { label: "\ón", value: "\ón" },
+2505: { label: "\ \íacas", value: "\ \íacas" },
+2506: { label: "\", value: "\" },
+2507: { label: "\", value: "\" }
+2515: const extra\ = format\(text);
+2516: set\\(prev => ({
+2522: { relative: 'UNKNOWN', condition: 'OTHER', detail: extra\ }
+2526: set\(prev => [...prev, {
+2528: content: `\: ${extra\}. ¿\ún familiar padece otra de la lista?`,
+2529: avatar: tilo\,
+2531: { label: "\", value: "\" },
+2532: { label: "\ón", value: "\ón" },
+2534: { label: "\ \íacas", value: "\ \íacas" },
+2535: { label: "\", value: "\" },
+2536: { label: "\", value: "\" }
+2539: set\\('PHASE_4_SAFETY_GATE');
+2545: const raw\ = format\(text);
+2546: set\\(prev => ({
+2550: personal_raw_text: raw\,
+2555: const pt\ = patient\.profile.pediatric_profile;
+2556: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2557: const msg\ = is\
+2558: ? "\ asegurar que tu expediente esté completo: \ás de lo que ya mencionamos, ¿padeces alguna otra condición de esta lista oficial?"
+2559: : "\ asegurar que su expediente esté completo: \ás de lo que ya mencionamos, ¿padece alguna otra condición de esta lista oficial?";
+2561: set\(prev => [...prev, {
+2563: content: msg\,
+2564: avatar: tilo\,
+2566: { label: "\ (\ 1 o 2)", value: "\ (\ 1 o 2)" },
+2567: { label: "\ón \", value: "\ón \" },
+2568: { label: "\ / \", value: "\ / \" },
+2569: { label: "\", value: "\" },
+2571: { label: "\ / \", value: "\ / \" },
+2572: { label: "\", value: "\" },
+2573: { label: "\", value: "\" },
+2574: { label: "\", value: "\" }
+2578: set\\('PHASE_5_SAFETY_GATE');
+2583: const phase5\ = [
+2584: { label: "\ (\ 1 o 2)", value: "\ (\ 1 o 2)" },
+2585: { label: "\ón \", value: "\ón \" },
+2586: { label: "\ / \", value: "\ / \" },
+2587: { label: "\", value: "\" },
+2589: { label: "\ / \", value: "\ / \" },
+2590: { label: "\", value: "\" },
+2591: { label: "\", value: "\" },
+2592: { label: "\", value: "\" }
+2595: if (text === "\") {
+2596: const pt\ = patient\.profile.pediatric_profile;
+2597: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2598: set\(prev => [...prev, {
+2600: content: is\ ? "\ favor escribe qué otra enfermedad padeces." : "\ favor escriba qué otra enfermedad padece.",
+2601: avatar: tilo\,
+2602: input\: 'text'
+2604: set\\('PHASE_5_OTHER_SPECIFIC');
+2605: } else if (text === "\") {
+2606: set\\(prev => ({
+2614: const pt\ = patient\.profile.pediatric_profile;
+2615: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2616: const msg\ = is\
+2620: set\(prev => [...prev, {
+2622: content: msg\,
+2623: avatar: tilo\,
+2626: { label: "\", value: "\" }
+2629: set\\('PHASE_6_MEDS_GATE');
+2632: set\\(prev => ({
+2642: const pt\ = patient\.profile.pediatric_profile;
+2643: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2644: set\(prev => [...prev, {
+2646: content: is\ ? `\: ${text}. ¿\ alguna otra condición de la lista?` : `\: ${text}. ¿\ alguna otra condición de la lista?`,
+2647: avatar: tilo\,
+2648: options: phase5\
+2655: const extra\ = format\(text);
+2656: const phase5\ = [
+2657: { label: "\ (\ 1 o 2)", value: "\ (\ 1 o 2)" },
+2658: { label: "\ón \", value: "\ón \" },
+2659: { label: "\ / \", value: "\ / \" },
+2660: { label: "\", value: "\" },
+2662: { label: "\ / \", value: "\ / \" },
+2663: { label: "\", value: "\" },
+2664: { label: "\", value: "\" },
+2665: { label: "\", value: "\" }
+2668: set\\(prev => ({
+2674: { condition_category: 'OTHER', specific_condition: extra\, status: 'ACTIVE', source: 'CHECKLIST' }
+2678: const pt\ = patient\.profile.pediatric_profile;
+2679: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2680: set\(prev => [...prev, {
+2682: content: is\ ? `\: ${extra\}. ¿\ alguna otra condición de la lista?` : `\: ${extra\}. ¿\ alguna otra condición de la lista?`,
+2683: avatar: tilo\,
+2684: options: phase5\
+2686: set\\('PHASE_5_SAFETY_GATE');
+2694: const pt\ = patient\.profile.pediatric_profile;
+2695: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2698: set\(prev => [...prev, {
+2700: content: is\ ? "\. \ el nombre del primer medicamento:" : "\. \ el nombre del primer medicamento:",
+2701: avatar: tilo\,
+2702: input\: 'text'
+2704: set\\('PHASE_6_MEDS_NAME');
+2705: } else if (text === "\") {
+2707: const msg\ = is\
+2711: set\(prev => [...prev, {
+2713: content: msg\,
+2714: avatar: tilo\,
+2717: { label: "\", value: "\" }
+2720: set\\('PHASE_7_FOOD_GATE');
+2722: set\(prev => [...prev, {
+2724: content: "\ favor seleccione Sí o \.",
+2725: avatar: tilo\,
+2728: { label: "\", value: "\" }
+2736: const name = format\(text);
+2737: const pt\ = patient\.profile.pediatric_profile;
+2738: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2739: set\\(prev => ({ ...prev, name }));
+2740: set\(prev => [...prev, {
+2742: content: is\ ? `\ (${name}). ¿\ál es la dosis exacta y con qué frecuencia la tomas? (\. 1 tableta cada 12 horas).` : `\ (${name}). ¿\ál es la dosis exacta y con qué frecuencia la toma? (\. 1 tableta cada 12 horas).`,
+2743: avatar: tilo\,
+2744: input\: 'text'
+2746: set\\('PHASE_6_MEDS_DOSE');
+2751: const dose_freq = format\(text);
+2752: const pt\ = patient\.profile.pediatric_profile;
+2753: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2754: set\\(prev => ({ ...prev, dose_freq }));
+2755: set\(prev => [...prev, {
+2758: avatar: tilo\,
+2759: input\: 'text'
+2761: set\\('PHASE_6_MEDS_TIME');
+2766: const duration = format\(text);
+2767: const new\ = {
+2768: name: temp\.name,
+2769: dose_frequency: temp\.dose_freq,
+2774: set\\(prev => ({
+2778: medications: [...(prev.history?.medications || []), new\]
+2782: set\\({ name: '', dose_freq: '', duration: '' });
+2784: const pt\ = patient\.profile.pediatric_profile;
+2785: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2787: set\(prev => [...prev, {
+2789: content: is\ ? `\. ¿\ algún otro medicamento?` : `\. ¿\ algún otro medicamento?`,
+2790: avatar: tilo\,
+2793: { label: "\", value: "\" }
+2796: set\\('PHASE_6_MEDS_NEXT');
+2801: const pt\ = patient\.profile.pediatric_profile;
+2802: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2805: set\(prev => [...prev, {
+2807: content: is\ ? "\ el nombre del siguiente medicamento:" : "\ el nombre del siguiente medicamento:",
+2808: avatar: tilo\,
+2809: input\: 'text'
+2811: set\\('PHASE_6_MEDS_NAME');
+2812: } else if (text === "\") {
+2814: const msg\ = is\
+2818: set\(prev => [...prev, {
+2820: content: msg\,
+2821: avatar: tilo\,
+2824: { label: "\", value: "\" }
+2827: set\\('PHASE_7_FOOD_GATE');
+2829: set\(prev => [...prev, {
+2831: content: "\ favor seleccione Sí o \.",
+2832: avatar: tilo\,
+2835: { label: "\", value: "\" }
+2846: set\\('profile');
+2848: const pt\ = patient\.profile.pediatric_profile;
+2849: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2852: set\(prev => [...prev, {
+2854: content: is\ ? "¿A qué alimento eres alérgico?" : "¿A qué alimento es alérgico?",
+2855: avatar: tilo\,
+2856: input\: 'text'
+2858: set\\('PHASE_7_FOOD_AGENT');
+2859: } else if (text === "\") {
+2860: const msg\ = is\
+2864: set\(prev => [...prev, {
+2866: content: msg\,
+2867: avatar: tilo\,
+2870: { label: "\", value: "\" }
+2873: set\\('PHASE_7_DRUG_GATE');
+2875: set\(prev => [...prev, {
+2877: content: "\ favor seleccione Sí o \.",
+2878: avatar: tilo\,
+2881: { label: "\", value: "\" }
+2889: const agent = format\(text);
+2890: const pt\ = patient\.profile.pediatric_profile;
+2891: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2893: set\\(prev => ({ ...prev, agent }));
+2894: set\(prev => [...prev, {
+2896: content: is\ ? `\ (${agent}). ¿\é reacción te provoca? (\. \ón, ronchas, anafilaxia, picazón).` : `\ (${agent}). ¿\é reacción le provoca? (\. \ón, ronchas, anafilaxia, picazón).`,
+2897: avatar: tilo\,
+2898: input\: 'text'
+2900: set\\('PHASE_7_FOOD_REACTION');
+2905: const reaction = format\(text);
+2906: const new\\ = {
+2907: agent: temp\.agent,
+2912: set\\(prev => ({
+2918: food: [...(prev.history?.allergies?.food || []), new\\]
+2923: set\\({ agent: '', reaction: '' });
+2925: const pt\ = patient\.profile.pediatric_profile;
+2926: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2928: set\(prev => [...prev, {
+2930: content: is\ ? `\. ¿\ alérgico a algún otro alimento?` : `\. ¿\ alérgico a algún otro alimento?`,
+2931: avatar: tilo\,
+2934: { label: "\", value: "\" }
+2937: set\\('PHASE_7_FOOD_NEXT');
+2942: const pt\ = patient\.profile.pediatric_profile;
+2943: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2946: set\(prev => [...prev, {
+2948: content: is\ ? "¿A qué otro alimento eres alérgico?" : "¿A qué otro alimento es alérgico?",
+2949: avatar: tilo\,
+2950: input\: 'text'
+2952: set\\('PHASE_7_FOOD_AGENT');
+2953: } else if (text === "\") {
+2954: const msg\ = is\
+2958: set\(prev => [...prev, {
+2960: content: msg\,
+2961: avatar: tilo\,
+2964: { label: "\", value: "\" }
+2967: set\\('PHASE_7_DRUG_GATE');
+2969: set\(prev => [...prev, {
+2971: content: "\ favor seleccione Sí o \.",
+2972: avatar: tilo\,
+2975: { label: "\", value: "\" }
+2984: const pt\ = patient\.profile.pediatric_profile;
+2985: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+2988: set\(prev => [...prev, {
+2990: content: is\ ? "¿A qué medicamento eres alérgico?" : "¿A qué medicamento es alérgico?",
+2991: avatar: tilo\,
+2992: input\: 'text'
+2994: set\\('PHASE_7_DRUG_AGENT');
+2995: } else if (text === "\") {
+2997: const msg\ = is\
+2998: ? "\ a tu salud digestiva. \ los últimos 30 días, ¿has padecido inflamación, gases, acidez, o estreñimiento recurrente?"
+2999: : "\ a su salud digestiva. \ los últimos 30 días, ¿ha padecido inflamación, gases, acidez, o estreñimiento recurrente?";
+3001: set\(prev => [...prev, {
+3003: content: msg\,
+3004: avatar: tilo\,
+3007: { label: "\", value: "\" }
+3010: set\\('profile');
+3011: set\\('PHASE_8_DIGESTIVE_GATE');
+3013: set\(prev => [...prev, {
+3015: content: "\ favor seleccione Sí o \.",
+3016: avatar: tilo\,
+3019: { label: "\", value: "\" }
+3027: const agent = format\(text);
+3028: const pt\ = patient\.profile.pediatric_profile;
+3029: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3031: set\\(prev => ({ ...prev, agent }));
+3032: set\(prev => [...prev, {
+3034: content: is\ ? `\ (${agent}). ¿\é reacción te provoca?` : `\ (${agent}). ¿\é reacción le provoca?`,
+3035: avatar: tilo\,
+3036: input\: 'text'
+3038: set\\('PHASE_7_DRUG_REACTION');
+3043: const reaction = format\(text);
+3044: const new\\ = {
+3045: agent: temp\.agent,
+3050: set\\(prev => ({
+3056: drug: [...(prev.history?.allergies?.drug || []), new\\]
+3061: set\\({ agent: '', reaction: '' });
+3063: const pt\ = patient\.profile.pediatric_profile;
+3064: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3066: set\(prev => [...prev, {
+3068: content: is\ ? `\. ¿\ alérgico a algún otro medicamento?` : `\. ¿\ alérgico a algún otro medicamento?`,
+3069: avatar: tilo\,
+3072: { label: "\", value: "\" }
+3075: set\\('PHASE_7_DRUG_NEXT');
+3080: const pt\ = patient\.profile.pediatric_profile;
+3081: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3084: set\(prev => [...prev, {
+3086: content: is\ ? "¿A qué otro medicamento eres alérgico?" : "¿A qué otro medicamento es alérgico?",
+3087: avatar: tilo\,
+3088: input\: 'text'
+3090: set\\('PHASE_7_DRUG_AGENT');
+3091: } else if (text === "\") {
+3093: const msg\ = is\
+3094: ? "\ a tu salud digestiva. \ los últimos 30 días, ¿has padecido inflamación, gases, acidez, o estreñimiento recurrente?"
+3095: : "\ a su salud digestiva. \ los últimos 30 días, ¿ha padecido inflamación, gases, acidez, o estreñimiento recurrente?";
+3097: set\(prev => [...prev, {
+3099: content: msg\,
+3100: avatar: tilo\,
+3103: { label: "\", value: "\" }
+3106: set\\('profile');
+3107: set\\('PHASE_8_DIGESTIVE_GATE');
+3109: set\(prev => [...prev, {
+3111: content: "\ favor seleccione Sí o \.",
+3112: avatar: tilo\,
+3115: { label: "\", value: "\" }
+3125: set\(prev => [...prev, {
+3127: content: "¿\áles de los siguientes síntomas presenta con mayor frecuencia? (\ elegir varios)",
+3128: avatar: tilo\,
+3130: { label: "\ / \", value: "\ / \" },
+3131: { label: "\ / \ón", value: "\ / \ón" },
+3132: { label: "\ñimiento", value: "\ñimiento" },
+3133: { label: "\", value: "\" },
+3134: { label: "\", value: "\" }
+3136: is\\: true
+3138: set\\('PHASE_8_DIGESTIVE_SYMPTOMS');
+3139: } else if (text === "\") {
+3141: set\\(prev => ({
+3146: digestive_frequency: "\"
+3150: const sex = patient\.identificacion?.sexo || patient\.profile?.sex;
+3151: const pt\ = patient\.profile.pediatric_profile;
+3152: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3154: if (sex === '\' || sex === 'HOMBRE') {
+3155: set\(prev => [...prev, {
+3158: avatar: tilo\,
+3161: { label: "\", value: "\" }
+3164: set\\('profile');
+3165: set\\('PHASE_10_SMOKE_GATE');
+3167: set\(prev => [...prev, {
+3170: avatar: tilo\,
+3173: { label: "\", value: "\" }
+3176: set\\('PHASE_9_PREG_GATE');
+3179: set\(prev => [...prev, {
+3181: content: "\ favor seleccione Sí o \.",
+3182: avatar: tilo\,
+3185: { label: "\", value: "\" }
+3196: const symptoms\ = text.split(',').map(s => s.trim()).filter(s => s);
+3198: set\\(prev => ({
+3202: digestive_symptoms: symptoms\
+3206: set\(prev => [...prev, {
+3208: content: "¿\ qué frecuencia presenta estas molestias?",
+3209: avatar: tilo\,
+3211: { label: "\", value: "\" },
+3213: { label: "\ vez", value: "\ vez" }
+3216: set\\('PHASE_8_DIGESTIVE_FREQ');
+3221: const frequency = format\(text);
+3223: set\\(prev => ({
+3231: const sex = patient\.identificacion?.sexo || patient\.profile?.sex;
+3232: const pt\ = patient\.profile.pediatric_profile;
+3233: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3235: if (sex === '\' || sex === 'HOMBRE') {
+3236: set\(prev => [...prev, {
+3239: avatar: tilo\,
+3242: { label: "\", value: "\" }
+3245: set\\('profile');
+3246: set\\('PHASE_10_SMOKE_GATE');
+3248: set\(prev => [...prev, {
+3251: avatar: tilo\,
+3254: { label: "\", value: "\" }
+3257: set\\('PHASE_9_PREG_GATE');
+3264: const pt\ = patient\.profile.pediatric_profile;
+3265: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3268: set\\(prev => ({
+3272: set\(prev => [...prev, {
+3274: content: is\ ? "¿\ántas semanas de gestación tienes?" : "¿\ántas semanas de gestación tiene?",
+3275: avatar: tilo\,
+3276: input\: 'number'
+3278: set\\('PHASE_9_PREG_WEEKS');
+3279: } else if (text === "\") {
+3280: set\\(prev => ({
+3284: set\(prev => [...prev, {
+3286: content: is\ ? "\. ¿\ encuentras actualmente en periodo de lactancia?" : "\. ¿\ encuentra actualmente en periodo de lactancia?",
+3287: avatar: tilo\,
+3290: { label: "\", value: "\" }
+3293: set\\('PHASE_9_LACT_GATE');
+3295: set\(prev => [...prev, {
+3297: content: "\ favor seleccione Sí o \.",
+3298: avatar: tilo\,
+3301: { label: "\", value: "\" }
+3309: const weeks = parse\(text, 10);
+3310: const pt\ = patient\.profile.pediatric_profile;
+3311: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3313: if (is\N(weeks) || weeks < 1 || weeks > 42) {
+3314: set\(prev => [...prev, {
+3316: content: is\ ? "\ favor, ingresa un número válido de semanas de gestación." : "\ favor, ingrese un número válido de semanas de gestación.",
+3317: avatar: tilo\,
+3318: input\: 'number'
+3321: set\\(prev => ({
+3325: set\(prev => [...prev, {
+3328: avatar: tilo\,
+3331: { label: "\", value: "\" }
+3334: set\\('profile');
+3335: set\\('PHASE_10_SMOKE_GATE');
+3341: const pt\ = patient\.profile.pediatric_profile;
+3342: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3345: set\\(prev => ({
+3349: set\(prev => [...prev, {
+3351: content: is\ ? "\ gasto calórico depende del tipo de lactancia. ¿\ál practicas actualmente?" : "\ gasto calórico depende del tipo de lactancia. ¿\ál practica actualmente?",
+3352: avatar: tilo\,
+3354: { label: "\ (\ pecho)", value: "\" },
+3355: { label: "\ (\ y fórmula)", value: "\" }
+3358: set\\('PHASE_9_LACT_TYPE');
+3359: } else if (text === "\") {
+3360: set\\(prev => ({
+3364: set\(prev => [...prev, {
+3367: avatar: tilo\,
+3370: { label: "\", value: "\" }
+3373: set\\('profile');
+3374: set\\('PHASE_10_SMOKE_GATE');
+3376: set\(prev => [...prev, {
+3378: content: "\ favor seleccione Sí o \.",
+3379: avatar: tilo\,
+3382: { label: "\", value: "\" }
+3390: let lact\ = format\(text);
+3391: if (text.includes("\")) lact\ = "\";
+3392: if (text.includes("\")) lact\ = "\";
+3394: set\\(prev => ({
+3396: physio: { ...prev.physio, lactation_type: lact\ }
+3398: set\(prev => [...prev, {
+3400: content: "¿\é edad tiene su bebé (en meses)?",
+3401: avatar: tilo\,
+3402: input\: 'number'
+3404: set\\('PHASE_9_BABY_AGE');
+3409: const months = parse\(text, 10);
+3410: if (is\N(months) || months < 0 || months > 48) {
+3411: set\(prev => [...prev, {
+3413: content: "\ favor, ingrese un número válido de meses.",
+3414: avatar: tilo\,
+3415: input\: 'number'
+3418: set\\(prev => ({
+3422: set\(prev => [...prev, {
+3425: avatar: tilo\,
+3428: { label: "\", value: "\" }
+3431: set\\('profile');
+3432: set\\('PHASE_10_SMOKE_GATE');
+3439: const pt\ = patient\.profile.pediatric_profile;
+3440: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3443: set\\(prev => ({
+3450: set\(prev => [...prev, {
+3452: content: is\ ? "¿\ qué frecuencia y qué cantidad consumes aproximadamente?" : "¿\ qué frecuencia y qué cantidad consume aproximadamente?",
+3453: avatar: tilo\
+3455: set\\('PHASE_10_SMOKE_DETAILS');
+3456: } else if (text === "\") {
+3457: set\\(prev => ({
+3464: set\(prev => [...prev, {
+3467: avatar: tilo\,
+3470: { label: "\", value: "\" }
+3473: set\\('PHASE_11_ALCOHOL_GATE');
+3475: set\(prev => [...prev, {
+3477: content: "\ favor seleccione Sí o \.",
+3478: avatar: tilo\,
+3481: { label: "\", value: "\" }
+3489: const details = format\(text);
+3490: const pt\ = patient\.profile.pediatric_profile;
+3491: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3493: set\\(prev => ({
+3500: set\(prev => [...prev, {
+3503: avatar: tilo\,
+3506: { label: "\", value: "\" }
+3509: set\\('PHASE_11_ALCOHOL_GATE');
+3516: set\\(prev => ({
+3523: set\(prev => [...prev, {
+3525: content: "¿\é tipo de bebida alcohólica suele consumir con mayor frecuencia?",
+3526: avatar: tilo\,
+3528: { label: "\", value: "1" },
+3529: { label: "\", value: "2" },
+3530: { label: "\", value: "3" },
+3531: { label: "\", value: "4" },
+3532: { label: "\ía", value: "5" }
+3535: set\\('PHASE_11_ALCOHOL_TYPE');
+3536: } else if (text === "\") {
+3537: set\\(prev => ({
+3544: const pt\ = patient\.profile.pediatric_profile;
+3545: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3546: set\(prev => [...prev, {
+3549: avatar: tilo\,
+3552: { label: "\", value: "\" }
+3555: set\\('PHASE_11_DRUGS_GATE');
+3557: set\(prev => [...prev, {
+3559: content: "\ favor indique Sí o \.",
+3560: avatar: tilo\,
+3563: { label: "\", value: "\" }
+3571: const pt\ = patient\.profile.pediatric_profile;
+3572: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3574: "1": { label: "\", unit: "\ 355ml", kcal: 150 },
+3575: "2": { label: "\", unit: "\ 940ml", kcal: 380 },
+3576: "3": { label: "\", unit: "\ 150ml", kcal: 120 },
+3577: "4": { label: "\", unit: "\ 45ml", kcal: 100 },
+3578: "5": { label: "\ía", unit: "\ \ándar", kcal: 250 },
+3579: "\": { label: "\", unit: "\ 355ml", kcal: 150 },
+3580: "\": { label: "\", unit: "\ 940ml", kcal: 380 },
+3581: "\": { label: "\", unit: "\ 150ml", kcal: 120 },
+3582: "\": { label: "\", unit: "\ 45ml", kcal: 100 },
+3583: "\ía": { label: "\ía", unit: "\ \ándar", kcal: 250 }
+3587: set\(prev => [...prev, {
+3589: content: "\ favor seleccione una de las opciones válidas.",
+3590: avatar: tilo\
+3594: set\\(prev => ({ ...prev, current_alc: selected }));
+3595: set\(prev => [...prev, {
+3597: content: is\ ? `\. ¿\ántas unidades de **${selected.unit}** sueles tomar por ocasión?` : `\. ¿\ántas unidades de **${selected.unit}** suele tomar por ocasión?`,
+3598: avatar: tilo\,
+3599: input\: 'number'
+3601: set\\('PHASE_11_ALCOHOL_QTY');
+3606: const qty = parse\(text);
+3607: if (is\N(qty) || qty < 0) {
+3608: set\(prev => [...prev, {
+3610: content: "\ favor indique un número válido.",
+3611: avatar: tilo\,
+3612: input\: 'number'
+3617: const { current_alc } = temp\;
+3619: set\\('PHASE_11_ALCOHOL_GATE');
+3624: const new\ = {
+3631: set\\(prev => {
+3632: const new\ = [...(prev.habits.alcohol.log || []), new\];
+3633: const new\ = (prev.habits.alcohol.total_kcal_per_occasion || 0) + subtotal;
+3640: log: new\,
+3641: total_kcal_per_occasion: new\
+3647: const pt\ = patient\.profile.pediatric_profile;
+3648: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3650: set\(prev => [...prev, {
+3652: content: is\ ? "\. ¿\ algún otro tipo de bebida alcohólica?" : "\. ¿\ algún otro tipo de bebida alcohólica?",
+3653: avatar: tilo\,
+3656: { label: "\", value: "\" }
+3659: set\\('PHASE_11_ALCOHOL_LOOP');
+3664: const pt\ = patient\.profile.pediatric_profile;
+3665: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3668: set\(prev => [...prev, {
+3670: content: "\ el tipo de bebida:",
+3671: avatar: tilo\,
+3673: { label: "\", value: "1" },
+3674: { label: "\", value: "2" },
+3675: { label: "\", value: "3" },
+3676: { label: "\", value: "4" },
+3677: { label: "\ía", value: "5" }
+3680: set\\('PHASE_11_ALCOHOL_TYPE');
+3681: } else if (text === "\") {
+3682: set\(prev => [...prev, {
+3684: content: is\ ? "¿\ alguna sustancia recreativa (drogas)?" : "¿\ alguna otra sustancia recreativa (drogas)?",
+3685: avatar: tilo\,
+3688: { label: "\", value: "\" }
+3691: set\\('PHASE_11_DRUGS_GATE');
+3693: set\(prev => [...prev, {
+3695: content: "\ Sí o \.",
+3696: avatar: tilo\,
+3699: { label: "\", value: "\" }
+3707: const pt\ = patient\.profile.pediatric_profile;
+3708: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3710: if (text === "\") {
+3711: set\\(prev => ({
+3715: drugs: { ...prev.habits.drugs, has_usage: false, log: ["\"] }
+3718: set\(prev => [...prev, {
+3720: content: is\ ? "¿\ ejercicio físico?" : "¿\ ejercicio físico?",
+3721: avatar: tilo\,
+3724: { label: "\", value: "\" }
+3727: set\\('PHASE_11_ACTIVITY_GATE');
+3729: set\\(prev => ({
+3736: set\(prev => [...prev, {
+3738: content: "¿\ál?",
+3739: avatar: tilo\
+3741: set\\('PHASE_11_DRUGS_DRILLDOWN');
+3743: set\(prev => [...prev, {
+3745: content: is\ ? "\, no te entendí. ¿\ alguna otra sustancia? (\ Sí o \)." : "\, no le entendí. ¿\ alguna otra sustancia? (\ Sí o \).",
+3746: avatar: tilo\,
+3749: { label: "\", value: "\" }
+3757: set\\(prev => ({
+3761: drugs: { ...prev.habits.drugs, log: [...(prev.habits.drugs.log || []), format\(text)] }
+3764: set\(prev => [...prev, {
+3766: content: "¿\ otra sustancia?",
+3767: avatar: tilo\,
+3770: { label: "\", value: "\" }
+3773: set\\('PHASE_11_DRUGS_LOOP');
+3778: const pt\ = patient\.profile.pediatric_profile;
+3779: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3781: if (text === "\") {
+3782: set\(prev => [...prev, {
+3784: content: is\ ? "¿\ ejercicio físico?" : "¿\ ejercicio físico?",
+3785: avatar: tilo\,
+3788: { label: "\", value: "\" }
+3791: set\\('PHASE_11_ACTIVITY_GATE');
+3793: set\(prev => [...prev, {
+3795: content: "¿\ál?",
+3796: avatar: tilo\
+3798: set\\('PHASE_11_DRUGS_DRILLDOWN');
+3800: set\(prev => [...prev, {
+3802: content: is\ ? "\, no te entendí. ¿\ otra sustancia? (\ Sí o \)." : "\, no le entendí. ¿\ otra sustancia? (\ Sí o \).",
+3803: avatar: tilo\,
+3806: { label: "\", value: "\" }
+3814: const pt\ = patient\.profile.pediatric_profile;
+3815: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3817: if (text === "\") {
+3818: set\\(prev => ({
+3822: set\(prev => [...prev, {
+3824: content: is\ ? "¿\ántas horas duermes en promedio al día?" : "¿\ántas horas duerme en promedio al día?",
+3825: avatar: tilo\,
+3826: input\: 'number'
+3828: set\\('PHASE_11_SLEEP_HOURS');
+3830: set\\(prev => ({
+3835: set\(prev => [...prev, {
+3837: content: is\ ? "\ bien. ¿\é actividad realizas? (\. \, \)" : "\ bien. ¿\é actividad realiza? (\. \, \)",
+3838: avatar: tilo\
+3840: set\\('PHASE_11_ACTIVITY_TYPE');
+3842: set\(prev => [...prev, {
+3844: content: is\ ? "\, no te entendí. ¿\ alguna actividad física? (\ Sí o \)." : "\, no le entendí. ¿\ alguna actividad física? (\ Sí o \).",
+3845: avatar: tilo\,
+3848: { label: "\", value: "\" }
+3856: const pt\ = patient\.profile.pediatric_profile;
+3857: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3859: set\\({ actividad: format\(text) });
+3860: set\(prev => [...prev, {
+3862: content: is\ ? "¿\ántos **días** a la semana la practicas? (Número 1-7)" : "¿\ántos **días** a la semana la practica? (Número 1-7)",
+3863: avatar: tilo\,
+3864: input\: 'number'
+3866: set\\('PHASE_11_ACTIVITY_DAYS');
+3871: const days = parse\(text, 10);
+3872: if (is\N(days) || days < 1 || days > 7) {
+3873: set\(prev => [...prev, {
+3875: content: "\ favor indique un número de días válido (1-7).",
+3876: avatar: tilo\,
+3877: input\: 'number'
+3881: set\\(prev => ({ ...prev, dias: days }));
+3883: const pt\ = patient\.profile.pediatric_profile;
+3884: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3886: set\(prev => [...prev, {
+3888: content: is\ ? "Y por último, ¿cuántos **minutos** dura tu sesión promedio?" : "Y por último, ¿cuántos **minutos** dura su sesión promedio?",
+3889: avatar: tilo\,
+3890: input\: 'number'
+3892: set\\('PHASE_11_ACTIVITY_MINS');
+3897: const mins = parse\(text, 10);
+3898: if (is\N(mins) || mins < 1) {
+3899: set\(prev => [...prev, {
+3901: content: "\ favor indique una duración en minutos válida.",
+3902: avatar: tilo\,
+3903: input\: 'number'
+3908: const { actividad, dias } = temp\;
+3910: set\\('PHASE_11_ACTIVITY_GATE');
+3914: const final\ = `${actividad} (${dias} días/sem, ${mins} min)`;
+3916: set\\(prev => ({
+3922: log: [...(prev.activity.exercise.log || []), final\]
+3927: const pt\ = patient\.profile.pediatric_profile;
+3928: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3930: set\(prev => [...prev, {
+3932: content: is\ ? "¿\ alguna **otra** actividad física?" : "¿\ alguna **otra** actividad física?",
+3933: avatar: tilo\,
+3936: { label: "\", value: "\" }
+3939: set\\('PHASE_11_ACTIVITY_LOOP');
+3944: const pt\ = patient\.profile.pediatric_profile;
+3945: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3947: if (text === "\") {
+3948: set\(prev => [...prev, {
+3950: content: is\ ? "¿\ántas horas duermes en promedio al día?" : "¿\ántas horas duerme en promedio al día?",
+3951: avatar: tilo\,
+3952: input\: 'number'
+3954: set\\('PHASE_11_SLEEP_HOURS');
+3956: set\\({});
+3957: set\(prev => [...prev, {
+3959: content: "¿\é actividad?",
+3960: avatar: tilo\
+3962: set\\('PHASE_11_ACTIVITY_TYPE');
+3969: const match = text.match(/\d+/);
+3970: const val = match ? parse\(match[0], 10) : \N;
+3972: if (is\N(val) || val < 1 || val > 24) {
+3973: set\(prev => [...prev, {
+3975: content: "\ favor indique un número de horas válido (entre 1 y 24).",
+3976: avatar: tilo\,
+3977: input\: 'number'
+3982: set\\(prev => ({
+3987: const pt\ = patient\.profile.pediatric_profile;
+3988: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+3990: set\(prev => [...prev, {
+3992: content: is\ ? "¿Cómo calificarías tu calidad de sueño?" : "¿Cómo calificaría su calidad de sueño?",
+3993: avatar: tilo\,
+3995: { label: "\", value: "\" },
+3996: { label: "\", value: "\" },
+3997: { label: "\", value: "\" }
+4000: set\\('PHASE_11_SLEEP_QUALITY');
+4005: const quality = format\(text);
+4006: const pt\ = patient\.profile.pediatric_profile;
+4007: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4009: set\\(prev => ({
+4014: set\(prev => [...prev, {
+4016: content: is\ ? "¿\ál es tu nivel de estrés diario en promedio?" : "¿\ál es su nivel de estrés diario en promedio?",
+4017: avatar: tilo\,
+4019: { label: "\", value: "\" },
+4020: { label: "\", value: "\" },
+4021: { label: "\", value: "\" }
+4024: set\\('PHASE_11_STRESS_LEVEL');
+4029: const pt\ = patient\.profile.pediatric_profile;
+4030: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4032: const stress = text.to\\();
+4033: set\\(prev => ({
+4038: set\(prev => [...prev, {
+4041: avatar: tilo\
+4043: set\\('PHASE_12_AVERSIONS_GATE');
+4052: const is\ = strict\\(text);
+4053: const pt\ = patient\.profile.pediatric_profile;
+4054: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4056: if (is\ === false) {
+4057: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\áles son tus alimentos favoritos o preferidos?" : "¿\áles son sus alimentos favoritos o preferidos?", avatar: tilo\ }]);
+4058: set\\('PHASE_12_FAVORITES_GATE');
+4059: } else if (is\ === true) {
+4060: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\áles alimentos evitas?" : "¿\áles alimentos evita?", avatar: tilo\ }]);
+4064: set\\(prev => ({
+4066: evaluacion\: { ...prev.evaluacion\, preferencias: { ...prev.evaluacion\.preferencias, aversiones: format\(text) } }
+4068: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\ún otro alimento que evites?" : "¿\ún otro alimento que evite?", avatar: tilo\ }]);
+4069: set\\('PHASE_12_AVERSIONS_LOOP');
+4075: const is\ = strict\\(text);
+4076: const pt\ = patient\.profile.pediatric_profile;
+4077: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4079: if (is\ === false) {
+4080: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\áles son tus alimentos favoritos o preferidos?" : "¿\áles son sus alimentos favoritos o preferidos?", avatar: tilo\ }]);
+4081: set\\('PHASE_12_FAVORITES_GATE');
+4082: } else if (is\ === true) {
+4083: set\(prev => [...prev, { role: "assistant", content: "¿\ál?", avatar: tilo\ }]);
+4085: set\\(prev => ({
+4087: evaluacion\: {
+4088: ...prev.evaluacion\,
+4090: ...prev.evaluacion\.preferencias,
+4091: aversiones: prev.evaluacion\.preferencias.aversiones ? prev.evaluacion\.preferencias.aversiones + ", " + format\(text) : format\(text)
+4095: set\(prev => [...prev, { role: "assistant", content: "¿\?", avatar: tilo\ }]);
+4101: const is\ = strict\\(text);
+4102: const pt\ = patient\.profile.pediatric_profile;
+4103: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4105: if (is\ === true) {
+4106: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\áles son tus favoritos?" : "¿\áles son sus favoritos?", avatar: tilo\ }]);
+4107: } else if (is\ === false) {
+4109: set\\('PHASE_12_R24H_TIME');
+4111: set\\(prev => ({
+4113: evaluacion\: { ...prev.evaluacion\, preferencias: { ...prev.evaluacion\.preferencias, favoritos: format\(text) } }
+4115: set\(prev => [...prev, { role: "assistant", content: "¿\ún otro favorito?", avatar: tilo\ }]);
+4116: set\\('PHASE_12_FAVORITES_LOOP');
+4122: const is\ = strict\\(text);
+4123: const pt\ = patient\.profile.pediatric_profile;
+4124: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4126: if (is\ === false) {
+4128: set\\('PHASE_12_R24H_TIME');
+4129: } else if (is\ === true) {
+4130: set\(prev => [...prev, { role: "assistant", content: "¿\ál?", avatar: tilo\ }]);
+4132: set\\(prev => ({
+4134: evaluacion\: {
+4135: ...prev.evaluacion\,
+4137: ...prev.evaluacion\.preferencias,
+4138: favoritos: prev.evaluacion\.preferencias.favoritos ? prev.evaluacion\.preferencias.favoritos + ", " + format\(text) : format\(text)
+4142: set\(prev => [...prev, { role: "assistant", content: "¿\?", avatar: tilo\ }]);
+4148: const lower = text.to\\();
+4149: const pt\ = patient\.profile.pediatric_profile;
+4150: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4154: set\\('PHASE_12_FFQ_DAIRY');
+4156: set\\({ hora: text });
+4157: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\é comiste a esa hora?" : "¿\é comió a esa hora?", avatar: tilo\ }]);
+4158: set\\('PHASE_12_R24H_CONTENT');
+4164: const pt\ = patient\.profile.pediatric_profile;
+4165: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4167: const new\ = { hora: temp\.hora, alimento: text };
+4168: set\\(prev => ({
+4170: evaluacion\: {
+4171: ...prev.evaluacion\,
+4172: r24h: [...prev.evaluacion\.r24h, new\]
+4175: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\ál fue la siguiente hora de comida? (O di '\' si terminaste)." : "¿\ál fue la siguiente hora de comida? (O diga '\' si terminó).", avatar: tilo\ }]);
+4176: set\\('PHASE_12_R24H_TIME');
+4181: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, leche: text } } }));
+4182: if (check\(text, 'risk')) {
+4183: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "high_dairy_intake"] }));
+4185: set\(prev => [...prev, { role: "assistant", content: "2. **\ \ \** (\, \, \):", avatar: tilo\ }]);
+4186: set\\('PHASE_12_FFQ_RED_LEAN');
+4191: set\\(prev => ({ ...prev, meat_lean: text }));
+4192: set\(prev => [...prev, { role: "assistant", content: "3. **\ \ \** (\, \, \, \ón):", avatar: tilo\ }]);
+4193: set\\('P\_12_FFQ_RED_FAT');
+4198: const lean = temp\.meat_lean || "?";
+4200: const combined = `\: ${lean} | \: ${fat}`;
+4201: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, carne_roja: combined } } }));
+4202: if (check\(fat, 'risk')) {
+4203: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "limit_red_meat_fat", "cardio_risk_diet"] }));
+4205: set\(prev => [...prev, { role: "assistant", content: "4. **\ \** (\, \ón, \):", avatar: tilo\ }]);
+4206: set\\('PHASE_12_FFQ_MEAT_PROC');
+4211: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, carne_procesada: text } } }));
+4212: if (check\(text, 'protective')) {
+4213: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "good_processed_meat_control"] }));
+4215: set\(prev => [...prev, { role: "assistant", content: "5. **\ \** (\, \, \ún):", avatar: tilo\ }]);
+4216: set\\('PHASE_12_FFQ_WHITE_MEAT');
+4221: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, pollo: text } } }));
+4222: set\(prev => [...prev, { role: "assistant", content: "6. **\ y \érculos** (\, \, \, \):", avatar: tilo\ }]);
+4223: set\\('PHASE_12_FFQ_CEREALS');
+4228: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, cereales: text } } }));
+4229: set\(prev => [...prev, { role: "assistant", content: "7. **\** (\, \, \):", avatar: tilo\ }]);
+4230: set\\('PHASE_12_FFQ_LEGUMES');
+4235: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, leguminosas: text } } }));
+4236: if (check\(text, 'risk')) {
+4237: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "warning_fodmap_colitis"] }));
+4239: set\(prev => [...prev, { role: "assistant", content: "8. **\** (\ o cocidas):", avatar: tilo\ }]);
+4240: set\\('PHASE_12_FFQ_VEGGIES');
+4245: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, verduras: text } } }));
+4246: if (check\(text, 'protective')) {
+4247: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "low_fiber_risk"] }));
+4248: } else if (check\(text, 'optimal')) {
+4249: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "good_fiber_intake"] }));
+4251: set\(prev => [...prev, { role: "assistant", content: "9. **\**:", avatar: tilo\ }]);
+4252: set\\('PHASE_12_FFQ_FRUITS');
+4257: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, frutas: text } } }));
+4258: if (check\(text, 'optimal')) {
+4259: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "good_fruit_intake", "monitor_fructose_load"] }));
+4261: set\(prev => [...prev, { role: "assistant", content: "10. **\ \** (\, \, \ \):", avatar: tilo\ }]);
+4262: set\\('PHASE_12_FFQ_FATS');
+4267: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, grasas: text } } }));
+4268: if (check\(text, 'optimal')) {
+4269: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "good_fats_intake"] }));
+4271: set\(prev => [...prev, { role: "assistant", content: "11. **\úcares** (\, \, \):", avatar: tilo\ }]);
+4272: set\\('PHASE_12_FFQ_SUGARS');
+4277: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, azucares: text } } }));
+4278: if (check\(text, 'risk')) {
+4279: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "high_sugar_risk_CRITICAL"] }));
+4280: } else if (check\(text, 'protective')) {
+4281: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "good_sugar_control"] }));
+4283: set\(prev => [...prev, { role: "assistant", content: "12. **\ Rápida / \** (\, \ fritos, etc):", avatar: tilo\ }]);
+4284: set\\('PHASE_12_FFQ_JUNK');
+4289: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, chatarra: text } } }));
+4290: if (check\(text, 'risk')) {
+4291: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "high_sodium_trans"] }));
+4292: } else if (check\(text, 'protective')) {
+4293: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "good_junk_control"] }));
+4295: set\(prev => [...prev, { role: "assistant", content: "13. **\ \** (\ al día):", avatar: tilo\ }]);
+4296: set\\('PHASE_12_FFQ_WATER');
+4301: set\\(prev => ({ ...prev, evaluacion\: { ...prev.evaluacion\, ffq: { ...prev.evaluacion\.ffq, agua: text } } }));
+4302: set\\('PHASE_12_COMPLETE_HANDOFF');
+4311: const is\ = strict\\(text);
+4312: const pt\ = patient\.profile.pediatric_profile;
+4313: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4315: if (is\ === false) {
+4317: set\\('PHASE_14_SPECIAL_CONTEXT');
+4318: } else if (is\ === true) {
+4319: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\ál es tu estatura en metros? (\: 1.65)" : "¿\ál es su estatura en metros? (\: 1.65)", avatar: tilo\ }]);
+4320: set\\('PHASE_13_HEIGHT');
+4322: set\(prev => [...prev, { role: "assistant", content: "\ favor, responda Sí o \.", avatar: tilo\ }]);
+4328: const val = normalize\\(text);
+4329: const pt\ = patient\.profile.pediatric_profile;
+4330: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4333: set\(prev => [...prev, { role: "assistant", content: is\ ? "\ favor ingresa un número válido (ej: 1.65)" : "\ favor ingrese un número válido (ej: 1.65)", avatar: tilo\ }]);
+4336: set\\(prev => ({ ...prev, vitales_antropometria: { ...prev.vitales_antropometria, talla_m: val } }));
+4337: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\ál es tu peso en kilogramos? (\: 65 o 65.5)" : "¿\ál es su peso en kilogramos? (\: 65 o 65.5)", avatar: tilo\ }]);
+4338: set\\('PHASE_13_WEIGHT');
+4343: const val = normalize\\(text);
+4344: const pt\ = patient\.profile.pediatric_profile;
+4345: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4348: set\(prev => [...prev, { role: "assistant", content: is\ ? "\ favor ingresa un número válido (ej: 65.5)" : "\ favor ingrese un número válido (ej: 65.5)", avatar: tilo\ }]);
+4351: set\\(prev => ({ ...prev, vitales_antropometria: { ...prev.vitales_antropometria, peso_kg: val } }));
+4352: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\ál es tu circunferencia de cintura en centímetros? (\: 80)" : "¿\ál es su circunferencia de cintura en centímetros? (\: 80)", avatar: tilo\ }]);
+4353: set\\('PHASE_13_WAIST');
+4358: const val = normalize\\(text);
+4359: const pt\ = patient\.profile.pediatric_profile;
+4360: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4363: set\(prev => [...prev, { role: "assistant", content: is\ ? "\ favor ingresa un número válido (ej: 80)" : "\ favor ingrese un número válido (ej: 80)", avatar: tilo\ }]);
+4366: set\\(prev => ({ ...prev, vitales_antropometria: { ...prev.vitales_antropometria, cintura_cm: val } }));
+4367: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\ál es tu circunferencia de cadera en centímetros? (\: 95)" : "¿\ál es su circunferencia de cadera en centímetros? (\: 95)", avatar: tilo\ }]);
+4368: set\\('PHASE_13_HIP');
+4373: const val = normalize\\(text);
+4374: const pt\ = patient\.profile.pediatric_profile;
+4375: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4378: set\(prev => [...prev, { role: "assistant", content: is\ ? "\ favor ingresa un número válido (ej: 95)" : "\ favor ingrese un número válido (ej: 95)", avatar: tilo\ }]);
+4381: set\\(prev => ({ ...prev, vitales_antropometria: { ...prev.vitales_antropometria, cadera_cm: val } }));
+4382: set\(prev => [...prev, { role: "assistant", content: is\ ? "¿\ál es tu presión arterial? (\: 120/80)" : "¿\ál es su presión arterial? (\: 120/80)", avatar: tilo\ }]);
+4383: set\\('PHASE_13_BP');
+4389: const pt\ = patient\.profile.pediatric_profile;
+4390: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4393: if (text.match(/^\d{2,3} \d{2,3}$/)) {
+4395: } else if (text.match(/^\d{5,6}$/)) {
+4400: const regexBP = /^\d{2,3}\/\d{2,3}$/;
+4401: if (!regexBP.test(finalBP) && !finalBP.to\\().includes("na")) {
+4402: set\((prev) => [...prev, { role: "assistant", content: is\ ? "\ inválido. \ '120/80' o '120 80' (\ espacio)." : "\ inválido. \ '120/80' o '120 80' (\ espacio).", avatar: tilo\ }]);
+4407: let alert\ = "";
+4409: const [sys, dia] = finalBP.split('/').map(\);
+4411: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "URGENCIA_HIPERTENSIVA"] }));
+4416: set\\((prev) => ({ ...prev, signos\: { ...prev.signos\, ta: finalBP } }));
+4418: set\((prev) => [...prev, {
+4420: content: `${alert\}${is\ ? "¿\ál es tu saturación de oxígeno? (\: 98)" : "¿\ál es su saturación de oxígeno? (\: 98)"}`,
+4421: avatar: tilo\
+4423: set\\('PHASE_13_SPO2');
+4428: const val = parse\(text);
+4429: const pt\ = patient\.profile.pediatric_profile;
+4430: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4432: if (is\N(val) || val < 50 || val > 100) {
+4433: set\((prev) => [...prev, { role: "assistant", content: is\ ? "\ inválido (50-100%)." : "\ inválido (50-100%).", avatar: tilo\ }]);
+4436: set\\((prev) => ({ ...prev, signos\: { ...prev.signos\, spo2: val.to\() } }));
+4439: let alert\ = "";
+4441: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "HIPOXIA"] }));
+4445: set\((prev) => [...prev, {
+4447: content: `${alert\}${is\ ? "¿\ál es tu frecuencia cardíaca? (\: 75)" : "¿\ál es su frecuencia cardíaca? (\: 75)"}`,
+4448: avatar: tilo\
+4450: set\\('PHASE_13_FC');
+4455: const val = parse\(text);
+4456: const pt\ = patient\.profile.pediatric_profile;
+4457: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4459: if (is\N(val) || val < 30 || val > 250) {
+4460: set\((prev) => [...prev, { role: "assistant", content: is\ ? "\ inválido (30-250 bpm)." : "\ inválido (30-250 bpm).", avatar: tilo\ }]);
+4463: set\\((prev) => ({ ...prev, signos\: { ...prev.signos\, fc: val.to\() } }));
+4466: let alert\ = "";
+4468: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "TAQUICARDIA"] }));
+4472: set\((prev) => [...prev, {
+4474: content: `${alert\}${is\ ? "¿\ál es tu temperatura? (\: 36.5)" : "¿\ál es su temperatura? (\: 36.5)"}`,
+4475: avatar: tilo\
+4477: set\\('PHASE_13_TEMP');
+4482: const val = parse\(text);
+4483: const pt\ = patient\.profile.pediatric_profile;
+4484: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4486: if (is\N(val) || val < 30 || val > 45) {
+4487: set\((prev) => [...prev, { role: "assistant", content: is\ ? "\ inválido (30-45 °C)." : "\ inválido (30-45 °C).", avatar: tilo\ }]);
+4490: set\\((prev) => ({ ...prev, signos\: { ...prev.signos\, temp: val.to\() } }));
+4493: let alert\ = "";
+4495: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "FIEBRE"] }));
+4499: set\((prev) => [...prev, {
+4501: content: `${alert\}${is\ ? "¿\ál es tu frecuencia respiratoria? (\: 16)" : "¿\ál es su frecuencia respiratoria? (\: 16)"}`,
+4502: avatar: tilo\
+4504: set\\('PHASE_13_FR');
+4509: const val = parse\(text);
+4510: const pt\ = patient\.profile.pediatric_profile;
+4511: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4513: if (is\N(val) || val < 8 || val > 60) {
+4514: set\((prev) => [...prev, { role: "assistant", content: is\ ? "\ inválido (8-60 rpm)." : "\ inválido (8-60 rpm).", avatar: tilo\ }]);
+4517: set\\((prev) => ({ ...prev, signos\: { ...prev.signos\, fr: val.to\() } }));
+4520: let alert\ = "";
+4522: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "TAQUIPNEA"] }));
+4526: set\((prev) => [...prev, {
+4528: content: `${alert\}${is\ ? "¿\ tu nivel de glucosa capilar reciente o la tomaremos ahora? (\ aplica, ingresa en mg/dL. \ no, di '\')." : "¿\ su nivel de glucosa capilar reciente o la tomaremos ahora? (\ aplica, ingrese en mg/dL. \ no, diga '\')."}`,
+4529: avatar: tilo\
+4531: set\\('PHASE_13_GLUCOSE');
+4536: const val = parse\(text);
+4537: const pt\ = patient\.profile.pediatric_profile;
+4538: const is\ = pt\?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+4539: let alert\ = "";
+4541: if (!is\N(val)) {
+4544: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "HIPOGLUCEMIA"] }));
+4548: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "URGENCIA_HIPERGLUCEMIA"] }));
+4552: set\\(prev => ({ ...prev, clinical_flags: [...(prev.clinical_flags || []), "HIPERGLUCEMIA"] }));
+4557: const glucosa\ = (is\N(val)) ? "\ reportada" : val.to\() + " mg/dL";
+4558: set\\((prev) => ({ ...prev, signos\: { ...prev.signos\, glucosa: glucosa\ } }));
+4560: set\((prev) => [...prev, {
+4563: avatar: tilo\
+4565: set\\('PHASE_13_COMPLETE_HANDOFF');
+4570: set\(prev => [...prev, {
+4572: content: "\ siento, me he perdido en mis procesos mentales. ¿\ía repetir?",
+4573: avatar: tilo\
+4581: current\,
+4583: patient\,
+4584: active\,
+4585: process\\,
+4586: set\\,
+4589: clear\,
+4590: set\\,
+4595: export default use\;

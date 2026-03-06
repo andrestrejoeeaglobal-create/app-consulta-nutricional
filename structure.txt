@@ -1,0 +1,91 @@
+2022:     }
+2030: else if (interviewStep === "intro_triage_start") {
+2047: else if (lower.includes('cirugía') || lower.includes('operación') || lower.includes('vesícula') || lower.includes('hernia')) {
+2052: else if (lower.includes('diabetes') || lower.includes('azúcar') || lower.includes('insulina')) {
+2056: else if (lower.includes('rendimiento') || lower.includes('musculo') || lower.includes('músculo') || lower.includes('gym')) {
+2059: else if (lower.includes('vivir') || lower.includes('edad') || lower.includes('anti-aging')) {
+2091:     }
+2094: else if (interviewStep === "intro_triage_safety") {
+2111:     }
+2116: else if (interviewStep === "intro_triage_symptoms") {
+2135:     }
+2138: else if (interviewStep === "intro_triage_surgery") {
+2163:     }
+2178: else if (interviewStep === "intro_triage_digest") { ... }
+2179: else if (interviewStep === "intro_triage_weight") { ... }
+2185: else if (interviewStep === "intro_triage_digest") {
+2207:     }
+2210: else if (interviewStep === "intro_triage_weight") {
+2240:     }
+2255: else if (interviewStep === "ahf_start") {
+2269:     }
+2272: else if (interviewStep === "ahf_gate") {
+2286: else if (isValid === true) {
+2295:     }
+2298: else if (interviewStep === "ahf_list") {
+2358:     }
+2361: else if (interviewStep === "ahf_other") {
+2390:     }
+2399: else if (interviewStep === "app_start") {
+2412:     }
+2415: else if (interviewStep === "ph5_gate") {
+2430: else if (isValid === true) {
+2438:     }
+2441: else if (interviewStep === "ph5_list") {
+2499:     }
+2502: else if (interviewStep === "ph5_other") {
+2526:     }
+2533: else if (interviewStep === "meds_start") {
+2549:     }
+2551: else if (interviewStep === "meds_name") {
+2558:     }
+2560: else if (interviewStep === "meds_details") {
+2567:     }
+2569: else if (interviewStep === "meds_duration") {
+2591:     }
+2593: else if (interviewStep === "meds_next") {
+2606:     }
+2609: else if (interviewStep === "supp_start") {
+2625:     }
+2627: else if (interviewStep === "supp_name") {
+2634:     }
+2636: else if (interviewStep === "supp_details") {
+2643:     }
+2645: else if (interviewStep === "supp_duration") {
+2666:     }
+2668: else if (interviewStep === "supp_next") {
+2682:     }
+2689: else if (interviewStep === "allergies_food_start") {
+2704:     }
+2706: else if (interviewStep === "allergies_food_agent") {
+2713:     }
+2715: else if (interviewStep === "allergies_food_reaction") {
+2738:     }
+2740: else if (interviewStep === "allergies_food_next") {
+2753:     }
+2756: else if (interviewStep === "allergies_drug_start") {
+2772:     }
+2774: else if (interviewStep === "allergies_drug_agent") {
+2781:     }
+2783: else if (interviewStep === "allergies_drug_reaction") {
+2806:     }
+2808: else if (interviewStep === "allergies_drug_next") {
+2822:     }
+2829: else if (interviewStep === "digestive_start") {
+2842: else if (isValid === true) {
+2872:     }
+2875: else if (interviewStep === "digestive_phenotype") {
+2881: else if (lower.includes('2') || lower.includes('inflam') || lower.includes('gas') || lower.includes('globo')) phenotype = 'BLOATING';
+2882: else if (lower.includes('3') || lower.includes('diarrea') || lower.includes('urge')) phenotype = 'DIARRHEA';
+2883: else if (lower.includes('4') || lower.includes('ardor') || lower.includes('reflujo') || lower.includes('acid')) phenotype = 'GERD';
+2902: else if (phenotype === 'BLOATING') {
+2912: else if (phenotype === 'DIARRHEA') {
+2922: else if (phenotype === 'GERD') {
+2935:     }
+2938: else if (interviewStep === "digestive_constipation_freq" || interviewStep === "digestive_bloating_timing" || interviewStep === "digestive_diarrhea_trigger" || interviewStep === "digestive_gerd_moment") {
+2942: if (interviewStep.includes('constipation')) key = "constipation_freq";
+2943: if (interviewStep.includes('bloating')) key = "bloating_timing";
+2944: if (interviewStep.includes('diarrhea')) key = "diarrhea_cause";
+2945: if (interviewStep.includes('gerd')) key = "gerd_trigger";
+2971:     }
+2974: else if (interviewStep === "digestive_red_flags") {

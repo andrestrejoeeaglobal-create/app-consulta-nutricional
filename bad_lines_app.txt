@@ -1,0 +1,13 @@
+40: return text.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+906: if (/^\d+$/.test(citaId)) {
+1210: const words = cleanInput.split(/\s+/).filter(w => w.length > 0);
+1244: const words = tempNameInput.split(/\s+/).filter(w => w.length > 0);
+1522: const curpRegex = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]{2}$/;
+1810: if (/^\d+$/.test(selectedColonia)) {
+1844: if (!/^[a-zA-ZñÑáéíóúÁÉÍÓÚ0-9\s#\-.,]+$/.test(cleanStreet) || cleanStreet.length < 3) {
+1874: const nameRegex = /^[a-zA-ZñÑáéíóúÁÉÍÓÚ\s.]+$/;
+1876: if (!nameRegex.test(inputName) || /\d/.test(inputName)) {
+1929: const patientPhone = patientData.identificacion?.telefono?.replace(/\D/g, '');
+3628: const match = userMsg.match(/\d+/);
+3899: const words = cleanVal.split(/\s+/).filter(w => w.length > 0);
+3998: const words = tempNameInput.split(/\s+/).filter(w => w.length > 0);

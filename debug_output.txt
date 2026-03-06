@@ -1,0 +1,41 @@
+L1960: 4 | domicilio: { ...prev.domicilio, calle: formatText(userMsg) }
+L1961: 3 | }));
+L1962: 3 | setMessages((prev) => [...prev, { role: "assistant", content: "Domicilio registrado.\n\nPasemos a la sección de **Seguridad**.\n\nEn caso de emergencia, ¿quién es su contacto responsable? Necesito su **nombre completo**." }]);
+L1963: 3 | setInterviewStep("emergency_name");
+L1964: 2 | }, 600);
+L1965: 1 | }
+L1966: 1 | 
+L1967: 1 | // -----------------------------------------------------------------------
+L1968: 1 | // FASE 2: SEGURIDAD (2.1 - 2.3)
+L1969: 1 | // -----------------------------------------------------------------------
+L1970: 1 | 
+L1971: 2 | else if (interviewStep === "emergency_name") {
+L1972: 3 | setTimeout(() => {
+L1973: 4 | setPatientData((prev) => ({
+L1974: 4 | ...prev,
+L1975: 4 | emergencia: { ...prev.emergencia, nombre: formatText(userMsg) }
+L1976: 3 | }));
+L1977: 3 | 
+L1978: 3 | setMessages((prev) => [...prev, { role: "assistant", content: "¿Qué **parentesco** tiene esa persona con usted? (Ej. Cónyuge, Madre, Hermano)." }]);
+L1979: 3 | setInterviewStep("emergency_relation");
+L1980: 2 | }, 600);
+L1981: 1 | }
+L1982: 2 | else if (interviewStep === "emergency_relation") {
+L1983: 3 | setTimeout(() => {
+L1984: 3 | let parentescoVal = formatText(userMsg);
+L1985: 3 | if (userMsg.toLowerCase().includes("conyuge")) parentescoVal = "Cónyuge";
+L1986: 3 | 
+L1987: 4 | setPatientData((prev) => ({
+L1988: 4 | ...prev,
+L1989: 4 | emergencia: { ...prev.emergencia, parentesco: parentescoVal }
+L1990: 3 | }));
+L1991: 3 | setMessages((prev) => [...prev, { role: "assistant", content: "¿Me dicta el **número de teléfono** a 10 dígitos de esa persona?" }]);
+L1992: 3 | setInterviewStep("emergency_phone");
+L1993: 2 | }, 600);
+L1994: 1 | }
+L1995: 2 | else if (interviewStep === "emergency_phone") {
+L1996: 3 | setTimeout(() => {
+L1997: 3 | // Validación Estricta 10 Dígitos (Reutilizada)
+L1998: 3 | const phoneRegex = /^[0-9]{10}$/;
+L1999: 3 | const inputClean = userMsg.replace(/\D/g, ''); // Limpiar input
+L2000: 3 | 

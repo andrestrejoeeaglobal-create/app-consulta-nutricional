@@ -1,0 +1,32 @@
+﻿Name: notebooklm-mcp-server
+Version: 0.1.15
+Summary: MCP server for NotebookLM (notebooklm.google.com)
+Home-page: 
+Author: Jacob Ben-David
+Author-email: 
+License-Expression: MIT
+Location: C:\Users\andre\AppData\Roaming\Python\Python314\site-packages
+Requires: fastmcp, httpx, websocket-client
+Required-by: 
+Files:
+  ..\Scripts\notebooklm-mcp-auth.exe
+  ..\Scripts\notebooklm-mcp.exe
+  notebooklm_mcp\__init__.py
+  notebooklm_mcp\__pycache__\__init__.cpython-314.pyc
+  notebooklm_mcp\__pycache__\api_client.cpython-314.pyc
+  notebooklm_mcp\__pycache__\auth.cpython-314.pyc
+  notebooklm_mcp\__pycache__\auth_cli.cpython-314.pyc
+  notebooklm_mcp\__pycache__\constants.cpython-314.pyc
+  notebooklm_mcp\__pycache__\server.cpython-314.pyc
+  notebooklm_mcp\api_client.py
+  notebooklm_mcp\auth.py
+  notebooklm_mcp\auth_cli.py
+  notebooklm_mcp\constants.py
+  notebooklm_mcp\server.py
+  notebooklm_mcp_server-0.1.15.dist-info\INSTALLER
+  notebooklm_mcp_server-0.1.15.dist-info\METADATA
+  notebooklm_mcp_server-0.1.15.dist-info\RECORD
+  notebooklm_mcp_server-0.1.15.dist-info\REQUESTED
+  notebooklm_mcp_server-0.1.15.dist-info\WHEEL
+  notebooklm_mcp_server-0.1.15.dist-info\entry_points.txt
+  notebooklm_mcp_server-0.1.15.dist-info\licenses\LICENSE
