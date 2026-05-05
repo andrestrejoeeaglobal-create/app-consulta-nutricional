@@ -4,11 +4,11 @@ import tiloImg from "../../assets/tilo.png";
 import { Send, Check } from 'lucide-react';
 
 const symptomOptions = [
-    { label: "Gastritis / Acidez", value: "Gastritis / Acidez" },
     { label: "Colitis / Inflamación", value: "Colitis / Inflamación" },
+    { label: "Diarrea", value: "Diarrea" },
     { label: "Estreñimiento", value: "Estreñimiento" },
-    { label: "Reflujo", value: "Reflujo" },
-    { label: "Diarrea", value: "Diarrea" }
+    { label: "Gastritis / Acidez", value: "Gastritis / Acidez" },
+    { label: "Reflujo", value: "Reflujo" }
 ];
 
 export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
@@ -28,8 +28,8 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
     const [inputValue, setInputValue] = useState("");
     const [step, setStep] = useState('digestive_gate');
     const [currentOptions, setCurrentOptions] = useState([
-        { label: "✅ Sí", value: "Sí" },
-        { label: "❌ No", value: "No" }
+        { label: "❌ No", value: "No" },
+        { label: "✅ Sí", value: "Sí" }
     ]);
     const [isMultiSelect, setIsMultiSelect] = useState(false);
     const [selectedSymptoms, setSelectedSymptoms] = useState([]);
@@ -120,8 +120,8 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
                 }]);
                 setStep('digestive_freq');
                 setCurrentOptions([
-                    { label: "Diario", value: "Diario" },
                     { label: "2 a 3 veces por semana", value: "2 a 3 veces por semana" },
+                    { label: "Diario", value: "Diario" },
                     { label: "Rara vez", value: "Rara vez" }
                 ]);
                 break;

@@ -8,6 +8,7 @@
   --font-prototype: "Prototype", "Inter", sans-serif;
 }
 
+/* Fonts are missing from project, falling back to Inter/Roboto 
 @font-face {
   font-family: 'Prototype';
   src: url('/fonts/Prototype.ttf') format('truetype');
@@ -21,6 +22,7 @@
   font-weight: normal;
   font-style: normal;
 }
+*/
 
 :root {
   color-scheme: light;

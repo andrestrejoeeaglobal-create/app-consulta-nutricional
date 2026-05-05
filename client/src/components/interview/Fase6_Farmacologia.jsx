@@ -28,8 +28,8 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
     const [inputValue, setInputValue] = useState("");
     const [step, setStep] = useState('meds_gate');
     const [currentOptions, setCurrentOptions] = useState([
-        { label: "✅ Sí", value: "Sí" },
-        { label: "❌ No", value: "No" }
+        { label: "❌ No", value: "No" },
+        { label: "✅ Sí", value: "Sí" }
     ]);
 
     const [tempItem, setTempItem] = useState({ name: '', details: '', duration: '', type: '' });
@@ -118,7 +118,7 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                     content: isYouth ? `Registrado. ¿Tomas algún otro medicamento prescrito?` : `Registrado. ¿Toma algún otro medicamento prescrito?`
                 }]);
                 setStep('meds_next');
-                setCurrentOptions([{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }]);
+                setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
                 break;
             }
             case 'meds_next': {
@@ -191,7 +191,7 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                     content: "Registrado ✅.\n\n¿Consume algún otro producto natural o vitamina?"
                 }]);
                 setStep('supp_next');
-                setCurrentOptions([{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }]);
+                setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
                 break;
             }
             case 'supp_next': {
@@ -222,8 +222,8 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
         }]);
         setStep('supp_start');
         setCurrentOptions([
-            { label: "✅ Sí", value: "Sí" },
-            { label: "❌ No", value: "No" }
+            { label: "❌ No", value: "No" },
+            { label: "✅ Sí", value: "Sí" }
         ]);
     };
 

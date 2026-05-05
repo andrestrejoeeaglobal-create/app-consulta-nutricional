@@ -124,11 +124,11 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         addMessage('assistant', '¿Qué tipo de bebida alcohólica suele consumir con mayor frecuencia?', {
                             avatar: tiloImg,
                             options: [
-                                { label: 'Cerveza', value: '1' },
                                 { label: 'Caguama', value: '2' },
-                                { label: 'Vino', value: '3' },
+                                { label: 'Cerveza', value: '1' },
+                                { label: 'Coctelería', value: '5' },
                                 { label: 'Destilados', value: '4' },
-                                { label: 'Coctelería', value: '5' }
+                                { label: 'Vino', value: '3' }
                             ]
                         });
                         setCurrentStep('ALCOHOL_TYPE');
@@ -156,16 +156,16 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
 
                 case 'ALCOHOL_TYPE': {
                     const map = {
-                        "1": { label: "Cerveza", unit: "Lata 355ml", kcal: 150 },
                         "2": { label: "Caguama", unit: "Envase 940ml", kcal: 380 },
-                        "3": { label: "Vino", unit: "Copa 150ml", kcal: 120 },
-                        "4": { label: "Destilados", unit: "Shot 45ml", kcal: 100 },
+                        "1": { label: "Cerveza", unit: "Lata 355ml", kcal: 150 },
                         "5": { label: "Coctelería", unit: "Vaso Estándar", kcal: 250 },
-                        "Cerveza": { label: "Cerveza", unit: "Lata 355ml", kcal: 150 },
+                        "4": { label: "Destilados", unit: "Shot 45ml", kcal: 100 },
+                        "3": { label: "Vino", unit: "Copa 150ml", kcal: 120 },
                         "Caguama": { label: "Caguama", unit: "Envase 940ml", kcal: 380 },
-                        "Vino": { label: "Vino", unit: "Copa 150ml", kcal: 120 },
+                        "Cerveza": { label: "Cerveza", unit: "Lata 355ml", kcal: 150 },
+                        "Coctelería": { label: "Coctelería", unit: "Vaso Estándar", kcal: 250 },
                         "Destilados": { label: "Destilados", unit: "Shot 45ml", kcal: 100 },
-                        "Coctelería": { label: "Coctelería", unit: "Vaso Estándar", kcal: 250 }
+                        "Vino": { label: "Vino", unit: "Copa 150ml", kcal: 120 }
                     };
                     const selected = map[cleanText];
                     if (!selected) {
@@ -463,8 +463,8 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         avatar: tiloImg,
                         options: [
                             { label: 'Buena', value: 'Buena' },
-                            { label: 'Regular', value: 'Regular' },
-                            { label: 'Mala', value: 'Mala' }
+                            { label: 'Mala', value: 'Mala' },
+                            { label: 'Regular', value: 'Regular' }
                         ]
                     });
                     setCurrentStep('SLEEP_QUALITY');

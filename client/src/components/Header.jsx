@@ -89,12 +89,14 @@ const Header = ({ sessionInfo, user, clearSession, showSessionInfo, activeTab, o
                 {/* [A] MÓDULO IZQUIERDO: Branding & Sesión */}
                 <div className="flex items-center h-full">
 
-                    {/* Brand Block */}
+                    {/* Brand Block / Patient Info */}
                     <div className="flex items-center gap-4 pr-6 border-r border-slate-200 h-10">
                         <img src={logo} alt="Logo" className="h-10 w-auto" />
                         <div className="flex flex-col leading-none justify-center">
-                            <span className="text-[20px] font-bold text-black tracking-tight">Asistente Nutricional</span>
-                            <span className="text-[10px] font-bold text-cyan-600 uppercase tracking-widest mt-0.5">MODO PROFESIONAL</span>
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Paciente</span>
+                            <span className="text-[18px] font-bold text-black tracking-tight truncate max-w-[250px]" title={sessionInfo?.patientName || '---'}>
+                                {showSessionInfo && sessionInfo?.patientName ? sessionInfo.patientName : '---'}
+                            </span>
                         </div>
                     </div>
 
@@ -118,13 +120,13 @@ const Header = ({ sessionInfo, user, clearSession, showSessionInfo, activeTab, o
 
                     {/* Navegación Iconos (Siempre visible en Post-Login) */}
                     <nav className="flex items-center gap-1.5 mr-6 bg-slate-50 border border-slate-100 p-1.5 rounded-xl shadow-sm">
-                        <NavItem icon={<User size={18} />} active={activeTab === 'profile'} onClick={() => onTabChange('profile')} title="Perfil" />
-                        <NavItem icon={<Utensils size={18} />} active={activeTab === 'diet'} onClick={() => onTabChange('diet')} title="Nutrición" />
-                        <NavItem icon={<Activity size={18} />} active={activeTab === 'vitals'} onClick={() => onTabChange('vitals')} title="Vitales" />
-                        <NavItem icon={<FlaskConical size={18} />} active={activeTab === 'lab'} onClick={() => onTabChange('lab')} title="Laboratorio" />
-                        <NavItem icon={<FileText size={18} />} active={activeTab === 'notes'} onClick={() => onTabChange('notes')} title="Reporte Integral" />
-                        <NavItem icon={<ClipboardList size={18} />} active={activeTab === 'intervention'} onClick={() => onTabChange('intervention')} title="Plan de Acción" />
                         <NavItem icon={<Calendar size={18} />} active={activeTab === 'schedule'} onClick={() => onTabChange('schedule')} title="Calendario" />
+                        <NavItem icon={<FlaskConical size={18} />} active={activeTab === 'lab'} onClick={() => onTabChange('lab')} title="Laboratorio" />
+                        <NavItem icon={<Utensils size={18} />} active={activeTab === 'diet'} onClick={() => onTabChange('diet')} title="Nutrición" />
+                        <NavItem icon={<User size={18} />} active={activeTab === 'profile'} onClick={() => onTabChange('profile')} title="Perfil" />
+                        <NavItem icon={<ClipboardList size={18} />} active={activeTab === 'intervention'} onClick={() => onTabChange('intervention')} title="Plan de Acción" />
+                        <NavItem icon={<FileText size={18} />} active={activeTab === 'notes'} onClick={() => onTabChange('notes')} title="Reporte Integral" />
+                        <NavItem icon={<Activity size={18} />} active={activeTab === 'vitals'} onClick={() => onTabChange('vitals')} title="Vitales" />
                     </nav>
 
                     {/* Status Pill */}

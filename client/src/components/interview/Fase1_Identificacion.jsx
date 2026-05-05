@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
-import { Zap } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { formatText } from '../../utils/utils';
 import { calculateAge, classifyLifeStage } from '../../utils/ageClassifier';
 import tiloImg from '../../assets/tilo.png';
+import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
 
 export const Fase1_Identificacion = ({
     onPhaseComplete,
@@ -28,6 +29,27 @@ export const Fase1_Identificacion = ({
     // Estado temporal para construir la fecha de nacimiento
     const [tempDob, setTempDob] = useState({ day: null, month: null, year: null });
 
+    const handlePhoneChange = (e) => {
+        const input = e.target.value;
+        // Si el usuario está borrando, permitimos que el input quede tal cual para no arruinar el cursor
+        if (input.length < inputValue.length) {
+            setInputValue(input);
+            return;
+        }
+
+        let val = input.replace(/\D/g, '');
+        if (val.length > 10) val = val.slice(0, 10);
+        let formatted = val;
+        if (val.length > 6) {
+            formatted = `(${val.slice(0, 3)}) ${val.slice(3, 6)}-${val.slice(6)}`;
+        } else if (val.length > 3) {
+            formatted = `(${val.slice(0, 3)}) ${val.slice(3)}`;
+        } else if (val.length > 0) {
+            formatted = `(${val}`;
+        }
+        setInputValue(formatted);
+    };
+
     const handleSend = (text, directValue = null) => {
         const rawMsg = directValue !== null ? directValue : text;
         if (!rawMsg.trim()) return;
@@ -49,15 +71,30 @@ export const Fase1_Identificacion = ({
             switch (step) {
                 case 'intro_paterno':
                     updateIdentityLock({ patientInfo: { ...identityLock.patientInfo, apellidoPaterno: cleanText } });
-                    responseMsg = "Correcto. ¿Cuál es su **Apellido Materno**? (Si no tiene, escriba 'X')";
+                    responseMsg = "Correcto. ¿Cuál es su **Apellido Materno**? (Si no tiene, seleccione la opción abajo)";
+                    options = [
+                        { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
+                    ];
                     nextStep = 'intro_materno';
                     break;
 
                 case 'intro_materno':
-                    updateIdentityLock({ patientInfo: { ...identityLock.patientInfo, apellidoMaterno: cleanText === 'X' ? '' : cleanText } });
-                    responseMsg = "Gracias. Pasemos a su Fecha de Nacimiento.\n\n¿En qué **DÍA** nació? (Ej: 12)";
+                    updateIdentityLock({ patientInfo: { ...identityLock.patientInfo, apellidoMaterno: (cleanText === 'X' || cleanText === 'CONFIRM_MAT_NONE' || directValue === 'CONFIRM_MAT_NONE') ? '' : cleanText } });
+                    responseMsg = "Gracias. Por favor, proporcione su **número de teléfono personal** a 10 dígitos.";
+                    nextStep = 'intro_phone';
+                    break;
+
+                case 'intro_phone': {
+                    const phoneInput = cleanText.replace(/\D/g, '');
+                    if (phoneInput.length !== 10) {
+                        responseMsg = "El número ingresado no tiene 10 dígitos. Por favor, verifíquelo e intente nuevamente:";
+                        break;
+                    }
+                    updateIdentityLock({ patientInfo: { ...identityLock.patientInfo, phone: phoneInput } });
+                    responseMsg = "Número registrado. Pasemos a su Fecha de Nacimiento.\n\n¿En qué **DÍA** nació? (Ej: 12)";
                     nextStep = 'intro_dob_day';
                     break;
+                }
 
                 case 'intro_dob_day': {
                     const day = parseInt(cleanText);
@@ -111,8 +148,8 @@ export const Fase1_Identificacion = ({
 
                     responseMsg = `Registrado (${age} años - ${lifeStage}).\n\n¿Cuál es su **sexo biológico** al nacer?`;
                     options = [
-                        { label: "Masculino", value: "Masculino" },
-                        { label: "Femenino", value: "Femenino" }
+                        { label: "Femenino", value: "Femenino" },
+                        { label: "Masculino", value: "Masculino" }
                     ];
                     nextStep = 'intro_sex';
                     break;
@@ -126,8 +163,8 @@ export const Fase1_Identificacion = ({
                     if (sex !== "Masculino" && sex !== "Femenino") {
                         responseMsg = "Por favor seleccione una opción válida (Masculino o Femenino).";
                         options = [
-                            { label: "Masculino", value: "Masculino" },
-                            { label: "Femenino", value: "Femenino" }
+                            { label: "Femenino", value: "Femenino" },
+                            { label: "Masculino", value: "Masculino" }
                         ];
                     } else {
                         updateIdentityLock({ patientInfo: { ...identityLock.patientInfo, sex } });
@@ -137,15 +174,23 @@ export const Fase1_Identificacion = ({
                         if (currentAge < 18) {
                             // Si es menor de 18, setear soltero y omitir ocupación
                             updateSocioculturalProfile({ civilStatus: "Soltero", occupation: "Estudiante/Menor" });
-                            responseMsg = "Debido a su edad, he omitido los datos laborales. ¿Profesa alguna **religión**? (Importante para determinar dietas, Ej: Mormón, Católico. Escriba 'Ninguna' si no aplica)";
+                            responseMsg = "Debido a su edad, he omitido los datos laborales. ¿Profesa alguna **religión**? (Importante para determinar dietas, Ej: Mormón, Católico. Seleccione 'Ninguna' si no aplica)";
+                            options = [
+                                { label: "Católico", value: "Católico" },
+                                { label: "Cristiano / Evangélico", value: "Cristiano" },
+                                { label: "Mormón / SUD", value: "Mormón" },
+                                { label: "Ninguna / Ateo / Agnóstico", value: "Ninguna" },
+                                { label: "Otra", value: "Otra" },
+                                { label: "Testigo de Jehová", value: "Testigo de Jehová" }
+                            ];
                             nextStep = 'intro_religion';
                         } else {
                             responseMsg = "¿Cuál es su **estado civil** actual?";
                             options = [
-                                { label: "Soltero", value: "Soltero" },
                                 { label: "Casado", value: "Casado" },
-                                { label: "Unión Libre", value: "Unión Libre" },
                                 { label: "Divorciado", value: "Divorciado" },
+                                { label: "Soltero", value: "Soltero" },
+                                { label: "Unión Libre", value: "Unión Libre" },
                                 { label: "Viudo", value: "Viudo" }
                             ];
                             nextStep = 'intro_civil_status';
@@ -162,7 +207,19 @@ export const Fase1_Identificacion = ({
 
                 case 'intro_job':
                     updateSocioculturalProfile({ occupation: cleanText });
-                    responseMsg = "¿Profesa alguna **religión**? (Importante para determinaciones dietéticas como restricciones de carne/suplementos. Si no tiene, escriba 'Ninguna')";
+                    responseMsg = "¿Profesa alguna **religión**? (Importante para determinaciones dietéticas como restricciones de carne/suplementos. Si no tiene, seleccione 'Ninguna')";
+                    options = [
+                        { label: "Adventista del Séptimo Día", value: "Adventista" },
+                        { label: "Budista / Hinduista", value: "Budista/Hinduista" },
+                        { label: "Católico", value: "Católico" },
+                        { label: "Cristiano / Evangélico", value: "Cristiano" },
+                        { label: "Judío", value: "Judío" },
+                        { label: "Mormón / SUD", value: "Mormón" },
+                        { label: "Musulmán", value: "Musulmán" },
+                        { label: "Ninguna / Ateo / Agnóstico", value: "Ninguna" },
+                        { label: "Otra", value: "Otra" },
+                        { label: "Testigo de Jehová", value: "Testigo de Jehová" }
+                    ];
                     nextStep = 'intro_religion';
                     break;
 
@@ -191,40 +248,53 @@ export const Fase1_Identificacion = ({
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+    const isInputDisabled = isAnalyzing || step === 'completed';
+
     return (
         <div className="flex h-full w-full bg-[#F8FAFC] overflow-hidden font-sans">
             <div className="w-full flex flex-col border-r border-slate-200 bg-white">
-                <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50/10">
+                <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50/10 custom-scrollbar pb-32">
                     {messages.map((msg, idx) => (
-                        <div key={idx} className={`animate-in fade-in slide-in-from-bottom-2`}>
-                            <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                        <div key={idx}>
+                            <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''} animate-in fade-in slide-in-from-bottom-2`}>
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm flex-shrink-0 ${msg.role === 'user' ? 'bg-[#1C75BC] text-white' : 'bg-white border border-slate-200 overflow-hidden'}`}>
                                     {msg.role === 'user' ? 'YO' : <img src={tiloImg} alt="Tilo" className="w-6 h-6 object-contain" />}
                                 </div>
                                 <div className={`p-4 rounded-2xl text-sm shadow-sm leading-relaxed max-w-[80%] whitespace-pre-line ${msg.role === 'user' ? 'bg-[#1C75BC] text-white rounded-tr-none' : 'bg-white border border-slate-200 rounded-tl-none text-slate-700'}`}>
                                     {msg.content}
+                                    
+                                    {/* Render Options if any (Only for the latest message from assistant) */}
+                                    {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && msg.options.length <= 3 && (
+                                        <div className="mt-4 flex flex-col gap-2">
+                                            {msg.options.map((opt, oIdx) => (
+                                                <button
+                                                    key={oIdx}
+                                                    onClick={() => handleSend(opt.label, opt.value)}
+                                                    className={`w-full p-4 rounded-xl text-left font-medium transition-all duration-300 flex items-center justify-between group
+                                                        ${isAnalyzing
+                                                            ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
+                                                            : 'bg-white border-2 border-blue-100 text-slate-700 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md hover:-translate-y-0.5'
+                                                        }`}
+                                                    disabled={isAnalyzing || step === 'completed'}
+                                                >
+                                                    <span>{opt.label}</span>
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors shrink-0 ml-3
+                                                        ${isAnalyzing ? 'bg-slate-100 text-slate-300' : 'bg-blue-100 text-blue-600 group-hover:bg-blue-500 group-hover:text-white'}
+                                                    `}>
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                                        </svg>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-
-                            {/* Render Options if any (Only for the latest message from assistant) */}
-                            {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && (
-                                <div className="ml-11 mt-3 flex flex-wrap gap-2">
-                                    {msg.options.map((opt, oIdx) => (
-                                        <button
-                                            key={oIdx}
-                                            onClick={() => handleSend(opt.label, opt.value)}
-                                            className="px-4 py-2 bg-slate-50 border border-slate-200 text-[#1C75BC] text-sm rounded-full shadow-sm hover:bg-[#1C75BC] hover:text-white hover:border-[#1C75BC] transition-colors"
-                                            disabled={isAnalyzing || step === 'completed'}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
                         </div>
                     ))}
                     {isAnalyzing && (
-                        <div className="flex gap-4 animate-pulse ml-11 mt-4">
+                        <div className="flex gap-4 animate-pulse ml-11">
                             <div className="bg-slate-100 border border-slate-200 w-20 h-8 rounded-2xl rounded-tl-none"></div>
                         </div>
                     )}
@@ -232,16 +302,26 @@ export const Fase1_Identificacion = ({
                 </div>
 
                 {/* INPUT ZONE */}
-                <div className="p-6 bg-white border-t border-slate-100">
+                <div className="p-6 bg-white border-t border-slate-100 relative z-[60]">
+                    {messages[messages.length - 1]?.options?.length > 3 && !isAnalyzing && step !== 'completed' && (
+                        <SearchableVerticalMenu
+                            options={messages[messages.length - 1].options}
+                            onSelect={(val) => {
+                                const opt = messages[messages.length - 1].options.find(o => o.value === val);
+                                handleSend(opt.label, opt.value);
+                            }}
+                        />
+                    )}
                     <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner">
                         <input
-                            type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)}
+                            type={step.includes('phone') ? 'tel' : 'text'}
+                            value={inputValue} onChange={step.includes('phone') ? handlePhoneChange : (e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend(inputValue)}
-                            placeholder="Escribe tu respuesta..." className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
-                            disabled={isAnalyzing || step === 'completed'}
+                            placeholder={step.includes('phone') ? "(123) 456-7890" : "Escribe tu respuesta..."} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
+                            disabled={isInputDisabled}
                         />
-                        <button onClick={() => handleSend(inputValue)} disabled={isAnalyzing || step === 'completed'} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
-                            <Zap size={18} fill="currentColor" />
+                        <button onClick={() => handleSend(inputValue)} disabled={isInputDisabled} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
+                            <Send size={18} />
                         </button>
                     </div>
                 </div>

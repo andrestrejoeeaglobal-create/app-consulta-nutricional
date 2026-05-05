@@ -40,20 +40,20 @@ export const Fase2_Seguridad = ({
     const getKinshipOptions = () => {
         if (patientAge < 18) {
             return [
+                { label: "Abuelo(a)", value: "Abuelo/a" },
+                { label: "Hermano(a) Mayor", value: "Hermano/a" },
                 { label: "Madre", value: "Madre" },
                 { label: "Padre", value: "Padre" },
-                { label: "Tutor(a) Legal", value: "Tutor Legal" },
-                { label: "Hermano(a) Mayor", value: "Hermano/a" },
-                { label: "Abuelo(a)", value: "Abuelo/a" }
+                { label: "Tutor(a) Legal", value: "Tutor Legal" }
             ];
         }
         return [
+            { label: "Amigo(a)", value: "Amigo/a" },
             { label: "Esposo(a) / Pareja", value: "Pareja" },
-            { label: "Madre", value: "Madre" },
-            { label: "Padre", value: "Padre" },
-            { label: "Hijo(a)", value: "Hijo/a" },
             { label: "Hermano(a)", value: "Hermano/a" },
-            { label: "Amigo(a)", value: "Amigo/a" }
+            { label: "Hijo(a)", value: "Hijo/a" },
+            { label: "Madre", value: "Madre" },
+            { label: "Padre", value: "Padre" }
         ];
     };
 
@@ -119,8 +119,8 @@ export const Fase2_Seguridad = ({
                             // Bifurcación Empática para Menores
                             responseMsg = "He notado que el número de emergencia es el mismo que el registrado inicialmente. ¿Desea mantener este mismo número para contactar a su tutor?";
                             options = [
-                                { label: "Sí, mantener número", value: "CONFIRM_SAME_PHONE" },
-                                { label: "No, usar otro", value: "CHANGE_PHONE" }
+                                { label: "No, usar otro", value: "CHANGE_PHONE" },
+                                { label: "Sí, mantener número", value: "CONFIRM_SAME_PHONE" }
                             ];
                             nextStep = 'emergency_phone_confirm_same';
                             break;
@@ -181,23 +181,24 @@ export const Fase2_Seguridad = ({
                                 </div>
                                 <div className={`p-4 rounded-2xl text-sm shadow-sm leading-relaxed max-w-[80%] whitespace-pre-line ${msg.role === 'user' ? 'bg-[#1C75BC] text-white rounded-tr-none' : 'bg-white border border-slate-200 rounded-tl-none text-slate-700'}`}>
                                     {msg.content}
+                                    
+                                    {/* Render Options if any (Only for the latest message from assistant) */}
+                                    {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && (
+                                        <div className="mt-4 flex flex-col gap-2">
+                                            {msg.options.map((opt, oIdx) => (
+                                                <button
+                                                    key={oIdx}
+                                                    onClick={() => handleSend(opt.label, opt.value)}
+                                                    className="w-full text-left px-4 py-3 rounded-lg border border-[#1C75BC] text-[#1C75BC] hover:bg-[#1C75BC] hover:text-white transition-all duration-200 font-medium bg-white"
+                                                    disabled={isAnalyzing || step === 'completed'}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-
-                            {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && (
-                                <div className="ml-11 mt-3 flex flex-wrap gap-2">
-                                    {msg.options.map((opt, oIdx) => (
-                                        <button
-                                            key={oIdx}
-                                            onClick={() => handleSend(opt.label, opt.value)}
-                                            className="px-4 py-2 bg-slate-50 border border-slate-200 text-[#1C75BC] text-sm rounded-full shadow-sm hover:bg-[#1C75BC] hover:text-white hover:border-[#1C75BC] transition-colors"
-                                            disabled={isAnalyzing || step === 'completed'}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
                         </div>
                     ))}
                     {isAnalyzing && (

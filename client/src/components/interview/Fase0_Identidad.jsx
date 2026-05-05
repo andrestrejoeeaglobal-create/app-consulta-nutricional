@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
-import { Zap, ShieldCheck, User, Calendar, MapPin, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, User, Calendar, MapPin, CheckCircle2, Zap } from 'lucide-react';
 import { formatText } from '../../utils/utils';
 import tiloImg from '../../assets/tilo.png';
 

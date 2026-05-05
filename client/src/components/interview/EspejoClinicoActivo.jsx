@@ -77,22 +77,14 @@ const EspejoClinicoActivo = ({ fase3State, patientData }) => {
                 </div>
 
                 <div className="flex flex-col gap-4">
+                    <div className={`bg-slate-50 border border-slate-100 p-5 rounded-2xl shadow-sm transition-all ${chronoGlow}`}>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-prototype flex items-center gap-2"><Timer size={14} /> Cronología</h4>
+                        <p className="text-sm font-semibold text-slate-800">{localState.detective_radiography?.chronology || 'Pendiente...'}</p>
+                    </div>
+
                     <div className={`bg-slate-50 border border-slate-100 p-5 rounded-2xl shadow-sm transition-all ${quoteGlow}`}>
                         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-prototype">Motivo Principal</h4>
                         <p className="text-sm text-slate-700 italic">"{localState.patient_quote || 'Esperando respuesta...'}"</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className={`bg-slate-50 border border-slate-100 p-5 rounded-2xl shadow-sm transition-all ${chronoGlow}`}>
-                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-prototype flex items-center gap-2"><Timer size={14} /> Cronología</h4>
-                            <p className="text-sm font-semibold text-slate-800">{localState.detective_radiography?.chronology || 'Pendiente...'}</p>
-                        </div>
-                        <div className={`bg-slate-50 border border-slate-100 p-5 rounded-2xl shadow-sm transition-all ${suspicionGlow}`}>
-                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-prototype flex items-center gap-2"><Stethoscope size={14} /> Sospecha Clínica</h4>
-                            <p className={`text-sm font-bold uppercase ${localState.alert_level === 'CRITICAL' ? 'text-red-600' : 'text-blue-600'}`}>
-                                {localState.specific_ailment ? (localState.alert_level === 'CRITICAL' ? 'RIESGO ONCOLÓGICO / CRÍTICO' : localState.detective_radiography?.suspicion?.toUpperCase() || localState.specific_ailment.toUpperCase()) : 'Pendiente...'}
-                            </p>
-                        </div>
                     </div>
 
                     {localState.emotional_anchor && (
@@ -101,6 +93,13 @@ const EspejoClinicoActivo = ({ fase3State, patientData }) => {
                             <p className="text-sm text-amber-900 font-medium italic">"{localState.emotional_anchor}"</p>
                         </div>
                     )}
+
+                    <div className={`bg-slate-50 border border-slate-100 p-5 rounded-2xl shadow-sm transition-all ${suspicionGlow}`}>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-prototype flex items-center gap-2"><Stethoscope size={14} /> Sospecha Clínica</h4>
+                        <p className={`text-sm font-bold uppercase ${localState.alert_level === 'CRITICAL' ? 'text-red-600' : 'text-blue-600'}`}>
+                            {localState.specific_ailment ? (localState.alert_level === 'CRITICAL' ? 'RIESGO ONCOLÓGICO / CRÍTICO' : localState.detective_radiography?.suspicion?.toUpperCase() || localState.specific_ailment.toUpperCase()) : 'Pendiente...'}
+                        </p>
+                    </div>
 
                     {localState.showInferenceCard && (
                         <div className="mt-2 p-8 rounded-[32px] border-2 border-blue-500 bg-blue-50 relative overflow-hidden flex flex-col items-center text-center shadow-lg animate-in zoom-in duration-500">

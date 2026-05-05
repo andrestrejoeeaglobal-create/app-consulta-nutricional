@@ -19,8 +19,8 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
     const [inputValue, setInputValue] = useState("");
     const [step, setStep] = useState('preg_gate');
     const [currentOptions, setCurrentOptions] = useState([
-        { label: "✅ Sí", value: "Sí" },
-        { label: "❌ No", value: "No" }
+        { label: "❌ No", value: "No" },
+        { label: "✅ Sí", value: "Sí" }
     ]);
 
     const messagesEndRef = useRef(null);
@@ -68,8 +68,8 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                     }]);
                     setStep('lact_gate');
                     setCurrentOptions([
-                        { label: "✅ Sí", value: "Sí" },
-                        { label: "❌ No", value: "No" }
+                        { label: "❌ No", value: "No" },
+                        { label: "✅ Sí", value: "Sí" }
                     ]);
                 } else {
                     setMessages(prev => [...prev, { sender: 'tilo', text: "Por favor seleccione Sí o No." }]);
@@ -94,8 +94,8 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                     }]);
                     setStep('lact_gate');
                     setCurrentOptions([
-                        { label: "✅ Sí", value: "Sí" },
-                        { label: "❌ No", value: "No" }
+                        { label: "❌ No", value: "No" },
+                        { label: "✅ Sí", value: "Sí" }
                     ]);
                 }
                 break;

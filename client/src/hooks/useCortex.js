@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import tiloImg from "../assets/tilo.png";
 import { formatText, getGenderedTerm, fuzzyMatch, calculateCurp, cleanServerInfo, buildPediatricContext, inferGenderFromName } from "../utils/utils";
 import useCitationValidation from './useCitationValidation';
@@ -157,6 +157,23 @@ export const useCortex = () => {
             const item = window.localStorage.getItem('tilo_session_data');
             if (item) {
                 const parsed = JSON.parse(item);
+                if (key === 'patientData' && parsed[key] !== undefined) {
+                    const savedData = parsed[key];
+                    // Deep merge for critical top-level structures to prevent undefined crashes
+                    return {
+                        ...initialValue,
+                        ...savedData,
+                        identificacion: { ...initialValue.identificacion, ...(savedData.identificacion || {}) },
+                        profile: { ...initialValue.profile, ...(savedData.profile || {}) },
+                        domicilio: { ...initialValue.domicilio, ...(savedData.domicilio || {}) },
+                        evaluacionDietetica: { ...initialValue.evaluacionDietetica, ...(savedData.evaluacionDietetica || {}) },
+                        history: { ...initialValue.history, ...(savedData.history || {}) },
+                        habits: { ...initialValue.habits, ...(savedData.habits || {}) },
+                        nutrition: { ...initialValue.nutrition, ...(savedData.nutrition || {}) },
+                        vitals: { ...initialValue.vitals, ...(savedData.vitals || {}) },
+                        clinical_context: { ...initialValue.clinical_context, ...(savedData.clinical_context || {}) }
+                    };
+                }
                 return parsed[key] !== undefined ? parsed[key] : initialValue;
             }
         } catch (error) {
@@ -233,35 +250,68 @@ export const useCortex = () => {
 
     // --- MOTOR CORTEX: PROCESAMIENTO DE RESPUESTAS FASE 3 ---
     const analyzeWithNeuralCortex = async (text) => {
-        // En una app real esto podría ser un endpoint. Aquí procesamos localmente
-        const lowerText = text.toLowerCase();
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                let result = { category: "WELLNESS", alert: "NONE", suspicion: "Mejora General", isGoal: false };
+        try {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+            
+            // Construir telemetría para el LLM
+            const telemetry = {
+                age: patientData.profile.age,
+                sex: patientData.profile.sex,
+                location: `${patientData.profile.address?.municipality || ''}, ${patientData.profile.address?.state || ''}`,
+                occupation: patientData.profile.occupation
+            };
+            
+            const bodyMapZones = []; // En el futuro se llenará desde el UI del cuerpo
 
-                if (/mejorar|condicion fisica|condición física|rendimiento/i.test(lowerText)) {
-                    result.isGoal = true;
-                }
+            const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    freeText: text,
+                    telemetry,
+                    bodyMapZones
+                })
+            });
 
-                if (/embarazada|embarazo|gestacion|gestación/i.test(lowerText)) {
-                    result.isPregnant = true;
-                    result.category = "PEDIATRICS";
-                    result.alert = "NONE";
-                    result.suspicion = "Maternidad Estructurada";
-                } else if (/cancer|tumor|maligno|biopsia/i.test(lowerText)) {
-                    result = { category: "ONCOLOGY", alert: "CRITICAL", suspicion: "Riesgo Oncológico" };
-                } else if (/operar|cirugia|quiste|quistes|extirpar/i.test(lowerText)) {
-                    result = { category: "SURGICAL", alert: "WARNING", suspicion: "Preparación Quirúrgica" };
-                } else if (/bebe|niño|meses|semanas|nacio|reflujo/i.test(lowerText) || patientData.profile.pediatric_profile?.is_minor) {
-                    result = { category: "PEDIATRICS", alert: "PRETERM", suspicion: "Desarrollo" };
-                } else if (/caida|equilibrio|anciano|mareo/i.test(lowerText)) {
-                    result = { category: "GERIATRICS", alert: "NEURO", suspicion: "Riesgo Neuromotriz" };
-                } else if (/dolor|inflamacion|orinar|manchas/i.test(lowerText)) {
-                    result = { category: "CLINICAL", alert: "WARNING", suspicion: "Cuadro Sintomático" };
-                }
-                resolve(result);
-            }, 500); // 500ms delay simulates thought process
-        });
+            if (!response.ok) {
+                throw new Error('Cortex API responded with an error');
+            }
+
+            const data = await response.json();
+            
+            let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
+            
+            // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo
+            if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
+            else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
+
+            return {
+                category: data.category || "CLINICAL",
+                alert: alertLevel,
+                suspicion: data.primaryRoute, // Usamos la ruta devuelta por IA como sospecha principal
+                isGoal: data.isGoal || false,
+                isPregnant: data.isPregnant || false,
+                primaryRoute: data.primaryRoute,
+                secondaryRoute: data.secondaryRoute,
+                reasoning: data.reasoning
+            };
+
+        } catch (error) {
+            console.error("🔥 Error en Neural Cortex:", error);
+            // Fallback robusto en caso de error de red
+            return {
+                category: "CLINICAL",
+                alert: "NONE",
+                suspicion: "Ruta 0 - Control Clínico General",
+                isGoal: false,
+                isPregnant: false,
+                primaryRoute: "Ruta 0 - Control Clínico General",
+                secondaryRoute: null,
+                reasoning: "Error de conexión con el motor de IA. Se ha asignado la ruta clínica por defecto."
+            };
+        }
     };
 
     /**
@@ -585,7 +635,8 @@ export const useCortex = () => {
                             inputType: 'strict_select',
                             options: [
                                 { label: '✅ Sí', value: 'yes' },
-                                { label: '❌ No, corregir', value: 'no' }
+                                { label: '❌ No, corregir', value: 'no' },
+                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT');
@@ -636,7 +687,8 @@ export const useCortex = () => {
                             inputType: 'strict_select',
                             options: [
                                 { label: '✅ Sí', value: 'yes' },
-                                { label: '❌ No, corregir', value: 'no' }
+                                { label: '❌ No, corregir', value: 'no' },
+                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT');
@@ -660,12 +712,37 @@ export const useCortex = () => {
 
                     if (text === 'yes') {
                         finalLastNameMat = apiContext.extractedMat;
+                    } else if (text === 'CONFIRM_MAT_NONE') {
+                        setPatientData(prev => {
+                            const newProfile = { ...prev.profile, last_name_mat: null };
+                            newProfile.name = `${newProfile.first_name} ${newProfile.last_name_pat}`.trim().toUpperCase();
+
+                            const newIdentificacion = {
+                                ...prev.identificacion,
+                                apellidoMaterno: null
+                            };
+
+                            return { ...prev, profile: newProfile, identificacion: newIdentificacion };
+                        });
+
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: `✅ Identidad Estructurada Correctamente (Sin Apellido Materno).\n\nPasemos a su Fecha de Nacimiento.\n\n¿En qué **DÍA** nació? (Ej: 12)`,
+                            avatar: tiloImg,
+                            inputType: 'number'
+                        }]);
+
+                        setCurrentPhase('PHASE_1_PROFILE_DOB_DAY');
+                        break;
                     } else if (text === 'no') {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
                             content: "Por favor, escriba su **Apellido Materno** correcto:",
                             avatar: tiloImg,
-                            inputType: 'text'
+                            inputType: 'text',
+                            options: [
+                                { label: '➖ No usa Apellido Materno', value: 'CONFIRM_MAT_NONE' }
+                            ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT_MANUAL');
                         return;
@@ -678,7 +755,8 @@ export const useCortex = () => {
                             inputType: 'strict_select',
                             options: [
                                 { label: '✅ Sí', value: 'yes' },
-                                { label: '❌ No, corregir', value: 'no' }
+                                { label: '❌ No, corregir', value: 'no' },
+                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         return;
@@ -1163,7 +1241,18 @@ export const useCortex = () => {
                             role: 'assistant',
                             content: isYouth ? "Para considerar cualquier restricción alimentaria en tu menú, ¿me podrías indicar cuál es?" : "Para considerar cualquier restricción alimentaria en su menú, ¿me podría indicar cuál es?",
                             avatar: tiloImg,
-                            inputType: 'text'
+                            inputType: 'buttons',
+                            options: [
+                                { label: "Católico", value: "Católico" },
+                                { label: "Cristiano", value: "Cristiano" },
+                                { label: "Testigo de Jehová", value: "Testigo de Jehová" },
+                                { label: "Judío", value: "Judío" },
+                                { label: "Musulmán", value: "Musulmán" },
+                                { label: "Budista", value: "Budista" },
+                                { label: "Adventista", value: "Adventista" },
+                                { label: "Mormón", value: "Mormón" },
+                                { label: "Otra", value: "Otra" }
+                            ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_RELIGION_SPEC');
                     } else {

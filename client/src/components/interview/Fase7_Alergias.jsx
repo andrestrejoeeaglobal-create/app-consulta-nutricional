@@ -27,8 +27,8 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
     const [inputValue, setInputValue] = useState("");
     const [step, setStep] = useState('food_gate');
     const [currentOptions, setCurrentOptions] = useState([
-        { label: "✅ Sí", value: "Sí" },
-        { label: "❌ No", value: "No" }
+        { label: "❌ No", value: "No" },
+        { label: "✅ Sí", value: "Sí" }
     ]);
 
     // Almacenamiento temporal para el ítem actual (comida o medicamento)
@@ -110,7 +110,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                     text: isYouth ? `Registrado. ¿Eres alérgico a algún otro alimento?` : `Registrado. ¿Es alérgico a algún otro alimento?`
                 }]);
                 setStep('food_next');
-                setCurrentOptions([{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }]);
+                setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
                 break;
             }
             case 'food_next': {
@@ -179,7 +179,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                     text: isYouth ? `Registrado. ¿Eres alérgico a algún otro medicamento?` : `Registrado. ¿Es alérgico a algún otro medicamento?`
                 }]);
                 setStep('drug_next');
-                setCurrentOptions([{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }]);
+                setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
                 break;
             }
             case 'drug_next': {
@@ -214,8 +214,8 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
         }]);
         setStep('drug_gate');
         setCurrentOptions([
-            { label: "✅ Sí", value: "Sí" },
-            { label: "❌ No", value: "No" }
+            { label: "❌ No", value: "No" },
+            { label: "✅ Sí", value: "Sí" }
         ]);
     };
 

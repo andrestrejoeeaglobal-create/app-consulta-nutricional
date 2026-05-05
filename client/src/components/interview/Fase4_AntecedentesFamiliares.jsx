@@ -41,8 +41,8 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
                     if (!alreadyGreeted) {
                         return [...prev, {
                             role: 'assistant', content: greeting, options: [
-                                { label: "Sí, hay antecedentes", value: "SI_ANTECEDENTES" },
-                                { label: "No, ninguno", value: "NO_ANTECEDENTES" }
+                                { label: "No, ninguno", value: "NO_ANTECEDENTES" },
+                                { label: "Sí, hay antecedentes", value: "SI_ANTECEDENTES" }
                             ]
                         }];
                     }

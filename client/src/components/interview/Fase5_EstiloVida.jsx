@@ -96,8 +96,8 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                 });
             }, 300);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
         return () => { isMounted = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [patientData?.identificacion?.codigoPostal, patientProfile?.postalCode, firstName]);
 
     const syncLifeData = async (updates) => {
@@ -164,9 +164,9 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                 } else {
                     setMessages(prev => [...prev, {
                         role: 'assistant', content: "¿Cuántas horas de sueño profundo logra rescatar cada noche para su reparación celular?", options: [
-                            { label: "Menos de 5 horas", value: "<5_hours" },
+                            { label: "8 horas o más", value: ">8_hours" },
                             { label: "Entre 6 y 7 horas", value: "6-7_hours" },
-                            { label: "8 horas o más", value: ">8_hours" }
+                            { label: "Menos de 5 horas", value: "<5_hours" }
                         ]
                     }]);
                     setCurrentStep('CIRCADIAN');
@@ -181,9 +181,9 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                 syncLifeData({ hormonal: { ...lifeStyle.hormonal, cyclePhase: phase } });
                 setMessages(prev => [...prev, {
                     role: 'assistant', content: "Entendido. Sincronizaremos los micronutrientes con esa fase. Finalmente, ¿cuántas horas duerme en promedio?", options: [
-                        { label: "Menos de 5 horas", value: "<5_hours" },
+                        { label: "8 horas o más", value: ">8_hours" },
                         { label: "Entre 6 y 7 horas", value: "6-7_hours" },
-                        { label: "8 horas o más", value: ">8_hours" }
+                        { label: "Menos de 5 horas", value: "<5_hours" }
                     ]
                 }]);
                 setCurrentStep('CIRCADIAN');

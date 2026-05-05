@@ -14,6 +14,7 @@ app.use(cors());
 app.use(express.json());
 // app.use('/api', require('./routes/authRoutes')); // Rutas de Autenticación Auditada (COMENTADO PARA USAR LOGICA DIRECTA)
 app.use('/api/agent', require('./agent')); // Agente Nutricional (Nueva Lógica)
+app.use('/api/cortex', require('./routes/cortexRoutes')); // Inteligencia Clínica GEM (Gemini)
 
 
 // ==========================================

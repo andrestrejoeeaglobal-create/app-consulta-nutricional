@@ -1,8 +1,56 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { formatText } from '../../utils/utils';
 import VisualBodyMap from '../VisualBodyMap';
+import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
+import { Send } from 'lucide-react';
+import { useClinicalGenome } from '../../store/useClinicalGenome';
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+import { analyzeClinicalMotive } from '../../hooks/useCortex';
 
-const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData, setPatientData }) => {
+const motiveOptions = [
+    { label: "Adicciones y Sustancias", value: "GOAL_ADDICTIONS" },
+    { label: "Adulto Mayor (Geriatr├¡a)", value: "GOAL_GERIATRICS" },
+    { label: "Alergias Graves (Protocolo Anafilaxia)", value: "GOAL_ALLERGIES" },
+    { label: "Bajar de Peso / Sobrepeso", value: "GOAL_WEIGHT_LOSS" },
+    { label: "Bari├ítrica / Quir├║rgico", value: "GOAL_BARIATRIC" },
+    { label: "Climaterio y Menopausia", value: "GOAL_MENOPAUSE" },
+    { label: "Control Cl├¡nico (Patolog├¡as Cr├│nicas)", value: "GOAL_CLINICAL" },
+    { label: "Cuidados Paliativos", value: "GOAL_PALLIATIVE" },
+    { label: "Discapacidad y Rehabilitaci├│n", value: "GOAL_DISABILITY" },
+    { label: "Embarazo y Lactancia", value: "GOAL_PREGNANCY" },
+    { label: "Ganar M├║sculo / Deporte (Rendimiento)", value: "GOAL_MUSCLE" },
+    { label: "Oncolog├¡a Nutricional", value: "GOAL_ONCOLOGY" },
+    { label: "Pediatr├¡a (Crecimiento y Desarrollo)", value: "GOAL_PEDIATRICS" },
+    { label: "Prevenci├│n y Longevidad (Biohacking)", value: "GOAL_LONGEVITY" },
+    { label: "Salud Mental / TCA (Seguridad Conductual)", value: "GOAL_MENTAL_HEALTH" },
+    { label: "Salud Renal (Nefropat├¡a)", value: "GOAL_RENAL" },
+    { label: "VIH e Inmunodeficiencias", value: "GOAL_IMMUNE" }
+];
+
+const goalMap = {
+    'GOAL_WEIGHT_LOSS': { avatar: 'METABOLIC', risk: 'LOW' },
+    'GOAL_MUSCLE': { avatar: 'PERFORMANCE', risk: 'LOW' },
+    'GOAL_LONGEVITY': { avatar: 'LONGEVITY', risk: 'LOW' },
+    'GOAL_CLINICAL': { avatar: 'CLINICAL', risk: 'MEDIUM' },
+    'GOAL_PEDIATRICS': { avatar: 'CLINICAL', risk: 'MEDIUM' },
+    'GOAL_PREGNANCY': { avatar: 'CLINICAL', risk: 'MEDIUM' },
+    'GOAL_GERIATRICS': { avatar: 'CLINICAL', risk: 'MEDIUM' },
+    'GOAL_MENOPAUSE': { avatar: 'CLINICAL', risk: 'MEDIUM' },
+    'GOAL_MENTAL_HEALTH': { avatar: 'CLINICAL', risk: 'HIGH' },
+    'GOAL_BARIATRIC': { avatar: 'CLINICAL', risk: 'HIGH' },
+    'GOAL_RENAL': { avatar: 'CLINICAL', risk: 'HIGH' },
+    'GOAL_ONCOLOGY': { avatar: 'CLINICAL', risk: 'HIGH' },
+    'GOAL_IMMUNE': { avatar: 'CLINICAL', risk: 'HIGH' },
+    'GOAL_PALLIATIVE': { avatar: 'CLINICAL', risk: 'HIGH' },
+    'GOAL_ALLERGIES': { avatar: 'CLINICAL', risk: 'HIGH' },
+    'GOAL_ADDICTIONS': { avatar: 'CLINICAL', risk: 'HIGH' },
+    'GOAL_DISABILITY': { avatar: 'CLINICAL', risk: 'MEDIUM' }
+};
+
+const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPatientData }) => {
+    const identityLock = useClinicalGenome(state => state.identityLock);
+    const { patientAge: age, patientSex: gender, patientName, placeholder: dynamicPlaceholder } = usePatientLinguistics(patientData);
+
     const updateClinicalContext = (updates) => {
         setPatientData(prev => ({
             ...prev,
@@ -17,41 +65,105 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
         }));
     };
 
-    const [messages, setMessages] = useState(initialChatHistory || []);
+    const getFilteredOptions = () => {
+        const sxUpper = String(gender).toUpperCase();
+        const genderChar = (sxUpper === 'F' || sxUpper === 'FEMENINO' || sxUpper === 'MUJER') ? 'F' : 'M';
+        const isPediatric = age < 12;
+        const isMinor = age < 18;
+
+        return motiveOptions.filter(opt => {
+            if (opt.value === 'GOAL_PREGNANCY' && (genderChar === 'M' || age < 10 || age > 60)) return false;
+            if (opt.value === 'GOAL_MENOPAUSE' && (genderChar === 'M' || age < 35)) return false;
+            if (opt.value === 'GOAL_GERIATRICS' && age < 60) return false;
+            
+            if (isPediatric) {
+                const allowedForPediatric = [
+                    'GOAL_PEDIATRICS', 
+                    'GOAL_CLINICAL', 
+                    'GOAL_ALLERGIES', 
+                    'GOAL_DISABILITY', 
+                    'GOAL_MENTAL_HEALTH'
+                ];
+                if (!allowedForPediatric.includes(opt.value)) return false;
+            } else if (isMinor) {
+                const excludedForMinors = ['GOAL_LONGEVITY', 'GOAL_BARIATRIC', 'GOAL_ADDICTIONS'];
+                if (excludedForMinors.includes(opt.value)) return false;
+            } else {
+                if (opt.value === 'GOAL_PEDIATRICS') return false;
+            }
+
+            return true;
+        }).map(opt => {
+            if (isMinor && opt.value === 'GOAL_IMMUNE') {
+                return { ...opt, label: "Inmunolog├¡a Pedi├ítrica" };
+            }
+            return opt;
+        }).sort((a, b) => a.label.localeCompare(b.label));
+    };
+
     const [inputValue, setInputValue] = useState("");
     const [step, setStep] = useState('clinica_triage_start');
-    const [currentOptions, setCurrentOptions] = useState([
-        { label: "⚖️ Bajar de Peso", value: "GOAL_WEIGHT_LOSS" },
-        { label: "💪 Ganar Músculo", value: "GOAL_MUSCLE" },
-        { label: "🏅 Rendimiento Deportivo", value: "GOAL_SPORT" },
-        { label: "🩺 Control Clínico", value: "GOAL_CLINICAL" },
-        { label: "🤰 Etapa de Vida", value: "GOAL_LIFE_STAGE" },
-        { label: "🥗 Aprender a Comer", value: "GOAL_EDUCATION" }
-    ]);
     const [isTyping, setIsTyping] = useState(false);
 
-    // Auto-scroll
-    const messagesEndRef = useRef(null);
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages, isTyping, step]);
+    const hasStarted = useRef(false);
+    const filteredMotiveOptions = getFilteredOptions();
 
-    // Initial setup if options are needed    // Initialize Flow
+    // Initialize Flow
     useEffect(() => {
-        // If we want any specific initialization logic later
-    }, [step]);
+        if (!hasStarted.current && step === 'clinica_triage_start') {
+            hasStarted.current = true;
+            setIsTyping(true);
+            setTimeout(() => {
+                setIsTyping(false);
+
+                let age = 30;
+                if (identityLock?.patientInfo?.age) {
+                    age = Number(identityLock.patientInfo.age);
+                } else if (patientData) {
+                    if (patientData.profile?.age) age = Number(patientData.profile.age);
+                    else if (patientData.identificacion?.edad) age = Number(patientData.identificacion.edad);
+                }
+
+                const isMinor = age < 18;
+                const patientName = (identityLock?.patientInfo?.name || patientData?.profile?.name || patientData?.identificacion?.nombre || "el paciente").split(' ')[0];
+                const cleanName = patientName !== "NOM" ? patientName : "el paciente";
+
+                const welcomeMsg = isMinor
+                    ? `Para dise├▒ar el plan cl├¡nico de **${cleanName}**, por favor seleccione la **Ruta Primaria** o Motivo de Consulta principal:`
+                    : "Para comenzar a dise├▒ar su plan cl├¡nico de precisi├│n, por favor seleccione su **Ruta Primaria** o Motivo de Consulta principal:";
+
+                setMessages(prev => [
+                    ...prev,
+                    {
+                        role: "assistant",
+                        content: welcomeMsg
+                    }
+                ]);
+            }, 1000);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [step, patientData]);
+
+    const completePhase3 = () => {
+        const phase3Data = {
+            primaryRoute: patientData.clinical_context?.goal || 'No especificado',
+            secondaryRoutes: []
+        };
+        onPhaseComplete(phase3Data);
+    };
 
     const handleSend = (value) => {
-        const textToProcess = value || inputValue;
-        if (!textToProcess.trim() && step !== 'clinica_body_map') return;
+        const textToProcess = typeof value === 'string' ? value : (inputValue || "");
+        
+        if (!textToProcess?.trim() && step !== 'clinica_body_map') return;
 
-        // Limpiar input y enviar mensaje del usuario (excepto para body map completion)
         setInputValue("");
         if (textToProcess !== 'BODY_MAP_COMPLETE') {
-            setMessages(prev => [...prev, { role: "user", content: formatText(textToProcess) }]);
+            if (step !== 'clinica_triage_start') {
+                setMessages(prev => [...prev, { role: "user", content: formatText(textToProcess) }]);
+            }
         }
 
-        setCurrentOptions([]);
         setIsTyping(true);
 
         setTimeout(() => {
@@ -60,81 +172,133 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
             const cleanText = formatText(userMsg);
             let nextStep = step;
             let responseMsg = "";
-            let newOptions = [];
 
             switch (step) {
-                // PASO A: DEFINICIÓN DE OBJETIVO (PH3-GOAL)
                 case 'clinica_triage_start': {
-                    const goalMap = {
-                        'GOAL_WEIGHT_LOSS': { avatar: 'METABOLIC', risk: 'LOW', label: 'Bajar de Peso' },
-                        'GOAL_MUSCLE': { avatar: 'PERFORMANCE', risk: 'LOW', label: 'Ganar Músculo' },
-                        'GOAL_SPORT': { avatar: 'PERFORMANCE', risk: 'HIGH', label: 'Rendimiento Deportivo' },
-                        'GOAL_CLINICAL': { avatar: 'CLINICAL', risk: 'MEDIUM', label: 'Control Clínico' },
-                        'GOAL_LIFE_STAGE': { avatar: 'CLINICAL', risk: 'MEDIUM', label: 'Etapa de Vida' },
-                        'GOAL_EDUCATION': { avatar: 'LONGEVITY', risk: 'LOW', label: 'Aprender a Comer' }
-                    };
+                    const selectedOpt = motiveOptions.find(o => o.value === userMsg);
+                    
+                    if (selectedOpt) {
+                        const label = selectedOpt.label;
+                        const config = goalMap[userMsg] || { avatar: 'METABOLIC', risk: 'LOW' };
 
-                    // Allow free text or mapping
-                    let config;
-                    if (goalMap[userMsg]) {
-                        // User clicked an option
-                        config = goalMap[userMsg];
-                        setMessages(prev => {
-                            const newMsgs = [...prev];
-                            newMsgs[newMsgs.length - 1].content = config.label;
-                            return newMsgs;
+                        setMessages(prev => [...prev, { role: "user", content: label }]);
+
+                        updateClinicalContext({
+                            primary_motive: label,
+                            goal: userMsg,
+                            secondary_motives: [],
+                            ai_analysis: {
+                                avatar_assigned: config.avatar,
+                                risk_level: config.risk,
+                                detected_tags: patientData.clinical_context?.ai_analysis?.detected_tags || []
+                            },
+                            history: [...(patientData.clinical_context?.history || []), {
+                                question: "Ruta Primaria / Motivo de Consulta",
+                                answer: label,
+                                timestamp: new Date().toISOString()
+                            }],
+                            secondary_symptoms: ""
                         });
+
+                        const SKIP_BODY_MAP_GOALS = [
+                            'GOAL_PEDIATRICS',
+                            'GOAL_WEIGHT_LOSS',
+                            'GOAL_MUSCLE',
+                            'GOAL_LONGEVITY',
+                            'GOAL_MENTAL_HEALTH',
+                            'GOAL_ADDICTIONS',
+                            'GOAL_ALLERGIES',
+                            'GOAL_PREGNANCY'
+                        ];
+
+                        if (SKIP_BODY_MAP_GOALS.includes(userMsg)) {
+                            responseMsg = `Entendido. Hemos activado la ruta cl├¡nica de **${label}**.\n\n┬┐Podr├¡a describir brevemente cualquier s├¡ntoma o detalle importante que debamos considerar para la consulta?`;
+                            nextStep = 'clinica_triage_symptoms';
+                        } else {
+                            responseMsg = `Entendido. Hemos activado la ruta cl├¡nica de **${label}**.\n\nPara ser m├ís precisos, por favor **indique en el mapa** d├│nde siente mayor molestia o si hay zonas espec├¡ficas a tratar. Haga clic en *Completar Mapa* cuando termine.`;
+                            nextStep = 'clinica_body_map';
+                        }
                     } else {
-                        config = { avatar: 'METABOLIC', risk: 'LOW', label: cleanText };
+                        // Entrada de texto libre (Bypass GEM)
+                        const cleanText = formatText(userMsg);
+                        
+                        updateClinicalContext({
+                            primary_motive: "Inferencia Sem├íntica GEM",
+                            secondary_symptoms: cleanText,
+                            history: [...(patientData.clinical_context?.history || []), {
+                                question: "Motivo de Consulta (Texto Libre)",
+                                answer: cleanText,
+                                timestamp: new Date().toISOString()
+                            }]
+                        });
+
+                        const highSeverityKeywords = ['cancer', 'c├íncer', 'matriz', 'amputa', 'duelo', 'falleci', 'muerte', 'perd├¡', 'tumor', 'maligno', 'quimio'];
+                        const isHighSeverity = highSeverityKeywords.some(kw => cleanText.toLowerCase().includes(kw));
+
+                        if (isHighSeverity) {
+                            nextStep = 'clinica_triage_containment'; 
+                            setTimeout(() => handleContainmentSequence(cleanText), 100);
+                            return; 
+                        }
+
+                        // AI Semantic Triage (GEM Integration)
+                        setStep('clinica_triage_ai_analysis');
+                        setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. est├í procesando tus biosensores y realizando el cruce forense de tu motivo de consulta..." }]);
+                        
+                        const telemetry = { 
+                            age: age, 
+                            gender: gender, 
+                            location: patientData?.profile?.address?.state || "No especificado" 
+                        };
+                        const bodyMapZones = patientData.clinical_context?.pain_zones || [];
+                        
+                        analyzeClinicalMotive(cleanText, telemetry, bodyMapZones).then(aiResult => {
+                             updateClinicalContext({
+                                 goal: aiResult.primaryRoute,
+                                 ai_analysis: {
+                                     ...(patientData.clinical_context?.ai_analysis || {}),
+                                     gem_reasoning: aiResult.reasoning,
+                                     primaryRoute: aiResult.primaryRoute,
+                                     secondaryRoute: aiResult.secondaryRoute,
+                                     redFlag: aiResult.redFlag
+                                 }
+                             });
+                             
+                             let finalResponse = aiResult.reasoning;
+                             if (aiResult.redFlag) {
+                                 finalResponse += "\n\nÔÜá´©Å **Protocolo de Derivaci├│n Activo por Alerta Cl├¡nica (Red Flag).**";
+                             }
+
+                             setMessages(prev => [...prev, { role: "assistant", content: finalResponse }]);
+                             
+                             setStep('clinica_triage_ai_complete');
+                        });
+                        return;
                     }
-
-                    updateClinicalContext({
-                        primary_motive: config.label,
-                        goal: userMsg,
-                        ai_analysis: {
-                            avatar_assigned: config.avatar,
-                            risk_level: config.risk,
-                            detected_tags: patientData.clinical_context?.ai_analysis?.detected_tags || []
-                        },
-                        history: [...(patientData.clinical_context?.history || []), {
-                            question: "Objetivo Principal",
-                            answer: config.label,
-                            timestamp: new Date().toISOString()
-                        }],
-                        secondary_symptoms: ""
-                    });
-
-                    responseMsg = `Entendido (${config.label}). Hemos configurado su perfil clínico.\n\nPara ser más precisos, por favor **indique en el mapa** dónde siente mayor molestia o si hay zonas específicas a tratar. Haga clic en *Completar Mapa* cuando termine.`;
-                    nextStep = 'clinica_body_map';
                     break;
                 }
 
-                // PASO B: MAPA DEL DOLOR
                 case 'clinica_body_map': {
-                    // Logic is handled by handleBodyMapComplete below.
-                    // But if fallback button is clicked:
                     if (userMsg === 'BODY_MAP_COMPLETE') {
-                        responseMsg = "Entendido. ¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?";
+                        responseMsg = "Entendido. ┬┐Podr├¡a describir brevemente cualquier otro s├¡ntoma o detalle importante que no aparezca en el mapa?";
                         nextStep = 'clinica_triage_symptoms';
                     }
                     break;
                 }
 
-                // PASO C: SINTOMATOLOGÍA ADICIONAL Y MOTOR DE EMPATÍA
                 case 'clinica_triage_symptoms': {
                     const symptomsInput = cleanText;
 
                     updateClinicalContext({
                         secondary_symptoms: (patientData.clinical_context?.secondary_symptoms || "") + symptomsInput,
                         history: [...(patientData.clinical_context?.history || []), {
-                            question: "Sintomatología Adicional",
+                            question: "Sintomatolog├¡a Adicional",
                             answer: symptomsInput,
                             timestamp: new Date().toISOString()
                         }]
                     });
 
-                    // Empathy Engine V3.0
-                    const highSeverityKeywords = ['cancer', 'cáncer', 'matriz', 'amputa', 'duelo', 'falleci', 'muerte', 'perdí', 'tumor', 'maligno', 'quimio'];
+                    const highSeverityKeywords = ['cancer', 'c├íncer', 'matriz', 'amputa', 'duelo', 'falleci', 'muerte', 'perd├¡', 'tumor', 'maligno', 'quimio'];
                     const sensitiveKeywords = ['quiste', 'biopsia', 'seno', 'mama', 'oncologo'];
                     const surgeryKeywords = ['operacion', 'cirugia', 'cesarea', 'apendice', 'vesicula', 'histerectomia'];
 
@@ -143,25 +307,54 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
                     const isSurgery = surgeryKeywords.some(kw => symptomsInput.toLowerCase().includes(kw));
 
                     if (isHighSeverity) {
-                        nextStep = 'clinica_triage_containment'; // Trigger containment immediately without msg here
+                        nextStep = 'clinica_triage_containment'; 
                         setTimeout(() => handleContainmentSequence(symptomsInput), 100);
-                        return; // Exit early to avoid sending empty responseMsg
+                        return; 
                     } else if (isSensitive) {
-                        responseMsg = "Entiendo la importancia de lo que menciona. Para poder apoyarle mejor, ¿le gustaría compartir un poco más sobre este diagnóstico o prefiere que lo abordemos con detalle directamente en la consulta?";
+                        responseMsg = "Entiendo la importancia de lo que menciona. Para poder apoyarle mejor, ┬┐le gustar├¡a compartir un poco m├ís sobre este diagn├│stico o prefiere que lo abordemos con detalle directamente en la consulta?";
                         nextStep = 'clinica_triage_sensitive_followup';
                     } else if (isSurgery) {
-                        responseMsg = "Entendido. Dado que menciona un procedimiento quirúrgico, ¿hace cuánto tiempo fue o cuándo está programado?";
+                        responseMsg = "Entendido. Dado que menciona un procedimiento quir├║rgico, ┬┐hace cu├ínto tiempo fue o cu├índo est├í programado?";
                         nextStep = 'intro_triage_surgery';
                     } else {
-                        // Flujo Normal -> Cerrar Fase 3
-                        onPhaseComplete(messages);
+                        // AI Semantic Triage (GEM Integration)
+                        setStep('clinica_triage_ai_analysis');
+                        setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. est├í procesando tus biosensores y evaluaci├│n cl├¡nica..." }]);
+                        
+                        const freeText = (patientData.clinical_context?.primary_motive || "") + " " + (patientData.clinical_context?.secondary_symptoms || "") + " " + symptomsInput;
+                        const telemetry = { 
+                            age: age, 
+                            gender: gender, 
+                            location: patientData?.profile?.address?.state || "No especificado" 
+                        };
+                        const bodyMapZones = patientData.clinical_context?.pain_zones || [];
+                        
+                        analyzeClinicalMotive(freeText, telemetry, bodyMapZones).then(aiResult => {
+                             updateClinicalContext({
+                                 goal: aiResult.primaryRoute,
+                                 ai_analysis: {
+                                     ...(patientData.clinical_context?.ai_analysis || {}),
+                                     gem_reasoning: aiResult.reasoning,
+                                     primaryRoute: aiResult.primaryRoute,
+                                     secondaryRoute: aiResult.secondaryRoute,
+                                     redFlag: aiResult.redFlag
+                                 }
+                             });
+                             
+                             if (aiResult.redFlag) {
+                                 setMessages(prev => [...prev, { role: "assistant", content: `ÔÜá´©Å ${aiResult.reasoning}\n\nActivando protocolo de derivaci├│n y evaluaci├│n m├®dica prioritaria.` }]);
+                             } else {
+                                 setMessages(prev => [...prev, { role: "assistant", content: `Ô£à ${aiResult.reasoning}` }]);
+                             }
+                             setStep('clinica_triage_ai_complete');
+                        });
                         return;
                     }
                     break;
                 }
 
-                // SUB-RUTINA A: DETALLE SENSIBLE
                 case 'clinica_triage_sensitive_followup': {
+                    const freeText = (patientData.clinical_context?.primary_motive || "") + " " + (patientData.clinical_context?.secondary_symptoms || "") + ` [DETALLE SENSIBLE: ${cleanText}]`;
                     updateClinicalContext({
                         secondary_symptoms: patientData.clinical_context?.secondary_symptoms + ` [DETALLE SENSIBLE: ${cleanText}]`,
                         history: [...(patientData.clinical_context?.history || []), {
@@ -171,11 +364,30 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
                         }]
                     });
 
-                    onPhaseComplete(messages);
+                    setStep('clinica_triage_ai_analysis');
+                    setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. est├í integrando estos detalles sensibles en su matriz de evaluaci├│n..." }]);
+                    
+                    const telemetry = { age: age, gender: gender, location: patientData?.profile?.address?.state || "No especificado" };
+                    const bodyMapZones = patientData.clinical_context?.pain_zones || [];
+                    
+                    analyzeClinicalMotive(freeText, telemetry, bodyMapZones).then(aiResult => {
+                         updateClinicalContext({
+                             goal: aiResult.primaryRoute,
+                             ai_analysis: {
+                                 ...(patientData.clinical_context?.ai_analysis || {}),
+                                 gem_reasoning: aiResult.reasoning,
+                                 primaryRoute: aiResult.primaryRoute,
+                                 secondaryRoute: aiResult.secondaryRoute,
+                                 redFlag: aiResult.redFlag
+                             }
+                         });
+                         
+                         setMessages(prev => [...prev, { role: "assistant", content: `Ô£à ${aiResult.reasoning}` }]);
+                         setStep('clinica_triage_ai_complete');
+                    });
                     return;
                 }
 
-                // SUB-RUTINA B: QUIRÚRGICA
                 case 'intro_triage_surgery': {
                     const lowerMsg = userMsg.toLowerCase();
                     let status = "NONE";
@@ -183,69 +395,70 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
 
                     if (lowerMsg.includes('pre') || lowerMsg.includes('prepara') || lowerMsg.includes('antes') || lowerMsg.includes('programada')) {
                         status = "PRE";
-                        msg = "⚠️ ALERTA: Suspender suplementos anticoagulantes (Ajo, Omega-3, Ginkgo) 7 días antes.";
-                    } else if (lowerMsg.includes('ya') || lowerMsg.includes('post') || lowerMsg.includes('pasó') || lowerMsg.includes('paso')) {
+                        msg = "ÔÜá´©Å ALERTA: Suspender suplementos anticoagulantes (Ajo, Omega-3, Ginkgo) 7 d├¡as antes.";
+                    } else if (lowerMsg.includes('ya') || lowerMsg.includes('post') || lowerMsg.includes('pas├│') || lowerMsg.includes('paso')) {
                         status = "POST";
-                        msg = "⚠️ ALERTA: Validar alta médica antes de iniciar esfuerzo físico.";
+                        msg = "ÔÜá´©Å ALERTA: Validar alta m├®dica antes de iniciar esfuerzo f├¡sico.";
                     }
 
                     updateClinicalContext({
                         history: [...(patientData.clinical_context?.history || []), {
-                            question: "Estatus Quirúrgico",
+                            question: "Estatus Quir├║rgico",
                             answer: msg ? `${status} (${msg})` : "Sin Intervenciones Recientes",
                             timestamp: new Date().toISOString()
                         }]
                     });
 
-                    // Add the alert as an assistant message directly before closing Phase 3,
-                    // so the transition to Phase 4 makes sense.
                     if (msg) {
                         setMessages(prev => [...prev, { role: "assistant", content: `${msg}\n\nTomado en cuenta. He registrado su estatus.` }]);
-                        setTimeout(() => onPhaseComplete(messages), 1500);
+                        setTimeout(() => completePhase3(), 1500);
                         return;
                     } else {
-                        onPhaseComplete(messages);
+                        completePhase3();
                         return;
                     }
                 }
 
+                case 'clinica_triage_ai_complete':
+                case 'clinica_triage_containment_complete':
+                    completePhase3();
+                    return;
+
                 default:
                     responseMsg = "Fase 3 Completada.";
-                    onPhaseComplete(messages);
+                    completePhase3();
                     return;
             }
 
             if (responseMsg) {
-                setMessages(prev => [...prev, { role: "assistant", content: responseMsg, options: newOptions }]);
+                setMessages(prev => [...prev, { role: "assistant", content: responseMsg }]);
             }
             setStep(nextStep);
-            setCurrentOptions(newOptions);
 
         }, 600);
     };
 
     const handleContainmentSequence = (triggerText) => {
-        // Sub-Rutina de Contención Temporizada
-        const sensitiveKeywords = ['cancer', 'cáncer', 'tumor', 'falleci', 'muerte', 'matriz', 'duelo', 'luto', 'perdida', 'pérdida'];
+        const sensitiveKeywords = ['cancer', 'c├íncer', 'tumor', 'falleci', 'muerte', 'matriz', 'duelo', 'luto', 'perdida', 'p├®rdida'];
         const matchedKw = sensitiveKeywords.find(kw => triggerText.toLowerCase().includes(kw)) || "Tema Sensible";
 
         updateClinicalContext({
             history: [...(patientData.clinical_context?.history || []), {
-                question: "⚠️ Reporte de Sensibilidad",
-                answer: `Tema identificado: "${matchedKw.toUpperCase()}". Protocolo de contención activado.`,
+                question: "ÔÜá´©Å Reporte de Sensibilidad",
+                answer: `Tema identificado: "${matchedKw.toUpperCase()}". Protocolo de contenci├│n activado.`,
                 timestamp: new Date().toISOString()
             }]
         });
 
-        const firstName = (patientData.identityLock?.name || patientData.profile?.name || "Paciente").split(' ')[0];
-        const nameStr = firstName !== "NOM" ? firstName : "";
+        const firstName = patientName.split(' ')[0];
+        const nameStr = firstName !== "NOM" && firstName !== "Paciente" ? firstName : "";
 
         setIsTyping(true);
         setTimeout(() => {
             setIsTyping(false);
             setMessages(prev => [...prev, {
                 role: "assistant",
-                content: `${nameStr}, agradezco profundamente su confianza al compartirme algo tan personal. Lamento mucho que esté pasando por este proceso de incertidumbre; entiendo que una noticia así genera mucha preocupación.`
+                content: `${nameStr}, agradezco profundamente su confianza al compartirme algo tan personal. Lamento mucho que est├® pasando por este proceso de incertidumbre; entiendo que una noticia as├¡ genera mucha preocupaci├│n.`
             }]);
 
             setIsTyping(true);
@@ -253,11 +466,11 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
                 setIsTyping(false);
                 setMessages(prev => [...prev, {
                     role: "assistant",
-                    content: "He marcado este dato como Prioridad Máxima en su expediente. Su nutriólogo abordará el tema con toda la sensibilidad y el cuidado que usted merece desde el primer minuto de la consulta."
+                    content: "He marcado este dato como Prioridad M├íxima en su expediente. Su nutri├│logo abordar├í el tema con toda la sensibilidad y el cuidado que usted merece desde el primer minuto de la consulta."
                 }]);
 
                 setTimeout(() => {
-                    onPhaseComplete(messages); // Avanza a Fase 4 (Heredofamiliares)
+                    setStep('clinica_triage_containment_complete');
                 }, 2000);
             }, 5000);
         }, 1000);
@@ -267,7 +480,6 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
         const { zones, intensity } = payload;
 
         const tagMap = {
-            // MALE
             'M_HEAD': 'HEADACHE_RISK', 'M_NECK': 'CERVICAL_RISK', 'M_SHOULDERS': 'JOINT_SHOULDER',
             'M_CHEST': 'CARDIO_RISK', 'M_STOMACH': 'GASTRIC_RISK', 'M_ABDOMEN_LOW': 'INTESTINAL_RISK',
             'M_LOWER_BACK': 'LUMBAR_RISK',
@@ -280,12 +492,11 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
             'M_LEG_R': 'CIRCULATION_RISK', 'M_LEG_L': 'CIRCULATION_RISK',
             'M_ANKLE_R': 'JOINT_ANKLE', 'M_ANKLE_L': 'JOINT_ANKLE',
             'M_FOOT_R': 'JOINT_FOOT', 'M_FOOT_L': 'JOINT_FOOT',
-            // FEMALE
             'F_HEAD': 'HEADACHE_RISK', 'F_NECK': 'CERVICAL_RISK', 'F_UPPER_BACK': 'POSTURAL_RISK',
             'F_STOMACH_UP': 'GASTRIC_RISK', 'F_STOMACH_LOW': 'INTESTINAL_RISK',
             'F_HIPS': 'JOINT_HIP', 'F_LOWER_BACK': 'LUMBAR_RISK',
             'F_LUNG_R': 'RESPIRATORY_RISK', 'F_LUNG_L': 'RESPIRATORY_RISK',
-            'F_BREAST_R': 'BREAST_RISK', 'F_BREAST_L': 'BREAST_RISK',
+            'F_BREAST_R': 'BREAST_RISK', 'F_BREAST_L': 'BREAST_L',
             'F_OVARY_R': 'GYNECO_RISK', 'F_OVARY_L': 'GYNECO_RISK',
             'F_KIDNEY_R': 'RENAL_RISK', 'F_KIDNEY_L': 'RENAL_RISK',
             'F_HAND_R': 'JOINT_WRIST', 'F_HAND_L': 'JOINT_WRIST',
@@ -296,12 +507,12 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
 
         const zoneLabels = {
             'M_HEAD': 'Cabeza', 'F_HEAD': 'Cabeza',
-            'M_LUNGS_R': 'Pulmón Derecho', 'M_LUNGS_L': 'Pulmón Izquierdo',
-            'F_LUNG_R': 'Pulmón Derecho', 'F_LUNG_L': 'Pulmón Izquierdo',
+            'M_LUNGS_R': 'Pulm├│n Derecho', 'M_LUNGS_L': 'Pulm├│n Izquierdo',
+            'F_LUNG_R': 'Pulm├│n Derecho', 'F_LUNG_L': 'Pulm├│n Izquierdo',
             'F_BREAST_R': 'Seno Derecho', 'F_BREAST_L': 'Seno Izquierdo',
             'F_OVARY_R': 'Ovario Derecho', 'F_OVARY_L': 'Ovario Izquierdo',
-            'F_KIDNEY_R': 'Riñón Derecho', 'F_KIDNEY_L': 'Riñón Izquierdo',
-            'M_KIDNEY_R': 'Riñón Derecho', 'M_KIDNEY_L': 'Riñón Izquierdo'
+            'F_KIDNEY_R': 'Ri├▒├│n Derecho', 'F_KIDNEY_L': 'Ri├▒├│n Izquierdo',
+            'M_KIDNEY_R': 'Ri├▒├│n Derecho', 'M_KIDNEY_L': 'Ri├▒├│n Izquierdo'
         };
 
         const newTags = zones.map(z => tagMap[z] || 'PAIN_GENERAL');
@@ -325,94 +536,84 @@ const Fase3_MotivoConsulta = ({ initialChatHistory, onPhaseComplete, patientData
         setMessages(prev => [...prev, { role: "user", content: `Zonas: ${summary} | Intensidad: ${intensity}/10` }]);
 
         if (isRedFlag) {
-            setMessages(prev => [...prev, { role: "assistant", content: "⚠️ **ALERTA DE SEGURIDAD**: He detectado un nivel de dolor severo en una zona sensible. \n\n¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?" }]);
+            setMessages(prev => [...prev, { role: "assistant", content: "ÔÜá´©Å **ALERTA DE SEGURIDAD**: He detectado un nivel de dolor severo en una zona sensible. \n\n┬┐Podr├¡a describir brevemente cualquier otro s├¡ntoma o detalle importante que no aparezca en el mapa?" }]);
             setStep('clinica_triage_symptoms');
         } else {
-            setMessages(prev => [...prev, { role: "assistant", content: "Entendido. ¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?" }]);
+            setMessages(prev => [...prev, { role: "assistant", content: "Entendido. ┬┐Podr├¡a describir brevemente cualquier otro s├¡ntoma o detalle importante que no aparezca en el mapa?" }]);
             setStep('clinica_triage_symptoms');
         }
     };
 
     return (
-        <div className="flex flex-col h-full bg-white relative">
-            <div className="flex-1 overflow-y-auto w-full px-4 md:px-12 py-8 relative custom-scrollbar">
-                <div className="max-w-2xl mx-auto space-y-6 pb-32">
-                    {messages.map((msg, idx) => (
-                        <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
-                            <div className={`p-4 rounded-xl max-w-[85%] sm:max-w-[75%] font-sansation text-sm sm:text-base leading-relaxed ${msg.role === 'user'
-                                ? 'bg-[#1C75BC] text-white rounded-br-none shadow-md'
-                                : 'bg-gray-100 text-slate-700 rounded-bl-none border border-gray-200'
-                                }`}>
-                                <div className="whitespace-pre-wrap">{msg.content}</div>
-
-                                {msg.options && msg.role === 'assistant' && currentOptions.length > 0 && idx === messages.length - 1 && (
-                                    <div className="mt-4 flex flex-col gap-2">
-                                        {currentOptions.map((opt, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => handleSend(opt.value)}
-                                                className="w-full text-left px-4 py-3 rounded-lg border border-[#1C75BC] text-[#1C75BC] hover:bg-[#1C75BC] hover:text-white transition-all duration-200 font-medium"
-                                            >
-                                                {opt.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+        <div className="p-4 flex flex-col justify-end w-full relative shrink-0">
+            {isTyping && (
+                <div className="flex justify-start animate-fade-in mb-4">
+                    <div className="bg-gray-100 p-4 rounded-xl rounded-bl-none border border-gray-200 shadow-sm">
+                        <div className="flex space-x-2">
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
                         </div>
-                    ))}
-
-                    {step === 'clinica_body_map' && !isTyping && (
-                        <div className="flex justify-center my-6 animate-fade-in-up w-full max-w-[500px] mx-auto">
-                            <div className="bg-gray-50 border border-gray-200 p-2 sm:p-4 rounded-xl w-full shadow-sm flex justify-center">
-                                <VisualBodyMap
-                                    gender={patientData?.profile?.sex || patientData?.identificacion?.sexo || 'M'}
-                                    onComplete={handleBodyMapComplete}
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    {isTyping && (
-                        <div className="flex justify-start animate-fade-in">
-                            <div className="bg-gray-100 p-4 rounded-xl rounded-bl-none border border-gray-200">
-                                <div className="flex space-x-2">
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={messagesEndRef} />
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* Input Form */}
-            <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-4 md:px-12 backdrop-blur-md bg-opacity-90">
-                <form
-                    onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                    className="max-w-2xl mx-auto flex gap-3 relative"
-                >
+            <div className="max-w-3xl mx-auto w-full flex flex-col items-center gap-2">
+                
+                {step === 'clinica_triage_start' && !isTyping && (
+                    <div className="w-full relative px-2 mb-2 animate-in fade-in zoom-in duration-300">
+                        <SearchableVerticalMenu 
+                            options={filteredMotiveOptions} 
+                            onSelect={(val) => handleSend(val)}
+                            embedded={true}
+                        />
+                    </div>
+                )}
+
+                {step === 'clinica_body_map' && !isTyping && (
+                    <div className="flex justify-center w-full max-w-[500px] mb-4">
+                        <div className="bg-gray-50 border border-gray-200 p-2 sm:p-4 rounded-xl w-full shadow-sm flex justify-center">
+                            <VisualBodyMap
+                                gender={gender}
+                                onComplete={handleBodyMapComplete}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {(step === 'clinica_triage_ai_complete' || step === 'clinica_triage_containment_complete') && !isTyping && (
+                    <div className="w-full relative px-2 mb-2 animate-in fade-in zoom-in duration-300 flex justify-end">
+                        <button
+                            onClick={(e) => { e.preventDefault(); handleSend(); }}
+                            className="px-6 py-3 bg-tilo-primary text-white rounded-2xl font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all flex items-center gap-2"
+                        >
+                            Continuar a Historial Cl├¡nico <Send className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
+
+                <div className="relative flex items-center gap-2 bg-tilo-bg-base border border-tilo-border rounded-full px-2 py-2 shadow-inner focus-within:ring-2 focus-within:ring-tilo-primary transition-all w-full">
                     <input
                         type="text"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        placeholder={(step === 'clinica_body_map') ? "Seleccione áreas en el mapa..." : "Escriba su respuesta..."}
-                        className="flex-1 px-5 py-4 bg-gray-50 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1C75BC] focus:bg-white transition-all font-sansation text-slate-700 shadow-sm"
-                        disabled={isTyping || currentOptions.length > 0 || step === 'clinica_body_map' || step === 'clinica_triage_containment'}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                        placeholder={step === 'clinica_body_map' ? "Seleccione una opci├│n..." : (step === 'clinica_triage_start' ? "Seleccione o escriba su s├¡ntoma libremente..." : dynamicPlaceholder)}
+                        className="flex-1 bg-transparent outline-none text-tilo-text-main placeholder:text-tilo-text-muted text-sm h-10 px-4"
+                        disabled={isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis' || step === 'clinica_triage_ai_complete' || step === 'clinica_triage_containment_complete'}
                     />
                     <button
-                        type="submit"
-                        disabled={!inputValue.trim() || isTyping || currentOptions.length > 0 || step === 'clinica_body_map' || step === 'clinica_triage_containment'}
-                        className="px-6 py-4 bg-[#1C75BC] text-white rounded-full font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center min-w-[60px]"
+                        onClick={(e) => { e.preventDefault(); handleSend(); }}
+                        disabled={!inputValue.trim() || isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis' || step === 'clinica_triage_ai_complete' || step === 'clinica_triage_containment_complete'}
+                        className="bg-tilo-primary hover:bg-blue-700 text-white p-2 rounded-full transition-colors flex items-center justify-center shadow-md disabled:opacity-50 disabled:cursor-not-allowed shrink-0 w-10 h-10"
                     >
-                        <i className="fi fi-rr-paper-plane text-xl"></i>
+                        <Send size={18} className="ml-[2px]" />
                     </button>
-                </form>
-                <div className="text-center mt-3 text-xs text-gray-400 font-sansation flex items-center justify-center gap-2">
+                </div>
+
+                <div className="text-center mt-2 text-xs text-tilo-text-muted font-sansation flex items-center justify-center gap-2">
                     <i className="fi fi-rr-shield-check"></i>
-                    Terminal A - Comunicación Clínica Encriptada Extremo a Extremo
+                    Terminal A - Comunicaci├│n Cl├¡nica Encriptada Extremo a Extremo
                 </div>
             </div>
         </div>

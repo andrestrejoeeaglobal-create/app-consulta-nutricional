@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import axios from 'axios';
 
 // eslint-disable-next-line no-unused-vars
@@ -22,27 +22,8 @@ import VisualIdentityCard from "./components/VisualIdentityCard"; // <--- V8.0 V
 import VisualBodyMap from "./components/VisualBodyMap"; // <--- V9.6 Visual Body Map
 import useCortex from "./hooks/useCortex"; // <--- T.I.L.O Logical Engine
 import SearchableVerticalMenu from "./components/ui/SearchableVerticalMenu"; // V8.0 Searchable Vertical Menu
-import Fase0_Identidad from "./components/interview/Fase0_Identidad"; // <--- Fase 0 Refactor Asíncrono
-import Fase1_Identificacion from "./components/interview/Fase1_Identificacion"; // <--- Fase 1 Kinética
-import Fase2_Seguridad from "./components/interview/Fase2_Seguridad"; // <--- Fase 2 Seguridad
-import Fase3_MotivoConsulta from "./components/interview/Fase3_MotivoConsulta"; // <--- Fase 3 Triaje Clínico
 import Fase4_AntecedentesFamiliares from "./components/interview/Fase4_AntecedentesFamiliares";
 import Fase5_EstiloVida from "./components/interview/Fase5_EstiloVida";
-import Fase6_Farmacologia from "./components/interview/Fase6_Farmacologia"; // <--- Fase 6 Farma
-import Fase7_Alergias from "./components/interview/Fase7_Alergias"; // <--- Fase 7 Alergias
-import Fase8_SaludDigestiva from "./components/interview/Fase8_SaludDigestiva";
-import Fase9_EstadoFisiologico from "./components/interview/Fase9_EstadoFisiologico";
-import Fase10_Habitos from "./components/interview/Fase10_Habitos"; // <--- Fase 10/11 Hábitos
-import Fase11_EvaluacionDietetica from "./components/interview/Fase11_EvaluacionDietetica"; // <--- Fase 11 Dietética
-import Fase12_Biometria from "./components/interview/Fase12_Biometria"; // <--- Fase 12 Biometria
-import Fase13_ContextoEspecial from "./components/interview/Fase13_ContextoEspecial"; // <--- Fase 13 Contexto Especial
-import Fase14_Orquestador from "./components/interview/Fase14_Orquestador"; // <--- Fase 14 Orquestador
-import Fase15_SuplementacionAv from "./components/interview/Fase15_SuplementacionAv"; // <--- Fase 15 Suplementación
-import Fase16_ProtocoloDietetico from "./components/interview/Fase16_ProtocoloDietetico"; // <--- Fase 16 Dieta
-
-import EspejoEstiloVida from "./components/dashboard/EspejoEstiloVida"; // <--- V1.0 Dashboard Fase 5
-import { useClinicalGenome } from "./store/useClinicalGenome"; // <--- V16.5 Genoma Asíncrono
-import { useIntegrityDaemon } from "./hooks/useIntegrityDaemon"; // <--- V16.5 Daemon de Integridad
 
 // 1. Función Auxiliar (Fuera del componente)
 // 2. Calculadora de Edad Exacta
@@ -458,15 +439,7 @@ const RecoveryDialog = ({ data, onResume, onRestart }) => {
   );
 };
 
-// 🔴 TEMPORARY HARD RESET TO UNBLOCK USER 🔴
-window.localStorage.removeItem('tilo_session_data');
-console.warn("TEMPORARY HARD RESET OF tilo_session_data EXECUTED VIA HMR");
-
 function App() {
-  // --- ESTADO ASÍNCRONO GLOBAL (TERMINAL A) ---
-  const genome = useClinicalGenome();
-  const { isBlocked } = useIntegrityDaemon(); // Removed blockingReasons
-
   // --- ESTADO DE ACCESO ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState(null);
@@ -478,12 +451,6 @@ function App() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false); // Estado de carga para login
-
-  // --- ESTADO FASE 5 LIFESTYLE ---
-  const [fase5State, setFase5State] = useState(null);
-
-  // --- TAB NAVIGATION STATE ---
-  const [activeTab, setActiveTab] = useState('profile');
 
   // --- SAFE-ID STATE (V4.0) ---
   const [sessionMetadata, setSessionMetadata] = useState({ userId: null, citation: null, serverName: null });
@@ -511,7 +478,9 @@ function App() {
     currentPhase,
     messages,
     patientData,
+    activeTab,
     processUserInput,
+    setActiveTab,
     setPatientData,
     setMessages,
     clearSession,
@@ -525,15 +494,13 @@ function App() {
   // 1. Estado para controlar el flujo de la conversación (Legacy, to be replaced by currentPhase)
   const [interviewStep, setInterviewStep] = useState("appointment");
 
-  // const [isEditing, setIsEditing] = useState(false);
-  // const [activeField, setActiveField] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [activeField, setActiveField] = useState(null);
 
-  /*
   const handleTriggerEdit = (field) => {
     setActiveField(field);
     setIsEditing(true);
   };
-  */
 
   // const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
   const [isIdentityConfirmed, setIsIdentityConfirmed] = useState(false); // <--- NUEVO FLAG PARA HEADER DINÁMICO
@@ -700,7 +667,7 @@ function App() {
   }, [interviewStep, saveHistoryToBackend]);
 
   // Add Phase 4 State handling
-  const [fase4State, setFase4State] = useState(null); // eslint-disable-line no-unused-vars
+  const [fase4State, setFase4State] = useState(null);
 
   // V9.0: Escuchar cuando Cortex cede el control a la fase antigua de App.jsx
   useEffect(() => {
@@ -752,7 +719,7 @@ function App() {
       setActiveTab('diagnosis');
       saveSessionProgress(13, 'finished', false);
     }
-  }, [currentPhase, interviewStep, patientData.habits?.alcohol, patientData.identificacion.sexo, saveSessionProgress, setActiveTab, setCurrentPhase, setMessages, showPrivacyPolicy, isIdentityConfirmed]);
+  }, [currentPhase, interviewStep, patientData.habits?.alcohol, patientData.identificacion?.sexo, saveSessionProgress, setActiveTab, setCurrentPhase, setMessages, showPrivacyPolicy, isIdentityConfirmed]);
 
   // --- MOTOR DE SEGURIDAD CULTURAL (OBSERVER) ---
   // Detecta cambios en religión o IMC y aplica "Hard Constraints"
@@ -775,7 +742,7 @@ function App() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientData.identificacion.religion, patientData.imc]);
+  }, [patientData.identificacion?.religion, patientData.imc]);
 
 
 
@@ -784,7 +751,6 @@ function App() {
     try {
       setShowPrivacyPolicy(false); // Cierra modal
       setIsIdentityConfirmed(true); // <--- SOLO AHORA APARECEN REF. CITA Y ID EN EL HEADER
-      genome.updateIdentityLock({ privacySigned: true }); // V16.5: Habilitar Seguro de Integridad Asíncrono
 
       // Pass control back to Cortex Engine WITH a delay to allow unmount
       console.log("🔒 Privacy Accepted - Handing off to Cortex...");
@@ -1012,9 +978,6 @@ function App() {
             timestamp: new Date()
           });
 
-          // V16.5: Guardar en Genoma para el Daemon
-          genome.updateIdentityLock({ serverName: datosCita.paciente });
-
         } else {
           // ⛔ FALLO (CUALQUIER TIPO): INCREMENTAR CONTADOR
           const nuevosIntentos = globalFailureCount + 1;
@@ -1160,15 +1123,6 @@ function App() {
             discrepanciaMaterno: false // Glow azul
           }
         }));
-        // V16.5: Guardar en Genoma para el Daemon
-        genome.updateIdentityLock({
-          patientInfo: {
-            name: patientData.identificacion.nombre,
-            apellidoPaterno: patientData.identificacion.apellidoPaterno,
-            apellidoMaterno: formatText(userMsg)
-          },
-          verified: true // Marcar como verificado
-        });
 
         setMessages(prev => [...prev, { role: "assistant", content: "Gracias. Pasemos a su Fecha de Nacimiento.\n\n¿En qué **DÍA** nació? (Ej: 12)" }]);
         setInterviewStep('intro_dob_day');
@@ -1182,16 +1136,6 @@ function App() {
             discrepanciaMaterno: true // Flag de Discrepancia para UI
           }
         }));
-
-        // V16.5: Guardar en Genoma para el Daemon (con discrepancia)
-        genome.updateIdentityLock({
-          patientInfo: {
-            name: patientData.identificacion.nombre,
-            apellidoPaterno: patientData.identificacion.apellidoPaterno,
-            apellidoMaterno: formatText(userMsg)
-          },
-          verified: false // Marcar como NO verificado
-        });
 
         setMessages(prev => [...prev, {
           role: "assistant",
@@ -1906,19 +1850,494 @@ function App() {
           ...prev,
           domicilio: { ...prev.domicilio, calle: cleanStreet }
         }));
-        setMessages((prev) => [...prev, { role: "assistant", content: "Domicilio registrado.\n\nPreparando protocolo de seguridad en red de apoyo..." }]);
-        setInterviewStep("phase2_seguridad");
+        setMessages((prev) => [...prev, { role: "assistant", content: "Domicilio registrado.\n\nPasemos a la sección de **Seguridad**.\n\nEn caso de emergencia, ¿quién es su contacto responsable? Necesito su **nombre completo**." }]);
+        setInterviewStep("emergency_name");
 
         // 💾 CP2: Address Confirmed (End of Phase 1)
-        saveSessionProgress(1, 'phase2_seguridad');
+        saveSessionProgress(1, 'emergency_name');
       }, 600);
     }
 
     // -----------------------------------------------------------------------
-    // FASE 3: MOTIVO DE CONSULTA Y TRIAJE (ELIMINADO DEL MONOLITO)
+    // FASE 2: SEGURIDAD (2.1 - 2.3)
     // -----------------------------------------------------------------------
-    // Toda la lógica de `clinica_triage_start`, `clinica_body_map`, 
-    // `clinica_triage_intensity` y Empathy Engine fue extraída a Fase3_MotivoConsulta.jsx
+
+    else if (interviewStep === "emergency_name") {
+      setTimeout(() => {
+        const inputName = formatText(userMsg);
+
+        // V9.1 VALIDACIÓN ESTRICTA (NO NÚMEROS)
+        // Regex: Letras, espacios, puntos (para abreviaturas), acentos.
+        const nameRegex = /^[a-zA-ZñÑáéíóúÁÉÍÓÚ\s.]+$/;
+
+        if (!nameRegex.test(inputName) || /\d/.test(inputName)) {
+          setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Por favor ingrese un nombre válido (sin números)." }]);
+          return;
+        }
+
+        setPatientData((prev) => ({
+          ...prev,
+          emergencia: { ...prev.emergencia, nombre: inputName }
+        }));
+
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: "¿Qué **parentesco** tiene esa persona con usted?",
+          options: [
+            { label: "Cónyuge", value: "Cónyuge" },
+            { label: "Padre", value: "Padre" },
+            { label: "Madre", value: "Madre" },
+            { label: "Hermano", value: "Hermano" },
+            { label: "Hermana", value: "Hermana" },
+            { label: "Otro Familiar", value: "Otro Familiar" },
+            { label: "Ninguno", value: "Ninguno" }
+          ]
+        }]);
+        setInterviewStep("emergency_relation");
+      }, 600);
+    }
+    else if (interviewStep === "emergency_relation") {
+      setTimeout(() => {
+        let parentescoVal = formatText(userMsg);
+
+        if (userMsg.toLowerCase().includes("conyuge")) parentescoVal = "Cónyuge";
+
+        setPatientData((prev) => ({
+          ...prev,
+          emergencia: { ...prev.emergencia, parentesco: parentescoVal }
+        }));
+        setMessages((prev) => [...prev, { role: "assistant", content: "¿Me dicta el **número de teléfono** a 10 dígitos de esa persona?" }]);
+        setInterviewStep("emergency_phone");
+      }, 600);
+    }
+    else if (interviewStep === "emergency_phone") {
+      setTimeout(() => {
+        // Validación Estricta 10 Dígitos (Reutilizada)
+        const phoneRegex = /^[0-9]{10}$/;
+        const inputClean = userMsg.replace(/\D/g, ''); // Limpiar input
+
+        if (!phoneRegex.test(inputClean)) {
+          setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ¡Atención! El número debe tener exactamente 10 dígitos (usted ingresó ${inputClean.length}). Por favor verifíquelo e intente de nuevo.` }]);
+          return; // ⛔ BLOCK
+        }
+
+        // REDUNDANCY CHECK (PH2-EMERGENCY-TEL)
+        // El número de emergencia NO debe ser igual al del paciente
+        const patientPhone = patientData.identificacion?.telefono?.replace(/\D/g, '');
+        if (patientPhone && inputClean === patientPhone) {
+          setMessages((prev) => [...prev, { role: "assistant", content: "Por seguridad, el número de emergencia debe ser distinto al suyo. ¿Tiene otro número de contacto?" }]);
+          return; // ⛔ BLOCK
+        }
+
+        setPatientData((prev) => ({
+          ...prev,
+          emergencia: { ...prev.emergencia, telefono: inputClean }
+        }));
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: "Seguridad Completada.\n\nPara optimizar nuestro algoritmo clínico, necesito saber: **¿Cuál es el objetivo principal de su visita hoy?**",
+          options: [
+            { label: "⚖️ Bajar de Peso", value: "GOAL_WEIGHT_LOSS" },
+            { label: "💪 Ganar Músculo", value: "GOAL_MUSCLE" },
+            { label: "🏅 Rendimiento Deportivo", value: "GOAL_SPORT" },
+            { label: "🩺 Control Clínico", value: "GOAL_CLINICAL" },
+            { label: "🤰 Etapa de Vida", value: "GOAL_LIFE_STAGE" },
+            { label: "🥗 Aprender a Comer", value: "GOAL_EDUCATION" }
+          ]
+        }]);
+        setInterviewStep("clinica_triage_start"); // REDIRECCIÓN A FASE 3A
+
+        // 💾 CP3: Emergency Contact Confirmed (End of Phase 2)
+        saveSessionProgress(2, 'clinica_triage_start');
+
+      }, 600);
+    }
+
+    // -----------------------------------------------------------------------
+    // FASE 0: TRIAJE CLÍNICO (EL ANCLA) - V2.0
+    // -----------------------------------------------------------------------
+
+    // PASO A: LA PREGUNTA MAESTRA (NLP)
+    // PASO A: LA PREGUNTA MAESTRA (MOTIVO PRINCIPAL) + CORTEX ANALYSIS
+    // PASO A: DEFINICIÓN DE OBJETIVO (PH3-GOAL)
+    // Reemplaza el text input libre con selección determinista
+    else if (interviewStep === "clinica_triage_start") {
+      setTimeout(() => {
+        // En este punto, userMsg ya contiene el VALUE del botón (ej: GOAL_WEIGHT_LOSS)
+        // porque el onClick invoca handleSend(opt.value)
+
+        const goalMap = {
+          'GOAL_WEIGHT_LOSS': { avatar: 'METABOLIC', risk: 'LOW', label: 'Bajar de Peso' },
+          'GOAL_MUSCLE': { avatar: 'PERFORMANCE', risk: 'LOW', label: 'Ganar Músculo' },
+          'GOAL_SPORT': { avatar: 'PERFORMANCE', risk: 'HIGH', label: 'Rendimiento Deportivo' },
+          'GOAL_CLINICAL': { avatar: 'CLINICAL', risk: 'MEDIUM', label: 'Control Clínico' },
+          'GOAL_LIFE_STAGE': { avatar: 'CLINICAL', risk: 'MEDIUM', label: 'Etapa de Vida' },
+          'GOAL_EDUCATION': { avatar: 'LONGEVITY', risk: 'LOW', label: 'Aprender a Comer' }
+        };
+
+        const config = goalMap[userMsg] || { avatar: 'METABOLIC', risk: 'LOW', label: formatText(userMsg) };
+
+        setPatientData(prev => ({
+          ...prev,
+          clinica: { ...prev.clinica, motivo_consulta: config.label }, // Legacy support
+          clinical_context: {
+            ...prev.clinical_context, // Safe spread
+            primary_motive: config.label,
+            goal: userMsg, // Store raw code for algorithm weights
+            ai_analysis: {
+              avatar_assigned: config.avatar,
+              risk_level: config.risk,
+              detected_tags: [] // Will be populated by body map
+            },
+            history: [...(prev.clinical_context?.history || []), {
+              question: "Objetivo Principal",
+              answer: config.label, // "Bajar de Peso"
+              timestamp: new Date().toISOString()
+            }],
+            secondary_symptoms: ""
+          }
+        }));
+
+        setMessages(prev => [...prev, { role: "assistant", content: `Entendido (${config.label}). Hemos configurado su perfil clínico.\n\nPara ser más precisos, por favor **indique en el mapa** dónde siente mayor molestia o si hay zonas específicas a tratar.` }]);
+        setInterviewStep("clinica_body_map"); // Trigger VisualBodyMap
+      }, 600);
+    }
+
+    // PASO B: MAPA DEL DOLOR (BODY MAP)
+    else if (interviewStep === "clinica_body_map") {
+      if (userMsg === 'BODY_MAP_COMPLETE') {
+        setTimeout(() => {
+          // V10.0 FIX: SKIP REDUNDANT INTENSITY QUESTION (Already captured in Body Map)
+          // Check for High Risk Flag in history/context if needed, but VisualBodyMap handles the alert.
+          // Here we just transition to the next logical step (Symptoms or Safety).
+
+          const context = patientData.clinical_context;
+          const isHighRisk = context.ai_analysis.risk_level === 'HIGH';
+
+          if (isHighRisk) {
+            // If high risk detected by body map, we might have already shown the alert.
+            // We guide to safety check or open symptoms.
+            setMessages(prev => [...prev, { role: "assistant", content: "Entendido. ¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?" }]);
+            setInterviewStep("clinica_triage_symptoms");
+          } else {
+            setMessages(prev => [...prev, { role: "assistant", content: "Entendido. ¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?" }]);
+            setInterviewStep("clinica_triage_symptoms");
+          }
+        }, 600);
+      }
+    }
+
+    // PASO C: ESCALA DE INTENSIDAD (INTENSITY CHECK)
+    else if (interviewStep === "clinica_triage_intensity") {
+      setTimeout(() => {
+        const intensity = parseInt(userMsg, 10);
+
+        // VALIDATION
+        if (isNaN(intensity) || intensity < 0 || intensity > 10) {
+          setMessages(prev => [...prev, { role: "assistant", content: "Por favor, ingrese un número del 0 al 10." }]);
+          return;
+        }
+
+        // SAFETY CHECK (RED FLAG LOGIC)
+        const currentTags = patientData.clinical_context.ai_analysis.detected_tags || [];
+        const highRiskZones = ['CARDIO_RISK', 'GASTRIC_RISK', 'HEADACHE_RISK']; // Chest, Upper Abdomen, Head
+        const hasHighRiskZone = currentTags.some(tag => highRiskZones.includes(tag));
+
+        // RECORD HISTORY & SET STATE
+        setPatientData(prev => ({
+          ...prev,
+          clinical_context: {
+            ...prev.clinical_context,
+            // Only update AI if high risk, else just history
+            ai_analysis: (intensity >= 8 && hasHighRiskZone) ? {
+              ...prev.clinical_context.ai_analysis,
+              risk_level: 'HIGH',
+              detected_tags: [...prev.clinical_context.ai_analysis.detected_tags, 'RED_FLAG_SYMPTOM']
+            } : prev.clinical_context.ai_analysis,
+            history: [...(prev.clinical_context?.history || []), {
+              question: "Intensidad del Malestar (0-10)",
+              answer: `${intensity}/10`,
+              timestamp: new Date().toISOString()
+            }]
+          }
+        }));
+
+        if (intensity >= 8 && hasHighRiskZone) {
+          // 🚨 TRIGGER RED FLAG PROTOCOL
+          setMessages(prev => [...prev, { role: "assistant", content: "⚠️ **DETECCIÓN DE RIESGO ALTO**\n\nSu nivel de dolor y la zona indicada sugieren atención prioritaria. ¿Está tomando algún medicamento actualmente para esto?" }]);
+          setInterviewStep("intro_triage_safety"); // Redirect to safety/med check
+        } else {
+          // NORMAL FLOW
+          setMessages(prev => [...prev, { role: "assistant", content: "Entendido. ¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?" }]);
+          setInterviewStep("clinica_triage_symptoms");
+        }
+
+      }, 600);
+    }
+
+    // PASO RISK-HIGH: SEGURIDAD
+    else if (interviewStep === "intro_triage_safety") {
+      setTimeout(() => {
+        // Guardamos respuesta de seguridad (aunque no tenga campo específico en DB V1.0, lo anexamos a notas)
+        const safetyResponse = userMsg;
+
+        setPatientData(prev => ({
+          ...prev,
+          // Append to clinical context just in case
+          clinical_context: {
+            ...prev.clinical_context,
+            secondary_symptoms: `[SAFETY CHECK: ${safetyResponse}] ` + prev.clinical_context.secondary_symptoms
+          }
+        }));
+
+        setMessages(prev => [...prev, { role: "assistant", content: "Entendido, registrado. ¿Presenta alguna otra molestia o síntoma adicional?" }]);
+        setInterviewStep("intro_triage_symptoms");
+      }, 600);
+    }
+
+    // PASO B: SINTOMATOLOGÍA ADICIONAL (CIERRE DE TRIAJE)
+
+    // PASO B: SINTOMATOLOGÍA ADICIONAL (NUEVO V2.2 + CORTEX LINK)
+    // PASO D: SINTOMATOLOGÍA ADICIONAL (CIERRE DE TRIAJE)
+    else if (interviewStep === "clinica_triage_symptoms" || interviewStep === "intro_triage_symptoms") {
+      setTimeout(() => {
+        const symptomsInput = formatText(userMsg);
+
+        // 1. Guardar Síntomas (Cortex Schema)
+        setPatientData(prev => ({
+          ...prev,
+          clinica: { ...prev.clinica, ipas_texto: symptomsInput }, // Legacy Sync
+          clinical_context: {
+            ...prev.clinical_context,
+            secondary_symptoms: prev.clinical_context.secondary_symptoms + symptomsInput,
+            history: [...(prev.clinical_context?.history || []), {
+              question: "Sintomatología Adicional",
+              answer: symptomsInput,
+              timestamp: new Date().toISOString()
+            }]
+          }
+        }));
+
+        // 2. DETECCIÓN DE PALABRAS CLAVE (EMPATHY ENGINE V3.0)
+        const highSeverityKeywords = ['cancer', 'cáncer', 'matriz', 'amputa', 'duelo', 'falleci', 'muerte', 'perdí', 'tumor', 'maligno', 'quimio'];
+        const sensitiveKeywords = ['quiste', 'biopsia', 'seno', 'mama', 'oncologo']; // Lower tier
+        const surgeryKeywords = ['operacion', 'cirugia', 'cesarea', 'apendice', 'vesicula', 'histerectomia'];
+
+        const isHighSeverity = highSeverityKeywords.some(kw => symptomsInput.toLowerCase().includes(kw));
+        const isSensitive = sensitiveKeywords.some(kw => symptomsInput.toLowerCase().includes(kw));
+        const isSurgery = surgeryKeywords.some(kw => symptomsInput.toLowerCase().includes(kw));
+
+        if (isHighSeverity) {
+          // PROTOCOLO DE ALTA SENSIBILIDAD (V3)
+          setInterviewStep("clinica_triage_containment"); // New Containment Step
+        } else if (isSensitive) {
+          // PROTOCOLO DE SENSIBILIDAD MEDIA (V2)
+          setMessages(prev => [...prev, { role: "assistant", content: "Entiendo la importancia de lo que menciona. Para poder apoyarle mejor, ¿le gustaría compartir un poco más sobre este diagnóstico o prefiere que lo abordemos con detalle directamente en la consulta?" }]);
+          setInterviewStep("clinica_triage_sensitive_followup");
+        } else if (isSurgery) {
+          setMessages(prev => [...prev, { role: "assistant", content: "Entendido. Dado que menciona un procedimiento quirúrgico, ¿hace cuánto tiempo fue o cuándo está programado?" }]);
+          setInterviewStep("intro_triage_surgery");
+        } else {
+          // FLUJO NORMAL
+          setMessages(prev => [...prev, { role: "assistant", content: "Tomado en cuenta. He registrado su estatus.\n\nPara diseñar su plan con precisión y detectar riesgos en su carga genética, necesito saber: ¿Sus padres, abuelos o hermanos han sido diagnosticados con alguna de estas condiciones? (Diabetes, Hipertensión, Cáncer, Enfermedad Renal, Problemas Cardíacos o de Tiroides)." }]);
+          setInterviewStep("ph3_family_parser");
+        }
+      }, 600);
+    }
+
+    // SUB-RUTINA A0: CONTAINMENT (EMPATHY ENGINE V3.1 - SEQUENTIAL)
+    else if (interviewStep === "clinica_triage_containment") {
+      setTimeout(() => {
+        // 0. Detect Specific Keyword for Context
+        const sensitiveKeywords = ['cancer', 'cáncer', 'tumor', 'falleci', 'muerte', 'matriz', 'duelo', 'luto', 'perdida', 'pérdida'];
+        const matchedKw = sensitiveKeywords.find(kw => userMsg.toLowerCase().includes(kw)) || "Tema Sensible";
+
+        // 1. Log Special Priority (Dynamic)
+        setPatientData(prev => ({
+          ...prev,
+          clinical_context: {
+            ...prev.clinical_context,
+            history: [...(prev.clinical_context?.history || []), {
+              question: "⚠️ Reporte de Sensibilidad",
+              answer: `Tema identificado: "${matchedKw.toUpperCase()}". Protocolo de contención activado.`,
+              timestamp: new Date().toISOString()
+            }]
+          }
+        }));
+
+        // 2. Extract First Name for Personalization
+        const firstName = (patientData.profile?.name || "Paciente").split(' ')[0];
+        const nameStr = firstName !== "NOM" ? firstName : "";
+
+        // 3. SECUENCIA TEMPORIZADA (V3.1 - FORMAL TONE CORRECTION)
+        // MSG 1 (Inmediato)
+        setMessages(prev => [...prev, { role: "assistant", content: `${nameStr}, agradezco profundamente su confianza al compartirme algo tan personal. Lamento mucho que esté pasando por este proceso de incertidumbre; entiendo que una noticia así genera mucha preocupación.` }]);
+
+        // 5s DELAY -> MSG 2 (Priority Assurance)
+        setTimeout(() => {
+          setMessages(prev => [...prev, { role: "assistant", content: "He marcado este dato como Prioridad Máxima en su expediente. Su nutriólogo abordará el tema con toda la sensibilidad y el cuidado que usted merece desde el primer minuto de la consulta." }]);
+
+          // 2.5s DELAY -> MSG 3 (Clinical Bridge - Option A Formal)
+          setTimeout(() => {
+            setMessages(prev => [...prev, { role: "assistant", content: "Para asegurarnos de cuidar cada aspecto de su salud, necesito completar su mapa genético:\n\n¿Sus padres, abuelos o hermanos han sido diagnosticados con alguna de estas condiciones?\n(Diabetes, Hipertensión, Cáncer, Enfermedad Renal, Problemas Cardíacos o de Tiroides).", options: [] }]);
+            setInterviewStep("ph3_family_parser"); // Auto-transition
+          }, 2500);
+
+        }, 2500);
+
+      }, 1000);
+    }
+
+    // SUB-RUTINA A: DETALLE SENSIBLE (EMPATHY ENGINE V2)
+    else if (interviewStep === "clinica_triage_sensitive_followup") {
+      setTimeout(() => {
+        const sensitiveInfo = userMsg;
+
+        // Log sensitive info properly
+        setPatientData(prev => ({
+          ...prev,
+          clinical_context: {
+            ...prev.clinical_context,
+            secondary_symptoms: prev.clinical_context.secondary_symptoms + ` [DETALLE SENSIBLE: ${sensitiveInfo}]`,
+            history: [...(prev.clinical_context?.history || []), {
+              question: "Detalle Sensible (Seguimiento)",
+              answer: sensitiveInfo,
+              timestamp: new Date().toISOString()
+            }]
+          }
+        }));
+
+        setMessages(prev => [...prev, { role: "assistant", content: "Gracias por compartirlo. He registrado esta información como prioritaria en su expediente.\n\nPara diseñar su plan con precisión y detectar riesgos en su carga genética, necesito saber: ¿Sus padres, abuelos o hermanos han sido diagnosticados con alguna de estas condiciones? (Diabetes, Hipertensión, Cáncer, Enfermedad Renal, Problemas Cardíacos o de Tiroides)." }]);
+        setInterviewStep("ph3_family_parser");
+      }, 600);
+    }
+
+    // SUB-RUTINA B: QUIRÚRGICA (SEGURIDAD)
+    else if (interviewStep === "intro_triage_surgery") {
+      setTimeout(() => {
+        const lower = userMsg.toLowerCase();
+        let status = "NONE";
+        let msg = "";
+
+        if (lower.includes('pre') || lower.includes('prepara') || lower.includes('antes') || lower.includes('programada')) {
+          status = "PRE";
+          msg = "⚠️  ALERTA: Suspender suplementos anticoagulantes (Ajo, Omega-3, Ginkgo) 7 días antes.";
+        } else if (lower.includes('ya') || lower.includes('post') || lower.includes('pasó') || lower.includes('paso')) {
+          status = "POST";
+          msg = "⚠️  ALERTA: Validar alta médica antes de iniciar esfuerzo físico.";
+        }
+
+        setPatientData(prev => ({
+          ...prev,
+          clinical_triage: { ...prev.clinical_triage, surgery_status: status, triage_completed: true },
+          clinical_context: {
+            ...prev.clinical_context,
+            history: [...(prev.clinical_context?.history || []), {
+              question: "Estatus Quirúrgico",
+              answer: msg ? `${status} (${msg})` : "Sin Intervenciones Recientes",
+              timestamp: new Date().toISOString()
+            }]
+          }
+        }));
+
+        // PASO 4: TRANSICIÓN A HEREDOFAMILIARES (OPEN HOOK CORRECTO)
+        const prompt = "Para diseñar su plan con precisión y detectar riesgos en su carga genética, necesito saber: ¿Sus padres, abuelos o hermanos han sido diagnosticados con alguna de estas condiciones? (Diabetes, Hipertensión, Cáncer, Enfermedad Renal, Problemas Cardíacos o de Tiroides).";
+
+        const finalMsg = status !== 'NONE' ? `${msg}\n\nTomado en cuenta. He registrado su estatus.\n\n${prompt}` : `Entendido.\n\n${prompt}`;
+
+        setMessages(prev => [...prev, { role: "assistant", content: finalMsg }]);
+        setInterviewStep("ph3_family_parser");
+      }, 600);
+    }
+
+    // SUB-RUTINA B: DIGESTIVA (REMOVED FROM MAIN FLOW - NOW HANDLED IN PHASE 3 OR SYMPTOM CHECK IF NEEDED, BUT REQUEST ASKED FOR SPECIFIC SEQUENCE)
+    // NOTE: The request V2.2 overrides previous logic. "Safety (Solo si aplica)" implies mostly Surgery context.
+    // Keeping "intro_triage_digest" and "weight" in code but unreachable unless NLP logic in "symptoms" step is expanded.
+    // For now, adhering strictly to "Safety (Surgery)" as per prompt. The Digestive/Metabolic branches are less "Safety Critical" in Triage than Surgery.
+    // However, I should probably respect existing checks if they don't conflict. 
+    // The prompt says: "Detectar PRE-OP -> Lanzar Alerta -> Guardar tag". Matches surgery.
+    // I will comment out the other branches in the `intro_triage_symptoms` logic unless explicitly requested back, to avoid breaking the "Motive -> Symptoms -> Safety -> Heredo" strict sequence.
+    // Wait, the prior code had Digest/Metabolic branches. If I remove them, I lose that logic. 
+    // But the prompt says "Corrección de Flujo V2.2".
+    // I will keep the code for `intro_triage_digest` and `intro_triage_weight` definitions but they are currently disconnected from the flow.
+    // This is safer to avoid modifying unused code blocks too much, but `intro_triage_symptoms` only points to `surgery` or `ahf_start`.
+
+    /* 
+    else if (interviewStep === "intro_triage_digest") { ... } 
+    else if (interviewStep === "intro_triage_weight") { ... }
+    */
+
+
+
+    // SUB-RUTINA B: DIGESTIVA
+    else if (interviewStep === "intro_triage_digest") {
+      setTimeout(() => {
+        const lower = userMsg.toLowerCase();
+        let type = "NONE";
+        // let msg = "";
+
+        if (lower.includes('estreñ') || lower.includes('constipa')) {
+          type = "CONSTIPATION";
+          // msg = "✅ Regla Clínica: Priorizar fibra insoluble.";
+        } else if (lower.includes('inflama') || lower.includes('diarrea') || lower.includes('gases')) {
+          type = "INFLAMMATION";
+          // msg = "ðŸš« Regla Clínica: Bloquear dosis altas de fibra (FODMAPs Caution).";
+        }
+
+        setPatientData(prev => ({
+          ...prev,
+          clinical_triage: { ...prev.clinical_triage, gut_type: type, triage_completed: true }
+        }));
+
+        setMessages(prev => [...prev, { role: "assistant", content: "Anotado. Adaptaremos la dieta a su tolerancia digestiva.\n\nPasemos a sus antecedentes familiares." }]);
+        setInterviewStep("ahf_start");
+      }, 600);
+    }
+
+    // SUB-RUTINA C: METABÓLICA
+    else if (interviewStep === "intro_triage_weight") {
+      setTimeout(() => {
+        const lower = userMsg.toLowerCase();
+        let history = "STABLE";
+        let alert = "";
+
+        // Check age for Sarcopenia Logic
+        const age = patientData.identificacion.edad || 0;
+
+        if (lower.includes('baj') || lower.includes('perd') || lower.includes('men')) {
+          history = "LOSS";
+          if (age > 60) alert = "ðŸš¨ ALERTA ROJA: Descartar Sarcopenia o Patología Oncológica.";
+        } else if (lower.includes('sub') || lower.includes('aument') || lower.includes('gan')) {
+          history = "GAIN";
+          alert = "ℹ️ Nota: Protocolo Anti-inflamatorio sugerido.";
+        }
+
+        setPatientData(prev => ({
+          ...prev,
+          clinical_triage: { ...prev.clinical_triage, weight_history: history, triage_completed: true }
+        }));
+
+        if (alert) {
+          setMessages(prev => [...prev, { role: "assistant", content: `${alert}\n\nContinuemos con su historial clínico.` }]);
+        } else {
+          setMessages(prev => [...prev, { role: "assistant", content: "Registro de peso actualizado. Continuemos con su historial clínico." }]);
+        }
+        setInterviewStep("ahf_start");
+
+      }, 600);
+    }
+
+    // REDIRECCIÓN DESDE EMERGENCY (CONEXIÓN F1 -> F0)
+    // Buscamos donde redirigir desde 'emergency_phone'. 
+    // NOTA: El código original tenía:
+    // setMessages((prev) => [...prev, { role: "assistant", content: "Pasamos ahora a la Fase Clínica. ¿Existen antecedentes de enfermedades crónicas en su familia directa? (Ej. Diabetes, Hipertensión, Cáncer, Cardiopatías)." }]);
+    // setInterviewStep("ahf_start");
+    // Lo sobreescribiremos en el siguiente bloque para que apunte a intro_triage_start.
+
+
+    // -----------------------------------------------------------------------
+    // FASE 4: HISTORIA FAMILIAR (GOLDEN MASTER V4.0)
+    // -----------------------------------------------------------------------
 
     // -----------------------------------------------------------------------
     // FASE 4: HISTORIA FAMILIAR (GOLDEN MASTER V5.0 - PARSER ESTRUCTURADO)
@@ -4375,279 +4794,119 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
   // PANTALLA 2: DASHBOARD (CHAT MODIFICADO CON TILO)
   // ==============================================================================
 
+  // V15.6 HIBERNATION AND KINETICS LOGIC
+  const isCortexPhaseZero = interviewStep === 'appointment' && currentPhase.startsWith('PHASE_0_');
+  const isLegacyPhaseZero = interviewStep === 'intro_curp' || interviewStep === 'identidad' || interviewStep === 'phase_0_' || interviewStep.includes('intro_');
+
   // En Fase 0 inicializa en 'basal'.
-  // const systemState = 'processing';
+  const systemState = (isCortexPhaseZero || isLegacyPhaseZero) ? 'basal' : 'processing';
 
   // Estado de carga del paciente (Fase 0 = false)
-  // V16.4 FIX: Se vincula a isIdentityConfirmed para destrabar el Dashboard tras la Fase 0 de Cortex
-  const isPatientLoaded = interviewStep !== 'appointment' || isIdentityConfirmed;
+  const isPatientLoaded = !(isCortexPhaseZero || isLegacyPhaseZero);
 
   return (
-    <div className={`flex flex-col h-screen ${isLoggedIn ? "bg-slate-50" : "bg-white"} font-sansation overflow-hidden selection:bg-blue-100 selection:text-blue-900`}>
-      {/* HEADER: Solo aparece tras Identity Confirmed. Eliminado botón PWA para Clinical Look */}
-      {isLoggedIn && <Header clearSession={clearSession} user={user} sessionInfo={{ userId: apiContext?.userId, idCita: apiContext?.idCita, citation: apiContext?.citaId }} showSessionInfo={!!(apiContext?.userId || apiContext?.citaId || apiContext?.idCita)} activeTab={activeTab} onTabChange={setActiveTab} />}
+    <div className="relative w-full h-screen overflow-hidden bg-white">
+      {/* CAPA -2: El Sistema Nervioso Visual (Motor Físico V15.6) */}
+      <AntigravityBlobs systemState={systemState} />
 
-      {/* V16.5 Layout Estricto 50/50 Terminal A */}
-      <div className="flex flex-1 overflow-hidden relative container mx-auto w-full max-w-none">
-        {/* PANEL IZQUIERDO: Chat (50%) */}
-        <div className="w-1/2 flex flex-col h-full bg-white relative z-10 border-r border-slate-200">
+      {/* CAPA -1: El Escudo Óptico (Glassmorphism para legibilidad) */}
+      <div className="absolute inset-0 z-[-1] bg-white/40 backdrop-blur-sm pointer-events-none" />
 
-          {/* Bloqueo del Daemon de Integridad */}
-          {isBlocked && isIdentityConfirmed && (
-            <div className="absolute top-0 left-0 w-full bg-red-500 text-white text-xs font-bold text-center py-1 z-50">
-              ⛔ BLOQUEO DE INTEGRIDAD: Revise el Espejo Clínico
-            </div>
-          )}
+      {/* CAPA 10+: EL CUERPO SAGRADO (INTERFAZ) */}
+      <div className="relative z-10 flex flex-col font-sans text-slate-600 selection:bg-blue-100 h-full w-full">
 
-          {interviewStep === 'finished' ? (
-            <div className="flex-1 h-full flex items-center justify-center p-8 bg-slate-50 relative">
-              <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 max-w-sm text-center flex flex-col items-center gap-6">
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="w-20 h-20 rounded-full bg-slate-100 flex-shrink-0 border shadow-md flex items-center justify-center overflow-hidden mb-2 mx-auto"
-                >
-                  <img src={tiloImg} alt="Tilo" className="w-16 h-16 object-contain" />
-                </motion.div>
-                <h2 className="text-xl font-bold text-slate-800">Entrevista Finalizada</h2>
-                <p className="text-slate-600 leading-relaxed text-sm">
-                  Expediente cerrado y guardado. Cediendo el control total al Bio-Arquitecto para la explicación final del plan al paciente.
-                </p>
-                <div className="w-16 h-1 bg-blue-500 rounded-full mt-2 opacity-50 mx-auto"></div>
+        {/* HEADER SUPERIOR (SISTEMA DE IDENTIDAD Y NAVEGACIÓN) */}
+        {isLoggedIn && !showPrivacyPolicy && (
+          <Header
+            user={user}
+            sessionInfo={{
+              citation: apiContext?.citaId || apiContext?.idCita || sessionMetadata.citation,
+              userId: apiContext?.userId || sessionMetadata.userId || '---',
+              patientName: apiContext?.rawName || sessionMetadata.patientName || sessionMetadata.serverName || '---'
+            }}
+            showSessionInfo={true} // <--- AHORA SIEMPRE SE MUESTRA SI HAY DATOS
+            clearSession={clearSession}
+            activeTab={activeTab} // UI/UX #4: Navegación Global (Desactivada en Fase 0)
+            onTabChange={setActiveTab}    // UI/UX #4: Navegación Global
+          />
+        )}
+
+        {/* CONTENEDOR PRINCIPAL (2 COLUMNAS) */}
+        {/* ✅ BARRA DE WORKSPACE (Limpia y Dinámica) */}
+
+
+
+        {/* CONTENEDOR PRINCIPAL (2 COLUMNAS) */}
+        <div className="flex flex-1 w-full overflow-hidden">
+
+          {/* --- COLUMNA IZQUIERDA: CHAT --- */}
+          <div className="w-1/2 flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 relative">
+
+            {interviewStep === 'finished' ? (
+              <div className="flex-1 h-full flex items-center justify-center p-8 bg-slate-50 relative">
+                <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 max-w-sm text-center flex flex-col items-center gap-6">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="w-20 h-20 rounded-full bg-slate-100 flex-shrink-0 border shadow-md flex items-center justify-center overflow-hidden mb-2 mx-auto"
+                  >
+                    <img src={tiloImg} alt="Tilo" className="w-16 h-16 object-contain" />
+                  </motion.div>
+                  <h2 className="text-xl font-bold text-slate-800">Entrevista Finalizada</h2>
+                  <p className="text-slate-600 leading-relaxed text-sm">
+                    Expediente cerrado y guardado. Cediendo el control total al Bio-Arquitecto para la explicación final del plan al paciente.
+                  </p>
+                  <div className="w-16 h-1 bg-blue-500 rounded-full mt-2 opacity-50 mx-auto"></div>
+                </div>
               </div>
-            </div>
-          ) : interviewStep.includes('intro_') ? (
-            <Fase0_Identidad
-              initialChatHistory={messages}
-              onPhaseComplete={() => {
-                setInterviewStep('phase1_identificacion'); // V16.5 Transition to Phase 1
-                setCurrentPhase('PHASE_1_PROFILE_NAME');
-              }}
-            />
-          ) : interviewStep.startsWith('phase1_') ? (
-            <Fase1_Identificacion
-              initialChatHistory={messages}
-              onPhaseComplete={() => {
-                setInterviewStep("phase2_seguridad");
-                setCurrentPhase("PHASE_2_EMERGENCY_NAME");
-                saveSessionProgress(1, 'phase2_seguridad');
-              }}
-            />
-          ) : interviewStep === 'phase2_seguridad' ? (
-            <Fase2_Seguridad
-              initialChatHistory={messages}
-              onPhaseComplete={() => {
-                setMessages((prev) => [...prev, {
-                  role: "assistant",
-                  content: "Seguridad Completada.\n\nPara optimizar nuestro algoritmo clínico, necesito saber: **¿Cuál es el objetivo principal de su visita hoy?**",
-                  options: [
-                    { label: "⚖️ Bajar de Peso", value: "GOAL_WEIGHT_LOSS" },
-                    { label: "💪 Ganar Músculo", value: "GOAL_MUSCLE" },
-                    { label: "🏅 Rendimiento Deportivo", value: "GOAL_SPORT" },
-                    { label: "🩺 Control Clínico", value: "GOAL_CLINICAL" },
-                    { label: "🤰 Etapa de Vida", value: "GOAL_LIFE_STAGE" },
-                    { label: "🥗 Aprender a Comer", value: "GOAL_EDUCATION" }
-                  ]
-                }]);
-                setInterviewStep("clinica_triage_start"); // REDIRECCIÓN A FASE 3A
-                saveSessionProgress(2, 'clinica_triage_start');
-              }}
-            />
-          ) : currentPhase.startsWith('PHASE_3') || interviewStep === 'clinica_triage_start' ? (
-            <Fase3_MotivoConsulta
-              initialChatHistory={messages}
-              patientData={patientData}
-              setPatientData={setPatientData}
-              onPhaseComplete={(finalMessages) => {
-                setMessages(finalMessages || messages);
-                setCurrentPhase('PHASE_4_FAMILY_HISTORY');
-                setInterviewStep('ph4_family_history');
-                saveSessionProgress(4, 'PHASE_4_FAMILY_HISTORY');
-              }}
-            />
-          ) : currentPhase === 'PHASE_4_FAMILY_HISTORY' || interviewStep === 'ph4_family_history' ? (
-            <Fase4_AntecedentesFamiliares
-              user={user}
-              appId={apiContext?.citaId}
-              patientData={patientData}
-              setPatientData={setPatientData}
-              patientProfile={patientData}
-              phase3Data={fase3State}
-              onStateChange={setFase4State}
-              initialChatHistory={messages}
-              onPhaseComplete={(familyTreeData, finalMessages) => {
-                setPatientData(prev => ({ ...prev, familyTree: familyTreeData }));
-                setMessages(finalMessages || messages);
-                setCurrentPhase('PHASE_5_LIFESTYLE'); // Transition to Phase 5
-                setInterviewStep('ph5_lifestyle');
-              }}
-            />
-          ) : currentPhase === 'PHASE_5_LIFESTYLE' || interviewStep === 'ph5_lifestyle' ? (
-            <Fase5_EstiloVida
-              user={user}
-              appId={apiContext?.citaId}
-              patientData={patientData}
-              patientProfile={patientData}
-              onStateChange={setFase5State}
-              initialChatHistory={messages}
-              onPhaseComplete={(lifestyleData, finalMessages) => {
-                setPatientData(prev => ({ ...prev, lifeStyleInfo: lifestyleData }));
-                setMessages(finalMessages || messages);
-                setCurrentPhase('PHASE_6_FARMACOLOGIA');
-                setInterviewStep('ph6_farmacologia');
-              }}
-            />
-          ) : currentPhase === 'PHASE_6_FARMACOLOGIA' || interviewStep === 'ph6_farmacologia' ? (
-            <Fase6_Farmacologia
-              initialChatHistory={messages}
-              patientData={patientData}
-              setPatientData={setPatientData}
-              onPhaseComplete={(finalMessages) => {
-                setMessages(finalMessages || messages);
-                setCurrentPhase('PHASE_7_FOOD_GATE'); // Transition to Phase 7
-                setInterviewStep('allergies_food_start');
-                // Could call saveSessionProgress here if needed
-              }}
-            />
-          ) : currentPhase === 'PHASE_7_FOOD_GATE' || interviewStep === 'allergies_food_start' ? (
-            <Fase7_Alergias
-              initialChatHistory={messages}
-              patientData={patientData}
-              setPatientData={setPatientData}
-              onPhaseComplete={(finalMessages) => {
-                setMessages(finalMessages || messages);
-                setCurrentPhase('PHASE_8_DIGESTIVE_GATE'); // Transition to Phase 8
-                setInterviewStep('digestive_health_start');
-              }}
-            />
-          ) : currentPhase === 'PHASE_8_DIGESTIVE_GATE' || interviewStep === 'digestive_health_start' ? (
-            <Fase8_SaludDigestiva
-              initialChatHistory={messages}
-              patientData={patientData}
-              setPatientData={setPatientData}
-              onPhaseComplete={(finalMessages, nextPhase) => {
-                setMessages(finalMessages || messages);
-                setCurrentPhase(nextPhase);
-                if (nextPhase === 'PHASE_10_SMOKE_GATE') {
-                  setActiveTab('restrictions');
-                  setInterviewStep('lifestyle_start');
-                } else if (nextPhase === 'PHASE_9_PREG_GATE') {
-                  setInterviewStep('physio_state_start');
-                }
-              }}
-            />
-          ) : currentPhase === 'PHASE_9_PREG_GATE' || interviewStep === 'physio_state_start' ? (
-            <Fase9_EstadoFisiologico
-              initialChatHistory={messages}
-              patientData={patientData}
-              setPatientData={setPatientData}
-              onPhaseComplete={(finalMessages, nextPhase) => {
-                setMessages(finalMessages || messages);
-                setCurrentPhase(nextPhase);
-                if (nextPhase === 'PHASE_10_SMOKE_GATE') {
-                  setActiveTab('restrictions');
-                  setInterviewStep('lifestyle_start');
-                }
-              }}
-            />
-          ) : currentPhase === 'PHASE_10_SMOKE_GATE' || interviewStep === 'lifestyle_start' ? (
-            <Fase10_Habitos
-              initialChatHistory={messages}
-              patientData={patientData}
-              setPatientData={setPatientData}
-              onPhaseComplete={(finalMessages, nextPhase) => {
-                setMessages(finalMessages || messages);
-                setCurrentPhase(nextPhase);
-                // Si pasamos a Fase 12, se delega al cortex o a futuras extracciones
-                if (nextPhase === 'PHASE_12_AVERSIONS_GATE') {
-                  setInterviewStep('diet_aversiones_start');
-                }
-              }}
-            />
-          ) : currentPhase === 'PHASE_12_AVERSIONS_GATE' || interviewStep === 'diet_aversiones_start' ? (
-            <Fase11_EvaluacionDietetica
-              patientData={patientData}
-              setPatientData={setPatientData}
-              isYouth={patientData?.profile?.pediatric_profile?.ui_controls?.tone_key === 'YOUTH_EMP_TONE'}
-              onPhaseComplete={(nextPhase) => {
-                setCurrentPhase(nextPhase);
-                if (nextPhase === 'PHASE_13_BIO_START') {
-                  setInterviewStep('vitals_start');
-                }
-              }}
-            />
-          ) : currentPhase === 'PHASE_13_BIO_START' || interviewStep === 'vitals_start' ? (
-            <Fase12_Biometria
-              patientData={patientData}
-              setPatientData={setPatientData}
-              isYouth={patientData?.profile?.pediatric_profile?.ui_controls?.tone_key === 'YOUTH_EMP_TONE'}
-              onPhaseComplete={(nextPhase) => {
-                setCurrentPhase(nextPhase);
-                if (nextPhase === 'PHASE_14_SPECIAL_CONTEXT') {
-                  setInterviewStep('special_context_start');
-                }
-              }}
-            />
-          ) : currentPhase === 'PHASE_14_SPECIAL_CONTEXT' || interviewStep === 'special_context_start' ? (
-            <Fase13_ContextoEspecial
-              patientData={patientData}
-              setPatientData={setPatientData}
-              isYouth={patientData?.profile?.pediatric_profile?.ui_controls?.tone_key === 'YOUTH_EMP_TONE'}
-              onPhaseComplete={(finalMessages, nextPhase) => {
-                setMessages(finalMessages || messages);
-                setCurrentPhase(nextPhase);
-                if (nextPhase === 'PHASE_14_ORCHESTRATION_START' || nextPhase === 'PHASE_15_ORCHESTRATION_START') {
-                  setInterviewStep('analyzing');
-                }
-              }}
-            />
-          ) : currentPhase === 'PHASE_14_ORCHESTRATION_START' || interviewStep === 'analyzing' ? (
-            <Fase14_Orquestador
-              patientData={patientData}
-              onPhaseComplete={(nextPhase) => {
-                setCurrentPhase(nextPhase);
-                if (nextPhase === 'PHASE_15_SUPPLEMENTATION') {
-                  setInterviewStep('phase_15');
-                }
-              }}
-            />
-          ) : currentPhase === 'PHASE_15_SUPPLEMENTATION' || interviewStep === 'phase_15' ? (
-            <Fase15_SuplementacionAv
-              patientData={patientData}
-              onPhaseComplete={(nextPhase) => {
-                setCurrentPhase(nextPhase);
-                if (nextPhase === 'PHASE_16_DIETARY_PROTOCOL') {
-                  setInterviewStep('phase_16');
-                }
-              }}
-            />
-          ) : currentPhase === 'PHASE_16_DIETARY_PROTOCOL' || interviewStep === 'phase_16' ? (
-            <Fase16_ProtocoloDietetico
-              patientData={patientData}
-              onPhaseComplete={(nextPhase) => {
-                setCurrentPhase(nextPhase);
-                if (nextPhase === 'PHASE_17_DASHBOARD_RENDER') {
-                  setInterviewStep('phase_17');
-                }
-              }}
-            />
-          ) : currentPhase === 'PHASE_17_DASHBOARD_RENDER' || interviewStep === 'phase_17' ? (
-            <div className="flex-1 flex flex-col items-center justify-center h-full bg-slate-50 p-8 text-center border-r border-slate-200">
-              <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6 shadow-sm border border-green-200">
-                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              </div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-2">Evaluación Clínica Completada</h2>
-              <p className="text-slate-500 max-w-md">El expediente médico ha sido consolidado. Puede revisar el resumen, la nota de evolución (NOM-004) y el Plan de Acción en el panel derecho.</p>
-            </div>
-          ) : (
-            <>
-              <div className="flex-1 h-full overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar z-10 relative">
-                {messages.map((msg, index) => (
-                  <div key={index} className={`animate-in fade-in slide-in-from-bottom-2`}>
-                    <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-bold shadow-sm flex-shrink-0 ${msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 overflow-hidden'}`}>
-                        {msg.role === 'user' ? 'YO' : <img src={tiloImg} alt="Tilo" className="w-8 h-8 object-contain" />}
-                      </div>
+            ) : currentPhase === 'PHASE_4_FAMILY_HISTORY' ? (
+              <Fase4_AntecedentesFamiliares
+                user={user}
+                appId={apiContext?.citaId}
+                patientProfile={patientData}
+                phase3Data={fase3State}
+                onStateChange={setFase4State}
+                initialChatHistory={messages}
+                onPhaseComplete={(familyTreeData) => {
+                  setPatientData(prev => ({ ...prev, familyTree: familyTreeData }));
+                  setCurrentPhase('PHASE_5_LIFESTYLE'); // Transition to Phase 5
+                }}
+              />
+            ) : currentPhase === 'PHASE_5_LIFESTYLE' ? (
+              <Fase5_EstiloVida
+                user={user}
+                appId={apiContext?.citaId}
+                patientProfile={patientData}
+                initialChatHistory={messages}
+                onPhaseComplete={(lifestyleData) => {
+                  setPatientData(prev => ({ ...prev, lifeStyleInfo: lifestyleData }));
+                  setCurrentPhase('PHASE_6_SOMETHING_ELSE'); // Placeholder for next phase
+                }}
+              />
+            ) : (
+              <>
+                <div className="flex-1 h-full overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar z-10 relative">
+                  {messages.map((msg, index) => (
+                    <div
+                      key={index}
+                      className={`flex ${msg.role === "assistant" ? "justify-start" :
+                        "justify-end"
+                        } mb-6 items-start gap-3`}
+                    >
+                      {/* AVATAR DE TILO: Solo para Asistente */}
+                      {msg.role === "assistant" && (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden"
+                        >
+                          <img
+                            src={tiloImg}
+                            alt="Tilo"
+                            className="w-10 h-10 object-contain" // Tilo ahora ocupa mejor su contenedor
+                          />
+                        </motion.div>
+                      )}
 
                       <div
                         className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === "assistant"
@@ -4661,11 +4920,13 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                           : "bg-indigo-600 text-white rounded-tr-none"
                           }`}
                       >
-                        {/* REEMPLAZO SEGURO DE REACT MARKDOWN PARA DEBUG */}
+                        {/* Envolvemos el Markdown en un div para los estilos de tipografía */}
                         <div
-                          className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" : "prose-invert"}`}
+                          className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" :
+                            "prose-invert"
+                            }`}
                         >
-                          <ReactMarkdown>{msg.content || ""}</ReactMarkdown>
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
                         </div>
 
                         {/* V7.1 RENDERIZADO DE BOTONES (Chips Interactivos) */}
@@ -4700,193 +4961,304 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                             <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Sintetizando diagnóstico...</p>
                           </div>
                         )}
+
+
                       </div>
                     </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
 
-              <div className="p-6 bg-white border-t border-slate-50 shrink-0">
+                <div className="p-6 bg-white border-t border-slate-50 shrink-0">
 
-                {/* V8.0 IDENTITY BIFURCATION UI */}
-                {interviewStep === 'intro_curp' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-3 flex justify-end"
-                  >
-                    <button
-                      onClick={() => {
-                        setPatientData(prev => ({
-                          ...prev,
-                          identificacion: { ...prev.identificacion, nationality_type: 'FOREIGN', curp: null, curpValidated: true }
-                        }));
-                        setMessages(prev => [...prev, { role: "assistant", content: `Entendido. Paciente ${patientData.identificacion.sexo === 'Femenino' ? 'Extranjera' : 'Extranjero'}.\n\nPor favor, ingrese su **Número de Pasaporte** o Documento Migratorio.` }]);
-                        setInterviewStep('intro_passport');
-                      }}
-                      className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors flex items-center gap-2"
+                  {/* V8.0 IDENTITY BIFURCATION UI */}
+                  {interviewStep === 'intro_curp' && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-3 flex justify-end"
                     >
-                      {patientData.identificacion.sexo === 'Femenino' ? 'Soy Extranjera' : 'Soy Extranjero'} / No tengo CURP
-                    </button>
-                  </motion.div>
-                )}
+                      <button
+                        onClick={() => {
+                          setPatientData(prev => ({
+                            ...prev,
+                            identificacion: { ...prev.identificacion, nationality_type: 'FOREIGN', curp: null, curpValidated: true }
+                          }));
+                          setMessages(prev => [...prev, { role: "assistant", content: `Entendido. Paciente ${patientData.identificacion.sexo === 'Femenino' ? 'Extranjera' : 'Extranjero'}.\n\nPor favor, ingrese su **Número de Pasaporte** o Documento Migratorio.` }]);
+                          setInterviewStep('intro_passport');
+                        }}
+                        className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors flex items-center gap-2"
+                      >
+                        {patientData.identificacion.sexo === 'Femenino' ? 'Soy Extranjera' : 'Soy Extranjero'} / No tengo CURP
+                      </button>
+                    </motion.div>
+                  )}
 
-                {/* El renderizado de BodyMap ahora vive en Fase3_MotivoConsulta.jsx */}
-                {messages.length > 0 && messages[messages.length - 1].inputType === 'none' ? (
-                  // LOGIC RESTORATION: Bloqueo Visual de la barra de texto
-                  <div className="flex items-center justify-center p-2 text-slate-400 text-sm italic">
-                    Entrada bloqueada temporalmente.
-                  </div>
-                ) :
-                  /* STANDARD INPUT PILL (TEXT/SELECT) */
-                  (
-                    <div className="relative flex items-center gap-2 bg-[#F8FAFC] border border-slate-200 rounded-full px-2 py-2 shadow-inner focus-within:ring-2 focus-within:ring-[#1C75BC] transition-all w-full">
-                      {/* V8.0 Searchable Vertical Menu Conditional Render */}
-                      {messages.length > 0 &&
-                        messages[messages.length - 1].role === 'assistant' &&
-                        messages[messages.length - 1].options &&
-                        messages[messages.length - 1].options.length > 3 && (
-                          <SearchableVerticalMenu
-                            options={messages[messages.length - 1].options}
-                            onSelect={(selectedValue) => handleOptionSelect(messages[messages.length - 1], selectedValue)}
+                  {/* V9.6 VISUAL BODY MAP (PHASE 3A) - STANDALONE CONTAINER */}
+                  {interviewStep === 'clinica_body_map' ? (
+                    <div className="w-full flex justify-center p-2 mb-2">
+                      <VisualBodyMap
+                        gender={patientData.identificacion.sexo} // V10.3 FIX: PASS GENDER PROP
+                        onComplete={(payload) => {
+                          // V9.9 PAYLOAD DESTRUCTURING (ZONES + INTENSITY)
+                          const { zones, intensity } = payload;
+
+                          // V9.9 DATA MAPPING: GRANULAR MALE/FEMALE ZONES
+                          // V9.9 DATA MAPPING: GRANULAR MALE/FEMALE ZONES (V10 UPDATE)
+                          const tagMap = {
+                            // --- MALE ---
+                            'M_HEAD': 'HEADACHE_RISK', 'M_NECK': 'CERVICAL_RISK', 'M_SHOULDERS': 'JOINT_SHOULDER',
+                            'M_CHEST': 'CARDIO_RISK', 'M_STOMACH': 'GASTRIC_RISK', 'M_ABDOMEN_LOW': 'INTESTINAL_RISK',
+                            'M_LOWER_BACK': 'LUMBAR_RISK',
+                            'M_LUNGS_R': 'RESPIRATORY_RISK', 'M_LUNGS_L': 'RESPIRATORY_RISK', // New
+                            'M_KIDNEY_R': 'RENAL_RISK', 'M_KIDNEY_L': 'RENAL_RISK', // Split
+                            'M_ELBOW_R': 'JOINT_ELBOW', 'M_ELBOW_L': 'JOINT_ELBOW', // Split
+                            'M_WRIST_R': 'JOINT_WRIST', 'M_WRIST_L': 'JOINT_WRIST', // Split
+                            'M_HAND_R': 'JOINT_WRIST', 'M_HAND_L': 'JOINT_WRIST', // Split
+                            'M_KNEE_R': 'JOINT_KNEE', 'M_KNEE_L': 'JOINT_KNEE', // Split
+                            'M_LEG_R': 'CIRCULATION_RISK', 'M_LEG_L': 'CIRCULATION_RISK', // Split
+                            'M_ANKLE_R': 'JOINT_ANKLE', 'M_ANKLE_L': 'JOINT_ANKLE', // Split
+                            'M_FOOT_R': 'JOINT_FOOT', 'M_FOOT_L': 'JOINT_FOOT', // Split
+
+                            // --- FEMALE ---
+                            'F_HEAD': 'HEADACHE_RISK', 'F_NECK': 'CERVICAL_RISK', 'F_UPPER_BACK': 'POSTURAL_RISK',
+                            'F_STOMACH_UP': 'GASTRIC_RISK', 'F_STOMACH_LOW': 'INTESTINAL_RISK',
+                            'F_HIPS': 'JOINT_HIP', 'F_LOWER_BACK': 'LUMBAR_RISK',
+                            'F_LUNG_R': 'RESPIRATORY_RISK', 'F_LUNG_L': 'RESPIRATORY_RISK', // New
+                            'F_BREAST_R': 'BREAST_RISK', 'F_BREAST_L': 'BREAST_RISK', // New
+                            'F_OVARY_R': 'GYNECO_RISK', 'F_OVARY_L': 'GYNECO_RISK', // New
+                            'F_KIDNEY_R': 'RENAL_RISK', 'F_KIDNEY_L': 'RENAL_RISK', // Split
+                            'F_HAND_R': 'JOINT_WRIST', 'F_HAND_L': 'JOINT_WRIST', // Split
+                            'F_KNEE_R': 'JOINT_KNEE', 'F_KNEE_L': 'JOINT_KNEE', // Split
+                            'F_LEG_R': 'CIRCULATION_RISK', 'F_LEG_L': 'CIRCULATION_RISK', // Split
+                            'F_FOOT_R': 'JOINT_FOOT', 'F_FOOT_L': 'JOINT_FOOT' // Split
+                          };
+
+                          // VISUAL LABELS (SPANISH)
+                          const zoneLabels = {
+                            // GENERAL MAPPING FALLBACK
+                            'M_HEAD': 'Cabeza', 'F_HEAD': 'Cabeza',
+                            // NEW SPECIFICS WILL BE USED DIRECTLY FROM KEYS IF NOT FOUND
+                            'M_LUNGS_R': 'Pulmón Derecho', 'M_LUNGS_L': 'Pulmón Izquierdo',
+                            'F_LUNG_R': 'Pulmón Derecho', 'F_LUNG_L': 'Pulmón Izquierdo',
+                            'F_BREAST_R': 'Seno Derecho', 'F_BREAST_L': 'Seno Izquierdo',
+                            'F_OVARY_R': 'Ovario Derecho', 'F_OVARY_L': 'Ovario Izquierdo',
+                            'F_KIDNEY_R': 'Riñón Derecho', 'F_KIDNEY_L': 'Riñón Izquierdo',
+                            'M_KIDNEY_R': 'Riñón Derecho', 'M_KIDNEY_L': 'Riñón Izquierdo'
+                          };
+
+
+                          const newTags = zones.map(z => tagMap[z] || 'PAIN_GENERAL');
+
+                          // SAFETY TRIGGER (RED FLAG)
+                          let isRedFlag = false;
+                          if (intensity >= 8 && (newTags.includes('CARDIO_RISK') || newTags.includes('GASTRIC_RISK') || newTags.includes('HEADACHE_RISK'))) {
+                            isRedFlag = true;
+                            newTags.push('red_flag_symptom');
+                          }
+
+                          setPatientData(prev => ({
+                            ...prev,
+                            clinical_context: {
+                              ...prev.clinical_context,
+                              intensity: intensity, // Store Intensity
+                              pain_zones: zones,    // V10.1: PERSIST ZONES FOR DASHBOARD
+                              ai_analysis: {
+                                ...prev.clinical_context.ai_analysis,
+                                detected_tags: [...prev.clinical_context.ai_analysis.detected_tags, ...newTags]
+                              }
+                            }
+                          }));
+
+                          // Generate summary using Spanish labels
+                          const summary = zones.length > 0 ? zones.map(z => zoneLabels[z] || z).join(', ') : "Ninguna";
+                          setMessages(prev => [...prev, { role: "user", content: `Zonas: ${summary} | Intensidad: ${intensity}/10` }]);
+
+                          // CONDITIONAL ROUTING BASED ON RISK
+                          if (isRedFlag) {
+                            setMessages(prev => [...prev, { role: "assistant", content: "⚠️ **ALERTA DE SEGURIDAD**: He detectado un nivel de dolor severo en una zona sensible. \n\n¿Desea que activemos el protocolo de emergencia o contactemos a su familiar registrado?" }]);
+                            // Here we could route to emergency, but for now we follow standard flow with alert
+                            handleSend('BODY_MAP_COMPLETE');
+                          } else {
+                            handleSend('BODY_MAP_COMPLETE');
+                          }
+                        }} />
+                    </div>
+                  ) : messages.length > 0 && messages[messages.length - 1].inputType === 'none' ? (
+                    // LOGIC RESTORATION: Bloqueo Visual de la barra de texto
+                    <div className="flex items-center justify-center p-2 text-slate-400 text-sm italic">
+                      Entrada bloqueada temporalmente.
+                    </div>
+                  ) :
+                    /* STANDARD INPUT PILL (TEXT/SELECT) */
+                    (
+                      <div className="relative flex items-center gap-2 bg-white border border-slate-200 rounded-full px-2 py-2 shadow-sm focus-within:ring-4 focus-within:ring-blue-50 focus-within:border-blue-400 transition-all w-full">
+                        {/* V8.0 Searchable Vertical Menu Conditional Render */}
+                        {messages.length > 0 &&
+                          messages[messages.length - 1].role === 'assistant' &&
+                          messages[messages.length - 1].options &&
+                          messages[messages.length - 1].options.length > 3 && (
+                            <SearchableVerticalMenu
+                              options={messages[messages.length - 1].options}
+                              onSelect={(selectedValue) => handleOptionSelect(messages[messages.length - 1], selectedValue)}
+                            />
+                          )}
+
+                        {/* V8.2 TILO SMART SELECT (CURP STATE) */}
+                        {interviewStep === 'intro_curp_state' || (messages.length > 0 && (messages[messages.length - 1].inputType === 'StateSelector' || messages[messages.length - 1].content.includes('Estado de la República'))) ? (
+                          <div className="w-full relative px-2">
+                            <SearchableVerticalMenu
+                              options={Object.keys(ESTADO_MAP).filter(k => k !== 'EXTRANJERO').sort().map(estado => ({ label: formatText(estado), value: ESTADO_MAP[estado] })).concat([{ label: "Nacido en el Extranjero", value: "NE" }])}
+                              onSelect={(val) => {
+                                let label = val === 'NE' ? "Nacido en el Extranjero" : "Estado";
+                                if (val !== 'NE') {
+                                  const key = Object.keys(ESTADO_MAP).find(k => ESTADO_MAP[k] === val);
+                                  if (key) label = formatText(key);
+                                }
+                                setMessages(prev => [...prev, { role: "user", content: label }]);
+                                handleSend(val);
+                              }}
+                            />
+                          </div>
+                        ) : messages.length > 0 && messages[messages.length - 1].inputType === 'strict_select' ? (
+                          <div className="flex-1 px-3 py-2 text-slate-400 text-sm italic border-l border-slate-100 flex items-center">
+                            Por favor, seleccione una opción del menú superior.
+                          </div>
+                        ) : (
+                          <input
+                            type={messages.length > 0 && messages[messages.length - 1].inputType === 'tel' ? 'tel' : 'text'}
+                            value={input}
+                            onChange={(e) => {
+                              if (messages.length > 0 && messages[messages.length - 1].inputType === 'tel') {
+                                let val = e.target.value.replace(/\D/g, '');
+                                if (val.length > 10) val = val.slice(0, 10);
+                                if (val.length > 6) {
+                                  val = `(${val.slice(0,3)}) ${val.slice(3,6)}-${val.slice(6)}`;
+                                } else if (val.length > 3) {
+                                  val = `(${val.slice(0,3)}) ${val.slice(3)}`;
+                                } else if (val.length > 0) {
+                                  val = `(${val}`;
+                                }
+                                setInput(val);
+                              } else {
+                                setInput(e.target.value);
+                              }
+                            }}
+                            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                            placeholder="Escribe tu respuesta..."
+                            className="flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2"
                           />
                         )}
+                        {/* V8.2 END */}
 
-                      {/* V8.2 TILO SMART SELECT & STRICT SELECT LOGIC */}
-                      {messages.length > 0 && messages[messages.length - 1].inputType === 'strict_select' ? (
-                        <div className="flex-1 px-3 py-2 text-slate-400 text-sm italic flex items-center">
-                          Por favor, seleccione una opción del menú superior.
-                        </div>
-                      ) : interviewStep === 'intro_curp_state' || (messages.length > 0 && (messages[messages.length - 1].inputType === 'StateSelector' || messages[messages.length - 1].content.includes('Estado de la República'))) ? (
-                        <div className="w-full relative px-2">
-                          <SearchableVerticalMenu
-                            options={Object.keys(ESTADO_MAP).filter(k => k !== 'EXTRANJERO').sort().map(estado => ({ label: formatText(estado), value: ESTADO_MAP[estado] })).concat([{ label: "Nacido en el Extranjero", value: "NE" }])}
-                            onSelect={(val) => {
-                              let label = val === 'NE' ? "Nacido en el Extranjero" : "Estado";
-                              if (val !== 'NE') {
-                                const key = Object.keys(ESTADO_MAP).find(k => ESTADO_MAP[k] === val);
-                                if (key) label = formatText(key);
-                              }
-                              setMessages(prev => [...prev, { role: "user", content: label }]);
-                              handleSend(val);
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <input
-                          type="text"
-                          value={input}
-                          onChange={(e) => setInput(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                          placeholder="Escribe tu respuesta..."
-                          className="flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-4"
-                        />
-                      )}
-                      {/* V8.2 END */}
-
-                      {messages.length === 0 || messages[messages.length - 1].inputType !== 'strict_select' ? (
-                        <button
-                          onClick={() => {
-                            // ADAPTIVE UI FIX: Display LABEL, Send VALUE
-                            if (messages.length > 0 && messages[messages.length - 1].options) {
-                              const currentOpts = messages[messages.length - 1].options;
-                              const selected = currentOpts.find(o => o.value === input);
-                              if (selected) {
-                                setMessages(prev => [...prev, { role: "user", content: selected.label }]);
-                                handleSend(input);
+                        {messages.length === 0 || messages[messages.length - 1].inputType !== 'strict_select' ? (
+                          <button
+                            onClick={() => {
+                              // ADAPTIVE UI FIX: Display LABEL, Send VALUE
+                              if (messages.length > 0 && messages[messages.length - 1].options) {
+                                const currentOpts = messages[messages.length - 1].options;
+                                const selected = currentOpts.find(o => o.value === input);
+                                if (selected) {
+                                  setMessages(prev => [...prev, { role: "user", content: selected.label }]);
+                                  handleSend(input);
+                                } else {
+                                  handleSend();
+                                }
                               } else {
                                 handleSend();
                               }
-                            } else {
-                              handleSend();
-                            }
-                          }}
-                          className="bg-[#1C75BC] hover:bg-[#155a8a] text-white p-2 rounded-full transition-colors flex items-center justify-center shadow-md disabled:opacity-50 disabled:cursor-not-allowed shrink-0 w-10 h-10"
-                          disabled={isLoading}
-                        >
-                          {isLoading ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                          ) : (
-                            <Zap className="w-5 h-5" fill="currentColor" />
-                          )}
-                        </button>
-                      ) : null}
-                    </div>
-                  )}
+                            }}
+                            className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0"
+                          >
+                            <Send className="w-5 h-5" />
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
+                </div>
+              </>)}
+          </div>
 
-                {/* MODAL DE PRIVACIDAD (Renderizado Condicional) */}
-                <AnimatePresence>
-                  {showPrivacyPolicy && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-[5000]"
-                    >
-                      <AvisoPrivacidad
-                        onAccept={handleAcceptPrivacy}
-                        onClose={() => setShowPrivacyPolicy(false)}
-                      />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+          {/* PANEL DERECHO (50%) - DASHBOARD RESTAURADO (ACORDEONES) */}
+          <div className="w-1/2 h-full flex flex-col bg-gray-50 border-l border-gray-200">
+            {/* PASO 4: LA HIBERNACIÓN CLÍNICA DE LOS ACORDEONES */}
+            <div className={`
+               h-full w-full transition-all duration-700 ease-in-out
+               ${isPatientLoaded
+                ? 'opacity-100 pointer-events-auto grayscale-0'
+                : 'opacity-40 pointer-events-none grayscale select-none'
+              }
+             `}>
 
-                {/* V15.5 RECOVERY DIALOG (Renderizado Condicional) */}
-                <AnimatePresence>
-                  {recoveryData && (
-                    <RecoveryDialog
-                      data={recoveryData}
-                      onResume={handleResumeSession}
-                      onRestart={() => {
-                        setRecoveryData(null);
-                        setInterviewStep("verify_identity");
-                        setMessages(prev => [...prev, { role: "assistant", content: "Entendido. Iniciando nueva sesión.\n\n⚠️ Antes de iniciar, necesito validar su identidad. ¿Es usted el paciente titular?", options: [{ label: 'Sí, soy yo', value: 'CONFIRM_IDENTITY_YES' }, { label: 'No, soy acompañante', value: 'CONFIRM_IDENTITY_NO' }] }]);
-                      }}
-                    />
-                  )}
-                </AnimatePresence>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* PANEL DERECHO: MedicalDashboard / Espejos (50%) */}
-        {/* Only render dashboard when patient is loaded and logged in AND NOT in Phase 4 which has its own fullscreen view */}
-        {isPatientLoaded && isLoggedIn && currentPhase !== 'PHASE_4_FAMILY_HISTORY' && currentPhase !== 'PHASE_6_SOMETHING_ELSE' && (
-          <div className="w-1/2 border-l border-slate-200 bg-slate-50 relative z-10 shadow-[-4px_0_15px_rgba(0,0,0,0.02)] h-full overflow-y-auto">
-            {currentPhase === 'PHASE_5_LIFESTYLE' || interviewStep === 'ph5_lifestyle' ? (
-              <div className="p-8 h-full bg-slate-50/50">
-                <EspejoEstiloVida patientProfile={patientData} lifeStyleState={fase5State} isPhaseComplete={false} />
-              </div>
-            ) : (
+              {/* DASHBOARD COMPONENT INTEGRATION */}
               <MedicalDashboard
                 patientData={patientData}
+                setPatientData={setPatientData}
+                currentStep={interviewStep === 'appointment' ? currentPhase : interviewStep}
                 activeTab={activeTab}
-                fase3State={{
-                  ...fase3State,
-                  diagnostico_ia: patientData.clinical_context?.ai_analysis?.detected_tags?.join(', ') || ''
-                }}
-                fase4State={patientData.familyTree}
-                currentStep={currentPhase}
+                onTabChange={setActiveTab}
+                isEditing={isEditing}
+                onEditToggle={() => setIsEditing(!isEditing)}
+                onTriggerEdit={handleTriggerEdit}
+                activeField={activeField}
+                fase3State={fase3State}
+                fase4State={fase4State}
               />
-            )}
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Footer Estático (Fuera de la zona scrolleable) */}
-      <div className="bg-slate-50 border-t border-slate-200 py-3 px-6 flex justify-between items-center z-20 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] relative shrink-0 w-full mt-auto">
-        <span className="text-gray-400 text-sm font-sansation">VERSIÓN 2.0</span>
+        </div >
 
-        {/* Componente Aislado del Loader */}
-        <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-64 h-full flex justify-center items-center">
-          <FooterLoader />
-        </div>
 
-        <span className="text-gray-400 text-sm font-sansation">© DERECHOS RESERVADOS 2026</span>
-      </div>
-    </div>
+        {/* FOOTER INSTITUCIONAL V15.6 */}
+        {
+          isLoggedIn && !showPrivacyPolicy && (
+            <div className="w-full h-16 bg-white border-t border-gray-200 flex items-center justify-between px-6 z-20 shrink-0 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] relative">
+              <span className="text-gray-400 text-sm font-sansation">VERSIÓN 2.0</span>
+
+              {/* Componente Aislado del Loader */}
+              <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-64 h-full flex justify-center items-center">
+                <FooterLoader />
+              </div>
+
+              <span className="text-gray-400 text-sm font-sansation">© DERECHOS RESERVADOS 2026</span>
+            </div>
+          )
+        }
+        {/* MODAL DE PRIVACIDAD (Renderizado Condicional) */}
+        <AnimatePresence>
+          {showPrivacyPolicy && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[5000]"
+            >
+              <AvisoPrivacidad
+                onAccept={handleAcceptPrivacy}
+                onClose={() => setShowPrivacyPolicy(false)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* V15.5 RECOVERY DIALOG (Renderizado Condicional) */}
+        <AnimatePresence>
+          {recoveryData && (
+            <RecoveryDialog
+              data={recoveryData}
+              onResume={handleResumeSession}
+              onRestart={() => {
+                setRecoveryData(null);
+                setInterviewStep("verify_identity");
+                setMessages(prev => [...prev, { role: "assistant", content: "Entendido. Iniciando nueva sesión.\n\n⚠️ Antes de iniciar, necesito validar su identidad. ¿Es usted el paciente titular?", options: [{ label: 'Sí, soy yo', value: 'CONFIRM_IDENTITY_YES' }, { label: 'No, soy acompañante', value: 'CONFIRM_IDENTITY_NO' }] }]);
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+      </div >
+    </div >
   );
 }
 
