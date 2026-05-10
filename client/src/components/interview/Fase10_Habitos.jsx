@@ -15,21 +15,32 @@ const strictBooleanValidator = (text) => {
 // ==========================================
 // COMPONENTE: Fase 10 (Hábitos y Estilo de Vida)
 // ==========================================
-export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
+export default function Fase10_Habitos({ initialChatHistory, patientData, onPhaseComplete }) {
     const { updateClinicalContext } = useClinicalGenome();
 
+    const ptCtx = patientData?.profile?.pediatric_profile;
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+
     // Estado principal del componente
-    const [messages, setMessages] = useState([
-        {
+    const [messages, setMessages] = useState(() => {
+        if (initialChatHistory && initialChatHistory.length > 0) {
+            return initialChatHistory;
+        }
+        const initialMsg = isMinor
+            ? `Excelente, ahora evaluaremos algunos hábitos y estilo de vida de ${pName}.\n\n¿Fuma o tiene antecedentes de tabaquismo?`
+            : 'Excelente, ahora evaluaremos algunos hábitos y estilo de vida.\n\n¿Fuma actualmente o tiene antecedentes de tabaquismo?';
+            
+        return [{
             role: 'assistant',
-            content: 'Excelente, ahora evaluaremos algunos hábitos y estilo de vida.\n\n¿Fumas actualmente o tienes antecedentes de tabaquismo?',
+            content: initialMsg,
             avatar: tiloImg,
             options: [
                 { label: '✅ Sí', value: 'Sí' },
                 { label: '❌ No', value: 'No' }
             ]
-        }
-    ]);
+        }];
+    });
     const [inputValue, setInputValue] = useState('');
     const [currentStep, setCurrentStep] = useState('SMOKE_GATE');
 
@@ -80,11 +91,11 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                 case 'SMOKE_GATE': {
                     if (boolVal === true) {
                         setHabitsData(prev => ({ ...prev, smoking: { ...prev.smoking, is_smoker: true } }));
-                        addMessage('assistant', isYouth ? '¿Con qué frecuencia y qué cantidad consumes aproximadamente?' : '¿Con qué frecuencia y qué cantidad consume aproximadamente?', { avatar: tiloImg });
+                        addMessage('assistant', isMinor ? `¿Con qué frecuencia y qué cantidad consume ${pName} aproximadamente?` : '¿Con qué frecuencia y qué cantidad consume aproximadamente?', { avatar: tiloImg });
                         setCurrentStep('SMOKE_DETAILS');
                     } else if (boolVal === false) {
                         setHabitsData(prev => ({ ...prev, smoking: { ...prev.smoking, is_smoker: false } }));
-                        addMessage('assistant', isYouth ? 'Excelente, registrado. Ahora pasemos al alcohol...\n\n¿Consumes bebidas alcohólicas?' : 'Excelente, registrado. Ahora pasemos al alcohol...\n\n¿Consume bebidas alcohólicas?', {
+                        addMessage('assistant', isMinor ? `Excelente, registrado. Ahora pasemos al alcohol...\n\n¿${pName} consume bebidas alcohólicas?` : 'Excelente, registrado. Ahora pasemos al alcohol...\n\n¿Consume bebidas alcohólicas?', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -93,7 +104,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         });
                         setCurrentStep('ALCOHOL_GATE');
                     } else {
-                        addMessage('assistant', 'Por favor seleccione Sí o No.', {
+                        addMessage('assistant', isMinor ? 'Por favor selecciona Sí o No.' : 'Por favor seleccione Sí o No.', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -106,7 +117,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
 
                 case 'SMOKE_DETAILS': {
                     setHabitsData(prev => ({ ...prev, smoking: { ...prev.smoking, details: cleanText } }));
-                    addMessage('assistant', isYouth ? 'Excelente, registrado. Ahora pasemos al alcohol...\n\n¿Consumes bebidas alcohólicas?' : 'Excelente, registrado. Ahora pasemos al alcohol...\n\n¿Consume bebidas alcohólicas?', {
+                    addMessage('assistant', isMinor ? `Excelente, registrado. Ahora pasemos al alcohol...\n\n¿${pName} consume bebidas alcohólicas?` : 'Excelente, registrado. Ahora pasemos al alcohol...\n\n¿Consume bebidas alcohólicas?', {
                         avatar: tiloImg,
                         options: [
                             { label: '✅ Sí', value: 'Sí' },
@@ -121,7 +132,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                 case 'ALCOHOL_GATE': {
                     if (boolVal === true) {
                         setHabitsData(prev => ({ ...prev, alcohol: { ...prev.alcohol, is_drinker: true } }));
-                        addMessage('assistant', '¿Qué tipo de bebida alcohólica suele consumir con mayor frecuencia?', {
+                        addMessage('assistant', isMinor ? `¿Qué tipo de bebida alcohólica suele consumir ${pName} con mayor frecuencia?` : '¿Qué tipo de bebida alcohólica suele consumir con mayor frecuencia?', {
                             avatar: tiloImg,
                             options: [
                                 { label: 'Caguama', value: '2' },
@@ -134,7 +145,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         setCurrentStep('ALCOHOL_TYPE');
                     } else if (boolVal === false) {
                         setHabitsData(prev => ({ ...prev, alcohol: { ...prev.alcohol, is_drinker: false } }));
-                        addMessage('assistant', isYouth ? 'Entendido.\n\n¿Consumes alguna sustancia recreativa (drogas)?' : 'Entendido.\n\n¿Consume alguna sustancia recreativa (drogas)?', {
+                        addMessage('assistant', isMinor ? `Entendido.\n\n¿${pName} consume alguna sustancia recreativa (drogas)?` : 'Entendido.\n\n¿Consume alguna sustancia recreativa (drogas)?', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -143,7 +154,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         });
                         setCurrentStep('DRUGS_GATE');
                     } else {
-                        addMessage('assistant', 'Por favor indique Sí o No.', {
+                        addMessage('assistant', isMinor ? 'Por favor indica Sí o No.' : 'Por favor indique Sí o No.', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -169,11 +180,11 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                     };
                     const selected = map[cleanText];
                     if (!selected) {
-                        addMessage('assistant', 'Por favor seleccione una de las opciones válidas.', { avatar: tiloImg });
+                        addMessage('assistant', isMinor ? 'Por favor selecciona una de las opciones válidas.' : 'Por favor seleccione una de las opciones válidas.', { avatar: tiloImg });
                         return;
                     }
                     setTempItem({ current_alc: selected });
-                    addMessage('assistant', isYouth ? `Entendido. ¿Cuántas unidades de ${selected.unit} sueles tomar por ocasión?` : `Entendido. ¿Cuántas unidades de ${selected.unit} suele tomar por ocasión?`, {
+                    addMessage('assistant', isMinor ? `Entendido. ¿Cuántas unidades de ${selected.unit} suele tomar ${pName} por ocasión?` : `Entendido. ¿Cuántas unidades de ${selected.unit} suele tomar por ocasión?`, {
                         avatar: tiloImg,
                         inputType: 'number'
                     });
@@ -184,7 +195,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                 case 'ALCOHOL_QTY': {
                     const qty = parseFloat(cleanText);
                     if (isNaN(qty) || qty < 0) {
-                        addMessage('assistant', 'Por favor indique un número válido.', {
+                        addMessage('assistant', isMinor ? 'Por favor indica un número válido.' : 'Por favor indique un número válido.', {
                             avatar: tiloImg,
                             inputType: 'number'
                         });
@@ -218,7 +229,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         };
                     });
 
-                    addMessage('assistant', isYouth ? 'Registrado. ¿Consumes algún otro tipo de bebida alcohólica?' : 'Registrado. ¿Consume algún otro tipo de bebida alcohólica?', {
+                    addMessage('assistant', isMinor ? `Registrado. ¿${pName} consume algún otro tipo de bebida alcohólica?` : 'Registrado. ¿Consume algún otro tipo de bebida alcohólica?', {
                         avatar: tiloImg,
                         options: [
                             { label: '✅ Sí', value: 'Sí' },
@@ -231,7 +242,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
 
                 case 'ALCOHOL_LOOP': {
                     if (boolVal === true) {
-                        addMessage('assistant', 'Seleccione el tipo de bebida:', {
+                        addMessage('assistant', isMinor ? 'Selecciona el tipo de bebida:' : 'Seleccione el tipo de bebida:', {
                             avatar: tiloImg,
                             options: [
                                 { label: 'Cerveza', value: '1' },
@@ -243,7 +254,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         });
                         setCurrentStep('ALCOHOL_TYPE');
                     } else if (boolVal === false) {
-                        addMessage('assistant', isYouth ? '¿Consumes alguna sustancia recreativa (drogas)?' : '¿Consume alguna otra sustancia recreativa (drogas)?', {
+                        addMessage('assistant', isMinor ? `¿${pName} consume alguna sustancia recreativa (drogas)?` : '¿Consume alguna otra sustancia recreativa (drogas)?', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -252,7 +263,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         });
                         setCurrentStep('DRUGS_GATE');
                     } else {
-                        addMessage('assistant', 'Responda Sí o No.', {
+                        addMessage('assistant', isMinor ? 'Responde Sí o No.' : 'Responda Sí o No.', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -267,7 +278,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                 case 'DRUGS_GATE': {
                     if (boolVal === false) {
                         setHabitsData(prev => ({ ...prev, drugs: { ...prev.drugs, has_usage: false, log: ["Niega"] } }));
-                        addMessage('assistant', isYouth ? '¿Realizas ejercicio físico?' : '¿Realiza ejercicio físico?', {
+                        addMessage('assistant', isMinor ? `¿${pName} realiza ejercicio físico?` : '¿Realiza ejercicio físico?', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -280,7 +291,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         addMessage('assistant', '¿Cuál?', { avatar: tiloImg });
                         setCurrentStep('DRUGS_DRILLDOWN');
                     } else {
-                        addMessage('assistant', isYouth ? 'Disculpa, no te entendí. ¿Consumes alguna otra sustancia? (Responda Sí o No).' : 'Disculpe, no le entendí. ¿Consume alguna otra sustancia? (Responda Sí o No).', {
+                        addMessage('assistant', isMinor ? 'Disculpa, no te entendí. ¿Consume alguna otra sustancia? (Responde Sí o No).' : 'Disculpe, no le entendí. ¿Consume alguna otra sustancia? (Responda Sí o No).', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -306,7 +317,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
 
                 case 'DRUGS_LOOP': {
                     if (boolVal === false) {
-                        addMessage('assistant', isYouth ? '¿Realizas ejercicio físico?' : '¿Realiza ejercicio físico?', {
+                        addMessage('assistant', isMinor ? `¿${pName} realiza ejercicio físico?` : '¿Realiza ejercicio físico?', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -318,7 +329,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         addMessage('assistant', '¿Cuál?', { avatar: tiloImg });
                         setCurrentStep('DRUGS_DRILLDOWN');
                     } else {
-                        addMessage('assistant', isYouth ? 'Disculpa, no te entendí. ¿Alguna otra sustancia? (Responda Sí o No).' : 'Disculpe, no le entendí. ¿Alguna otra sustancia? (Responda Sí o No).', {
+                        addMessage('assistant', isMinor ? 'Disculpa, no te entendí. ¿Alguna otra sustancia? (Responde Sí o No).' : 'Disculpe, no le entendí. ¿Alguna otra sustancia? (Responda Sí o No).', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -333,7 +344,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                 case 'ACTIVITY_GATE': {
                     if (boolVal === false) {
                         setActivityData(prev => ({ ...prev, exercise: { ...prev.exercise, has_scheduled_exercise: false } }));
-                        addMessage('assistant', isYouth ? '¿Cuántas horas duermes en promedio al día?' : '¿Cuántas horas duerme en promedio al día?', {
+                        addMessage('assistant', isMinor ? `¿Cuántas horas duerme ${pName} en promedio al día?` : '¿Cuántas horas duerme en promedio al día?', {
                             avatar: tiloImg,
                             inputType: 'number'
                         });
@@ -341,10 +352,10 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                     } else if (boolVal === true) {
                         setActivityData(prev => ({ ...prev, exercise: { ...prev.exercise, has_scheduled_exercise: true } }));
                         setTempItem({}); // Limpiamos
-                        addMessage('assistant', isYouth ? 'Muy bien. ¿Qué actividad realizas? (Ej. Correr, Crossfit)' : 'Muy bien. ¿Qué actividad realiza? (Ej. Correr, Crossfit)', { avatar: tiloImg });
+                        addMessage('assistant', isMinor ? `Muy bien. ¿Qué actividad realiza ${pName}? (Ej. Correr, Natación)` : 'Muy bien. ¿Qué actividad realiza? (Ej. Correr, Natación)', { avatar: tiloImg });
                         setCurrentStep('ACTIVITY_TYPE');
                     } else {
-                        addMessage('assistant', isYouth ? 'Disculpa, no te entendí. ¿Realizas alguna actividad física? (Responda Sí o No).' : 'Disculpe, no le entendí. ¿Realiza alguna actividad física? (Responda Sí o No).', {
+                        addMessage('assistant', isMinor ? 'Disculpa, no te entendí. ¿Realiza alguna actividad física? (Responde Sí o No).' : 'Disculpe, no le entendí. ¿Realiza alguna actividad física? (Responda Sí o No).', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -357,7 +368,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
 
                 case 'ACTIVITY_TYPE': {
                     setTempItem({ actividad: cleanText });
-                    addMessage('assistant', isYouth ? '¿Cuántos **días** a la semana la practicas? (Número 1-7)' : '¿Cuántos **días** a la semana la practica? (Número 1-7)', {
+                    addMessage('assistant', isMinor ? `¿Cuántos **días** a la semana la practica ${pName}? (Número 1-7)` : '¿Cuántos **días** a la semana la practica? (Número 1-7)', {
                         avatar: tiloImg,
                         inputType: 'number'
                     });
@@ -368,7 +379,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                 case 'ACTIVITY_DAYS': {
                     const days = parseInt(cleanText, 10);
                     if (isNaN(days) || days < 1 || days > 7) {
-                        addMessage('assistant', 'Por favor indique un número de días válido (1-7).', {
+                        addMessage('assistant', isMinor ? 'Por favor indica un número de días válido (1-7).' : 'Por favor indique un número de días válido (1-7).', {
                             avatar: tiloImg,
                             inputType: 'number'
                         });
@@ -376,7 +387,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                     }
                     setTempItem(prev => ({ ...prev, dias: days }));
 
-                    addMessage('assistant', isYouth ? 'Y por último, ¿cuántos **minutos** dura tu sesión promedio?' : 'Y por último, ¿cuántos **minutos** dura su sesión promedio?', {
+                    addMessage('assistant', isMinor ? `Y por último, ¿cuántos **minutos** dura su sesión promedio?` : 'Y por último, ¿cuántos **minutos** dura su sesión promedio?', {
                         avatar: tiloImg,
                         inputType: 'number'
                     });
@@ -387,7 +398,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                 case 'ACTIVITY_MINS': {
                     const mins = parseInt(cleanText, 10);
                     if (isNaN(mins) || mins < 1) {
-                        addMessage('assistant', 'Por favor indique una duración en minutos válida.', {
+                        addMessage('assistant', isMinor ? 'Por favor indica una duración en minutos válida.' : 'Por favor indique una duración en minutos válida.', {
                             avatar: tiloImg,
                             inputType: 'number'
                         });
@@ -410,7 +421,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         }
                     }));
 
-                    addMessage('assistant', isYouth ? '¿Realizas alguna **otra** actividad física?' : '¿Realiza alguna **otra** actividad física?', {
+                    addMessage('assistant', isMinor ? `¿Realiza ${pName} alguna **otra** actividad física?` : '¿Realiza alguna **otra** actividad física?', {
                         avatar: tiloImg,
                         options: [
                             { label: '✅ Sí', value: 'Sí' },
@@ -423,7 +434,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
 
                 case 'ACTIVITY_LOOP': {
                     if (boolVal === false) {
-                        addMessage('assistant', isYouth ? '¿Cuántas horas duermes en promedio al día?' : '¿Cuántas horas duerme en promedio al día?', {
+                        addMessage('assistant', isMinor ? `¿Cuántas horas duerme ${pName} en promedio al día?` : '¿Cuántas horas duerme en promedio al día?', {
                             avatar: tiloImg,
                             inputType: 'number'
                         });
@@ -433,7 +444,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                         addMessage('assistant', '¿Qué actividad?', { avatar: tiloImg });
                         setCurrentStep('ACTIVITY_TYPE');
                     } else {
-                        addMessage('assistant', isYouth ? 'Disculpa, no te entendí. ¿Realizas alguna otra actividad física? (Responda Sí o No).' : 'Disculpe, no le entendí. ¿Realiza alguna otra actividad física? (Responda Sí o No).', {
+                        addMessage('assistant', isMinor ? 'Disculpa, no te entendí. ¿Realiza alguna otra actividad física? (Responde Sí o No).' : 'Disculpe, no le entendí. ¿Realiza alguna otra actividad física? (Responda Sí o No).', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },
@@ -450,7 +461,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                     const val = match ? parseInt(match[0], 10) : NaN;
 
                     if (isNaN(val) || val < 1 || val > 24) {
-                        addMessage('assistant', 'Por favor indique un número de horas válido (entre 1 y 24).', {
+                        addMessage('assistant', isMinor ? 'Por favor indica un número de horas válido (entre 1 y 24).' : 'Por favor indique un número de horas válido (entre 1 y 24).', {
                             avatar: tiloImg,
                             inputType: 'number'
                         });
@@ -459,7 +470,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
 
                     setHabitsData(prev => ({ ...prev, sleep: { ...prev.sleep, hours: val } }));
 
-                    addMessage('assistant', isYouth ? '¿Cómo calificarías tu calidad de sueño?' : '¿Cómo calificaría su calidad de sueño?', {
+                    addMessage('assistant', isMinor ? `¿Cómo calificaría la calidad de sueño de ${pName}?` : '¿Cómo calificaría su calidad de sueño?', {
                         avatar: tiloImg,
                         options: [
                             { label: 'Buena', value: 'Buena' },
@@ -474,7 +485,7 @@ export default function Fase10_Habitos({ onPhaseComplete, isYouth }) {
                 case 'SLEEP_QUALITY': {
                     setHabitsData(prev => ({ ...prev, sleep: { ...prev.sleep, quality: cleanText } }));
 
-                    addMessage('assistant', isYouth ? '¿Cuál es tu nivel de estrés diario en promedio?' : '¿Cuál es su nivel de estrés diario en promedio?', {
+                    addMessage('assistant', isMinor ? `¿Cuál es el nivel de estrés diario en promedio de ${pName}?` : '¿Cuál es su nivel de estrés diario en promedio?', {
                         avatar: tiloImg,
                         options: [
                             { label: 'Bajo', value: 'Bajo' },
