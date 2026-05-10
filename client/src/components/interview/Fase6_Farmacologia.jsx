@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { formatText } from '../../utils/utils';
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
 /**
  * T.I.L.O. - FASE 6 (FARMACOLOGÍA)
@@ -10,10 +11,9 @@ import { formatText } from '../../utils/utils';
  */
 const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, setPatientData }) => {
 
-
+    const { patientName: pName, patientAge } = usePatientLinguistics(patientData);
     const ptCtx = patientData?.profile?.pediatric_profile;
-    const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    const isMinor = ptCtx?.is_minor === true || patientAge < 18;
 
     // Estado Local Initialize
     const [messages, setMessages] = useState(() => {
