@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import tiloImg from '../../assets/tilo.png';
+import usePatientLinguistics from '../../hooks/usePatientLinguistics';
 
 // --- UTILS LOCALES ---
 const formatText = (text) => {
-    return text.split(/[\\s,]+/).map(word => {
+    return text.split(/[\s,]+/).map(word => {
         return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     }).join(", ");
 };
@@ -57,9 +58,7 @@ const Fase11_EvaluacionDietetica = ({
     patientData,
     setPatientData
 }) => {
-    const ptCtx = patientData?.profile?.pediatric_profile;
-    const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
 
     // ESTADO DEL COMPONENTE
     const [messages, setMessages] = useState([
