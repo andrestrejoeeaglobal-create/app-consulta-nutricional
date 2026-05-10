@@ -4,6 +4,8 @@ import { User, Edit2, Search, AlertTriangle, AlertCircle, MapPin, FileText, Time
 
 import { formatDateShort } from '../../utils/utils';
 import { GamificationRings, StreakCard } from '../ui/GamificationRings';
+import { AddressForm } from '../ui/AddressForm';
+import { AddressMap } from '../ui/AddressMap';
 
 export const TabIdentity = ({
     patientData,
@@ -92,6 +94,7 @@ export const TabIdentity = ({
                                             <User size={16} /> Datos de Identificación
                                         </h4>
                                         <button
+                                            type="button"
                                             onClick={() => onTriggerEdit ? onTriggerEdit('identity') : onEditToggle()} // V3.5 Hook
                                             className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all bg-slate-100 text-slate-500 hover:bg-slate-200"
                                         >
@@ -253,7 +256,41 @@ export const TabIdentity = ({
                                     </div>
 
                                     <div className="w-full">
-                                        {renderEditableField('Calle y Número', 'calle', '--', 'domicilio', false, 'dashboard-data-text')}
+                                        <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">
+                                            Calle y Número Exterior / Interior
+                                        </label>
+                                        <AddressForm 
+                                            zipCode={patientData?.domicilio?.cp}
+                                            initialValue={patientData?.domicilio?.calle}
+                                            isEditing={isEditing}
+                                            onSave={(addressData) => {
+                                                setPatientData(prev => ({
+                                                    ...prev,
+                                                    profile: {
+                                                        ...prev.profile,
+                                                        address: {
+                                                            ...prev.profile.address,
+                                                            street: addressData.fullAddress,
+                                                            coordinates: addressData.coords
+                                                        }
+                                                    },
+                                                    domicilio: {
+                                                        ...prev.domicilio,
+                                                        calle: addressData.fullAddress,
+                                                        direccion_googlemaps: addressData.fullAddress,
+                                                        coordinates: addressData.coords,
+                                                        addressStatus: 'VERIFIED'
+                                                    }
+                                                }));
+                                            }}
+                                        />
+                                        
+                                        <div className="mt-4">
+                                            <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">
+                                                Confirmación Cartográfica
+                                            </label>
+                                            <AddressMap coordinates={patientData?.domicilio?.coordinates} />
+                                        </div>
                                     </div>
                                 </div>
                             </div>

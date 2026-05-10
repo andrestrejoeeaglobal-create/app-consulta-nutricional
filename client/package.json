@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-google-maps/api": "^2.20.8",
     "@tailwindcss/postcss": "^4.1.18",
     "axios": "^1.13.2",
     "cheerio": "^1.1.2",
@@ -22,6 +23,7 @@
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "recharts": "^2.12.0",
+    "use-places-autocomplete": "^4.0.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

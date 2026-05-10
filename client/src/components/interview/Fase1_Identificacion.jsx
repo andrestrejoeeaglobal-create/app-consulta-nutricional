@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { Send } from 'lucide-react';
 import { formatText } from '../../utils/utils';
-import { calculateAge, classifyLifeStage } from '../../utils/ageClassifier';
+import { calculateAge, classifyLifeStage, getBinaryGateLabels } from '../../utils/ageClassifier';
 import tiloImg from '../../assets/tilo.png';
 import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
 
@@ -30,14 +30,7 @@ export const Fase1_Identificacion = ({
     const [tempDob, setTempDob] = useState({ day: null, month: null, year: null });
 
     const handlePhoneChange = (e) => {
-        const input = e.target.value;
-        // Si el usuario está borrando, permitimos que el input quede tal cual para no arruinar el cursor
-        if (input.length < inputValue.length) {
-            setInputValue(input);
-            return;
-        }
-
-        let val = input.replace(/\D/g, '');
+        let val = e.target.value.replace(/\D/g, '');
         if (val.length > 10) val = val.slice(0, 10);
         let formatted = val;
         if (val.length > 6) {
@@ -223,11 +216,43 @@ export const Fase1_Identificacion = ({
                     nextStep = 'intro_religion';
                     break;
 
-                case 'intro_religion':
+                case 'intro_religion': {
                     updateSocioculturalProfile({ religion: cleanText });
-                    responseMsg = "Perfil Sociocultural completado. Transferiendo control...";
-                    nextStep = 'completed';
+                    
+                    const pInfo = identityLock.patientInfo;
+                    const socio = useClinicalGenome.getState().socioculturalProfile;
+                    const currentAge = pInfo.age || 20;
+                    const currentSex = pInfo.sex || "Femenino";
+                    
+                    const { confirmLabel, rejectLabel } = getBinaryGateLabels(currentAge, currentSex);
+                    
+                    responseMsg = `A continuación, le presento un resumen de los datos capturados:\n\n` +
+                                  `**Apellidos:** ${pInfo.apellidoPaterno} ${pInfo.apellidoMaterno}\n` +
+                                  `**Fecha de Nacimiento:** ${pInfo.dob_day}/${pInfo.dob_month}/${pInfo.dob_year} (${currentAge} años)\n` +
+                                  `**Sexo Biológico:** ${currentSex}\n` +
+                                  `**Estado Civil:** ${socio.civilStatus || 'No especificado'}\n` +
+                                  `**Ocupación:** ${socio.occupation || 'No especificada'}\n` +
+                                  `**Religión:** ${cleanText}\n\n` +
+                                  `¿Son correctos estos datos?`;
+                                  
+                    options = [
+                        { label: confirmLabel, value: "CONFIRM_DATA" },
+                        { label: rejectLabel, value: "CORRECT_DATA" }
+                    ];
+                    nextStep = 'intro_review';
                     break;
+                }
+
+                case 'intro_review': {
+                    if (directValue === 'CONFIRM_DATA') {
+                        responseMsg = "Perfil Sociocultural completado. Transfiriendo control...";
+                        nextStep = 'completed';
+                    } else {
+                        responseMsg = "Entendido, vamos a corregir los datos.\n\n¿Cuál es su **Apellido Paterno**?";
+                        nextStep = 'intro_paterno';
+                    }
+                    break;
+                }
 
                 default:
                     responseMsg = "Esta sección ha concluido.";

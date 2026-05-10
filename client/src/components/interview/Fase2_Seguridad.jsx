@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { Zap, ShieldCheck } from 'lucide-react';
 import { formatText } from '../../utils/utils';
+import { getBinaryGateLabels } from '../../utils/ageClassifier';
 import tiloImg from '../../assets/tilo.png';
 
 export const Fase2_Seguridad = ({
@@ -128,8 +129,20 @@ export const Fase2_Seguridad = ({
                     }
 
                     updateIdentityLock({ emergencyContact: { ...identityLock.emergencyContact, phone: phoneInput }, verified: true });
-                    responseMsg = "Red de apoyo establecida exitosamente. Identidad Blindada completada. ✅";
-                    nextStep = 'completed';
+                    const eContact = { ...identityLock.emergencyContact, phone: phoneInput };
+                    const { confirmLabel, rejectLabel } = getBinaryGateLabels(patientAge, identityLock.patientInfo?.sex || 'Femenino');
+                    
+                    responseMsg = `A continuación, le presento un resumen de la Red de Apoyo capturada:\n\n` +
+                                  `**Contacto de Emergencia:** ${eContact.name}\n` +
+                                  `**Parentesco/Relación:** ${eContact.relation}\n` +
+                                  `**Teléfono de Emergencia:** ${eContact.phone}\n\n` +
+                                  `¿Son correctos estos datos?`;
+                                  
+                    options = [
+                        { label: confirmLabel, value: "CONFIRM_DATA" },
+                        { label: rejectLabel, value: "CORRECT_DATA" }
+                    ];
+                    nextStep = 'emergency_review';
                     break;
                 }
 
@@ -137,13 +150,36 @@ export const Fase2_Seguridad = ({
                     if (directValue === "CONFIRM_SAME_PHONE") {
                         const previousPhone = identityLock.patientInfo?.phone;
                         updateIdentityLock({ emergencyContact: { ...identityLock.emergencyContact, phone: previousPhone }, verified: true });
-                        responseMsg = "Entendido. Red de apoyo establecida. Identidad Blindada completada. ✅";
-                        nextStep = 'completed';
+                        const eContact = { ...identityLock.emergencyContact, phone: previousPhone };
+                        const { confirmLabel, rejectLabel } = getBinaryGateLabels(patientAge, identityLock.patientInfo?.sex || 'Femenino');
+                        
+                        responseMsg = `A continuación, le presento un resumen de la Red de Apoyo capturada:\n\n` +
+                                      `**Contacto de Emergencia:** ${eContact.name}\n` +
+                                      `**Parentesco/Relación:** ${eContact.relation}\n` +
+                                      `**Teléfono de Emergencia:** ${eContact.phone}\n\n` +
+                                      `¿Son correctos estos datos?`;
+                                      
+                        options = [
+                            { label: confirmLabel, value: "CONFIRM_DATA" },
+                            { label: rejectLabel, value: "CORRECT_DATA" }
+                        ];
+                        nextStep = 'emergency_review';
                     } else {
                         responseMsg = "De acuerdo. Por favor, escriba el **nuevo número** telefónico de emergencia (10 dígitos):";
                         nextStep = 'emergency_phone';
                     }
                     break;
+
+                case 'emergency_review': {
+                    if (directValue === 'CONFIRM_DATA') {
+                        responseMsg = "Red de apoyo establecida exitosamente. Identidad Blindada completada. ✅";
+                        nextStep = 'completed';
+                    } else {
+                        responseMsg = "Entendido, vamos a corregir los datos.\n\n" + getStarterMessage();
+                        nextStep = 'emergency_name';
+                    }
+                    break;
+                }
 
                 default:
                     responseMsg = "Esta sección ha concluido.";
@@ -163,6 +199,20 @@ export const Fase2_Seguridad = ({
     };
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+    const handlePhoneChange = (e) => {
+        let val = e.target.value.replace(/\D/g, '');
+        if (val.length > 10) val = val.slice(0, 10);
+        let formatted = val;
+        if (val.length > 6) {
+            formatted = `(${val.slice(0, 3)}) ${val.slice(3, 6)}-${val.slice(6)}`;
+        } else if (val.length > 3) {
+            formatted = `(${val.slice(0, 3)}) ${val.slice(3)}`;
+        } else if (val.length > 0) {
+            formatted = `(${val}`;
+        }
+        setInputValue(formatted);
+    };
 
     return (
         <div className="flex h-full w-full bg-[#F8FAFC] overflow-hidden font-sans">
@@ -213,9 +263,9 @@ export const Fase2_Seguridad = ({
                     <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner">
                         <input
                             type={step.includes('phone') ? 'tel' : 'text'}
-                            value={inputValue} onChange={(e) => setInputValue(e.target.value)}
+                            value={inputValue} onChange={step.includes('phone') ? handlePhoneChange : (e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend(inputValue)}
-                            placeholder="Escribe tu respuesta..." className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
+                            placeholder={step.includes('phone') ? "(123) 456-7890" : "Escribe tu respuesta..."} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
                             disabled={isAnalyzing || step === 'completed'}
                         />
                         <button onClick={() => handleSend(inputValue)} disabled={isAnalyzing || step === 'completed'} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
