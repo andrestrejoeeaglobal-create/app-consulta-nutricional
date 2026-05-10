@@ -12,15 +12,16 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
 
 
     const ptCtx = patientData?.profile?.pediatric_profile;
-    const isYouth = ptCtx?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
 
     // Estado Local Initialize
     const [messages, setMessages] = useState(() => {
         if (initialChatHistory && initialChatHistory.length > 0) {
             return initialChatHistory;
         }
-        const initialMsg = isYouth
-            ? "Entendido. Perfil clínico actualizado.\n\nPasemos ahora a la Farmacología. ¿Tomas actualmente algún medicamento recetado por un médico?"
+        const initialMsg = isMinor
+            ? `Entendido. Perfil clínico actualizado.\n\nPasemos ahora a la Farmacología. ¿Toma ${pName} actualmente algún medicamento recetado por un médico?`
             : "Entendido. Perfil clínico actualizado.\n\nPasemos ahora a la Farmacología. ¿Toma usted actualmente algún medicamento recetado por un médico?";
         return [{ role: 'assistant', content: initialMsg }];
     });
@@ -65,14 +66,14 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: isYouth ? "Correcto. Escribe el nombre del primer medicamento:" : "Correcto. Escriba el nombre del primer medicamento:"
+                        content: isMinor ? "Correcto. Escribe el nombre del primer medicamento:" : "Correcto. Escriba el nombre del primer medicamento:"
                     }]);
                     setStep('meds_name');
                     setCurrentOptions([]);
                 } else if (input === "No") {
                     transitionToSupps();
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No." }]);
                 }
                 break;
             }
@@ -80,9 +81,7 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                 setTempItem(prev => ({ ...prev, name: input, type: 'MED' }));
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: isYouth
-                        ? `Entendido (${input}). ¿Cuál es la dosis exacta y con qué frecuencia la tomas? (Ej. 1 tableta cada 12 horas).`
-                        : `Entendido (${input}). ¿Cuál es la dosis exacta y con qué frecuencia la toma? (Ej. 1 tableta cada 12 horas).`
+                    content: `Entendido (${input}). ¿Cuál es la dosis exacta y con qué frecuencia la toma? (Ej. 1 tableta cada 12 horas).`
                 }]);
                 setStep('meds_dose');
                 break;
@@ -91,8 +90,8 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                 setTempItem(prev => ({ ...prev, details: input }));
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: isYouth
-                        ? `¿Desde hace cuánto tiempo tomas este medicamento? (Ej. 1 semana, 3 años).\n\nEsto es importante para calcular tus riesgos nutricionales.`
+                    content: isMinor
+                        ? `¿Desde hace cuánto tiempo toma este medicamento? (Ej. 1 semana, 3 años).\n\nEsto es importante para calcular los riesgos nutricionales de ${pName}.`
                         : `¿Desde hace cuánto tiempo toma este medicamento? (Ej. 1 semana, 3 años).\n\nEsto es importante para calcular sus riesgos nutricionales.`
                 }]);
                 setStep('meds_time');
@@ -115,7 +114,7 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: isYouth ? `Registrado. ¿Tomas algún otro medicamento prescrito?` : `Registrado. ¿Toma algún otro medicamento prescrito?`
+                    content: isMinor ? `Registrado. ¿Toma ${pName} algún otro medicamento prescrito?` : "Registrado. ¿Toma usted algún otro medicamento prescrito?"
                 }]);
                 setStep('meds_next');
                 setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
@@ -125,14 +124,14 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: isYouth ? "Escribe el nombre del siguiente medicamento:" : "Escriba el nombre del siguiente medicamento:"
+                        content: isMinor ? "Escribe el nombre del siguiente medicamento:" : "Escriba el nombre del siguiente medicamento:"
                     }]);
                     setStep('meds_name');
                     setCurrentOptions([]);
                 } else if (input === "No") {
                     transitionToSupps();
                 } else {
-                    setMessages(prev => [...prev, { role: 'assistant', content: "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { role: 'assistant', content: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No." }]);
                 }
                 break;
             }
@@ -149,7 +148,7 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                 } else if (input === "No") {
                     handleFinish();
                 } else {
-                    setMessages(prev => [...prev, { role: 'assistant', content: "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { role: 'assistant', content: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No." }]);
                 }
                 break;
             }
@@ -188,7 +187,9 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: "Registrado ✅.\n\n¿Consume algún otro producto natural o vitamina?"
+                    content: isMinor 
+                        ? `Registrado ✅.\n\n¿Consume ${pName} algún otro producto natural o vitamina?` 
+                        : "Registrado ✅.\n\n¿Consume usted algún otro producto natural o vitamina?"
                 }]);
                 setStep('supp_next');
                 setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
@@ -205,7 +206,7 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                 } else if (input === "No") {
                     handleFinish();
                 } else {
-                    setMessages(prev => [...prev, { role: 'assistant', content: "Responda SÍ o NO." }]);
+                    setMessages(prev => [...prev, { role: 'assistant', content: isMinor ? "Responde SÍ o NO." : "Responda SÍ o NO." }]);
                 }
                 break;
             }
@@ -218,7 +219,9 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
     const transitionToSupps = () => {
         setMessages(prev => [...prev, {
             role: 'assistant',
-            content: "Entendido. Pasemos a los productos de venta libre.\n\n¿Consume vitaminas, proteínas, tés o suplementos 'naturistas'?"
+            content: isMinor 
+                ? `Entendido. Pasemos a los productos de venta libre.\n\n¿Consume ${pName} vitaminas, proteínas, tés o suplementos 'naturistas'?`
+                : "Entendido. Pasemos a los productos de venta libre.\n\n¿Consume usted vitaminas, proteínas, tés o suplementos 'naturistas'?"
         }]);
         setStep('supp_start');
         setCurrentOptions([
@@ -285,7 +288,7 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder="Escribe tu respuesta..."
+                            placeholder="Escriba aquí..."
                             className="flex-1 bg-transparent border-none outline-none text-gray-700 placeholder-gray-400 text-[15px]"
                         />
                         <button
