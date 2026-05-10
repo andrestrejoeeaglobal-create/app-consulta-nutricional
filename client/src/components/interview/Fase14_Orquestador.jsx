@@ -3,18 +3,23 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BrainCircuit } from 'lucide-react';
 
-const Fase14_Orquestador = ({ onPhaseComplete }) => {
+const Fase14_Orquestador = ({ onPhaseComplete, patientData }) => {
     const [statusLog, setStatusLog] = useState([]);
     const [currentAction, setCurrentAction] = useState('Iniciando Cortex Integral...');
 
     useEffect(() => {
+        const isFemale = patientData?.profile?.sex === 'FEMENINO';
+        const riskLevel = patientData?.clinical_context?.alert_level || 'NORMAL';
+        
         const sequence = [
-            { time: 500, log: 'Procesando Eje Hormonal (Resistencia / Cortisol)...' },
-            { time: 2000, log: 'Analizando Psiquiatría Nutricional (Eje intestino-cerebro)...' },
-            { time: 3500, log: 'Sintetizando Medicina Metabólica (Inmunidad)...' },
-            { time: 5000, log: 'Evaluando Reequilibrio Biomecánico...' },
-            { time: 6500, log: 'Traduciendo a 7 Bloques Clínicos Estandarizados...' },
-            { time: 8000, action: 'done' }
+            { time: 500, log: `Iniciando análisis para paciente ${isFemale ? 'femenina' : 'masculino'}...` },
+            { time: 2000, log: `Calibrando nivel de riesgo clínico: ${riskLevel}` },
+            { time: 3500, log: 'Procesando Eje Hormonal (Resistencia / Cortisol)...' },
+            { time: 5000, log: 'Analizando Psiquiatría Nutricional (Eje intestino-cerebro)...' },
+            { time: 6500, log: 'Sintetizando Medicina Metabólica (Inmunidad)...' },
+            { time: 8000, log: 'Evaluando Reequilibrio Biomecánico...' },
+            { time: 9500, log: 'Traduciendo a 7 Bloques Clínicos Estandarizados...' },
+            { time: 11000, action: 'done' }
         ];
 
         let timeouts = [];
@@ -38,7 +43,7 @@ const Fase14_Orquestador = ({ onPhaseComplete }) => {
         });
 
         return () => timeouts.forEach(clearTimeout);
-    }, [onPhaseComplete]);
+    }, [onPhaseComplete, patientData?.profile?.sex, patientData?.clinical_context?.alert_level]);
 
     return (
         <div className="flex flex-col h-full bg-slate-900 relative items-center justify-center p-8 overflow-hidden">
