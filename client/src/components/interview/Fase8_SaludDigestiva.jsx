@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import tiloImg from "../../assets/tilo.png";
 import { Send, Check } from 'lucide-react';
+import usePatientLinguistics from '../../hooks/usePatientLinguistics';
 
 const symptomOptions = [
     { label: "Colitis / Inflamación", value: "Colitis / Inflamación" },
@@ -12,9 +13,7 @@ const symptomOptions = [
 ];
 
 export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
-    const ptCtx = patientData?.profile?.pediatric_profile;
-    const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    const { patientName: pName, isMinor, patientGender } = usePatientLinguistics(patientData);
 
     const [messages, setMessages] = useState(() => {
         if (initialChatHistory && initialChatHistory.length > 0) {
@@ -144,8 +143,7 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
     };
 
     const finishPhase = (hadSymptoms = false) => {
-        const sex = patientData?.identificacion?.sexo || patientData?.profile?.sex;
-        const isFemale = sex === 'Femenino' || sex === 'MUJER';
+        const isFemale = patientGender.startsWith('F');
 
         const introText = hadSymptoms
             ? (isMinor ? `Entendido, los síntomas digestivos de ${pName} han sido registrados.` : "Entendido, sus síntomas digestivos han sido registrados.")
