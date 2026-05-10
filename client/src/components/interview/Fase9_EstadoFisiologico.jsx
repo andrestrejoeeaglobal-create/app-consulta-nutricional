@@ -5,7 +5,8 @@ import { Send } from 'lucide-react';
 
 export default function Fase9_EstadoFisiologico({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
     const ptCtx = patientData?.profile?.pediatric_profile;
-    const isYouth = ptCtx?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
 
     const [messages, setMessages] = useState(() => {
         if (initialChatHistory && initialChatHistory.length > 0) {
@@ -53,7 +54,7 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                     }));
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isYouth ? "¿Cuántas semanas de gestación tienes?" : "¿Cuántas semanas de gestación tiene?"
+                        text: isMinor ? `¿Cuántas semanas de gestación tiene ${pName}?` : "¿Cuántas semanas de gestación tiene?"
                     }]);
                     setStep('preg_weeks');
                     setCurrentOptions([]);
@@ -64,7 +65,7 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                     }));
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isYouth ? "¿Actualmente te encuentras en periodo de lactancia?" : "¿Actualmente se encuentra en periodo de lactancia?"
+                        text: isMinor ? `¿Actualmente se encuentra ${pName} en periodo de lactancia?` : "¿Actualmente se encuentra en periodo de lactancia?"
                     }]);
                     setStep('lact_gate');
                     setCurrentOptions([
@@ -72,7 +73,7 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                         { label: "✅ Sí", value: "Sí" }
                     ]);
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No." }]);
                 }
                 break;
             }
@@ -81,7 +82,7 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                 if (isNaN(weeks) || weeks < 1 || weeks > 42) {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: "Por favor, ingrese un número válido de semanas (1-42)."
+                        text: isMinor ? "Por favor, ingresa un número válido de semanas (1-42)." : "Por favor, ingrese un número válido de semanas (1-42)."
                     }]);
                 } else {
                     setPatientData(prev => ({
@@ -90,7 +91,7 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                     }));
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isYouth ? "¿Actualmente te encuentras en periodo de lactancia (además de estar embarazada)?" : "¿Actualmente se encuentra en periodo de lactancia (además de estar embarazada)?"
+                        text: isMinor ? `¿Actualmente se encuentra ${pName} en periodo de lactancia (además de estar embarazada)?` : "¿Actualmente se encuentra en periodo de lactancia (además de estar embarazada)?"
                     }]);
                     setStep('lact_gate');
                     setCurrentOptions([
@@ -122,13 +123,13 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                     }));
                     finishPhase();
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No." }]);
                 }
                 break;
             }
             case 'lact_type': {
                 if (input !== "Exclusiva" && input !== "Mixta") {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: "Seleccione Exclusiva o Mixta." }]);
+                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Selecciona Exclusiva o Mixta." : "Seleccione Exclusiva o Mixta." }]);
                     return;
                 }
                 setPatientData(prev => ({
@@ -137,7 +138,7 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                 }));
                 setMessages(prev => [...prev, {
                     sender: 'tilo',
-                    text: isYouth ? "¿Qué edad tiene tu bebé (en meses)?" : "¿Qué edad tiene su bebé (en meses)?"
+                    text: isMinor ? `¿Qué edad tiene el bebé de ${pName} (en meses)?` : "¿Qué edad tiene su bebé (en meses)?"
                 }]);
                 setStep('baby_age');
                 setCurrentOptions([]);
@@ -148,7 +149,7 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                 if (isNaN(months) || months < 0 || months > 48) {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: "Por favor, ingrese un número válido de meses (0-48)."
+                        text: isMinor ? "Por favor, ingresa un número válido de meses (0-48)." : "Por favor, ingrese un número válido de meses (0-48)."
                     }]);
                 } else {
                     setPatientData(prev => ({
@@ -165,8 +166,8 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
     };
 
     const finishPhase = () => {
-        const nextMsg = isYouth
-            ? "Registrado.\n\nPasemos a tu Estilo de Vida.\n\n¿Fumas tabaco o utilizas vapeadores?"
+        const nextMsg = isMinor
+            ? `Registrado.\n\nPasemos al Estilo de Vida.\n\n¿Fuma ${pName} tabaco o utiliza vapeadores?`
             : "Registrado.\n\nPasemos a su Estilo de Vida.\n\n¿Fuma tabaco o utiliza vapeadores?";
 
         const finalMessages = messages.map(msg => ({
@@ -237,7 +238,7 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                 <div className="relative flex items-center gap-2 bg-white border border-slate-200 rounded-full px-2 py-2 shadow-sm focus-within:ring-4 focus-within:ring-blue-50 focus-within:border-blue-400 transition-all w-full">
                     {currentOptions.length > 0 ? (
                         <div className="flex-1 px-3 py-2 text-slate-400 text-sm italic border-l border-slate-100 flex items-center">
-                            Por favor, seleccione una opción superior.
+                            {isMinor ? "Por favor, selecciona una opción superior." : "Por favor, seleccione una opción superior."}
                         </div>
                     ) : (
                         <input
@@ -245,7 +246,7 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                            placeholder="Escribe tu respuesta..."
+                            placeholder={isMinor ? "Escribe aquí..." : "Escriba aquí..."}
                             className="flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2"
                         />
                     )}
