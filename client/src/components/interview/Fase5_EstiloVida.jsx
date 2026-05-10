@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { formatText } from '../../utils/utils';
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
 /**
  * T.I.L.O. - MÓDULO FASE 5 (ESTILO DE VIDA)
- * Versión: v4.0 - Standard Look & Feel Alignment
+ * Versión: v4.1 - Standard Look & Feel Alignment + Pediatric Linguistics
  * * CONSISTENCIA: Sigue el modelo de Fase 3 y 4 (Burbujas limpias UI).
  * * Dimensión 2: Fisiología Ambiental (Altitud automática por CP).
  * * Dimensión 7: Sincronización de Ciclo Femenino (Obligatorio por género).
@@ -13,10 +14,16 @@ import { formatText } from '../../utils/utils';
  */
 
 const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStateChange, onPhaseComplete, initialChatHistory }) => {
-    // Extract name robustly
+    // Uso del hook de lingüística para unificar nombres y contextos pediátricos
+    const { patientName: pName, patientSex } = usePatientLinguistics(patientData);
     const ptCtx = patientData?.profile?.pediatric_profile;
     const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientProfile?.firstName || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    
+    const isFemale = patientSex?.toUpperCase().startsWith('F');
+    
+    // Pronombres dinámicos
+    const ptArticle = isFemale ? 'la paciente' : 'el paciente';
+    const minorArticle = isFemale ? 'la menor' : 'el menor';
 
     const initialCp = patientData?.identificacion?.codigoPostal || patientProfile?.postalCode;
     const initialAltitude = (() => {
@@ -45,20 +52,19 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
     const [messages, setMessages] = useState(() => {
         if (initialChatHistory && initialChatHistory.length > 0) return initialChatHistory;
         
-        const nameStr = pName !== "NOM" ? pName : "";
         let greeting = "";
         if (initialCp) {
             greeting = initialAltitude > 2000
                 ? isMinor
-                    ? `${nameStr}, he analizado el entorno. Al vivir en **${initialCity}** a **${initialAltitude} msnm**, el cuerpo de la menor lucha contra la hipoxia ambiental, lo que eleva el cortisol. Para reclamar la soberanía biológica, ¿cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
-                    : `${nameStr}, he analizado su entorno. Al vivir en **${initialCity}** a **${initialAltitude} msnm**, su cuerpo lucha contra la hipoxia ambiental, lo que eleva su cortisol. Para reclamar su soberanía biológica, ¿cómo calificaría su nivel de energía del 1 al 10 al despertar?`
+                    ? `${pName}, he analizado el entorno. Al vivir en **${initialCity}** a **${initialAltitude} msnm**, el cuerpo de ${pName} lucha contra la hipoxia ambiental, lo que eleva el cortisol. Para reclamar la soberanía biológica, ¿cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
+                    : `${pName}, he analizado su entorno. Al vivir en **${initialCity}** a **${initialAltitude} msnm**, su cuerpo lucha contra la hipoxia ambiental, lo que eleva su cortisol. Para reclamar su soberanía biológica, ¿cómo calificaría su nivel de energía del 1 al 10 al despertar?`
                 : isMinor
-                    ? `${nameStr}, ahora que tenemos los planos genéticos, vamos a la arquitectura del día. ¿Cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
-                    : `${nameStr}, ahora que tenemos sus planos genéticos, vamos a la arquitectura de su día. ¿Cómo calificaría su nivel de energía del 1 al 10 al despertar?`;
+                    ? `${pName}, ahora que tenemos los planos genéticos, vamos a la arquitectura del día. ¿Cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
+                    : `${pName}, ahora que tenemos sus planos genéticos, vamos a la arquitectura de su día. ¿Cómo calificaría su nivel de energía del 1 al 10 al despertar?`;
         } else {
             greeting = isMinor
-                ? `${nameStr}, ahora vamos a evaluar la arquitectura del día. ¿Cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
-                : `${nameStr}, ahora vamos a evaluar la arquitectura de su día. ¿Cómo calificaría su nivel de energía del 1 al 10 al despertar?`;
+                ? `${pName}, ahora vamos a evaluar la arquitectura del día. ¿Cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
+                : `${pName}, ahora vamos a evaluar la arquitectura de su día. ¿Cómo calificaría su nivel de energía del 1 al 10 al despertar?`;
         }
 
         return [{
@@ -132,10 +138,9 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                 syncLifeData({ energy: { ...lifeStyle.energy, level: energyScore } });
 
                 // Dimensión 7: Sincronización Ciclo (Solo Mujeres)
-                const sex = patientData?.identificacion?.sexoBiologico || patientProfile?.sex;
-                if (sex === 'FEMALE') {
+                if (isFemale) {
                     const cycleMsg = isMinor 
-                        ? `Dato registrado. Como Bio-Arquitecto, debo sincronizar el plan con el ritmo hormonal de la menor. ¿En qué fase del ciclo se encuentra hoy o cómo describiría los periodos recientes de ${pName}?`
+                        ? `Dato registrado. Como Bio-Arquitecto, debo sincronizar el plan con el ritmo hormonal de ${minorArticle}. ¿En qué fase del ciclo se encuentra hoy o cómo describiría los periodos recientes de ${pName}?`
                         : `Dato registrado. Como Bio-Arquitecto, debo sincronizar su plan con su ritmo hormonal. ¿En qué fase de su ciclo se encuentra hoy o cómo describiría sus periodos recientes?`;
                     setMessages(prev => [...prev, {
                         role: 'assistant', content: cycleMsg, options: [
