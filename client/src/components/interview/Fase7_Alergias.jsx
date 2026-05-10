@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import tiloImg from "../../assets/tilo.png";
 import { Send } from 'lucide-react';
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
 const formatText = (text) => {
     return text
@@ -10,9 +11,11 @@ const formatText = (text) => {
 };
 
 export default function Fase7_Alergias({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
+    const { patientName: pName, patientAge, patientSex } = usePatientLinguistics(patientData);
     const ptCtx = patientData?.profile?.pediatric_profile;
-    const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    const isMinor = ptCtx?.is_minor === true || patientAge < 18;
+    const isFemale = patientSex?.toUpperCase().startsWith('F');
+    const allergicSuf = isFemale ? 'a' : 'o';
 
     // Estado Local Initialize
     const [messages, setMessages] = useState(() => {
@@ -20,8 +23,8 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
             return initialChatHistory;
         }
         const initialMsg = isMinor
-            ? `Entendido. Pasemos a las alergias e intolerancias.\n\n¿Es ${pName} alérgico/a a algún alimento? (Ej. Mariscos, Nuez, Lácteos).`
-            : "Entendido. Pasemos a sus alergias e intolerancias.\n\n¿Es usted alérgico/a a algún alimento? (Ej. Mariscos, Nuez, Lácteos).";
+            ? `Entendido. Pasemos a las alergias e intolerancias.\n\n¿Es ${pName} alérgic${allergicSuf} a algún alimento? (Ej. Mariscos, Nuez, Lácteos).`
+            : `Entendido. Pasemos a sus alergias e intolerancias.\n\n¿Es usted alérgic${allergicSuf} a algún alimento? (Ej. Mariscos, Nuez, Lácteos).`;
         return [{ sender: 'tilo', text: initialMsg }];
     });
 
@@ -66,7 +69,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isMinor ? `¿A qué alimento es alérgico/a ${pName}?` : "¿A qué alimento es alérgico/a?"
+                        text: isMinor ? `¿A qué alimento es alérgic${allergicSuf} ${pName}?` : `¿A qué alimento es alérgic${allergicSuf}?`
                     }]);
                     setStep('food_agent');
                     setCurrentOptions([]);
@@ -108,7 +111,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
 
                 setMessages(prev => [...prev, {
                     sender: 'tilo',
-                    text: isMinor ? `Registrado. ¿Es alérgico/a a algún otro alimento?` : `Registrado. ¿Es alérgico/a a algún otro alimento?`
+                    text: isMinor ? `Registrado. ¿Es alérgic${allergicSuf} a algún otro alimento?` : `Registrado. ¿Es alérgic${allergicSuf} a algún otro alimento?`
                 }]);
                 setStep('food_next');
                 setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
@@ -118,7 +121,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isMinor ? `¿A qué otro alimento es alérgico/a?` : `¿A qué otro alimento es alérgico/a?`
+                        text: isMinor ? `¿A qué otro alimento es alérgic${allergicSuf}?` : `¿A qué otro alimento es alérgic${allergicSuf}?`
                     }]);
                     setStep('food_agent');
                     setCurrentOptions([]);
@@ -135,7 +138,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isMinor ? `¿A qué medicamento es alérgico/a ${pName}?` : `¿A qué medicamento es alérgico/a?`
+                        text: isMinor ? `¿A qué medicamento es alérgic${allergicSuf} ${pName}?` : `¿A qué medicamento es alérgic${allergicSuf}?`
                     }]);
                     setStep('drug_agent');
                     setCurrentOptions([]);
@@ -177,7 +180,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
 
                 setMessages(prev => [...prev, {
                     sender: 'tilo',
-                    text: isMinor ? `Registrado. ¿Es alérgico/a a algún otro medicamento?` : `Registrado. ¿Es alérgico/a a algún otro medicamento?`
+                    text: isMinor ? `Registrado. ¿Es alérgic${allergicSuf} a algún otro medicamento?` : `Registrado. ¿Es alérgic${allergicSuf} a algún otro medicamento?`
                 }]);
                 setStep('drug_next');
                 setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
@@ -187,7 +190,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isMinor ? `¿A qué otro medicamento es alérgico/a?` : `¿A qué otro medicamento es alérgico/a?`
+                        text: isMinor ? `¿A qué otro medicamento es alérgic${allergicSuf}?` : `¿A qué otro medicamento es alérgic${allergicSuf}?`
                     }]);
                     setStep('drug_agent');
                     setCurrentOptions([]);
@@ -206,8 +209,8 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
 
     const transitionToDrugs = () => {
         const msgContent = isMinor
-            ? `Perfecto. Ahora pasemos a los medicamentos.\n\n¿Es ${pName} alérgico/a a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).`
-            : "Perfecto. Ahora pasemos a los medicamentos.\n\n¿Es usted alérgico/a a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).";
+            ? `Perfecto. Ahora pasemos a los medicamentos.\n\n¿Es ${pName} alérgic${allergicSuf} a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).`
+            : `Perfecto. Ahora pasemos a los medicamentos.\n\n¿Es usted alérgic${allergicSuf} a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).`;
 
         setMessages(prev => [...prev, {
             sender: 'tilo',
