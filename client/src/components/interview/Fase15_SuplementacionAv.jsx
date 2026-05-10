@@ -34,7 +34,7 @@ const mockSuggestions = [
     }
 ];
 
-const Fase15_SuplementacionAv = ({ onPhaseComplete }) => {
+const Fase15_SuplementacionAv = ({ onPhaseComplete, setPatientData }) => {
     const [suggestions, setSuggestions] = useState(mockSuggestions);
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({ dosage: '', timing: '' });
@@ -193,7 +193,15 @@ const Fase15_SuplementacionAv = ({ onPhaseComplete }) => {
 
             <div className="pt-6 mt-4 border-t border-slate-200">
                 <button
-                    onClick={() => onPhaseComplete('PHASE_16_DIETARY_PROTOCOL')}
+                    onClick={() => {
+                        if (setPatientData) {
+                            setPatientData(prev => ({
+                                ...prev,
+                                advanced_supplementation: suggestions.filter(s => s.status === 'approved')
+                            }));
+                        }
+                        onPhaseComplete('PHASE_16_DIETARY_PROTOCOL');
+                    }}
                     disabled={!allResolved}
                     className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${allResolved
                         ? 'bg-black text-white hover:bg-slate-800 shadow-md transform hover:-translate-y-0.5'

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Calculator, Settings, Check, UtensilsCrossed, AlertTriangle } from 'lucide-react';
 
-const Fase16_ProtocoloDietetico = ({ onPhaseComplete }) => {
+const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData }) => {
     const [tdee, setTdee] = useState('2200');
     const [target, setTarget] = useState('2000'); // Déficit por defecto
 
@@ -178,6 +178,20 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete }) => {
                 <button
                     onClick={() => {
                         // Aquí se inyectaría finalPatientData con Dieta
+                        if (setPatientData) {
+                            setPatientData(prev => ({
+                                ...prev,
+                                nutrition: {
+                                    ...prev.nutrition,
+                                    protocol: {
+                                        tdee,
+                                        target,
+                                        macros,
+                                        constraints
+                                    }
+                                }
+                            }));
+                        }
                         onPhaseComplete('PHASE_17_DASHBOARD_RENDER');
                     }}
                     disabled={totalMacros !== 100}
