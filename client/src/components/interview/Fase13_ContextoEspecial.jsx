@@ -4,10 +4,10 @@ import tiloImg from '../../assets/tilo.png';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+
 const Fase13_ContextoEspecial = ({ patientData, setPatientData, onPhaseComplete }) => {
-    const ptCtx = patientData?.profile?.pediatric_profile;
-    const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    const { pName, isMinor } = usePatientLinguistics(patientData);
     // ------------------------------------------------------------------------
     // STATE: Mantenemos un array local de mensajes estilo chat
     // ------------------------------------------------------------------------
