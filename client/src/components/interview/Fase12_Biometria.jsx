@@ -3,6 +3,7 @@ import { Send, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import tiloImg from '../../assets/tilo.png';
 import { strictBooleanValidator } from '../../utils/utils';
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
 // Helper to extract numbers from metric input
 const normalizeMetricMatch = (text) => {
@@ -22,9 +23,7 @@ const Fase12_Biometria = ({
     patientData,
     setPatientData
 }) => {
-    const ptCtx = patientData?.profile?.pediatric_profile;
-    const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    const { pName, isMinor } = usePatientLinguistics(patientData);
 
     // ESTADO DEL COMPONENTE
     const [messages, setMessages] = useState([
