@@ -2,11 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import tiloImg from "../../assets/tilo.png";
 import { Send } from 'lucide-react';
+import usePatientLinguistics from '../../hooks/usePatientLinguistics';
 
 export default function Fase9_EstadoFisiologico({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
-    const ptCtx = patientData?.profile?.pediatric_profile;
-    const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
 
     const [messages, setMessages] = useState(() => {
         if (initialChatHistory && initialChatHistory.length > 0) {
