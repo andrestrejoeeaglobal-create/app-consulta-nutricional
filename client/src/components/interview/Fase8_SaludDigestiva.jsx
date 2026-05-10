@@ -13,14 +13,15 @@ const symptomOptions = [
 
 export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
     const ptCtx = patientData?.profile?.pediatric_profile;
-    const isYouth = ptCtx?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
 
     const [messages, setMessages] = useState(() => {
         if (initialChatHistory && initialChatHistory.length > 0) {
             return initialChatHistory;
         }
-        const initialMsg = isYouth
-            ? "Pasemos a tu salud digestiva. En los últimos 30 días, ¿has padecido inflamación, gases, acidez, o estreñimiento recurrente?"
+        const initialMsg = isMinor
+            ? `Pasemos a la salud digestiva. En los últimos 30 días, ¿ha padecido ${pName} inflamación, gases, acidez, o estreñimiento recurrente?`
             : "Pasemos a su salud digestiva. En los últimos 30 días, ¿ha padecido inflamación, gases, acidez, o estreñimiento recurrente?";
         return [{ sender: 'tilo', text: initialMsg }];
     });
@@ -78,7 +79,7 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: "¿Cuáles de los siguientes síntomas presenta con mayor frecuencia? (Puede elegir varios)"
+                        text: isMinor ? `¿Cuáles de los siguientes síntomas presenta ${pName} con mayor frecuencia? (Puede elegir varios)` : "¿Cuáles de los siguientes síntomas presenta con mayor frecuencia? (Puede elegir varios)"
                     }]);
                     setStep('digestive_symptoms');
                     setCurrentOptions(symptomOptions);
@@ -94,7 +95,7 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
                     }));
                     finishPhase();
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No." }]);
                 }
                 break;
             }
@@ -116,7 +117,7 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
 
                 setMessages(prev => [...prev, {
                     sender: 'tilo',
-                    text: "¿Con qué frecuencia presenta estas molestias?"
+                    text: isMinor ? `¿Con qué frecuencia presenta ${pName} estas molestias?` : "¿Con qué frecuencia presenta estas molestias?"
                 }]);
                 setStep('digestive_freq');
                 setCurrentOptions([
@@ -147,17 +148,17 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
         const isFemale = sex === 'Femenino' || sex === 'MUJER';
 
         const introText = hadSymptoms
-            ? (isYouth ? "Entendido, tus síntomas digestivos han sido registrados." : "Entendido, sus síntomas digestivos han sido registrados.")
-            : (isYouth ? "Excelente. Perfil digestivo registrado sin alteraciones." : "Excelente. Perfil digestivo registrado sin alteraciones.");
+            ? (isMinor ? `Entendido, los síntomas digestivos de ${pName} han sido registrados.` : "Entendido, sus síntomas digestivos han sido registrados.")
+            : (isMinor ? `Excelente. Perfil digestivo de ${pName} registrado sin alteraciones.` : "Excelente. Perfil digestivo registrado sin alteraciones.");
 
         let nextMsg = "";
         let nextPhase = "";
 
         if (!isFemale) {
-            nextMsg = `${introText}\n\nPasemos a tu Estilo de Vida.\n\n¿Fumas tabaco o utilizas vapeadores?`;
+            nextMsg = isMinor ? `${introText}\n\nPasemos al Estilo de Vida.\n\n¿Fuma ${pName} tabaco o utiliza vapeadores?` : `${introText}\n\nPasemos a su Estilo de Vida.\n\n¿Fuma tabaco o utiliza vapeadores?`;
             nextPhase = 'PHASE_10_SMOKE_GATE';
         } else {
-            nextMsg = `${introText}\n\nPara ajustar tus requerimientos de energía: ¿Te encuentras embarazada actualmente?`;
+            nextMsg = isMinor ? `${introText}\n\nPara ajustar los requerimientos de energía: ¿Se encuentra ${pName} embarazada actualmente?` : `${introText}\n\nPara ajustar sus requerimientos de energía: ¿Se encuentra embarazada actualmente?`;
             nextPhase = 'PHASE_9_PREG_GATE';
         }
 
@@ -247,11 +248,11 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
                 <div className="relative flex items-center gap-2 bg-white border border-slate-200 rounded-full px-2 py-2 shadow-sm focus-within:ring-4 focus-within:ring-blue-50 focus-within:border-blue-400 transition-all w-full">
                     {currentOptions.length > 0 && !isMultiSelect ? (
                         <div className="flex-1 px-3 py-2 text-slate-400 text-sm italic border-l border-slate-100 flex items-center">
-                            Por favor, seleccione una opción superior.
+                            {isMinor ? "Por favor, selecciona una opción superior." : "Por favor, seleccione una opción superior."}
                         </div>
                     ) : isMultiSelect ? (
                         <div className="flex-1 px-3 py-2 text-slate-400 text-sm italic border-l border-slate-100 flex items-center">
-                            Seleccione uno o más síntomas y presione Confirmar.
+                            {isMinor ? "Selecciona uno o más síntomas y presiona Confirmar." : "Seleccione uno o más síntomas y presione Confirmar."}
                         </div>
                     ) : (
                         <input
@@ -259,7 +260,7 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                            placeholder="Escribe tu respuesta..."
+                            placeholder="Escriba aquí..."
                             className="flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2"
                         />
                     )}
