@@ -13,92 +13,74 @@ import { formatText } from '../../utils/utils';
  */
 
 const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStateChange, onPhaseComplete, initialChatHistory }) => {
-    const [messages, setMessages] = useState(initialChatHistory || []);
-    const [inputValue, setInputValue] = useState("");
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [currentStep, setCurrentStep] = useState('ENVIRONMENT');
-    const chatEndRef = useRef(null);
+    // Extract name robustly
+    const ptCtx = patientData?.profile?.pediatric_profile;
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientProfile?.firstName || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+
+    const initialCp = patientData?.identificacion?.codigoPostal || patientProfile?.postalCode;
+    const initialAltitude = (() => {
+        if (!initialCp) return 500;
+        const cpPrefix = initialCp.substring(0, 2);
+        if (['50', '52'].includes(cpPrefix)) return 2667;
+        if (['01', '02', '14', '03', '06'].includes(cpPrefix)) return 2240;
+        return 500;
+    })();
+    const initialCity = (() => {
+        if (!initialCp) return "Zona Costera / Bajío";
+        const cpPrefix = initialCp.substring(0, 2);
+        if (['50', '52'].includes(cpPrefix)) return "Toluca (Alta Montaña)";
+        if (['01', '02', '14', '03', '06'].includes(cpPrefix)) return "CDMX (Valle Alto)";
+        return "Zona Costera / Bajío";
+    })();
 
     const [lifeStyle, setLifeStyle] = useState({
-        environment: { altitude: 0, hypoxiaRisk: false, city: "Detectando..." },
+        environment: { altitude: initialAltitude, hypoxiaRisk: initialAltitude > 2000, city: initialCity },
         circadian: { sleepHours: 0, quality: "" },
         hormonal: { cyclePhase: "N/A", lastPeriod: "" },
         energy: { level: 0, peakTime: "" },
         bio_architecture_goal: ""
     });
 
-    // Extract name robustly
-    const firstName = (patientData?.identityLock?.name || patientProfile?.firstName || patientData?.identificacion?.nombres || "Rosa").split(' ')[0];
-
-    // CORTEX ARANDUPY: Altitud derivación silenciosa (Dimensión 2)
-    useEffect(() => {
-        let isMounted = true;
-        const cp = patientData?.identificacion?.codigoPostal || patientProfile?.postalCode;
-        if (cp) {
-            const cpPrefix = cp.substring(0, 2);
-            let altitude = 500;
-            let city = "Zona Costera / Bajío";
-
-            // Ñemyatyrõ: Toluca de Lerdo (CP 50-52) = 2,667m
-            if (['50', '52'].includes(cpPrefix)) { altitude = 2667; city = "Toluca (Alta Montaña)"; }
-            else if (['01', '02', '14', '03', '06'].includes(cpPrefix)) { altitude = 2240; city = "CDMX (Valle Alto)"; }
-
-            const updates = {
-                environment: { altitude, hypoxiaRisk: altitude > 2000, city }
-            };
-
-            setTimeout(() => {
-                if (!isMounted) return;
-                const newState = { ...lifeStyle, ...updates };
-                setLifeStyle(newState);
-                if (onStateChange) onStateChange(newState);
-
-                // Apertura de Tilo usando Bio-Arquitectura
-                const nameStr = firstName !== "NOM" ? firstName : "";
-                const greeting = altitude > 2000
-                    ? `${nameStr}, he analizado su entorno. Al vivir en **${city}** a **${altitude} msnm**, su cuerpo lucha contra la hipoxia ambiental, lo que eleva su cortisol. Para reclamar su soberanía biológica, ¿cómo calificaría su nivel de energía del 1 al 10 al despertar?`
+    const [messages, setMessages] = useState(() => {
+        if (initialChatHistory && initialChatHistory.length > 0) return initialChatHistory;
+        
+        const nameStr = pName !== "NOM" ? pName : "";
+        let greeting = "";
+        if (initialCp) {
+            greeting = initialAltitude > 2000
+                ? isMinor
+                    ? `${nameStr}, he analizado el entorno. Al vivir en **${initialCity}** a **${initialAltitude} msnm**, el cuerpo de la menor lucha contra la hipoxia ambiental, lo que eleva el cortisol. Para reclamar la soberanía biológica, ¿cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
+                    : `${nameStr}, he analizado su entorno. Al vivir en **${initialCity}** a **${initialAltitude} msnm**, su cuerpo lucha contra la hipoxia ambiental, lo que eleva su cortisol. Para reclamar su soberanía biológica, ¿cómo calificaría su nivel de energía del 1 al 10 al despertar?`
+                : isMinor
+                    ? `${nameStr}, ahora que tenemos los planos genéticos, vamos a la arquitectura del día. ¿Cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
                     : `${nameStr}, ahora que tenemos sus planos genéticos, vamos a la arquitectura de su día. ¿Cómo calificaría su nivel de energía del 1 al 10 al despertar?`;
-
-                setMessages(prev => {
-                    const alreadyGreeted = prev.some(m => m.content.includes("energía"));
-                    if (!alreadyGreeted) {
-                        return [...prev, {
-                            role: 'assistant', content: greeting, options: [
-                                { label: "1 a 3 (Muy Baja)", value: "3" },
-                                { label: "4 a 6 (Regular)", value: "5" },
-                                { label: "7 a 8 (Buena)", value: "7" },
-                                { label: "9 a 10 (Excelente)", value: "9" }
-                            ]
-                        }];
-                    }
-                    return prev;
-                });
-            }, 300);
         } else {
-            // Fallback si no hay CP
-            setTimeout(() => {
-                if (!isMounted) return;
-                const nameStr = firstName !== "NOM" ? firstName : "";
-                const greeting = `${nameStr}, ahora vamos a evaluar la arquitectura de su día. ¿Cómo calificaría su nivel de energía del 1 al 10 al despertar?`;
-                setMessages(prev => {
-                    const alreadyGreeted = prev.some(m => m.content.includes("energía"));
-                    if (!alreadyGreeted) {
-                        return [...prev, {
-                            role: 'assistant', content: greeting, options: [
-                                { label: "1 a 3 (Muy Baja)", value: "3" },
-                                { label: "4 a 6 (Regular)", value: "5" },
-                                { label: "7 a 8 (Buena)", value: "7" },
-                                { label: "9 a 10 (Excelente)", value: "9" }
-                            ]
-                        }];
-                    }
-                    return prev;
-                });
-            }, 300);
+            greeting = isMinor
+                ? `${nameStr}, ahora vamos a evaluar la arquitectura del día. ¿Cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
+                : `${nameStr}, ahora vamos a evaluar la arquitectura de su día. ¿Cómo calificaría su nivel de energía del 1 al 10 al despertar?`;
         }
-        return () => { isMounted = false; };
+
+        return [{
+            role: 'assistant', content: greeting, options: [
+                { label: "1 a 3 (Muy Baja)", value: "3" },
+                { label: "4 a 6 (Regular)", value: "5" },
+                { label: "7 a 8 (Buena)", value: "7" },
+                { label: "9 a 10 (Excelente)", value: "9" }
+            ]
+        }];
+    });
+
+    const [inputValue, setInputValue] = useState("");
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [currentStep, setCurrentStep] = useState('ENVIRONMENT');
+    const chatEndRef = useRef(null);
+
+    // Call onStateChange initially if provided, to ensure parent is synced
+    useEffect(() => {
+        if (onStateChange) onStateChange(lifeStyle);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [patientData?.identificacion?.codigoPostal, patientProfile?.postalCode, firstName]);
+    }, []);
 
     const syncLifeData = async (updates) => {
         const newState = { ...lifeStyle, ...updates };
@@ -152,7 +134,9 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                 // Dimensión 7: Sincronización Ciclo (Solo Mujeres)
                 const sex = patientData?.identificacion?.sexoBiologico || patientProfile?.sex;
                 if (sex === 'FEMALE') {
-                    const cycleMsg = `Dato registrado. Como Bio-Arquitecto, debo sincronizar su plan con su ritmo hormonal. ¿En qué fase de su ciclo se encuentra hoy o cómo describiría sus periodos recientes?`;
+                    const cycleMsg = isMinor 
+                        ? `Dato registrado. Como Bio-Arquitecto, debo sincronizar el plan con el ritmo hormonal de la menor. ¿En qué fase del ciclo se encuentra hoy o cómo describiría los periodos recientes de ${pName}?`
+                        : `Dato registrado. Como Bio-Arquitecto, debo sincronizar su plan con su ritmo hormonal. ¿En qué fase de su ciclo se encuentra hoy o cómo describiría sus periodos recientes?`;
                     setMessages(prev => [...prev, {
                         role: 'assistant', content: cycleMsg, options: [
                             { label: "Folicular / Lútea", value: "Folicular_Lutea" },
@@ -163,7 +147,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                     setCurrentStep('HORMONAL');
                 } else {
                     setMessages(prev => [...prev, {
-                        role: 'assistant', content: "¿Cuántas horas de sueño profundo logra rescatar cada noche para su reparación celular?", options: [
+                        role: 'assistant', content: isMinor ? `¿Cuántas horas de sueño profundo logra rescatar ${pName} cada noche para su reparación celular?` : "¿Cuántas horas de sueño profundo logra rescatar cada noche para su reparación celular?", options: [
                             { label: "8 horas o más", value: ">8_hours" },
                             { label: "Entre 6 y 7 horas", value: "6-7_hours" },
                             { label: "Menos de 5 horas", value: "<5_hours" }
@@ -180,7 +164,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
 
                 syncLifeData({ hormonal: { ...lifeStyle.hormonal, cyclePhase: phase } });
                 setMessages(prev => [...prev, {
-                    role: 'assistant', content: "Entendido. Sincronizaremos los micronutrientes con esa fase. Finalmente, ¿cuántas horas duerme en promedio?", options: [
+                    role: 'assistant', content: isMinor ? `Entendido. Sincronizaremos los micronutrientes con esa fase. Finalmente, ¿cuántas horas duerme ${pName} en promedio?` : "Entendido. Sincronizaremos los micronutrientes con esa fase. Finalmente, ¿cuántas horas duerme en promedio?", options: [
                         { label: "8 horas o más", value: ">8_hours" },
                         { label: "Entre 6 y 7 horas", value: "6-7_hours" },
                         { label: "Menos de 5 horas", value: "<5_hours" }
@@ -196,7 +180,9 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
 
                 syncLifeData({ circadian: { ...lifeStyle.circadian, sleepHours: hours } });
 
-                const finalMsg = `Auditoría completada. He identificado los cuellos de botella en su flexibilidad metabólica. Estamos listos para cerrar sus planos de salud e iniciar la transformación.`;
+                const finalMsg = isMinor
+                    ? `Auditoría completada. He identificado los cuellos de botella en la flexibilidad metabólica de ${pName}. Estamos listos para cerrar los planos de salud e iniciar la transformación.`
+                    : `Auditoría completada. He identificado los cuellos de botella en su flexibilidad metabólica. Estamos listos para cerrar sus planos de salud e iniciar la transformación.`;
                 setMessages(prev => [...prev, {
                     role: 'assistant', content: finalMsg, options: [
                         { label: "Continuar a la siguiente fase", value: "FINISH_PHASE" }
@@ -270,7 +256,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                         type="text"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        placeholder="Escriba su respuesta..."
+                        placeholder="Escriba aquí..."
                         className="flex-1 px-5 py-4 bg-gray-50 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1C75BC] focus:bg-white transition-all font-sansation text-slate-700 shadow-sm disabled:opacity-50 disabled:bg-gray-100"
                         disabled={isInputDisabled}
                     />
