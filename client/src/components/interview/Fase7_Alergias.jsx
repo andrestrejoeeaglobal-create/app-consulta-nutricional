@@ -11,15 +11,16 @@ const formatText = (text) => {
 
 export default function Fase7_Alergias({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
     const ptCtx = patientData?.profile?.pediatric_profile;
-    const isYouth = ptCtx?.ui_controls?.tone_key === 'YOUTH_EMP_TONE';
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
 
     // Estado Local Initialize
     const [messages, setMessages] = useState(() => {
         if (initialChatHistory && initialChatHistory.length > 0) {
             return initialChatHistory;
         }
-        const initialMsg = isYouth
-            ? "Entendido. Pasemos a tus alergias e intolerancias.\n\n¿Eres alérgico/a a algún alimento? (Ej. Mariscos, Nuez, Lácteos)."
+        const initialMsg = isMinor
+            ? `Entendido. Pasemos a las alergias e intolerancias.\n\n¿Es ${pName} alérgico/a a algún alimento? (Ej. Mariscos, Nuez, Lácteos).`
             : "Entendido. Pasemos a sus alergias e intolerancias.\n\n¿Es usted alérgico/a a algún alimento? (Ej. Mariscos, Nuez, Lácteos).";
         return [{ sender: 'tilo', text: initialMsg }];
     });
@@ -65,7 +66,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isYouth ? "¿A qué alimento eres alérgico?" : "¿A qué alimento es alérgico?"
+                        text: isMinor ? `¿A qué alimento es alérgico/a ${pName}?` : "¿A qué alimento es alérgico/a?"
                     }]);
                     setStep('food_agent');
                     setCurrentOptions([]);
@@ -80,7 +81,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 setTempAllergy(prev => ({ ...prev, agent: input, type: 'FOOD' }));
                 setMessages(prev => [...prev, {
                     sender: 'tilo',
-                    text: isYouth ? `Entendido (${input}). ¿Qué reacción te provoca? (Ej. Inflamación, ronchas, anafilaxia, picazón).` : `Entendido (${input}). ¿Qué reacción le provoca? (Ej. Inflamación, ronchas, anafilaxia, picazón).`
+                    text: isMinor ? `Entendido (${input}). ¿Qué reacción le provoca a ${pName}? (Ej. Inflamación, ronchas, anafilaxia, picazón).` : `Entendido (${input}). ¿Qué reacción le provoca? (Ej. Inflamación, ronchas, anafilaxia, picazón).`
                 }]);
                 setStep('food_reaction');
                 break;
@@ -107,7 +108,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
 
                 setMessages(prev => [...prev, {
                     sender: 'tilo',
-                    text: isYouth ? `Registrado. ¿Eres alérgico a algún otro alimento?` : `Registrado. ¿Es alérgico a algún otro alimento?`
+                    text: isMinor ? `Registrado. ¿Es alérgico/a a algún otro alimento?` : `Registrado. ¿Es alérgico/a a algún otro alimento?`
                 }]);
                 setStep('food_next');
                 setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
@@ -117,14 +118,14 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isYouth ? "¿A qué otro alimento eres alérgico?" : "¿A qué otro alimento es alérgico?"
+                        text: isMinor ? `¿A qué otro alimento es alérgico/a?` : `¿A qué otro alimento es alérgico/a?`
                     }]);
                     setStep('food_agent');
                     setCurrentOptions([]);
                 } else if (input === "No") {
                     transitionToDrugs();
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: "Responda SÍ o NO." }]);
+                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Responde SÍ o NO." : "Responda SÍ o NO." }]);
                 }
                 break;
             }
@@ -134,7 +135,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isYouth ? "¿A qué medicamento eres alérgico?" : "¿A qué medicamento es alérgico?"
+                        text: isMinor ? `¿A qué medicamento es alérgico/a ${pName}?` : `¿A qué medicamento es alérgico/a?`
                     }]);
                     setStep('drug_agent');
                     setCurrentOptions([]);
@@ -149,7 +150,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 setTempAllergy(prev => ({ ...prev, agent: input, type: 'DRUG' }));
                 setMessages(prev => [...prev, {
                     sender: 'tilo',
-                    text: isYouth ? `Entendido (${input}). ¿Qué reacción te provoca?` : `Entendido (${input}). ¿Qué reacción le provoca?`
+                    text: isMinor ? `Entendido (${input}). ¿Qué reacción le provoca a ${pName}?` : `Entendido (${input}). ¿Qué reacción le provoca?`
                 }]);
                 setStep('drug_reaction');
                 break;
@@ -176,7 +177,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
 
                 setMessages(prev => [...prev, {
                     sender: 'tilo',
-                    text: isYouth ? `Registrado. ¿Eres alérgico a algún otro medicamento?` : `Registrado. ¿Es alérgico a algún otro medicamento?`
+                    text: isMinor ? `Registrado. ¿Es alérgico/a a algún otro medicamento?` : `Registrado. ¿Es alérgico/a a algún otro medicamento?`
                 }]);
                 setStep('drug_next');
                 setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
@@ -186,14 +187,14 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         sender: 'tilo',
-                        text: isYouth ? "¿A qué otro medicamento eres alérgico?" : "¿A qué otro medicamento es alérgico?"
+                        text: isMinor ? `¿A qué otro medicamento es alérgico/a?` : `¿A qué otro medicamento es alérgico/a?`
                     }]);
                     setStep('drug_agent');
                     setCurrentOptions([]);
                 } else if (input === "No") {
                     handleFinish();
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: "Responda SÍ o NO." }]);
+                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Responde SÍ o NO." : "Responda SÍ o NO." }]);
                 }
                 break;
             }
@@ -204,9 +205,9 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
     };
 
     const transitionToDrugs = () => {
-        const msgContent = isYouth
-            ? "Perfecto. Ahora pasemos a los medicamentos.\n\n¿Eres alérgico a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina)."
-            : "Perfecto. Ahora pasemos a los medicamentos.\n\n¿Es alérgico a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).";
+        const msgContent = isMinor
+            ? `Perfecto. Ahora pasemos a los medicamentos.\n\n¿Es ${pName} alérgico/a a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).`
+            : "Perfecto. Ahora pasemos a los medicamentos.\n\n¿Es usted alérgico/a a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).";
 
         setMessages(prev => [...prev, {
             sender: 'tilo',
@@ -283,7 +284,7 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                            placeholder="Escribe tu respuesta..."
+                            placeholder="Escriba aquí..."
                             className="flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2"
                         />
                     )}
