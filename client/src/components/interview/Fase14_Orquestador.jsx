@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 import { BrainCircuit } from 'lucide-react';
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
 const Fase14_Orquestador = ({ onPhaseComplete, patientData }) => {
     const [statusLog, setStatusLog] = useState([]);
     const [currentAction, setCurrentAction] = useState('Iniciando Cortex Integral...');
+    
+    const { patientSex } = usePatientLinguistics(patientData);
 
     useEffect(() => {
-        const isFemale = patientData?.profile?.sex === 'FEMENINO';
+        const isFemale = patientSex === 'FEMENINO' || patientSex === 'F' || patientSex === 'Mujer';
         const riskLevel = patientData?.clinical_context?.alert_level || 'NORMAL';
         
         const sequence = [
@@ -43,7 +46,7 @@ const Fase14_Orquestador = ({ onPhaseComplete, patientData }) => {
         });
 
         return () => timeouts.forEach(clearTimeout);
-    }, [onPhaseComplete, patientData?.profile?.sex, patientData?.clinical_context?.alert_level]);
+    }, [onPhaseComplete, patientSex, patientData?.clinical_context?.alert_level]);
 
     return (
         <div className="flex flex-col h-full bg-slate-900 relative items-center justify-center p-8 overflow-hidden">
