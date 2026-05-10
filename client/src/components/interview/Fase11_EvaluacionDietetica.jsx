@@ -55,12 +55,15 @@ function checkFreq(respuestaStr, tipoAlimento = 'risk') {
 const Fase11_EvaluacionDietetica = ({
     onPhaseComplete,
     patientData,
-    setPatientData,
-    isYouth = false
+    setPatientData
 }) => {
+    const ptCtx = patientData?.profile?.pediatric_profile;
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+
     // ESTADO DEL COMPONENTE
     const [messages, setMessages] = useState([
-        { role: "assistant", content: isYouth ? "¿Cuáles son tus alimentos que NO te gustan (aversiones)? Si no tienes, dime 'Ninguno'." : "¿Cuáles son sus alimentos que NO le gustan (aversiones)? Si no tiene, diga 'Ninguno'.", avatar: tiloImg }
+        { role: "assistant", content: isMinor ? `¿Cuáles son los alimentos que NO le gustan a ${pName} (aversiones)? Si no tiene, responde 'Ninguno'.` : "¿Cuáles son sus alimentos que NO le gustan (aversiones)? Si no tiene, diga 'Ninguno'.", avatar: tiloImg }
     ]);
     const [inputValue, setInputValue] = useState("");
     const [internalStep, setInternalStep] = useState('AVERSIONS_GATE');
@@ -107,25 +110,25 @@ const Fase11_EvaluacionDietetica = ({
             const isBool = strictBooleanValidator(userMsg);
             if (isBool === false) {
                 // "No tengo", "Ninguno"
-                addBotMsg(isYouth ? "¿Cuáles son tus alimentos favoritos o preferidos?" : "¿Cuáles son sus alimentos favoritos o preferidos?");
+                addBotMsg(isMinor ? `¿Cuáles son los alimentos favoritos o preferidos de ${pName}?` : "¿Cuáles son sus alimentos favoritos o preferidos?");
                 setInternalStep('FAVORITES_GATE');
             } else if (isBool === true) {
                 // "Sí tengo", etc
-                addBotMsg(isYouth ? "¿Cuáles alimentos evitas?" : "¿Cuáles alimentos evita?");
+                addBotMsg(isMinor ? `¿Cuáles alimentos evita ${pName}?` : "¿Cuáles alimentos evita?");
             } else {
                 // Dió contenido directamente (Ej: "El brócoli")
                 setEvaluacionDietetica(prev => ({
                     ...prev,
                     preferencias: { ...prev.preferencias, aversiones: formatText(userMsg) }
                 }));
-                addBotMsg(isYouth ? "¿Algún otro alimento que evites?" : "¿Algún otro alimento que evite?");
+                addBotMsg(isMinor ? `¿Algún otro alimento que evite ${pName}?` : "¿Algún otro alimento que evite?");
                 setInternalStep('AVERSIONS_LOOP');
             }
         }
         else if (internalStep === 'AVERSIONS_LOOP') {
             const isBool = strictBooleanValidator(userMsg);
             if (isBool === false) {
-                addBotMsg(isYouth ? "¿Cuáles son tus alimentos favoritos o preferidos?" : "¿Cuáles son sus alimentos favoritos o preferidos?");
+                addBotMsg(isMinor ? `¿Cuáles son los alimentos favoritos o preferidos de ${pName}?` : "¿Cuáles son sus alimentos favoritos o preferidos?");
                 setInternalStep('FAVORITES_GATE');
             } else if (isBool === true) {
                 addBotMsg("¿Cuál?");
@@ -147,10 +150,10 @@ const Fase11_EvaluacionDietetica = ({
         else if (internalStep === 'FAVORITES_GATE') {
             const isBool = strictBooleanValidator(userMsg);
             if (isBool === false) {
-                addBotMsg(isYouth ? "Entendido.\\n\\nPasemos al Recordatorio de 24 Horas.\\n\\nDime, ¿a qué hora consumiste tu primer alimento ayer? (Ej. 8:00 am)." : "Entendido.\\n\\nPasemos al Recordatorio de 24 Horas.\\n\\nDígame, ¿a qué hora consumió su primer alimento ayer? (Ej. 8:00 am).");
+                addBotMsg(isMinor ? `Entendido.\\n\\nPasemos al Recordatorio de 24 Horas.\\n\\nDime, ¿a qué hora consumió ${pName} su primer alimento ayer? (Ej. 8:00 am).` : "Entendido.\\n\\nPasemos al Recordatorio de 24 Horas.\\n\\nDígame, ¿a qué hora consumió su primer alimento ayer? (Ej. 8:00 am).");
                 setInternalStep('R24H_TIME');
             } else if (isBool === true) {
-                addBotMsg(isYouth ? "¿Cuáles son tus favoritos?" : "¿Cuáles son sus favoritos?");
+                addBotMsg(isMinor ? `¿Cuáles son los favoritos de ${pName}?` : "¿Cuáles son sus favoritos?");
             } else {
                 setEvaluacionDietetica(prev => ({
                     ...prev,
@@ -163,7 +166,7 @@ const Fase11_EvaluacionDietetica = ({
         else if (internalStep === 'FAVORITES_LOOP') {
             const isBool = strictBooleanValidator(userMsg);
             if (isBool === false) {
-                addBotMsg(isYouth ? "Entendido.\\n\\nPasemos al Recordatorio de 24 Horas.\\n\\nDime, ¿a qué hora consumiste tu primer alimento ayer? (Ej. 8:00 am)." : "Entendido.\\n\\nPasemos al Recordatorio de 24 Horas.\\n\\nDígame, ¿a qué hora consumió su primer alimento ayer? (Ej. 8:00 am).");
+                addBotMsg(isMinor ? `Entendido.\\n\\nPasemos al Recordatorio de 24 Horas.\\n\\nDime, ¿a qué hora consumió ${pName} su primer alimento ayer? (Ej. 8:00 am).` : "Entendido.\\n\\nPasemos al Recordatorio de 24 Horas.\\n\\nDígame, ¿a qué hora consumió su primer alimento ayer? (Ej. 8:00 am).");
                 setInternalStep('R24H_TIME');
             } else if (isBool === true) {
                 addBotMsg("¿Cuál?");
@@ -184,11 +187,11 @@ const Fase11_EvaluacionDietetica = ({
         // -------------------------------------------------------------
         else if (internalStep === 'R24H_TIME') {
             if (lower.includes("nada") || lower.includes("fin") || lower.includes("dormir") || lower.includes("todo") || (lower.includes("no") && userMsg.length < 5)) {
-                addBotMsg(isYouth ? "Registro de 24h completado.\\n\\n**Frecuencia de Consumo.**\\n\\nPara cada grupo de alimentos, responde con un número del **0 al 7** (días a la semana, donde 0=Nunca, 7=Diario).\\n\\n1. **Lácteos** (Leche, Queso, Yogurt):" : "Registro de 24h completado.\\n\\n**Frecuencia de Consumo.**\\n\\nPara cada grupo de alimentos, responda con un número del **0 al 7** (días a la semana, donde 0=Nunca, 7=Diario).\\n\\n1. **Lácteos** (Leche, Queso, Yogurt):");
+                addBotMsg(isMinor ? "Registro de 24h completado.\\n\\n**Frecuencia de Consumo.**\\n\\nPara cada grupo de alimentos, responde con un número del **0 al 7** (días a la semana, donde 0=Nunca, 7=Diario).\\n\\n1. **Lácteos** (Leche, Queso, Yogurt):" : "Registro de 24h completado.\\n\\n**Frecuencia de Consumo.**\\n\\nPara cada grupo de alimentos, responda con un número del **0 al 7** (días a la semana, donde 0=Nunca, 7=Diario).\\n\\n1. **Lácteos** (Leche, Queso, Yogurt):");
                 setInternalStep('FFQ_DAIRY');
             } else {
                 setTempItem({ hora: userMsg });
-                addBotMsg(isYouth ? "¿Qué comiste a esa hora?" : "¿Qué comió a esa hora?");
+                addBotMsg(isMinor ? `¿Qué comió ${pName} a esa hora?` : "¿Qué comió a esa hora?");
                 setInternalStep('R24H_CONTENT');
             }
         }
@@ -198,7 +201,7 @@ const Fase11_EvaluacionDietetica = ({
                 ...prev,
                 r24h: [...prev.r24h, newItem]
             }));
-            addBotMsg(isYouth ? "¿Cuál fue la siguiente hora de comida? (O di 'Fin' si terminaste)." : "¿Cuál fue la siguiente hora de comida? (O diga 'Fin' si terminó).");
+            addBotMsg(isMinor ? "¿Cuál fue la siguiente hora de comida? (O di 'Fin' si terminaste)." : "¿Cuál fue la siguiente hora de comida? (O diga 'Fin' si terminó).");
             setInternalStep('R24H_TIME');
         }
 
