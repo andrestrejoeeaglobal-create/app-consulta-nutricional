@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Send, Check } from 'lucide-react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import tiloImg from '../../assets/tilo.png';
+import usePatientLinguistics from '../../hooks/usePatientLinguistics';
 
 const formatText = (text) => text.trim();
 const strictBooleanValidator = (text) => {
@@ -17,10 +18,7 @@ const strictBooleanValidator = (text) => {
 // ==========================================
 export default function Fase10_Habitos({ initialChatHistory, patientData, onPhaseComplete }) {
     const { updateClinicalContext } = useClinicalGenome();
-
-    const ptCtx = patientData?.profile?.pediatric_profile;
-    const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
 
     // Estado principal del componente
     const [messages, setMessages] = useState(() => {
