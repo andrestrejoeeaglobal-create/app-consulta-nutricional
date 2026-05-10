@@ -20,15 +20,18 @@ const normalizeMetricMatch = (text) => {
 const Fase12_Biometria = ({
     onPhaseComplete,
     patientData,
-    setPatientData,
-    isYouth = false
+    setPatientData
 }) => {
+    const ptCtx = patientData?.profile?.pediatric_profile;
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+
     // ESTADO DEL COMPONENTE
     const [messages, setMessages] = useState([
         {
             role: "assistant",
-            content: isYouth
-                ? "¿Cuentas con algún registro reciente de tu peso o estatura que podamos ingresar al sistema? (Sí / No)"
+            content: isMinor
+                ? `¿Cuenta con algún registro reciente del peso o estatura de ${pName} que podamos ingresar al sistema? (Sí / No)`
                 : "¿Cuenta con algún registro reciente de su peso o estatura que podamos ingresar al sistema? (Sí / No)",
             avatar: tiloImg
         }
@@ -38,19 +41,17 @@ const Fase12_Biometria = ({
 
     // DATOS RECOLECTADOS (ESTADO LOCAL)
     const [biometria, setBiometria] = useState({
-        vitales_antropometria: {
-            talla_m: patientData?.vitales_antropometria?.talla_m || null,
-            peso_kg: patientData?.vitales_antropometria?.peso_kg || null,
-            cintura_cm: patientData?.vitales_antropometria?.cintura_cm || null,
-            cadera_cm: patientData?.vitales_antropometria?.cadera_cm || null
-        },
-        signosVitales: {
-            ta: patientData?.signosVitales?.ta || "",
-            spo2: patientData?.signosVitales?.spo2 || "",
-            fc: patientData?.signosVitales?.fc || "",
-            temp: patientData?.signosVitales?.temp || "",
-            fr: patientData?.signosVitales?.fr || "",
-            glucosa: patientData?.signosVitales?.glucosa || ""
+        vitals: {
+            height: patientData?.vitals?.height || null,
+            weight: patientData?.vitals?.weight || null,
+            waist: patientData?.vitals?.waist || null,
+            hip: patientData?.vitals?.hip || null,
+            blood_pressure: patientData?.vitals?.blood_pressure || "",
+            spo2: patientData?.vitals?.spo2 || null,
+            hr: patientData?.vitals?.hr || null,
+            temperature: patientData?.vitals?.temperature || null,
+            rr: patientData?.vitals?.rr || null,
+            glucose: patientData?.vitals?.glucose || null
         }
     });
 
@@ -85,22 +86,21 @@ const Fase12_Biometria = ({
             const isValid = strictBooleanValidator(userMsg);
             if (isValid === false) {
                 // Skips biometrics completely
-                if (setPatientData) {
-                    setPatientData(prev => ({
-                        ...prev,
-                        vitales_antropometria: biometria.vitales_antropometria,
-                        signosVitales: biometria.signosVitales,
-                        clinical_flags: [...(prev.clinical_flags || []), ...clinicalFlags]
-                    }));
-                }
-                addBotMsg("Entendido.\\n\\nFase 7: Contexto Especial.\\n\\n¿Ha tenido cirugías recientes, padece algún síndrome o situación particular importante para su plan nutricional?");
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    vitals: { ...prev.vitals, ...biometria.vitals },
+                    clinical_flags: [...(prev.clinical_flags || []), ...clinicalFlags]
+                }));
+            }
+                addBotMsg("Entendido. Pasando a la siguiente sección...");
                 setInternalStep('FINALIZED');
-                if (onPhaseComplete) onPhaseComplete('PHASE_14_SPECIAL_CONTEXT');
+                if (onPhaseComplete) onPhaseComplete('PHASE_13_SPECIAL_CONTEXT');
             } else if (isValid === true) {
-                addBotMsg(isYouth ? "¿Cuál es tu estatura en metros? (Ej: 1.65)" : "¿Cuál es su estatura en metros? (Ej: 1.65)");
+                addBotMsg(isMinor ? `¿Cuál es la estatura de ${pName} en metros? (Ej: 1.65)` : "¿Cuál es su estatura en metros? (Ej: 1.65)");
                 setInternalStep('HEIGHT');
             } else {
-                addBotMsg("Por favor, responde Sí o No.");
+                addBotMsg(isMinor ? "Por favor, responde Sí o No." : "Por favor, responda Sí o No.");
             }
         }
 
@@ -110,11 +110,11 @@ const Fase12_Biometria = ({
         else if (internalStep === 'HEIGHT') {
             const val = normalizeMetricMatch(userMsg);
             if (!val) {
-                addBotMsg(isYouth ? "Por favor ingresa un número válido (ej: 1.65)" : "Por favor ingrese un número válido (ej: 1.65)");
+                addBotMsg(isMinor ? "Por favor ingresa un número válido (ej: 1.65)" : "Por favor ingrese un número válido (ej: 1.65)");
                 return;
             }
-            setBiometria(prev => ({ ...prev, vitales_antropometria: { ...prev.vitales_antropometria, talla_m: val } }));
-            addBotMsg(isYouth ? "¿Cuál es tu peso en kilogramos? (Ej: 65 o 65.5)" : "¿Cuál es su peso en kilogramos? (Ej: 65 o 65.5)");
+            setBiometria(prev => ({ ...prev, vitals: { ...prev.vitals, height: val } }));
+            addBotMsg(isMinor ? `¿Cuál es el peso de ${pName} en kilogramos? (Ej: 65 o 65.5)` : "¿Cuál es su peso en kilogramos? (Ej: 65 o 65.5)");
             setInternalStep('WEIGHT');
         }
 
@@ -124,11 +124,11 @@ const Fase12_Biometria = ({
         else if (internalStep === 'WEIGHT') {
             const val = normalizeMetricMatch(userMsg);
             if (!val) {
-                addBotMsg(isYouth ? "Por favor ingresa un número válido (ej: 65.5)" : "Por favor ingrese un número válido (ej: 65.5)");
+                addBotMsg(isMinor ? "Por favor ingresa un número válido (ej: 65.5)" : "Por favor ingrese un número válido (ej: 65.5)");
                 return;
             }
-            setBiometria(prev => ({ ...prev, vitales_antropometria: { ...prev.vitales_antropometria, peso_kg: val } }));
-            addBotMsg(isYouth ? "¿Cuál es tu circunferencia de cintura en centímetros? (Ej: 80)" : "¿Cuál es su circunferencia de cintura en centímetros? (Ej: 80)");
+            setBiometria(prev => ({ ...prev, vitals: { ...prev.vitals, weight: val } }));
+            addBotMsg(isMinor ? `¿Cuál es la circunferencia de cintura de ${pName} en centímetros? (Ej: 80)` : "¿Cuál es su circunferencia de cintura en centímetros? (Ej: 80)");
             setInternalStep('WAIST');
         }
 
@@ -138,11 +138,11 @@ const Fase12_Biometria = ({
         else if (internalStep === 'WAIST') {
             const val = normalizeMetricMatch(userMsg);
             if (!val) {
-                addBotMsg(isYouth ? "Por favor ingresa un número válido (ej: 80)" : "Por favor ingrese un número válido (ej: 80)");
+                addBotMsg(isMinor ? "Por favor ingresa un número válido (ej: 80)" : "Por favor ingrese un número válido (ej: 80)");
                 return;
             }
-            setBiometria(prev => ({ ...prev, vitales_antropometria: { ...prev.vitales_antropometria, cintura_cm: val } }));
-            addBotMsg(isYouth ? "¿Cuál es tu circunferencia de cadera en centímetros? (Ej: 95)" : "¿Cuál es su circunferencia de cadera en centímetros? (Ej: 95)");
+            setBiometria(prev => ({ ...prev, vitals: { ...prev.vitals, waist: val } }));
+            addBotMsg(isMinor ? `¿Cuál es la circunferencia de cadera de ${pName} en centímetros? (Ej: 95)` : "¿Cuál es su circunferencia de cadera en centímetros? (Ej: 95)");
             setInternalStep('HIP');
         }
 
@@ -152,11 +152,11 @@ const Fase12_Biometria = ({
         else if (internalStep === 'HIP') {
             const val = normalizeMetricMatch(userMsg);
             if (!val) {
-                addBotMsg(isYouth ? "Por favor ingresa un número válido (ej: 95)" : "Por favor ingrese un número válido (ej: 95)");
+                addBotMsg(isMinor ? "Por favor ingresa un número válido (ej: 95)" : "Por favor ingrese un número válido (ej: 95)");
                 return;
             }
-            setBiometria(prev => ({ ...prev, vitales_antropometria: { ...prev.vitales_antropometria, cadera_cm: val } }));
-            addBotMsg(isYouth ? "¿Cuál es tu presión arterial? (Ej: 120/80)" : "¿Cuál es su presión arterial? (Ej: 120/80)");
+            setBiometria(prev => ({ ...prev, vitals: { ...prev.vitals, hip: val } }));
+            addBotMsg(isMinor ? `¿Cuál es la presión arterial de ${pName}? (Ej: 120/80)` : "¿Cuál es su presión arterial? (Ej: 120/80)");
             setInternalStep('BP');
         }
 
@@ -176,7 +176,7 @@ const Fase12_Biometria = ({
 
             const regexBP = /^\d{2,3}\/\d{2,3}$/;
             if (!regexBP.test(finalBP) && !finalBP.toLowerCase().includes("na") && !finalBP.toLowerCase().includes("no")) {
-                addBotMsg(isYouth ? "Formato inválido. Usa '120/80' o '120 80' (Con espacio)." : "Formato inválido. Use '120/80' o '120 80' (Con espacio).");
+                addBotMsg(isMinor ? "Formato inválido. Use '120/80' o '120 80' (Con espacio)." : "Formato inválido. Use '120/80' o '120 80' (Con espacio).");
                 return;
             }
 
@@ -191,9 +191,9 @@ const Fase12_Biometria = ({
             }
 
             if (newFlags.length > 0) setClinicalFlags(prev => [...prev, ...newFlags]);
-            setBiometria((prev) => ({ ...prev, signosVitales: { ...prev.signosVitales, ta: finalBP } }));
+            setBiometria((prev) => ({ ...prev, vitals: { ...prev.vitals, blood_pressure: finalBP } }));
 
-            addBotMsg(`${alertMsg}${isYouth ? "¿Cuál es tu saturación de oxígeno? (Ej: 98)" : "¿Cuál es su saturación de oxígeno? (Ej: 98)"}`);
+            addBotMsg(`${alertMsg}${isMinor ? `¿Cuál es la saturación de oxígeno de ${pName}? (Ej: 98)` : "¿Cuál es su saturación de oxígeno? (Ej: 98)"}`);
             setInternalStep('SPO2');
         }
 
@@ -203,24 +203,24 @@ const Fase12_Biometria = ({
         else if (internalStep === 'SPO2') {
             const val = parseInt(userMsg);
             if ((isNaN(val) || val < 50 || val > 100) && !lower.includes("na") && !lower.includes("no")) {
-                addBotMsg("Valor inválido (50-100%). O di 'NO' o 'NA' si no tienes el dato.");
+                addBotMsg(isMinor ? "Valor inválido (50-100%). O di 'NO' o 'NA' si no tienes el dato." : "Valor inválido (50-100%). O diga 'NO' o 'NA' si no tiene el dato.");
                 return;
             }
 
             let alertMsg = "";
             let newFlags = [];
             if (!isNaN(val)) {
-                setBiometria((prev) => ({ ...prev, signosVitales: { ...prev.signosVitales, spo2: val.toString() } }));
+                setBiometria((prev) => ({ ...prev, vitals: { ...prev.vitals, spo2: val } }));
                 if (val < 90) {
                     newFlags.push("HIPOXIA");
                     alertMsg = "🚨 ALERTA: HIPOXIA (SpO2 < 90%).\\n\\n";
                 }
             } else {
-                setBiometria((prev) => ({ ...prev, signosVitales: { ...prev.signosVitales, spo2: "N/A" } }));
+                setBiometria((prev) => ({ ...prev, vitals: { ...prev.vitals, spo2: null } }));
             }
 
             if (newFlags.length > 0) setClinicalFlags(prev => [...prev, ...newFlags]);
-            addBotMsg(`${alertMsg}${isYouth ? "¿Cuál es tu frecuencia cardíaca? (Ej: 75)" : "¿Cuál es su frecuencia cardíaca? (Ej: 75)"}`);
+            addBotMsg(`${alertMsg}${isMinor ? `¿Cuál es la frecuencia cardíaca de ${pName}? (Ej: 75)` : "¿Cuál es su frecuencia cardíaca? (Ej: 75)"}`);
             setInternalStep('FC');
         }
 
@@ -230,24 +230,24 @@ const Fase12_Biometria = ({
         else if (internalStep === 'FC') {
             const val = parseInt(userMsg);
             if ((isNaN(val) || val < 30 || val > 250) && !lower.includes("na") && !lower.includes("no")) {
-                addBotMsg("Valor inválido (30-250 bpm). O di 'NO' o 'NA' si no tienes el dato.");
+                addBotMsg(isMinor ? "Valor inválido (30-250 bpm). O di 'NO' o 'NA' si no tienes el dato." : "Valor inválido (30-250 bpm). O diga 'NO' o 'NA' si no tiene el dato.");
                 return;
             }
 
             let alertMsg = "";
             let newFlags = [];
             if (!isNaN(val)) {
-                setBiometria((prev) => ({ ...prev, signosVitales: { ...prev.signosVitales, fc: val.toString() } }));
+                setBiometria((prev) => ({ ...prev, vitals: { ...prev.vitals, hr: val } }));
                 if (val > 100) {
                     newFlags.push("TAQUICARDIA");
                     alertMsg = "🚨 ALERTA: TAQUICARDIA (FC > 100).\\n\\n";
                 }
             } else {
-                setBiometria((prev) => ({ ...prev, signosVitales: { ...prev.signosVitales, fc: "N/A" } }));
+                setBiometria((prev) => ({ ...prev, vitals: { ...prev.vitals, hr: null } }));
             }
 
             if (newFlags.length > 0) setClinicalFlags(prev => [...prev, ...newFlags]);
-            addBotMsg(`${alertMsg}${isYouth ? "¿Cuál es tu temperatura? (Ej: 36.5)" : "¿Cuál es su temperatura? (Ej: 36.5)"}`);
+            addBotMsg(`${alertMsg}${isMinor ? `¿Cuál es la temperatura de ${pName}? (Ej: 36.5)` : "¿Cuál es su temperatura? (Ej: 36.5)"}`);
             setInternalStep('TEMP');
         }
 
@@ -257,24 +257,24 @@ const Fase12_Biometria = ({
         else if (internalStep === 'TEMP') {
             const val = parseFloat(userMsg);
             if ((isNaN(val) || val < 30 || val > 45) && !lower.includes("na") && !lower.includes("no")) {
-                addBotMsg("Valor inválido (30-45 °C). O di 'NO' o 'NA' si no tienes el dato.");
+                addBotMsg(isMinor ? "Valor inválido (30-45 °C). O di 'NO' o 'NA' si no tienes el dato." : "Valor inválido (30-45 °C). O diga 'NO' o 'NA' si no tiene el dato.");
                 return;
             }
 
             let alertMsg = "";
             let newFlags = [];
             if (!isNaN(val)) {
-                setBiometria((prev) => ({ ...prev, signosVitales: { ...prev.signosVitales, temp: val.toString() } }));
+                setBiometria((prev) => ({ ...prev, vitals: { ...prev.vitals, temperature: val } }));
                 if (val > 37.5) {
                     newFlags.push("FIEBRE");
                     alertMsg = "🚨 ALERTA: FIEBRE (> 37.5°C).\\n\\n";
                 }
             } else {
-                setBiometria((prev) => ({ ...prev, signosVitales: { ...prev.signosVitales, temp: "N/A" } }));
+                setBiometria((prev) => ({ ...prev, vitals: { ...prev.vitals, temperature: null } }));
             }
 
             if (newFlags.length > 0) setClinicalFlags(prev => [...prev, ...newFlags]);
-            addBotMsg(`${alertMsg}${isYouth ? "¿Cuál es tu frecuencia respiratoria? (Ej: 16)" : "¿Cuál es su frecuencia respiratoria? (Ej: 16)"}`);
+            addBotMsg(`${alertMsg}${isMinor ? `¿Cuál es la frecuencia respiratoria de ${pName}? (Ej: 16)` : "¿Cuál es su frecuencia respiratoria? (Ej: 16)"}`);
             setInternalStep('FR');
         }
 
@@ -284,24 +284,24 @@ const Fase12_Biometria = ({
         else if (internalStep === 'FR') {
             const val = parseInt(userMsg);
             if ((isNaN(val) || val < 8 || val > 60) && !lower.includes("na") && !lower.includes("no")) {
-                addBotMsg("Valor inválido (8-60 rpm). O di 'NO' o 'NA' si no tienes el dato.");
+                addBotMsg(isMinor ? "Valor inválido (8-60 rpm). O di 'NO' o 'NA' si no tienes el dato." : "Valor inválido (8-60 rpm). O diga 'NO' o 'NA' si no tiene el dato.");
                 return;
             }
 
             let alertMsg = "";
             let newFlags = [];
             if (!isNaN(val)) {
-                setBiometria((prev) => ({ ...prev, signosVitales: { ...prev.signosVitales, fr: val.toString() } }));
+                setBiometria((prev) => ({ ...prev, vitals: { ...prev.vitals, rr: val } }));
                 if (val > 24) {
                     newFlags.push("TAQUIPNEA");
                     alertMsg = "🚨 ALERTA: TAQUIPNEA (> 24 rpm).\\n\\n";
                 }
             } else {
-                setBiometria((prev) => ({ ...prev, signosVitales: { ...prev.signosVitales, fr: "N/A" } }));
+                setBiometria((prev) => ({ ...prev, vitals: { ...prev.vitals, rr: null } }));
             }
 
             if (newFlags.length > 0) setClinicalFlags(prev => [...prev, ...newFlags]);
-            addBotMsg(`${alertMsg}${isYouth ? "¿Conoces tu nivel de glucosa capilar reciente o la tomaremos ahora? (Si aplica, ingresa en mg/dL. Si no, di 'No')." : "¿Conoce su nivel de glucosa capilar reciente o la tomaremos ahora? (Si aplica, ingrese en mg/dL. Si no, diga 'No')."}`);
+            addBotMsg(`${alertMsg}${isMinor ? `¿Conoces el nivel de glucosa capilar reciente de ${pName} o se lo tomaremos ahora? (Si aplica, ingresa en mg/dL. Si no, di 'No').` : "¿Conoce su nivel de glucosa capilar reciente o la tomaremos ahora? (Si aplica, ingrese en mg/dL. Si no, diga 'No')."}`);
             setInternalStep('GLUCOSE');
         }
 
@@ -328,12 +328,12 @@ const Fase12_Biometria = ({
                 }
             }
 
-            const glucosaVal = (isNaN(val)) ? "No reportada" : val.toString() + " mg/dL";
+            const glucosaVal = (isNaN(val)) ? null : val;
 
             // Build the final internal state before committing externally
             const finalBio = {
                 ...biometria,
-                signosVitales: { ...biometria.signosVitales, glucosa: glucosaVal }
+                vitals: { ...biometria.vitals, glucose: glucosaVal }
             };
             setBiometria(finalBio);
 
@@ -344,15 +344,14 @@ const Fase12_Biometria = ({
             if (setPatientData) {
                 setPatientData(prev => ({
                     ...prev,
-                    vitales_antropometria: finalBio.vitales_antropometria,
-                    signosVitales: finalBio.signosVitales,
+                    vitals: { ...prev.vitals, ...finalBio.vitals },
                     clinical_flags: [...(prev.clinical_flags || []), ...finalFlags]
                 }));
             }
 
-            addBotMsg(`${alertMsg}📢 Diga al paciente:\\n\\n${isYouth ? "'Perfecto, terminamos las mediciones. Regresate al escritorio. Ya tengo listo tu Diagnóstico Integral.'\\n\\n(Fin de la Entrevista)." : "'Perfecto, terminamos las mediciones. Regresemos al escritorio. Ya tengo listo su Diagnóstico Integral.'\\n\\n(Fin de la Entrevista)."}`);
+            addBotMsg(`${alertMsg}📢 ${isMinor ? "Dile al paciente:\\n\\n'Perfecto, terminamos las mediciones. Regresemos al escritorio para unas últimas preguntas.'" : "Diga al paciente:\\n\\n'Perfecto, terminamos las mediciones. Regresemos al escritorio para unas últimas preguntas.'"}`);
             setInternalStep('FINALIZED');
-            if (onPhaseComplete) onPhaseComplete('PHASE_13_COMPLETE_HANDOFF'); // This maps to Phase 14 / Conclusion essentially in App architecture
+            if (onPhaseComplete) onPhaseComplete('PHASE_13_SPECIAL_CONTEXT');
         }
     };
 
