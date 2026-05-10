@@ -10,12 +10,6 @@ import { formatText } from '../../utils/utils';
  */
 
 const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComplete, initialChatHistory }) => {
-    const [messages, setMessages] = useState(initialChatHistory || []);
-    const [inputValue, setInputValue] = useState("");
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [pendingBranchData, setPendingBranchData] = useState(null);
-    const chatEndRef = useRef(null);
-
     const [familyTree, setFamilyTree] = useState({
         parents: { diabetes: false, hypertension: false, cancer: false, obesity: false, renal: false },
         grandparentsMaternal: { diabetes: false, hypertension: false, cancer: false, obesity: false, renal: false },
@@ -25,34 +19,28 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
         alert_detected: false
     });
 
-    // Extract name robustly from identityLock or identificacion
-    const firstName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "Paciente").split(' ')[0];
+    const ptCtx = patientData?.profile?.pediatric_profile;
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
 
-    // 1. SALUDO HUMANO
-    useEffect(() => {
-        let isMounted = true;
-        const nameStr = firstName !== "NOM" ? firstName : "";
-        const greeting = `Entendido. Ahora, para complementar su mapa de salud, ${nameStr}, ¿podría contarme si sus padres o abuelos padecen alguna enfermedad como diabetes, hipertensión, obesidad o problemas renales?`;
+    const [messages, setMessages] = useState(() => {
+        if (initialChatHistory && initialChatHistory.length > 0) return initialChatHistory;
+        const nameStr = pName !== "NOM" ? pName : "";
+        const greeting = isMinor 
+            ? `Entendido. Ahora, para complementar el mapa de salud de ${nameStr}, ¿podría contarme si los padres o abuelos de la menor padecen alguna enfermedad como diabetes, hipertensión, obesidad o problemas renales?`
+            : `Entendido. Ahora, para complementar su mapa de salud, ${nameStr}, ¿podría contarme si sus padres o abuelos padecen alguna enfermedad como diabetes, hipertensión, obesidad o problemas renales?`;
+        return [{
+            role: 'assistant', content: greeting, options: [
+                { label: "No, ninguno", value: "NO_ANTECEDENTES" },
+                { label: "Sí, hay antecedentes", value: "SI_ANTECEDENTES" }
+            ]
+        }];
+    });
 
-        setTimeout(() => {
-            if (isMounted) {
-                setMessages(prev => {
-                    const alreadyGreeted = prev.some(m => m.content.includes("complementar su mapa"));
-                    if (!alreadyGreeted) {
-                        return [...prev, {
-                            role: 'assistant', content: greeting, options: [
-                                { label: "No, ninguno", value: "NO_ANTECEDENTES" },
-                                { label: "Sí, hay antecedentes", value: "SI_ANTECEDENTES" }
-                            ]
-                        }];
-                    }
-                    return prev;
-                });
-            }
-        }, 300);
-
-        return () => { isMounted = false; };
-    }, [firstName]);
+    const [inputValue, setInputValue] = useState("");
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [pendingBranchData, setPendingBranchData] = useState(null);
+    const chatEndRef = useRef(null);
 
     const addAlert = useClinicalGenome(state => state.addAlert);
 
@@ -157,7 +145,7 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
                 if (/abuelo|abuela/i.test(lower) && !/materna|paterna/i.test(lower)) {
                     setPendingBranchData(data);
                     setMessages(prev => [...prev, {
-                        role: 'assistant', content: "¿Es su abuelita(o) materna o paterna?", options: [
+                        role: 'assistant', content: isMinor ? `¿Es abuelita(o) materna o paterna de ${pName}?` : "¿Es su abuelita(o) materna o paterna?", options: [
                             { label: "Materna", value: "Materna" },
                             { label: "Paterna", value: "Paterna" }
                         ]
@@ -172,14 +160,14 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
                     if (!isAssigned) syncGeneticData({ parents: data });
 
                     setMessages(prev => [...prev, {
-                        role: 'assistant', content: "Dato guardado en su expediente. ¿Algún otro detalle de su familia que debamos registrar?", options: [
+                        role: 'assistant', content: isMinor ? "Dato guardado en el expediente. ¿Algún otro detalle de la familia que debamos registrar?" : "Dato guardado en su expediente. ¿Algún otro detalle de su familia que debamos registrar?", options: [
                             { label: "No, avanzar", value: "NO_ANTECEDENTES" }
                         ]
                     }]);
                 }
             } else {
                 setMessages(prev => [...prev, {
-                    role: 'assistant', content: "Lo tendré en cuenta. ¿Desea reportar diabetes, hipertensión, cáncer u obesidad en algún familiar cercano?", options: [
+                    role: 'assistant', content: isMinor ? "Lo tendré en cuenta. ¿Desea reportar diabetes, hipertensión, cáncer u obesidad en algún familiar cercano de la menor?" : "Lo tendré en cuenta. ¿Desea reportar diabetes, hipertensión, cáncer u obesidad en algún familiar cercano?", options: [
                         { label: "No, avanzar", value: "NO_ANTECEDENTES" }
                     ]
                 }]);
@@ -246,7 +234,7 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
                         type="text"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        placeholder="Escriba su respuesta..."
+                        placeholder="Escriba aquí..."
                         className="flex-1 px-5 py-4 bg-gray-50 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1C75BC] focus:bg-white transition-all font-sansation text-slate-700 shadow-sm disabled:opacity-50 disabled:bg-gray-100"
                         disabled={isInputDisabled}
                     />
