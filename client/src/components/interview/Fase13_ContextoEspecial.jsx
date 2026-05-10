@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import tiloImg from '../../assets/tilo.png';
+// eslint-disable-next-line no-unused-vars
+import { motion } from 'framer-motion';
 
-const Fase13_ContextoEspecial = ({ setPatientData, isYouth, onPhaseComplete }) => {
+const Fase13_ContextoEspecial = ({ patientData, setPatientData, onPhaseComplete }) => {
+    const ptCtx = patientData?.profile?.pediatric_profile;
+    const isMinor = ptCtx?.is_minor === true;
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
     // ------------------------------------------------------------------------
     // STATE: Mantenemos un array local de mensajes estilo chat
     // ------------------------------------------------------------------------
@@ -24,14 +29,14 @@ const Fase13_ContextoEspecial = ({ setPatientData, isYouth, onPhaseComplete }) =
             setMessages([
                 {
                     role: "assistant",
-                    content: `Entendido.\n\nFase 7: Contexto Especial.\n\n¿Ha tenido cirugías recientes, padece algún síndrome o situación particular importante para ${isYouth ? 'tu' : 'su'} plan nutricional?`,
+                    content: `Entendido.\n\nFase 7: Contexto Especial.\n\n${isMinor ? `¿Ha tenido ${pName} cirugías recientes, padece algún síndrome o situación particular importante para su plan nutricional?` : `¿Ha tenido cirugías recientes, padece algún síndrome o situación particular importante para su plan nutricional?`}`,
                     avatar: tiloImg
                 }
             ]);
             setIsTyping(false);
         }, 600);
         return () => clearTimeout(timer);
-    }, [isYouth]);
+    }, [isMinor, pName]);
 
     // ------------------------------------------------------------------------
     // MANEJO DE LA RESPUESTA
@@ -50,8 +55,8 @@ const Fase13_ContextoEspecial = ({ setPatientData, isYouth, onPhaseComplete }) =
         // 2. Guardar el contexto en patientData
         setPatientData(prev => ({
             ...prev,
-            medical_history: {
-                ...prev.medical_history,
+            history: {
+                ...prev.history,
                 special_context: userText
             }
         }));
@@ -60,7 +65,7 @@ const Fase13_ContextoEspecial = ({ setPatientData, isYouth, onPhaseComplete }) =
         setTimeout(() => {
             const finalReply = {
                 role: "assistant",
-                content: "Excelente. He terminado de recabar todos los datos. Iniciare el análisis para generar tu Diagnóstico Integral.",
+                content: `Excelente. He terminado de recabar todos los datos. Iniciare el análisis para generar el Diagnóstico Integral${isMinor ? ` de ${pName}` : ''}.`,
                 avatar: tiloImg,
                 inputType: 'analyzing'
             };
