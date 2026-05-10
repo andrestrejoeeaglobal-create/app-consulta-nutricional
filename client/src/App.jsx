@@ -22,6 +22,7 @@ import VisualIdentityCard from "./components/VisualIdentityCard"; // <--- V8.0 V
 import VisualBodyMap from "./components/VisualBodyMap"; // <--- V9.6 Visual Body Map
 import useCortex from "./hooks/useCortex"; // <--- T.I.L.O Logical Engine
 import SearchableVerticalMenu from "./components/ui/SearchableVerticalMenu"; // V8.0 Searchable Vertical Menu
+import Fase3_MotivoConsulta from "./components/interview/Fase3_MotivoConsulta";
 import Fase4_AntecedentesFamiliares from "./components/interview/Fase4_AntecedentesFamiliares";
 import Fase5_EstiloVida from "./components/interview/Fase5_EstiloVida";
 
@@ -486,7 +487,9 @@ function App() {
     clearSession,
     setCurrentPhase,
     apiContext,
-    fase3State
+    fase3State,
+    setFase3State,
+    triggerPhase1Summary
   } = useCortex();
 
   const [input, setInput] = useState("");
@@ -680,10 +683,9 @@ function App() {
       setIsIdentityConfirmed(false);
     }
 
-    // If it was handing off from Phase 2 (Emergency):
     if (currentPhase === 'PHASE_2_COMPLETE_HANDOFF' && interviewStep === 'appointment') {
-      console.log("🔄 Cortex Handoff Phase 2 -> Cortex Phase 3");
-      setCurrentPhase('PHASE_3_OPEN_PROMPT');
+      console.log("🔄 Cortex Handoff Phase 2 -> Phase 3 Triage");
+      setCurrentPhase('PHASE_3_MOTIVO_CONSULTA'); 
     }
     // Handoff to Legacy App.jsx Phase 10 (Habits) from Cortex:
     // If handing off from Phase 9 (Physiological) to Phase 10:
@@ -1631,9 +1633,13 @@ function App() {
           ...prev,
           identificacion: { ...prev.identificacion, telefono: userMsg }
         }));
+        const isPediatric = patientData?.identificacion?.edad < 12;
+        const isTutor = patientData?.emergencia?.parentezco === 'Tutor/Madre/Padre';
+        const user_address_label = (patientData?.emergencia?.nombre && isTutor) ? patientData.emergencia.nombre.split(' ')[0] : "Tutor";
+
         setMessages((prev) => [...prev, {
           role: "assistant",
-          content: "¿Profesa usted alguna religión?",
+          content: isPediatric ? `${user_address_label}, ¿en su hogar profesan alguna religión?` : "¿Profesa usted alguna religión?",
           options: [
             { label: "✅ Sí", value: "SI" },
             { label: "❌ No / Ninguna", value: "NO_NINGUNA" }
@@ -1846,15 +1852,19 @@ function App() {
           return; // No avanza si falla la validación
         }
 
-        setPatientData((prev) => ({
-          ...prev,
-          domicilio: { ...prev.domicilio, calle: cleanStreet }
-        }));
-        setMessages((prev) => [...prev, { role: "assistant", content: "Domicilio registrado.\n\nPasemos a la sección de **Seguridad**.\n\nEn caso de emergencia, ¿quién es su contacto responsable? Necesito su **nombre completo**." }]);
-        setInterviewStep("emergency_name");
+        setPatientData((prev) => {
+          const newData = {
+            ...prev,
+            domicilio: { ...prev.domicilio, calle: cleanStreet }
+          };
+          setTimeout(() => triggerPhase1Summary(newData), 50);
+          return newData;
+        });
+
+        setInterviewStep("appointment"); // Hand over to Cortex
 
         // 💾 CP2: Address Confirmed (End of Phase 1)
-        saveSessionProgress(1, 'emergency_name');
+        saveSessionProgress(1, 'PHASE_1_SUMMARY_CONFIRM');
       }, 600);
     }
 
@@ -4859,6 +4869,38 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                   <div className="w-16 h-1 bg-blue-500 rounded-full mt-2 opacity-50 mx-auto"></div>
                 </div>
               </div>
+            ) : currentPhase === 'PHASE_3_MOTIVO_CONSULTA' ? (
+              <Fase3_MotivoConsulta
+                patientData={patientData}
+                setPatientData={setPatientData}
+                messages={messages}
+                setMessages={setMessages}
+                onPhaseComplete={(motiveData) => {
+                  setFase3State(motiveData);
+                  setPatientData(prev => ({
+                    ...prev,
+                    clinical_context: {
+                      ...prev.clinical_context,
+                      motivo: motiveData.goal,
+                      detalles_motivo: motiveData.reason,
+                      sintomas: motiveData.symptoms,
+                      mapa_corporal: motiveData.bodyMap
+                    }
+                  }));
+
+                  // --- MIDDLEWARE: VALIDADOR DE COHERENCIA (NOM-004) ---
+                  const aiAnalysis = patientData.clinical_context?.ai_analysis || {};
+                  if (!aiAnalysis.primaryRoute || !aiAnalysis.gem_reasoning) {
+                    setMessages(prev => [...prev, {
+                      role: "assistant",
+                      content: "⚠️ **Interbloqueo de Seguridad (NOM-004)**: El motor Cortex no cuenta con datos suficientes para establecer una Ruta Clínica Principal o un Razonamiento validado. Por favor, proporcione más detalles de su motivo de consulta."
+                    }]);
+                    return; // Bloquea el avance
+                  }
+
+                  setCurrentPhase('PHASE_4_FAMILY_HISTORY');
+                }}
+              />
             ) : currentPhase === 'PHASE_4_FAMILY_HISTORY' ? (
               <Fase4_AntecedentesFamiliares
                 user={user}

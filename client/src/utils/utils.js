@@ -511,3 +511,23 @@ export const getGenderedTerm = (term, sex) => {
 
     return dic[term.toLowerCase()] || term;
 };
+
+/**
+ * Aplica máscara de formato telefónico estándar (XXX) XXX-XXXX
+ * @param {string} phone 
+ * @returns {string} Teléfono formateado
+ */
+export const formatPhoneNumber = (phone) => {
+    if (!phone) return '';
+    // Limpiamos todo lo que no sea número
+    const cleaned = ('' + phone).replace(/\D/g, '');
+    
+    // Si tiene 10 dígitos, aplicamos máscara (XXX) XXX-XXXX
+    if (cleaned.length === 10) {
+        return `(${cleaned.substring(0, 3)}) ${cleaned.substring(3, 6)}-${cleaned.substring(6, 10)}`;
+    }
+    
+    // Si no tiene 10 dígitos, retornamos el string original para no romper formatos internacionales o extraños
+    return phone;
+};
+

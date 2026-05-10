@@ -16,6 +16,7 @@ import { TabNotes } from './DashboardTabs/TabNotes';
 import { TabIntervention } from './DashboardTabs/TabIntervention';
 import TabDiagnosis from './DashboardTabs/TabDiagnosis';
 import { TabCalendar } from './DashboardTabs/TabCalendar';
+import { formatPhoneNumber } from '../utils/utils';
 
 // SUB-COMPONENTE PARA CAMPOS (NOM-004)
 const NomField = ({ label, name, value, onChange, placeholder, isEditing, activeField, width = "col-span-1", isLongText = false }) => (
@@ -209,7 +210,7 @@ export const MedicalDashboard = ({
 
         // --- MAPPING LOGIC ---
         // 1. PERFIL DEL PACIENTE
-        if (isStepIn(['address_', 'domicilio', 'zipcode', 'colony', 'street', 'state_manual', 'municipality_manual'])) {
+        if (isStepIn(['address_', 'domicilio', 'zipcode', 'colony', 'street', 'state_manual', 'municipality_manual', 'map_validation'])) {
             targetParent = 'parentProfile';
             targetChild = 'childAddress';
             targetCardId = 'card-address';
@@ -228,20 +229,19 @@ export const MedicalDashboard = ({
             targetChild = 'childIdentity';
             targetCardId = 'card-intro';
         }
-        else if (isStepIn(['phase_3_', 'phase_4_'])) {
+        else if (isStepIn(['phase_3_'])) {
             targetParent = 'parentClinical';
             targetChild = 'childMotive';
             targetCardId = 'card-motivo';
         }
-        else if (isStepIn(['ipas_', 'motivo', 'sympt', 'triage', 'ph4_'])) {
+        else if (isStepIn(['ipas_', 'motivo', 'sympt', 'triage'])) {
             targetParent = 'parentClinical';
             targetChild = 'childMotive';
             targetCardId = 'card-motivo';
         }
-        // 2. HISTORIA CLÍNICA
         else if (isStepIn(stepsClinical)) {
             targetParent = 'parentClinical';
-            if (step.includes('ahf_') || step.includes('family')) { targetChild = 'childAhf'; targetCardId = 'card-ahf'; }
+            if (step.includes('ahf_') || step.includes('family') || step.includes('phase_4_') || step.includes('ph4_')) { targetChild = 'childAhf'; targetCardId = 'card-ahf'; }
             else if (step.includes('app_') || step.includes('patho')) { targetChild = 'childApp'; targetCardId = 'card-app'; }
             else if (step.includes('meds_') || step.includes('supp_')) { targetChild = 'childFarma'; targetCardId = 'card-meds'; }
             else if (step.includes('allergies_')) { targetChild = 'childAllergies'; targetCardId = 'card-allergy'; }
@@ -255,7 +255,7 @@ export const MedicalDashboard = ({
             else { targetChild = 'childAhf'; targetCardId = 'card-ahf'; } // Fallback for general clinical
         }
         // 3. ESTILO DE VIDA Y ENTORNO
-        else if (isStepIn(stepsLifestyle)) {
+        else if (isStepIn(stepsLifestyle) || step.includes('phase_5_')) {
             targetParent = 'parentLifestyle';
             targetChild = null; // No child accordion in TabLogistics
             targetCardId = 'card-lifestyle';
@@ -287,7 +287,7 @@ export const MedicalDashboard = ({
                         [targetParent]: true,
                         ...(targetChild ? { [targetChild]: true } : {}),
                         // Fix for Phase 4: Keep Motivo de Consulta open alongside AHF
-                        ...(step.includes('ahf_') || step.includes('PHASE_4_') ? { childAhf: true } : {})
+                        ...(step.includes('ahf_') || step.includes('phase_4_') || step.includes('ph4_') ? { childAhf: true } : {})
                     };
                 });
             }, 0);
@@ -436,6 +436,11 @@ export const MedicalDashboard = ({
         // Logic de formateo de fecha específico
         if (key === 'fechanac' && typeof displayValRaw === 'string') {
             displayValRaw = formatDateFriendly(displayValRaw);
+        }
+
+        // Logic de enmascaramiento telefónico (Dashboard)
+        if ((key === 'phone' || key === 'telefono') && typeof displayValRaw === 'string') {
+            displayValRaw = formatPhoneNumber(displayValRaw);
         }
 
         const isNegation = typeof displayValRaw === 'string' && (displayValRaw.toLowerCase() === 'niega' || displayValRaw.toLowerCase() === 'no');
@@ -665,6 +670,9 @@ export const MedicalDashboard = ({
                         onTriggerEdit={onTriggerEdit}
                         renderEditableField={renderEditableField}
                         CardHeader={CardHeader}
+                        Accordion={Accordion}
+                        openSections={openSections}
+                        toggleSection={toggleSection}
                     />
                 )}
 

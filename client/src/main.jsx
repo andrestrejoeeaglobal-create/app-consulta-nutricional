@@ -1,5 +1,6 @@
 import React, { Component, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { useJsApiLoader } from '@react-google-maps/api'
 import './index.css'
 import './App.css'
 import App from './App.jsx'
@@ -38,10 +39,26 @@ class ErrorBoundary extends Component {
 
 console.log("%c 🚀 TILO CORE: V8.6 - INTEGRITY PATCH LOADED ", "background: #222; color: #bada55; font-size: 14px; padding: 4px; border-radius: 4px;");
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-)
+const libraries = ['places'];
+
+export const RootComponent = () => {
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+    libraries: libraries
+  });
+
+  if (!isLoaded) {
+    return <div className="w-screen h-screen flex items-center justify-center bg-slate-50"><p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Cargando Cartografía de Inmunidad...</p></div>;
+  }
+
+  return (
+    <StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </StrictMode>
+  );
+};
+
+createRoot(document.getElementById('root')).render(<RootComponent />);

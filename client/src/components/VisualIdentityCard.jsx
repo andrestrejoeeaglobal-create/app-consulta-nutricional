@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { TriangleAlert } from 'lucide-react'; // Added alert icon
+import { formatPhoneNumber } from '../utils/utils'; // V15.6 Format phone number
 
 // Helper for rendering fields (Defined outside to avoid re-creation on render)
 const IdentityField = ({ label, value, fullWidth = false, isMono = false, hasDiscrepancy = false }) => {
@@ -112,7 +113,7 @@ const VisualIdentityCard = ({ patientData }) => {
 
             {/* NIVEL 5: CONTACTO Y CULTURA */}
             <div className="grid grid-cols-2 gap-4">
-                <IdentityField label="Teléfono Celular" value={profileData.phone || idData.telefono} />
+                <IdentityField label="Teléfono Celular" value={formatPhoneNumber(profileData.phone || idData.telefono)} />
                 <IdentityField label="Religión" value={profileData.religion || idData.religion} />
             </div>
 

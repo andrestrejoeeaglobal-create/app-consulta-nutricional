@@ -44,3 +44,40 @@ export const calculateAge = (day, month, year) => {
 
     return age;
 };
+
+/**
+ * Retorna las etiquetas de la compuerta binaria de confirmación según la NOM-004.
+ * Basado en BINARY_GATE_LOGIC V37.1
+ * @param {number} age - Edad en años
+ * @param {string} sex - "Femenino" o "Masculino"
+ * @returns {object} { confirmLabel, rejectLabel }
+ */
+export const getBinaryGateLabels = (age, sex) => {
+    const isFemale = sex === 'Femenino';
+    let confirmLabel = "✅ SÍ, ES CORRECTO"; // Default fallback
+    
+    if (age < 1) {
+        // Neonato
+        confirmLabel = isFemale ? "✅ SÍ, ES LA RECIÉN NACIDA" : "✅ SÍ, ES EL RECIÉN NACIDO";
+    } else if (age >= 1 && age < 3) {
+        // Lactante
+        confirmLabel = isFemale ? "✅ SÍ, ES ELLA" : "✅ SÍ, ES ÉL";
+    } else if (age >= 3 && age < 13) {
+        // Pediátrico
+        confirmLabel = isFemale ? "✅ SÍ, ES CORRECTA" : "✅ SÍ, ES CORRECTO";
+    } else if (age >= 13 && age < 18) {
+        // Adolescente
+        confirmLabel = "✅ SÍ, SOY YO";
+    } else if (age >= 18 && age < 65) {
+        // Adulto
+        confirmLabel = isFemale ? "✅ SÍ, SOY USUARIA" : "✅ SÍ, SOY USUARIO";
+    } else if (age >= 65) {
+        // Adulto Mayor
+        confirmLabel = isFemale ? "✅ SÍ, ES CORRECTA" : "✅ SÍ, ES CORRECTO";
+    }
+
+    return {
+        confirmLabel,
+        rejectLabel: "❌ NO, CORREGIR DATOS"
+    };
+};
