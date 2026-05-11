@@ -288,32 +288,6 @@ export const Fase1_Identificacion = ({
                                 <div className={`p-4 rounded-2xl text-sm shadow-sm leading-relaxed max-w-[80%] whitespace-pre-line ${msg.role === 'user' ? 'bg-[#1C75BC] text-white rounded-tr-none' : 'bg-white border border-slate-200 rounded-tl-none text-slate-700'}`}>
                                     {msg.content}
                                     
-                                    {/* Render Options if any (Only for the latest message from assistant) */}
-                                    {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && msg.options.length <= 3 && (
-                                        <div className="mt-4 flex flex-col gap-2">
-                                            {msg.options.map((opt, oIdx) => (
-                                                <button
-                                                    key={oIdx}
-                                                    onClick={() => handleSend(opt.label, opt.value)}
-                                                    className={`w-full p-4 rounded-xl text-left font-medium transition-all duration-300 flex items-center justify-between group
-                                                        ${isAnalyzing
-                                                            ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
-                                                            : 'bg-white border-2 border-blue-100 text-slate-700 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md hover:-translate-y-0.5'
-                                                        }`}
-                                                    disabled={isAnalyzing || step === 'completed'}
-                                                >
-                                                    <span>{opt.label}</span>
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors shrink-0 ml-3
-                                                        ${isAnalyzing ? 'bg-slate-100 text-slate-300' : 'bg-blue-100 text-blue-600 group-hover:bg-blue-500 group-hover:text-white'}
-                                                    `}>
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                                        </svg>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>
@@ -328,16 +302,38 @@ export const Fase1_Identificacion = ({
 
                 {/* INPUT ZONE */}
                 <div className="p-6 bg-white border-t border-slate-100 relative z-[60]">
-                    {messages[messages.length - 1]?.options?.length > 3 && !isAnalyzing && step !== 'completed' && (
-                        <SearchableVerticalMenu
-                            options={messages[messages.length - 1].options}
-                            onSelect={(val) => {
-                                const opt = messages[messages.length - 1].options.find(o => o.value === val);
-                                handleSend(opt.label, opt.value);
-                            }}
-                        />
-                    )}
-                    <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner">
+                    <div className="relative w-full max-w-3xl mx-auto flex flex-col items-center">
+                        {messages[messages.length - 1]?.options?.length > 3 && !isAnalyzing && step !== 'completed' && (
+                            <SearchableVerticalMenu
+                                options={messages[messages.length - 1].options}
+                                onSelect={(val) => {
+                                    const opt = messages[messages.length - 1].options.find(o => o.value === val);
+                                    handleSend(opt.label, opt.value);
+                                }}
+                            />
+                        )}
+                        
+                        {messages[messages.length - 1]?.options?.length > 0 && messages[messages.length - 1]?.options?.length <= 3 && !isAnalyzing && step !== 'completed' && (
+                            <div className="flex flex-col gap-2 mb-3 w-full">
+                                {messages[messages.length - 1].options.map((opt, oIdx) => (
+                                    <button
+                                        key={oIdx}
+                                        onClick={() => handleSend(opt.label, opt.value)}
+                                        className="w-full px-5 py-3 bg-white border-2 border-blue-100 text-slate-700 text-sm font-medium rounded-xl hover:border-blue-500 hover:bg-blue-50 hover:shadow-md transition-all flex items-center justify-between group"
+                                        disabled={isAnalyzing || step === 'completed'}
+                                    >
+                                        <span>{opt.label}</span>
+                                        <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors shrink-0 ml-3">
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                            </svg>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        
+                        <div className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner relative z-10">
                         <input
                             type={step.includes('phone') ? 'tel' : 'text'}
                             value={inputValue} onChange={step.includes('phone') ? handlePhoneChange : (e) => setInputValue(e.target.value)}
@@ -348,6 +344,7 @@ export const Fase1_Identificacion = ({
                         <button onClick={() => handleSend(inputValue)} disabled={isInputDisabled} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
                             <Send size={18} />
                         </button>
+                        </div>
                     </div>
                 </div>
             </div>

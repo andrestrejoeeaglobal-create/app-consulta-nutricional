@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { formatText } from '../../utils/utils';
+import { motion } from 'framer-motion';
+import tiloImg from '../../assets/tilo.png';
+import ReactMarkdown from 'react-markdown';
 
 /**
  * T.I.L.O. - FASE 4 (ANTECEDENTES FAMILIARES)
  * Versión: v3.1 - Standard Look & Feel Alignment
- * * CONSISTENCIA: Sigue el modelo de Fase 3 (Burbujas sin Avatares UI pesada).
+ * * CONSISTENCIA: Sigue el modelo global con Tilo UI.
  * * INTERACCIÓN: Uso de Opciones dinámicas inyectadas como botones debajo del grid.
  */
 
@@ -185,20 +188,37 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
             <div className="flex-1 overflow-y-auto w-full px-4 md:px-12 py-8 relative custom-scrollbar">
                 <div className="max-w-2xl mx-auto space-y-6 pb-32">
                     {messages.map((msg, idx) => (
-                        <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
-                            <div className={`p-4 rounded-xl max-w-[85%] sm:max-w-[75%] font-sansation text-sm sm:text-base leading-relaxed ${msg.role === 'user'
-                                ? 'bg-[#1C75BC] text-white rounded-br-none shadow-md'
-                                : 'bg-gray-100 text-slate-700 rounded-bl-none border border-gray-200'
+                        <div key={idx} className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-6 items-start gap-3 animate-fade-in-up`}>
+                            {msg.role === "assistant" && (
+                                <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden"
+                                >
+                                    <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
+                                </motion.div>
+                            )}
+                            <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === 'assistant'
+                                ? msg.isBio
+                                    ? 'bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium'
+                                    : msg.isAcute
+                                        ? 'bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium'
+                                        : msg.isCritical
+                                            ? 'bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold'
+                                            : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
+                                : 'bg-indigo-600 text-white rounded-tr-none'
                                 }`}>
-                                <div className="whitespace-pre-wrap">{msg.content}</div>
+                                <div className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" : "prose-invert"}`}>
+                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                </div>
 
                                 {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && (
-                                    <div className="mt-4 flex flex-col gap-2">
+                                    <div className="mt-4 flex flex-wrap gap-2">
                                         {msg.options.map((opt, i) => (
                                             <button
                                                 key={i}
                                                 onClick={() => handleSend(opt.value)}
-                                                className="w-full text-left px-4 py-3 rounded-lg border border-[#1C75BC] text-[#1C75BC] hover:bg-[#1C75BC] hover:text-white transition-all duration-200 font-medium bg-white"
+                                                className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
                                             >
                                                 {opt.label}
                                             </button>

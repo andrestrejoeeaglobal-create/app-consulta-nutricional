@@ -24,7 +24,8 @@ const SearchableVerticalMenu = ({ options, onSelect }) => {
                     filteredOptions.map((option, idx) => (
                         <button
                             key={idx}
-                            onClick={() => onSelect(option.value)}
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); onSelect(option.value); }}
                             className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-100 focus:bg-slate-100 hover:text-blue-700 transition-colors rounded-lg mb-1 last:mb-0 cursor-pointer"
                         >
                             {option.label}

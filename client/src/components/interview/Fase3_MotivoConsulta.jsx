@@ -6,24 +6,28 @@ import { Send } from 'lucide-react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 import { analyzeClinicalMotive } from '../../hooks/useCortex';
+import ReactMarkdown from 'react-markdown';
+// eslint-disable-next-line no-unused-vars
+import { motion } from 'framer-motion';
+import tiloImg from '../../assets/tilo.png';
 
 const motiveOptions = [
     { label: "Adicciones y Sustancias", value: "GOAL_ADDICTIONS" },
-    { label: "Adulto Mayor (Geriatr├¡a)", value: "GOAL_GERIATRICS" },
+    { label: "Adulto Mayor (Geriatría)", value: "GOAL_GERIATRICS" },
     { label: "Alergias Graves (Protocolo Anafilaxia)", value: "GOAL_ALLERGIES" },
     { label: "Bajar de Peso / Sobrepeso", value: "GOAL_WEIGHT_LOSS" },
-    { label: "Bari├ítrica / Quir├║rgico", value: "GOAL_BARIATRIC" },
+    { label: "Bariátrica / Quirúrgico", value: "GOAL_BARIATRIC" },
     { label: "Climaterio y Menopausia", value: "GOAL_MENOPAUSE" },
-    { label: "Control Cl├¡nico (Patolog├¡as Cr├│nicas)", value: "GOAL_CLINICAL" },
+    { label: "Control Clínico (Patologías Crónicas)", value: "GOAL_CLINICAL" },
     { label: "Cuidados Paliativos", value: "GOAL_PALLIATIVE" },
-    { label: "Discapacidad y Rehabilitaci├│n", value: "GOAL_DISABILITY" },
+    { label: "Discapacidad y Rehabilitación", value: "GOAL_DISABILITY" },
     { label: "Embarazo y Lactancia", value: "GOAL_PREGNANCY" },
-    { label: "Ganar M├║sculo / Deporte (Rendimiento)", value: "GOAL_MUSCLE" },
-    { label: "Oncolog├¡a Nutricional", value: "GOAL_ONCOLOGY" },
-    { label: "Pediatr├¡a (Crecimiento y Desarrollo)", value: "GOAL_PEDIATRICS" },
-    { label: "Prevenci├│n y Longevidad (Biohacking)", value: "GOAL_LONGEVITY" },
+    { label: "Ganar Músculo / Deporte (Rendimiento)", value: "GOAL_MUSCLE" },
+    { label: "Oncología Nutricional", value: "GOAL_ONCOLOGY" },
+    { label: "Pediatría (Crecimiento y Desarrollo)", value: "GOAL_PEDIATRICS" },
+    { label: "Prevención y Longevidad (Biohacking)", value: "GOAL_LONGEVITY" },
     { label: "Salud Mental / TCA (Seguridad Conductual)", value: "GOAL_MENTAL_HEALTH" },
-    { label: "Salud Renal (Nefropat├¡a)", value: "GOAL_RENAL" },
+    { label: "Salud Renal (Nefropatía)", value: "GOAL_RENAL" },
     { label: "VIH e Inmunodeficiencias", value: "GOAL_IMMUNE" }
 ];
 
@@ -47,9 +51,12 @@ const goalMap = {
     'GOAL_DISABILITY': { avatar: 'CLINICAL', risk: 'MEDIUM' }
 };
 
-const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPatientData }) => {
+const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientData, setPatientData }) => {
+    const chatEndRef = useRef(null);
     const identityLock = useClinicalGenome(state => state.identityLock);
-    const { patientAge: age, patientSex: gender, patientName, placeholder: dynamicPlaceholder } = usePatientLinguistics(patientData);
+    const { patientAge: age, patientSex: gender, patientName } = usePatientLinguistics(patientData);
+
+    useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
     const updateClinicalContext = (updates) => {
         setPatientData(prev => ({
@@ -95,17 +102,32 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
             return true;
         }).map(opt => {
             if (isMinor && opt.value === 'GOAL_IMMUNE') {
-                return { ...opt, label: "Inmunolog├¡a Pedi├ítrica" };
+                return { ...opt, label: "Inmunología Pediátrica" };
             }
             return opt;
         }).sort((a, b) => a.label.localeCompare(b.label));
     };
 
     const [inputValue, setInputValue] = useState("");
-    const [step, setStep] = useState('clinica_triage_start');
+    const [step, setStep] = useState(() => {
+        const context = patientData?.clinical_context || {};
+        if (context.goal) {
+            if (context.secondary_symptoms || context.sintomas) {
+                if (context.pain_zones && context.pain_zones.length > 0) {
+                    return 'clinica_triage_ai_complete';
+                }
+                return 'clinica_body_map';
+            }
+            return 'clinica_triage_symptoms';
+        }
+        return 'clinica_triage_start';
+    });
     const [isTyping, setIsTyping] = useState(false);
 
-    const hasStarted = useRef(false);
+    const hasStarted = useRef(
+        step !== 'clinica_triage_start' || 
+        (messages && messages.some(m => m.role === 'assistant' && (m.content.includes('Para diseñar el plan clínico de') || m.content.includes('Para comenzar a diseñar su plan clínico'))))
+    );
     const filteredMotiveOptions = getFilteredOptions();
 
     // Initialize Flow
@@ -129,8 +151,8 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                 const cleanName = patientName !== "NOM" ? patientName : "el paciente";
 
                 const welcomeMsg = isMinor
-                    ? `Para dise├▒ar el plan cl├¡nico de **${cleanName}**, por favor seleccione la **Ruta Primaria** o Motivo de Consulta principal:`
-                    : "Para comenzar a dise├▒ar su plan cl├¡nico de precisi├│n, por favor seleccione su **Ruta Primaria** o Motivo de Consulta principal:";
+                    ? `Para diseñar el plan clínico de **${cleanName}**, por favor seleccione la **Ruta Primaria** o Motivo de Consulta principal:`
+                    : "Para comenzar a diseñar su plan clínico de precisión, por favor seleccione su **Ruta Primaria** o Motivo de Consulta principal:";
 
                 setMessages(prev => [
                     ...prev,
@@ -200,30 +222,14 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                             secondary_symptoms: ""
                         });
 
-                        const SKIP_BODY_MAP_GOALS = [
-                            'GOAL_PEDIATRICS',
-                            'GOAL_WEIGHT_LOSS',
-                            'GOAL_MUSCLE',
-                            'GOAL_LONGEVITY',
-                            'GOAL_MENTAL_HEALTH',
-                            'GOAL_ADDICTIONS',
-                            'GOAL_ALLERGIES',
-                            'GOAL_PREGNANCY'
-                        ];
-
-                        if (SKIP_BODY_MAP_GOALS.includes(userMsg)) {
-                            responseMsg = `Entendido. Hemos activado la ruta cl├¡nica de **${label}**.\n\n┬┐Podr├¡a describir brevemente cualquier s├¡ntoma o detalle importante que debamos considerar para la consulta?`;
-                            nextStep = 'clinica_triage_symptoms';
-                        } else {
-                            responseMsg = `Entendido. Hemos activado la ruta cl├¡nica de **${label}**.\n\nPara ser m├ís precisos, por favor **indique en el mapa** d├│nde siente mayor molestia o si hay zonas espec├¡ficas a tratar. Haga clic en *Completar Mapa* cuando termine.`;
-                            nextStep = 'clinica_body_map';
-                        }
+                        responseMsg = `Entendido. Hemos activado la ruta clínica de **${label}**.\n\nAhora, por favor descríbame a detalle qué síntomas o molestias específicas ha presentado relacionados a este motivo:`;
+                        nextStep = 'clinica_triage_symptoms';
                     } else {
                         // Entrada de texto libre (Bypass GEM)
                         const cleanText = formatText(userMsg);
                         
                         updateClinicalContext({
-                            primary_motive: "Inferencia Sem├íntica GEM",
+                            primary_motive: "Inferencia Semántica GEM",
                             secondary_symptoms: cleanText,
                             history: [...(patientData.clinical_context?.history || []), {
                                 question: "Motivo de Consulta (Texto Libre)",
@@ -232,7 +238,7 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                             }]
                         });
 
-                        const highSeverityKeywords = ['cancer', 'c├íncer', 'matriz', 'amputa', 'duelo', 'falleci', 'muerte', 'perd├¡', 'tumor', 'maligno', 'quimio'];
+                        const highSeverityKeywords = ['cancer', 'cáncer', 'matriz', 'amputa', 'duelo', 'falleci', 'muerte', 'perdí', 'tumor', 'maligno', 'quimio'];
                         const isHighSeverity = highSeverityKeywords.some(kw => cleanText.toLowerCase().includes(kw));
 
                         if (isHighSeverity) {
@@ -243,7 +249,7 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
 
                         // AI Semantic Triage (GEM Integration)
                         setStep('clinica_triage_ai_analysis');
-                        setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. est├í procesando tus biosensores y realizando el cruce forense de tu motivo de consulta..." }]);
+                        setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. está procesando tus biosensores y realizando el cruce forense de tu motivo de consulta..." }]);
                         
                         const telemetry = { 
                             age: age, 
@@ -264,14 +270,15 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                                  }
                              });
                              
-                             let finalResponse = aiResult.reasoning;
+                             let finalResponse = aiResult.patientMessage;
                              if (aiResult.redFlag) {
-                                 finalResponse += "\n\nÔÜá´©Å **Protocolo de Derivaci├│n Activo por Alerta Cl├¡nica (Red Flag).**";
+                                 finalResponse += "\n\n⚠️ **Protocolo de Derivación Activo por Alerta Clínica (Red Flag).**";
                              }
+                             finalResponse += "\n\nAhora, por favor descríbame a detalle qué síntomas o molestias específicas ha presentado relacionados a este motivo:";
 
                              setMessages(prev => [...prev, { role: "assistant", content: finalResponse }]);
                              
-                             setStep('clinica_triage_ai_complete');
+                             setStep('clinica_triage_symptoms');
                         });
                         return;
                     }
@@ -280,7 +287,7 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
 
                 case 'clinica_body_map': {
                     if (userMsg === 'BODY_MAP_COMPLETE') {
-                        responseMsg = "Entendido. ┬┐Podr├¡a describir brevemente cualquier otro s├¡ntoma o detalle importante que no aparezca en el mapa?";
+                        responseMsg = "Entendido. ¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?";
                         nextStep = 'clinica_triage_symptoms';
                     }
                     break;
@@ -292,13 +299,13 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                     updateClinicalContext({
                         secondary_symptoms: (patientData.clinical_context?.secondary_symptoms || "") + symptomsInput,
                         history: [...(patientData.clinical_context?.history || []), {
-                            question: "Sintomatolog├¡a Adicional",
+                            question: "Sintomatología Adicional",
                             answer: symptomsInput,
                             timestamp: new Date().toISOString()
                         }]
                     });
 
-                    const highSeverityKeywords = ['cancer', 'c├íncer', 'matriz', 'amputa', 'duelo', 'falleci', 'muerte', 'perd├¡', 'tumor', 'maligno', 'quimio'];
+                    const highSeverityKeywords = ['cancer', 'cáncer', 'matriz', 'amputa', 'duelo', 'falleci', 'muerte', 'perdí', 'tumor', 'maligno', 'quimio'];
                     const sensitiveKeywords = ['quiste', 'biopsia', 'seno', 'mama', 'oncologo'];
                     const surgeryKeywords = ['operacion', 'cirugia', 'cesarea', 'apendice', 'vesicula', 'histerectomia'];
 
@@ -311,15 +318,15 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                         setTimeout(() => handleContainmentSequence(symptomsInput), 100);
                         return; 
                     } else if (isSensitive) {
-                        responseMsg = "Entiendo la importancia de lo que menciona. Para poder apoyarle mejor, ┬┐le gustar├¡a compartir un poco m├ís sobre este diagn├│stico o prefiere que lo abordemos con detalle directamente en la consulta?";
+                        responseMsg = "Entiendo la importancia de lo que menciona. Para poder apoyarle mejor, ¿le gustaría compartir un poco más sobre este diagnóstico o prefiere que lo abordemos con detalle directamente en la consulta?";
                         nextStep = 'clinica_triage_sensitive_followup';
                     } else if (isSurgery) {
-                        responseMsg = "Entendido. Dado que menciona un procedimiento quir├║rgico, ┬┐hace cu├ínto tiempo fue o cu├índo est├í programado?";
+                        responseMsg = "Entendido. Dado que menciona un procedimiento quirúrgico, ¿hace cuánto tiempo fue o cuándo está programado?";
                         nextStep = 'intro_triage_surgery';
                     } else {
                         // AI Semantic Triage (GEM Integration)
                         setStep('clinica_triage_ai_analysis');
-                        setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. est├í procesando tus biosensores y evaluaci├│n cl├¡nica..." }]);
+                        setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. está procesando tus biosensores y evaluación clínica..." }]);
                         
                         const freeText = (patientData.clinical_context?.primary_motive || "") + " " + (patientData.clinical_context?.secondary_symptoms || "") + " " + symptomsInput;
                         const telemetry = { 
@@ -342,9 +349,9 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                              });
                              
                              if (aiResult.redFlag) {
-                                 setMessages(prev => [...prev, { role: "assistant", content: `ÔÜá´©Å ${aiResult.reasoning}\n\nActivando protocolo de derivaci├│n y evaluaci├│n m├®dica prioritaria.` }]);
+                                 setMessages(prev => [...prev, { role: "assistant", content: `⚠️ ${aiResult.patientMessage}\n\nActivando protocolo de derivación y evaluación médica prioritaria.`, isAiAnalysisResult: true, aiData: aiResult }]);
                              } else {
-                                 setMessages(prev => [...prev, { role: "assistant", content: `Ô£à ${aiResult.reasoning}` }]);
+                                 setMessages(prev => [...prev, { role: "assistant", content: `✅ ${aiResult.patientMessage}`, isAiAnalysisResult: true, aiData: aiResult }]);
                              }
                              setStep('clinica_triage_ai_complete');
                         });
@@ -365,7 +372,7 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                     });
 
                     setStep('clinica_triage_ai_analysis');
-                    setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. est├í integrando estos detalles sensibles en su matriz de evaluaci├│n..." }]);
+                    setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. está integrando estos detalles sensibles en su matriz de evaluación..." }]);
                     
                     const telemetry = { age: age, gender: gender, location: patientData?.profile?.address?.state || "No especificado" };
                     const bodyMapZones = patientData.clinical_context?.pain_zones || [];
@@ -382,7 +389,7 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                              }
                          });
                          
-                         setMessages(prev => [...prev, { role: "assistant", content: `Ô£à ${aiResult.reasoning}` }]);
+                         setMessages(prev => [...prev, { role: "assistant", content: `✅ ${aiResult.patientMessage}`, isAiAnalysisResult: true, aiData: aiResult }]);
                          setStep('clinica_triage_ai_complete');
                     });
                     return;
@@ -395,15 +402,15 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
 
                     if (lowerMsg.includes('pre') || lowerMsg.includes('prepara') || lowerMsg.includes('antes') || lowerMsg.includes('programada')) {
                         status = "PRE";
-                        msg = "ÔÜá´©Å ALERTA: Suspender suplementos anticoagulantes (Ajo, Omega-3, Ginkgo) 7 d├¡as antes.";
-                    } else if (lowerMsg.includes('ya') || lowerMsg.includes('post') || lowerMsg.includes('pas├│') || lowerMsg.includes('paso')) {
+                        msg = "⚠️ ALERTA: Suspender suplementos anticoagulantes (Ajo, Omega-3, Ginkgo) 7 días antes.";
+                    } else if (lowerMsg.includes('ya') || lowerMsg.includes('post') || lowerMsg.includes('pasó') || lowerMsg.includes('paso')) {
                         status = "POST";
-                        msg = "ÔÜá´©Å ALERTA: Validar alta m├®dica antes de iniciar esfuerzo f├¡sico.";
+                        msg = "⚠️ ALERTA: Validar alta médica antes de iniciar esfuerzo físico.";
                     }
 
                     updateClinicalContext({
                         history: [...(patientData.clinical_context?.history || []), {
-                            question: "Estatus Quir├║rgico",
+                            question: "Estatus Quirúrgico",
                             answer: msg ? `${status} (${msg})` : "Sin Intervenciones Recientes",
                             timestamp: new Date().toISOString()
                         }]
@@ -439,13 +446,13 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
     };
 
     const handleContainmentSequence = (triggerText) => {
-        const sensitiveKeywords = ['cancer', 'c├íncer', 'tumor', 'falleci', 'muerte', 'matriz', 'duelo', 'luto', 'perdida', 'p├®rdida'];
+        const sensitiveKeywords = ['cancer', 'cáncer', 'tumor', 'falleci', 'muerte', 'matriz', 'duelo', 'luto', 'perdida', 'pérdida'];
         const matchedKw = sensitiveKeywords.find(kw => triggerText.toLowerCase().includes(kw)) || "Tema Sensible";
 
         updateClinicalContext({
             history: [...(patientData.clinical_context?.history || []), {
-                question: "ÔÜá´©Å Reporte de Sensibilidad",
-                answer: `Tema identificado: "${matchedKw.toUpperCase()}". Protocolo de contenci├│n activado.`,
+                question: "⚠️ Reporte de Sensibilidad",
+                answer: `Tema identificado: "${matchedKw.toUpperCase()}". Protocolo de contención activado.`,
                 timestamp: new Date().toISOString()
             }]
         });
@@ -458,7 +465,7 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
             setIsTyping(false);
             setMessages(prev => [...prev, {
                 role: "assistant",
-                content: `${nameStr}, agradezco profundamente su confianza al compartirme algo tan personal. Lamento mucho que est├® pasando por este proceso de incertidumbre; entiendo que una noticia as├¡ genera mucha preocupaci├│n.`
+                content: `${nameStr}, agradezco profundamente su confianza al compartirme algo tan personal. Lamento mucho que esté pasando por este proceso de incertidumbre; entiendo que una noticia así genera mucha preocupación.`
             }]);
 
             setIsTyping(true);
@@ -466,7 +473,7 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
                 setIsTyping(false);
                 setMessages(prev => [...prev, {
                     role: "assistant",
-                    content: "He marcado este dato como Prioridad M├íxima en su expediente. Su nutri├│logo abordar├í el tema con toda la sensibilidad y el cuidado que usted merece desde el primer minuto de la consulta."
+                    content: "He marcado este dato como Prioridad Máxima en su expediente. Su nutriólogo abordará el tema con toda la sensibilidad y el cuidado que usted merece desde el primer minuto de la consulta."
                 }]);
 
                 setTimeout(() => {
@@ -507,12 +514,12 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
 
         const zoneLabels = {
             'M_HEAD': 'Cabeza', 'F_HEAD': 'Cabeza',
-            'M_LUNGS_R': 'Pulm├│n Derecho', 'M_LUNGS_L': 'Pulm├│n Izquierdo',
-            'F_LUNG_R': 'Pulm├│n Derecho', 'F_LUNG_L': 'Pulm├│n Izquierdo',
+            'M_LUNGS_R': 'Pulmón Derecho', 'M_LUNGS_L': 'Pulmón Izquierdo',
+            'F_LUNG_R': 'Pulmón Derecho', 'F_LUNG_L': 'Pulmón Izquierdo',
             'F_BREAST_R': 'Seno Derecho', 'F_BREAST_L': 'Seno Izquierdo',
             'F_OVARY_R': 'Ovario Derecho', 'F_OVARY_L': 'Ovario Izquierdo',
-            'F_KIDNEY_R': 'Ri├▒├│n Derecho', 'F_KIDNEY_L': 'Ri├▒├│n Izquierdo',
-            'M_KIDNEY_R': 'Ri├▒├│n Derecho', 'M_KIDNEY_L': 'Ri├▒├│n Izquierdo'
+            'F_KIDNEY_R': 'Riñón Derecho', 'F_KIDNEY_L': 'Riñón Izquierdo',
+            'M_KIDNEY_R': 'Riñón Derecho', 'M_KIDNEY_L': 'Riñón Izquierdo'
         };
 
         const newTags = zones.map(z => tagMap[z] || 'PAIN_GENERAL');
@@ -536,84 +543,187 @@ const Fase3_MotivoConsulta = ({ setMessages, onPhaseComplete, patientData, setPa
         setMessages(prev => [...prev, { role: "user", content: `Zonas: ${summary} | Intensidad: ${intensity}/10` }]);
 
         if (isRedFlag) {
-            setMessages(prev => [...prev, { role: "assistant", content: "ÔÜá´©Å **ALERTA DE SEGURIDAD**: He detectado un nivel de dolor severo en una zona sensible. \n\n┬┐Podr├¡a describir brevemente cualquier otro s├¡ntoma o detalle importante que no aparezca en el mapa?" }]);
+            setMessages(prev => [...prev, { role: "assistant", content: "⚠️ **ALERTA DE SEGURIDAD**: He detectado un nivel de dolor severo en una zona sensible. \n\n¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?" }]);
             setStep('clinica_triage_symptoms');
         } else {
-            setMessages(prev => [...prev, { role: "assistant", content: "Entendido. ┬┐Podr├¡a describir brevemente cualquier otro s├¡ntoma o detalle importante que no aparezca en el mapa?" }]);
+            setMessages(prev => [...prev, { role: "assistant", content: "Entendido. ¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?" }]);
             setStep('clinica_triage_symptoms');
         }
     };
 
     return (
-        <div className="p-4 flex flex-col justify-end w-full relative shrink-0">
-            {isTyping && (
-                <div className="flex justify-start animate-fade-in mb-4">
-                    <div className="bg-gray-100 p-4 rounded-xl rounded-bl-none border border-gray-200 shadow-sm">
-                        <div className="flex space-x-2">
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+        <div className="flex flex-col h-full bg-white relative">
+            <div className="flex-1 overflow-y-auto w-full px-4 md:px-12 py-8 relative custom-scrollbar">
+                <div className="max-w-2xl mx-auto space-y-6 pb-32">
+                    {messages && messages.map((msg, idx) => (
+                        <div key={idx} className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-6 items-start gap-3 animate-fade-in-up`}>
+                            {msg.role === "assistant" && (
+                                <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden"
+                                >
+                                    <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
+                                </motion.div>
+                            )}
+                            <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === 'assistant'
+                                ? msg.isBio
+                                    ? 'bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium'
+                                    : msg.isAcute
+                                        ? 'bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium'
+                                        : msg.isCritical
+                                            ? 'bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold'
+                                            : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
+                                : 'bg-indigo-600 text-white rounded-tr-none'
+                                }`}>
+                                <div className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" : "prose-invert"}`}>
+                                    {msg.isAiAnalysisResult ? (
+                                        <div className="flex flex-col gap-3">
+                                            {/* Pills Container */}
+                                            <div className="flex flex-wrap gap-2 mb-1">
+                                                <div className="px-3 py-1 bg-slate-100/80 backdrop-blur-sm border border-slate-200/50 rounded-full text-[11px] font-semibold text-slate-700 shadow-sm flex items-center gap-1">
+                                                    <span>👤</span> {age < 18 ? `Pediátrico (${age}a)` : `Adulto (${age}a)`}
+                                                </div>
+                                                <div className="px-3 py-1 bg-blue-50/80 backdrop-blur-sm border border-blue-100 rounded-full text-[11px] font-semibold text-blue-700 shadow-sm flex items-center gap-1">
+                                                    <span>🎯</span> {msg.aiData?.primaryRoute || patientData.clinical_context?.goal || "Análisis Clínico"}
+                                                </div>
+                                                <div className={`px-3 py-1 backdrop-blur-sm border rounded-full text-[11px] font-semibold shadow-sm flex items-center gap-1 ${
+                                                    msg.aiData?.redFlag ? 'bg-red-50/90 border-red-200 text-red-700' : 
+                                                    (msg.aiData?.risk_level === 'HIGH' ? 'bg-amber-50/90 border-amber-200 text-amber-700' : 'bg-emerald-50/90 border-emerald-200 text-emerald-700')
+                                                }`}>
+                                                    <span>⚠️</span> Riesgo: {msg.aiData?.redFlag ? 'Crítico (Red Flag)' : (msg.aiData?.risk_level || 'Base')}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Main Suspicion */}
+                                            <div className="text-sm text-slate-700">
+                                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                            </div>
+
+                                            {/* Technical Detail (Glassmorphism Bento) */}
+                                            {msg.aiData?.reasoning && (
+                                                <div className="mt-2 p-3 bg-slate-50/40 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.05)] relative overflow-hidden group">
+                                                    <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-purple-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                                    <details className="relative z-10 group/details">
+                                                        <summary className="text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 transition-colors list-none flex items-center gap-2">
+                                                            <svg className="w-3 h-3 text-slate-400 group-open/details:rotate-90 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                            </svg>
+                                                            Deducción Sugerida (Matriz IFM)
+                                                        </summary>
+                                                        <div className="mt-2 text-xs text-slate-600 leading-relaxed border-l-2 border-slate-200/80 pl-3 ml-1 bg-white/50 p-2 rounded-r-lg">
+                                                            <ReactMarkdown>{msg.aiData.reasoning}</ReactMarkdown>
+                                                        </div>
+                                                    </details>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                    )}
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    ))}
+                    {isTyping && (
+                        <div className="flex justify-start animate-fade-in mb-4">
+                            <div className="bg-gray-100 p-4 rounded-xl rounded-bl-none border border-gray-200 shadow-sm">
+                                <div className="flex space-x-2">
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <div ref={chatEndRef} />
                 </div>
-            )}
+            </div>
 
-            <div className="max-w-3xl mx-auto w-full flex flex-col items-center gap-2">
-                
-                {step === 'clinica_triage_start' && !isTyping && (
-                    <div className="w-full relative px-2 mb-2 animate-in fade-in zoom-in duration-300">
-                        <SearchableVerticalMenu 
-                            options={filteredMotiveOptions} 
-                            onSelect={(val) => handleSend(val)}
-                            embedded={true}
-                        />
-                    </div>
-                )}
+            {/* Input Form */}
+            <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-4 md:px-12 backdrop-blur-md bg-opacity-90">
+                <div className="max-w-2xl mx-auto flex flex-col gap-3 relative">
+                    
+                    {step === 'clinica_triage_start' && !isTyping && (
+                        <div className="w-full relative animate-in fade-in zoom-in duration-300">
+                            {filteredMotiveOptions.length <= 3 ? (
+                                <div className="flex flex-wrap gap-2 justify-center mb-2">
+                                    {filteredMotiveOptions.map(opt => (
+                                        <button 
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={(e) => { e.preventDefault(); handleSend(opt.value); }}
+                                            className="px-5 py-2 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white text-sm font-medium rounded-full transition-colors shadow-sm"
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="relative w-full mb-2 z-50">
+                                    <SearchableVerticalMenu 
+                                        options={filteredMotiveOptions} 
+                                        onSelect={(val) => handleSend(val)}
+                                        embedded={true}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    )}
 
-                {step === 'clinica_body_map' && !isTyping && (
-                    <div className="flex justify-center w-full max-w-[500px] mb-4">
-                        <div className="bg-gray-50 border border-gray-200 p-2 sm:p-4 rounded-xl w-full shadow-sm flex justify-center">
-                            <VisualBodyMap
-                                gender={gender}
-                                onComplete={handleBodyMapComplete}
+                    {step === 'clinica_body_map' && !isTyping && (
+                        <div className="flex justify-center w-full mb-4">
+                            <div className="bg-gray-50 border border-gray-200 p-2 sm:p-4 rounded-xl w-full shadow-sm flex justify-center">
+                                <VisualBodyMap
+                                    gender={gender}
+                                    onComplete={handleBodyMapComplete}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {(step === 'clinica_triage_ai_complete' || step === 'clinica_triage_containment_complete') && !isTyping && (
+                        <div className="w-full relative mb-2 animate-in fade-in zoom-in duration-300 flex justify-center">
+                            <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); handleSend("Continuar"); }}
+                                className="px-6 py-3 bg-[#1C75BC] text-white rounded-full font-medium shadow-md hover:bg-blue-700 hover:scale-105 transition-all flex items-center gap-2"
+                            >
+                                Continuar a Historial Clínico <i className="fi fi-rr-arrow-right"></i>
+                            </button>
+                        </div>
+                    )}
+
+                    {step !== 'clinica_triage_ai_complete' && step !== 'clinica_triage_containment_complete' && (
+                        <div className="w-full flex gap-3 relative">
+                            <input
+                                type="text"
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && inputValue.trim() && !isTyping && step !== 'clinica_body_map' && step !== 'clinica_triage_containment' && step !== 'clinica_triage_ai_analysis') {
+                                        handleSend(inputValue);
+                                    }
+                                }}
+                                placeholder={step === 'clinica_body_map' ? "Seleccione una opción..." : (step === 'clinica_triage_start' ? "Seleccione o escriba su motivo libremente..." : "Escriba aquí...")}
+                                className="flex-1 px-5 py-4 bg-gray-50 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1C75BC] focus:bg-white transition-all font-sansation text-slate-700 shadow-sm disabled:opacity-50 disabled:bg-gray-100"
+                                disabled={isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis'}
                             />
+                            <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); handleSend(inputValue); }}
+                                disabled={!inputValue.trim() || isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis'}
+                                className="px-6 py-4 bg-[#1C75BC] text-white rounded-full font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center min-w-[60px]"
+                            >
+                                <i className="fi fi-rr-paper-plane text-xl"></i>
+                            </button>
                         </div>
+                    )}
+
+                    <div className="text-center mt-3 text-xs text-gray-400 font-sansation flex items-center justify-center gap-2">
+                        <i className="fi fi-rr-shield-check"></i>
+                        Terminal A - Comunicación Clínica Encriptada Extremo a Extremo
                     </div>
-                )}
-
-                {(step === 'clinica_triage_ai_complete' || step === 'clinica_triage_containment_complete') && !isTyping && (
-                    <div className="w-full relative px-2 mb-2 animate-in fade-in zoom-in duration-300 flex justify-end">
-                        <button
-                            onClick={(e) => { e.preventDefault(); handleSend(); }}
-                            className="px-6 py-3 bg-tilo-primary text-white rounded-2xl font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all flex items-center gap-2"
-                        >
-                            Continuar a Historial Cl├¡nico <Send className="w-4 h-4" />
-                        </button>
-                    </div>
-                )}
-
-                <div className="relative flex items-center gap-2 bg-tilo-bg-base border border-tilo-border rounded-full px-2 py-2 shadow-inner focus-within:ring-2 focus-within:ring-tilo-primary transition-all w-full">
-                    <input
-                        type="text"
-                        value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder={step === 'clinica_body_map' ? "Seleccione una opci├│n..." : (step === 'clinica_triage_start' ? "Seleccione o escriba su s├¡ntoma libremente..." : dynamicPlaceholder)}
-                        className="flex-1 bg-transparent outline-none text-tilo-text-main placeholder:text-tilo-text-muted text-sm h-10 px-4"
-                        disabled={isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis' || step === 'clinica_triage_ai_complete' || step === 'clinica_triage_containment_complete'}
-                    />
-                    <button
-                        onClick={(e) => { e.preventDefault(); handleSend(); }}
-                        disabled={!inputValue.trim() || isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis' || step === 'clinica_triage_ai_complete' || step === 'clinica_triage_containment_complete'}
-                        className="bg-tilo-primary hover:bg-blue-700 text-white p-2 rounded-full transition-colors flex items-center justify-center shadow-md disabled:opacity-50 disabled:cursor-not-allowed shrink-0 w-10 h-10"
-                    >
-                        <Send size={18} className="ml-[2px]" />
-                    </button>
-                </div>
-
-                <div className="text-center mt-2 text-xs text-tilo-text-muted font-sansation flex items-center justify-center gap-2">
-                    <i className="fi fi-rr-shield-check"></i>
-                    Terminal A - Comunicaci├│n Cl├¡nica Encriptada Extremo a Extremo
                 </div>
             </div>
         </div>

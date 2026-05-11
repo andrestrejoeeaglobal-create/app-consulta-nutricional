@@ -72,6 +72,8 @@ app.post('/api/clinical/validate-appointment', (req, res) => {
 app.get('/checkCitation', async (req, res) => {
     const { id } = req.query; // Input del usuario (idCita)
 
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
     if (!id) {
         return res.status(400).json({ response: { code: 400, message: "Missing ID" } });
     }
@@ -146,6 +148,7 @@ app.get('/checkCitation', async (req, res) => {
 
         console.log(`✅ SAFE-ID: Cita #${id} encontrada. Estatus: ${mappedRecord.estatus}`);
 
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.json({
             response: { code: 0, message: "ok" },
             dataSet: [mappedRecord],
@@ -154,6 +157,7 @@ app.get('/checkCitation', async (req, res) => {
 
     } catch (error) {
         console.error("🔥 SAFE-ID Error:", error.message);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.status(500).json({
             response: { code: 500, message: "Internal Server Error" },
             dataSet: []

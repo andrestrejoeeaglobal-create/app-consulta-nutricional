@@ -251,12 +251,16 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
                 {messages.map((msg, idx) => (
                     <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`
-                            max-w-[80%] rounded-2xl px-5 py-3 shadow-sm
-                            ${msg.role === 'user'
-                                ? 'bg-blue-600 text-white rounded-br-none'
-                                : 'bg-gray-100 text-gray-800 rounded-bl-none'}
-                        `}>
+                        <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === "assistant"
+                                ? msg.isBio
+                                    ? "bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium"
+                                    : msg.isAcute
+                                        ? "bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium"
+                                        : msg.isCritical
+                                            ? "bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold"
+                                            : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
+                                : "bg-indigo-600 text-white rounded-tr-none"
+                            }`}>
                             <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                         </div>
                     </div>

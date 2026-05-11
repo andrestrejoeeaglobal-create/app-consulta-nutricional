@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { formatText } from '../../utils/utils';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+import { motion } from 'framer-motion';
+import tiloImg from '../../assets/tilo.png';
+import ReactMarkdown from 'react-markdown';
 
 /**
  * T.I.L.O. - MÓDULO FASE 5 (ESTILO DE VIDA)
@@ -68,7 +71,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
         }
 
         return [{
-            role: 'assistant', content: greeting, options: [
+            role: 'assistant', content: greeting, isBio: true, options: [
                 { label: "1 a 3 (Muy Baja)", value: "3" },
                 { label: "4 a 6 (Regular)", value: "5" },
                 { label: "7 a 8 (Buena)", value: "7" },
@@ -143,7 +146,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                         ? `Dato registrado. Como Bio-Arquitecto, debo sincronizar el plan con el ritmo hormonal de ${minorArticle}. ¿En qué fase del ciclo se encuentra hoy o cómo describiría los periodos recientes de ${pName}?`
                         : `Dato registrado. Como Bio-Arquitecto, debo sincronizar su plan con su ritmo hormonal. ¿En qué fase de su ciclo se encuentra hoy o cómo describiría sus periodos recientes?`;
                     setMessages(prev => [...prev, {
-                        role: 'assistant', content: cycleMsg, options: [
+                        role: 'assistant', content: cycleMsg, isBio: true, options: [
                             { label: "Folicular / Lútea", value: "Folicular_Lutea" },
                             { label: "Menstruación / Transición", value: "Menstruacion" },
                             { label: "Posmenopausia / Periodo Irregular", value: "Pospausia" }
@@ -152,7 +155,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                     setCurrentStep('HORMONAL');
                 } else {
                     setMessages(prev => [...prev, {
-                        role: 'assistant', content: isMinor ? `¿Cuántas horas de sueño profundo logra rescatar ${pName} cada noche para su reparación celular?` : "¿Cuántas horas de sueño profundo logra rescatar cada noche para su reparación celular?", options: [
+                        role: 'assistant', content: isMinor ? `¿Cuántas horas de sueño profundo logra rescatar ${pName} cada noche para su reparación celular?` : "¿Cuántas horas de sueño profundo logra rescatar cada noche para su reparación celular?", isBio: true, options: [
                             { label: "8 horas o más", value: ">8_hours" },
                             { label: "Entre 6 y 7 horas", value: "6-7_hours" },
                             { label: "Menos de 5 horas", value: "<5_hours" }
@@ -169,7 +172,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
 
                 syncLifeData({ hormonal: { ...lifeStyle.hormonal, cyclePhase: phase } });
                 setMessages(prev => [...prev, {
-                    role: 'assistant', content: isMinor ? `Entendido. Sincronizaremos los micronutrientes con esa fase. Finalmente, ¿cuántas horas duerme ${pName} en promedio?` : "Entendido. Sincronizaremos los micronutrientes con esa fase. Finalmente, ¿cuántas horas duerme en promedio?", options: [
+                    role: 'assistant', content: isMinor ? `Entendido. Sincronizaremos los micronutrientes con esa fase. Finalmente, ¿cuántas horas duerme ${pName} en promedio?` : "Entendido. Sincronizaremos los micronutrientes con esa fase. Finalmente, ¿cuántas horas duerme en promedio?", isBio: true, options: [
                         { label: "8 horas o más", value: ">8_hours" },
                         { label: "Entre 6 y 7 horas", value: "6-7_hours" },
                         { label: "Menos de 5 horas", value: "<5_hours" }
@@ -189,7 +192,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                     ? `Auditoría completada. He identificado los cuellos de botella en la flexibilidad metabólica de ${pName}. Estamos listos para cerrar los planos de salud e iniciar la transformación.`
                     : `Auditoría completada. He identificado los cuellos de botella en su flexibilidad metabólica. Estamos listos para cerrar sus planos de salud e iniciar la transformación.`;
                 setMessages(prev => [...prev, {
-                    role: 'assistant', content: finalMsg, options: [
+                    role: 'assistant', content: finalMsg, isBio: true, options: [
                         { label: "Continuar a la siguiente fase", value: "FINISH_PHASE" }
                     ]
                 }]);
@@ -212,20 +215,37 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
             <div className="flex-1 overflow-y-auto w-full px-4 md:px-12 py-8 relative custom-scrollbar">
                 <div className="max-w-2xl mx-auto space-y-6 pb-32">
                     {messages.map((msg, idx) => (
-                        <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
-                            <div className={`p-4 rounded-xl max-w-[85%] sm:max-w-[75%] font-sansation text-sm sm:text-base leading-relaxed ${msg.role === 'user'
-                                ? 'bg-[#1C75BC] text-white rounded-br-none shadow-md'
-                                : 'bg-gray-100 text-slate-700 rounded-bl-none border border-gray-200'
+                        <div key={idx} className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-6 items-start gap-3 animate-fade-in-up`}>
+                            {msg.role === "assistant" && (
+                                <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden"
+                                >
+                                    <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
+                                </motion.div>
+                            )}
+                            <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === 'assistant'
+                                ? msg.isBio
+                                    ? 'bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium'
+                                    : msg.isAcute
+                                        ? 'bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium'
+                                        : msg.isCritical
+                                            ? 'bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold'
+                                            : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
+                                : 'bg-indigo-600 text-white rounded-tr-none'
                                 }`}>
-                                <div className="whitespace-pre-wrap">{msg.content}</div>
+                                <div className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" : "prose-invert"}`}>
+                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                </div>
 
                                 {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && (
-                                    <div className="mt-4 flex flex-col gap-2">
+                                    <div className="mt-4 flex flex-wrap gap-2">
                                         {msg.options.map((opt, i) => (
                                             <button
                                                 key={i}
                                                 onClick={() => handleSend(opt.value)}
-                                                className="w-full text-left px-4 py-3 rounded-lg border border-[#1C75BC] text-[#1C75BC] hover:bg-[#1C75BC] hover:text-white transition-all duration-200 font-medium bg-white"
+                                                className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
                                             >
                                                 {opt.label}
                                             </button>

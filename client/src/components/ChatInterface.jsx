@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Paperclip, Mic, Send } from 'lucide-react';
+import SearchableVerticalMenu from './ui/SearchableVerticalMenu';
 
 const ChatInterface = ({
     messages = [],
@@ -47,6 +48,10 @@ const ChatInterface = ({
         }
     };
 
+    const lastMsg = messages[messages.length - 1];
+    const hasOptions = !isTyping && lastMsg && lastMsg.role === 'assistant' && (lastMsg.options || lastMsg.quickReplies);
+    const optionsArray = hasOptions ? (lastMsg.options || lastMsg.quickReplies) : [];
+
     return (
         <div className="flex flex-col h-full w-full bg-slate-50 font-sans shadow-inner relative z-10">
 
@@ -54,7 +59,6 @@ const ChatInterface = ({
             <div className="flex-1 h-full overflow-y-auto p-4 md:p-6 space-y-6 bg-slate-50 custom-scrollbar z-10 relative pb-32">
                 {messages.map((msg, index) => {
                     const isUser = msg.role === 'user';
-                    const isLastMsg = index === messages.length - 1;
 
                     return (
                         <div key={index} className={`flex flex-col w-full ${isUser ? 'items-end' : 'items-start'}`}>
@@ -65,32 +69,6 @@ const ChatInterface = ({
                                 }`}>
                                 {msg.content}
                             </div>
-
-                            {/* Options/Quick Replies (Solo si es asistente, último mensaje y tiene opciones explícitas) */}
-                            {/* Soporta tanto quickReplies (viejos) como options (nuevos) */}
-                            {!isUser && isLastMsg && (msg.options || msg.quickReplies) && (
-                                (() => {
-                                    const optionsArray = msg.options || msg.quickReplies;
-                                    const isSlider = optionsArray.length > 3;
-                                    return (
-                                        <div className={`mt-4 flex gap-2 w-full ${isSlider ? 'overflow-x-auto pb-2 custom-scrollbar snap-x' : 'flex-wrap'}`}>
-                                            {optionsArray.map((opt, i) => {
-                                                const label = opt.label || opt; // Support {label, value} or string
-                                                const value = opt.value || opt;
-                                                return (
-                                                    <button
-                                                        key={i}
-                                                        onClick={() => handleQuickReply(value)}
-                                                        className={`px-4 py-2 bg-blue-100 border border-blue-200 text-blue-700 text-xs font-bold rounded-full hover:bg-blue-200 transition-colors shadow-sm ${isSlider ? 'snap-start flex-shrink-0 whitespace-nowrap' : ''}`}
-                                                    >
-                                                        {label}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    );
-                                })()
-                            )}
                         </div>
                     );
                 })}
@@ -120,14 +98,46 @@ const ChatInterface = ({
 
             {/* Input Area (Barra inferior anclada) */}
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
-                {inputAreaTopAddon && (
-                    <div className="mb-3">
-                        {inputAreaTopAddon}
-                    </div>
-                )}
+                <div className="relative w-full max-w-3xl mx-auto flex flex-col items-center">
+                    {/* Render Options according to Rule */}
+                    {optionsArray.length > 0 && (
+                        optionsArray.length > 3 ? (
+                            <SearchableVerticalMenu 
+                                options={optionsArray.map(opt => ({ label: opt.label || opt, value: opt.value || opt }))} 
+                                onSelect={handleQuickReply} 
+                            />
+                        ) : (
+                            <div className="flex flex-col gap-2 mb-3 w-full">
+                                {optionsArray.map((opt, i) => {
+                                    const label = opt.label || opt;
+                                    const value = opt.value || opt;
+                                    return (
+                                        <button
+                                            key={i}
+                                            onClick={() => handleQuickReply(value)}
+                                            className="w-full px-5 py-3 bg-white border-2 border-blue-100 text-slate-700 text-sm font-medium rounded-xl hover:border-blue-500 hover:bg-blue-50 hover:shadow-md transition-all flex items-center justify-between group"
+                                        >
+                                            <span>{label}</span>
+                                            <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                                </svg>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )
+                    )}
 
-                {hideDefaultInputArea ? null : (
-                    <div className="w-full bg-white border border-slate-200 rounded-full px-2 py-2 flex items-center gap-2 shadow-md focus-within:ring-4 focus-within:ring-blue-50 focus-within:border-blue-400 transition-all">
+                    {inputAreaTopAddon && (
+                        <div className="mb-3 w-full">
+                            {inputAreaTopAddon}
+                        </div>
+                    )}
+
+                    {hideDefaultInputArea ? null : (
+                        <div className="w-full bg-white border border-slate-200 rounded-full px-2 py-2 flex items-center gap-2 shadow-md focus-within:ring-4 focus-within:ring-blue-50 focus-within:border-blue-400 transition-all relative z-10">
                         {/* Botón Clip para adjuntos */}
                         <button
                             onClick={() => fileInputRef.current?.click()}
@@ -186,6 +196,7 @@ const ChatInterface = ({
                         </div>
                     </div>
                 )}
+                </div>
             </div>
         </div>
     );

@@ -608,6 +608,7 @@ function App() {
       // 3. Jump to Step
       const jumpTo = recoveryData.last_active_block || 'verify_identity';
       setInterviewStep(jumpTo);
+      setCurrentPhase(jumpTo);
 
       // 4. User Feedback
       setMessages(prev => [...prev, {
@@ -1792,7 +1793,8 @@ function App() {
           setMessages((prev) => [...prev, {
             role: "assistant",
             content: `He encontrado estas colonias en ${data.municipio}, ${data.estado}. Por favor seleccione la suya:`,
-            options: colonyOptions
+            options: colonyOptions,
+            inputType: 'strict_select'
           }]);
           setInterviewStep("address_colonia_select");
 
@@ -4974,7 +4976,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                         {/* V7.1 RENDERIZADO DE BOTONES (Chips Interactivos) */}
                         {/* ADAPTIVE UI: Todos los botones se muestran. Si hay > 3, usar Select Dropdown */}
                         {msg.options && (
-                          msg.options.length > 3 ? null : (
+                          (msg.options.length > 3) ? null : (
                             <div className="mt-4 flex flex-wrap gap-2">
                               {msg.options.map((opt, i) => {
                                 const isLastMessage = index === messages.length - 1;
@@ -5139,7 +5141,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                         {messages.length > 0 &&
                           messages[messages.length - 1].role === 'assistant' &&
                           messages[messages.length - 1].options &&
-                          messages[messages.length - 1].options.length > 3 && (
+                          (messages[messages.length - 1].options.length > 3) && (
                             <SearchableVerticalMenu
                               options={messages[messages.length - 1].options}
                               onSelect={(selectedValue) => handleOptionSelect(messages[messages.length - 1], selectedValue)}
@@ -5195,6 +5197,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
 
                         {messages.length === 0 || messages[messages.length - 1].inputType !== 'strict_select' ? (
                           <button
+                            type="button"
                             onClick={() => {
                               // ADAPTIVE UI FIX: Display LABEL, Send VALUE
                               if (messages.length > 0 && messages[messages.length - 1].options) {

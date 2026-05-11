@@ -199,7 +199,8 @@ export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = 
             isPregnant: data.isPregnant || false,
             primaryRoute: data.primaryRoute,
             secondaryRoute: data.secondaryRoute,
-            reasoning: data.reasoning
+            reasoning: data.reasoning,
+            patientMessage: data.patientMessage
         };
 
     } catch (error) {
@@ -212,7 +213,8 @@ export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = 
             isPregnant: false,
             primaryRoute: "GOAL_EDUCATION",
             secondaryRoute: null,
-            reasoning: "Fallback preventivo por falla en Neural Cortex"
+            reasoning: "Fallback preventivo por falla en Neural Cortex",
+            patientMessage: "Entendido. He analizado la información y he trazado una ruta clínica de evaluación para continuar."
         };
     }
 };
@@ -363,7 +365,8 @@ export const useCortex = () => {
                 isPregnant: data.isPregnant || false,
                 primaryRoute: data.primaryRoute,
                 secondaryRoute: data.secondaryRoute,
-                reasoning: data.reasoning
+                reasoning: data.reasoning,
+                patientMessage: data.patientMessage
             };
 
         } catch (error) {
@@ -377,7 +380,8 @@ export const useCortex = () => {
                 isPregnant: false,
                 primaryRoute: "Ruta 0 - Control Clínico General",
                 secondaryRoute: null,
-                reasoning: "Error de conexión con el motor de IA. Se ha asignado la ruta clínica por defecto."
+                reasoning: "Error de conexión con el motor de IA. Se ha asignado la ruta clínica por defecto.",
+                patientMessage: "Entendido. He analizado la información y he trazado una ruta de evaluación general para continuar."
             };
         }
     };
@@ -829,7 +833,7 @@ export const useCortex = () => {
                             avatar: tiloImg,
                             inputType: 'text',
                             options: [
-                                { label: '➖ No usa Apellido Materno', value: 'CONFIRM_MAT_NONE' }
+                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT_MANUAL');
@@ -881,7 +885,7 @@ export const useCortex = () => {
                             avatar: tiloImg,
                             inputType: 'text',
                             options: [
-                                { label: '➖ No usa Apellido Materno', value: 'CONFIRM_MAT_NONE' }
+                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT_MANUAL');
@@ -923,7 +927,7 @@ export const useCortex = () => {
                             avatar: tiloImg,
                             inputType: 'text',
                             options: [
-                                { label: '➖ No usa Apellido Materno', value: 'CONFIRM_MAT_NONE' }
+                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT_MANUAL');
@@ -1608,8 +1612,9 @@ export const useCortex = () => {
                             setMessages(prev => {
                                 const withoutThinking = prev.slice(0, prev.length - 1);
                                 return [...withoutThinking, {
+                                    role: 'assistant',
                                     content: `He encontrado estas colonias en ${data.municipio}, ${data.estado}. Por favor seleccione la correspondiente:`,
-                                    inputType: 'buttons',
+                                    inputType: 'strict_select',
                                     options: data.colonias.map(c => ({ label: c, value: c }))
                                 }];
                             });
@@ -1620,6 +1625,7 @@ export const useCortex = () => {
                             setMessages(prev => {
                                 const withoutThinking = prev.slice(0, prev.length - 1);
                                 return [...withoutThinking, {
+                                    role: 'assistant',
                                     content: (patientData.profile?.pediatric_profile?.is_minor) ? `Ese código postal no se encuentra en la base de datos nacional. Por favor verifique e ingrese el **Código Postal** de ${patientData.profile?.first_name || "el paciente"} nuevamente:` : "Ese código postal no se encuentra en la base de datos nacional. Por favor verifique e ingrese su **Código Postal** nuevamente:",
                                     inputType: 'number'
                                 }];
@@ -1638,6 +1644,7 @@ export const useCortex = () => {
                     }));
 
                     setMessages(prev => [...prev, {
+                        role: 'assistant',
                         content: (patientData.profile?.pediatric_profile?.is_minor) ? `¿Cuál es el **Municipio / Delegación** de residencia de ${patientData.profile?.first_name || "el paciente"}?` : "¿Cuál es su **Municipio / Delegación**?",
                         inputType: 'text'
                     }]);
@@ -1653,6 +1660,7 @@ export const useCortex = () => {
                     }));
 
                     setMessages(prev => [...prev, {
+                        role: 'assistant',
                         content: (patientData.profile?.pediatric_profile?.is_minor) ? `Entendido. Ahora, por favor escriba la **Colonia/Asentamiento** de residencia de ${patientData.profile?.first_name || "el paciente"}:` : "Entendido. Ahora, por favor escriba su **Colonia/Asentamiento**:",
                         inputType: 'text'
                     }]);
@@ -1669,6 +1677,7 @@ export const useCortex = () => {
                     }));
 
                     setMessages(prev => [...prev, {
+                        role: 'assistant',
                         content: (patientData.profile?.pediatric_profile?.is_minor) ? `Finalmente, ¿cuál es la **Calle y Número exterior/interior** de la residencia de ${patientData.profile?.first_name || "el paciente"}?` : "Finalmente, ¿cuál es su **Calle y Número exterior/interior**?",
                         inputType: 'text'
                     }]);

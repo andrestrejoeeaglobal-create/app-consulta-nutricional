@@ -122,6 +122,7 @@ Analiza este caso y devuelve el JSON correspondiente.
             jsonResponse.reasoning += "\n\n*Nota Clínica:* Las deducciones presentadas representan soporte metabólico coadyuvante (NOM-004).";
         }
 
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.json(jsonResponse);
 
     } catch (error) {

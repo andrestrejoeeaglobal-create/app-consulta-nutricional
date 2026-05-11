@@ -15,7 +15,8 @@ export const usePatientLinguistics = (patientData) => {
     if (identityLock?.patientInfo?.gender) {
         patientSex = identityLock.patientInfo.gender;
     } else if (patientData) {
-        if (patientData.profile?.gender) patientSex = patientData.profile.gender;
+        if (patientData.profile?.sex) patientSex = patientData.profile.sex;
+        else if (patientData.profile?.gender) patientSex = patientData.profile.gender;
         else if (patientData.identificacion?.sexo) patientSex = patientData.identificacion.sexo;
     }
 
@@ -34,5 +35,5 @@ export const usePatientLinguistics = (patientData) => {
         ? `Escriba el motivo principal para ${cleanName}...`
         : "Describa brevemente su motivo...";
 
-    return { patientAge, patientSex, patientName: cleanName, placeholder };
+    return { patientAge, patientSex, patientName: cleanName, placeholder, isMinor, pName: cleanName };
 };

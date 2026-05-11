@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
     Activity, Timer, Star, ClipboardList,
-    Stethoscope, ShieldCheck, Baby, Sparkles, Check
+    Stethoscope, ShieldCheck, Baby, Sparkles, Check, AlertTriangle
 } from 'lucide-react';
 
 // Custom Hook para detectar un cambio y disparar un brillo (Blue Glow) de 1.5s
@@ -37,9 +37,9 @@ const motiveOptionsMap = {
     "GOAL_PREGNANCY": "Embarazo y Lactancia",
     "GOAL_MUSCLE": "Ganar Músculo / Deporte (Rendimiento)",
     "GOAL_ONCOLOGY": "Oncología Nutricional",
-    "GOAL_PEDIATRICS": "Pediatría (Crecimiento y Desarrollo)",
-    "GOAL_LONGEVITY": "Prevención y Longevidad (Biohacking)",
-    "GOAL_MENTAL_HEALTH": "Salud Mental / TCA (Seguridad Conductual)",
+    "GOAL_PEDIATRICS": "Pediatría (Crecimiento)",
+    "GOAL_LONGEVITY": "Prevención y Longevidad",
+    "GOAL_MENTAL_HEALTH": "Salud Mental / TCA",
     "GOAL_RENAL": "Salud Renal (Nefropatía)",
     "GOAL_IMMUNE": "VIH e Inmunodeficiencias"
 };
@@ -77,7 +77,7 @@ const EspejoClinicoActivo = ({ patientData }) => {
         });
 
         // Si todavía quedan etiquetas ROUTE_ o GOAL_, las limpiamos
-        cleanRoute = cleanRoute.replace(/(ROUTE_|GOAL_)[A-Z_]+/gi, 'ruta clínica');
+        cleanRoute = cleanRoute.replace(/(ROUTE_|GOAL_)[A-Z_]+/gi, 'Ruta Clínica');
         return cleanRoute.replace(/_/g, ' ');
     };
 
@@ -100,75 +100,90 @@ const EspejoClinicoActivo = ({ patientData }) => {
     const quoteGlow = useGlowOnUpdate(motiveText);
     const anchorGlow = useGlowOnUpdate(primaryRouteText);
     const suspicionGlow = useGlowOnUpdate(isRedFlag);
+    const reasoningGlow = useGlowOnUpdate(reasoningText);
 
     return (
-        <div className="w-full relative flex flex-col gap-6">
-            <div id="card-motivo" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden transition-all duration-300">
-                <div className="flex items-start justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                        <Activity className="w-6 h-6 text-[#1C75BC]" />
-                        <div>
-                            <h3 className="font-bold text-slate-700 text-lg">Resumen Clínico</h3>
-                            <p className="text-xs text-slate-500 font-sansation">Síntesis Dinámica Cortex</p>
-                        </div>
+        <div className="w-full relative flex flex-col gap-4">
+            {/* BENTO GRID: PILLS DE ESTADO INMEDIATO */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* 1. Perfil */}
+                <div className={`bg-white border border-slate-100 p-3 rounded-2xl shadow-sm flex items-center gap-3 transition-all duration-300 ${chronoGlow}`}>
+                    <div className="bg-indigo-50 p-2.5 rounded-xl text-indigo-500">
+                        <Baby size={18} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest truncate">Perfil</p>
+                        <p className="text-sm font-semibold text-slate-700 truncate">{devStage} {currentAge !== null ? `(${currentAge} años)` : ''}</p>
                     </div>
                 </div>
 
-                <div className="flex flex-col gap-4">
-                    {/* CRONOLOGÍA */}
-                    <div className={`bg-slate-50 border border-slate-100 p-5 rounded-2xl shadow-sm transition-all ${chronoGlow}`}>
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-prototype flex items-center gap-2">
-                            <Timer size={14} /> Cronología
-                        </h4>
-                        <p className="text-sm font-semibold text-slate-800 line-clamp-3">{chronologyText}</p>
+                {/* 2. Eje Crítico */}
+                <div className={`bg-white border border-slate-100 p-3 rounded-2xl shadow-sm flex items-center gap-3 transition-all duration-300 ${anchorGlow}`}>
+                    <div className="bg-amber-50 p-2.5 rounded-xl text-amber-500">
+                        <Star size={18} />
                     </div>
-
-                    {/* MOTIVO DE CONSULTA */}
-                    <div className={`bg-slate-50 border border-slate-100 p-5 rounded-2xl shadow-sm transition-all ${quoteGlow}`}>
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-prototype flex items-center gap-2">
-                            <ClipboardList size={14} /> Motivo de Consulta
-                        </h4>
-                        <p className="text-sm text-slate-700 font-medium italic mb-2 line-clamp-2">{motiveText}</p>
-                        <p className="text-sm text-slate-600 line-clamp-3 border-t border-slate-200 pt-2 mt-2">{reasoningText}</p>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest truncate">Eje Crítico</p>
+                        <p className="text-sm font-semibold text-slate-700 truncate">{primaryRouteText}</p>
                     </div>
+                </div>
 
-                    {/* NORTE DE SALUD (RUTAS) */}
-                    <div className={`bg-[#FFFBEB] border border-amber-100 p-5 rounded-2xl shadow-sm transition-all ${anchorGlow}`}>
-                        <h4 className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-2 font-prototype flex items-center gap-2">
-                            <Star size={14} className="text-amber-500" fill="currentColor" /> Norte de Salud
-                        </h4>
-                        <div className="flex flex-col gap-2 mt-2">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-amber-900 bg-amber-200 px-2 py-1 rounded">Ruta Principal</span>
-                                <span className="text-sm text-amber-900 font-medium">{primaryRouteText}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-1 rounded">Ruta Secundaria</span>
-                                <span className="text-sm text-amber-800">{secondaryRouteText}</span>
-                            </div>
-                        </div>
+                {/* 3. Riesgo / Estado */}
+                <div className={`bg-white border ${isRedFlag ? 'border-red-200' : 'border-slate-100'} p-3 rounded-2xl shadow-sm flex items-center gap-3 transition-all duration-300 ${suspicionGlow}`}>
+                    <div className={`${isRedFlag ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-emerald-500'} p-2.5 rounded-xl`}>
+                        {isRedFlag ? <AlertTriangle size={18} /> : <ShieldCheck size={18} />}
                     </div>
+                    <div className="flex-1 min-w-0">
+                        <p className={`text-[10px] uppercase font-bold tracking-widest truncate ${isRedFlag ? 'text-red-400' : 'text-slate-400'}`}>
+                            {isRedFlag ? 'Riesgo Crítico' : 'Sospecha Clínica'}
+                        </p>
+                        <p className={`text-sm font-semibold truncate ${isRedFlag ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {isRedFlag ? 'Alerta Detectada' : (aiAnalysis.detected_tags?.length > 0 ? aiAnalysis.detected_tags[0].replace(/_/g, ' ') : 'Estable')}
+                        </p>
+                    </div>
+                </div>
+            </div>
 
-                    {/* SOSPECHA CLÍNICA (ALERTAS) */}
-                    {(isRedFlag || aiAnalysis.detected_tags?.length > 0) && (
-                        <div className={`bg-slate-50 border ${isRedFlag ? 'border-red-200 bg-red-50' : 'border-slate-100'} p-5 rounded-2xl shadow-sm transition-all ${suspicionGlow}`}>
-                            <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-2 font-prototype flex items-center gap-2 ${isRedFlag ? 'text-red-500' : 'text-slate-400'}`}>
-                                <Stethoscope size={14} /> Sospecha Clínica
-                            </h4>
-                            {isRedFlag && (
-                                <p className="text-sm font-bold text-red-600 uppercase flex items-center gap-2 mb-2">
-                                    ⚠️ Alerta Clínica Detectada
-                                </p>
-                            )}
-                            {aiAnalysis.detected_tags?.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                    {aiAnalysis.detected_tags.filter(t => t !== 'red_flag_symptom').map((tag, idx) => (
-                                        <span key={idx} className="bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-bold uppercase">
-                                            {tag.replace(/_/g, ' ')}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
+            {/* MOTIVO PRINCIPAL (Rápida Lectura) */}
+            <div className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 transition-all duration-300 ${quoteGlow}`}>
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 font-prototype flex items-center gap-2">
+                    <ClipboardList size={14} className="text-indigo-400" /> Motivo de Consulta
+                </h4>
+                <p className="text-[1.1rem] text-slate-800 font-medium leading-relaxed">
+                    {motiveText}
+                </p>
+            </div>
+
+            {/* ANÁLISIS FORENSE (GLASSMORPHISM) */}
+            <div className={`relative group mt-1 transition-all duration-500 ${reasoningGlow}`}>
+                {/* Glow de fondo (Blur) */}
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl blur-md opacity-60 group-hover:opacity-100 transition duration-500"></div>
+                
+                {/* Contenedor Glassmorphism */}
+                <div className="relative bg-white/70 backdrop-blur-xl border border-white/80 p-5 rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+                    <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest font-prototype flex items-center gap-2">
+                            <Sparkles size={14} className="text-indigo-400" /> Deducción Sugerida (Matriz IFM)
+                        </h4>
+                        {aiAnalysis.secondaryRoute && (
+                            <span className="text-[9px] font-bold text-slate-400 uppercase bg-slate-100/80 px-2 py-1 rounded-full">
+                                {secondaryRouteText}
+                            </span>
+                        )}
+                    </div>
+                    
+                    <p className="text-sm text-slate-600 leading-relaxed font-sansation">
+                        {reasoningText}
+                    </p>
+
+                    {/* Tags adicionales si los hay */}
+                    {aiAnalysis.detected_tags?.length > 1 && (
+                        <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-200/50">
+                            {aiAnalysis.detected_tags.filter(t => t !== 'red_flag_symptom').map((tag, idx) => (
+                                <span key={idx} className="bg-slate-100/80 text-slate-600 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">
+                                    {tag.replace(/_/g, ' ')}
+                                </span>
+                            ))}
                         </div>
                     )}
                 </div>

@@ -558,9 +558,15 @@ export default function Fase10_Habitos({ initialChatHistory, patientData, onPhas
                             {msg.role === 'assistant' && (
                                 <img src={msg.avatar} alt="Tilo" className="w-8 h-8 rounded-full mr-3 shadow-sm self-end mb-1" />
                             )}
-                            <div className={`max-w-[75%] rounded-2xl px-5 py-3 shadow-sm ${msg.role === 'user'
-                                ? 'bg-indigo-600 text-white rounded-br-none'
-                                : 'bg-gray-100 text-gray-800 rounded-bl-none'
+                            <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === 'assistant'
+                                ? msg.isBio
+                                    ? "bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium"
+                                    : msg.isAcute
+                                        ? "bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium"
+                                        : msg.isCritical
+                                            ? "bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold"
+                                            : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
+                                : "bg-indigo-600 text-white rounded-tr-none"
                                 }`}>
                                 <ReactMarkdown className="prose prose-sm max-w-none">
                                     {msg.content}

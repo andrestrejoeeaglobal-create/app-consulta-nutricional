@@ -247,9 +247,15 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
                             </div>
                         )}
 
-                        <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.sender === "tilo"
-                            ? "bg-white border text-slate-700 rounded-tl-none border-slate-100"
-                            : "bg-indigo-600 text-white rounded-tr-none"
+                        <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${(msg.sender === "tilo" || msg.role === "assistant")
+                                ? msg.isBio
+                                    ? "bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium"
+                                    : msg.isAcute
+                                        ? "bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium"
+                                        : msg.isCritical
+                                            ? "bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold"
+                                            : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
+                                : "bg-indigo-600 text-white rounded-tr-none"
                             }`}>
                             <div className={`prose prose-sm max-w-none ${msg.sender === "tilo" ? "prose-slate" : "prose-invert"}`}>
                                 <ReactMarkdown>{msg.text}</ReactMarkdown>
