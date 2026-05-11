@@ -4,191 +4,243 @@ import { formatText } from '../../utils/utils';
 import { motion } from 'framer-motion';
 import tiloImg from '../../assets/tilo.png';
 import ReactMarkdown from 'react-markdown';
+import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
 
 /**
  * T.I.L.O. - FASE 4 (ANTECEDENTES FAMILIARES)
- * Versión: v3.1 - Standard Look & Feel Alignment
- * * CONSISTENCIA: Sigue el modelo global con Tilo UI.
- * * INTERACCIÓN: Uso de Opciones dinámicas inyectadas como botones debajo del grid.
+ * Versión: v4.4 - Genómica Universal
+ * * DRILL-DOWN: Máquina de estados para capturar Patología -> Familiar -> Detalle
  */
 
+const CAT_PATOLOGIAS = [
+    { label: "Diabetes (Azúcar alta)", value: "Diabetes" },
+    { label: "Hipertensión (Presión alta)", value: "Hipertension" },
+    { label: "Obesidad / Sobrepeso", value: "Obesidad" },
+    { label: "Cáncer / Tumor", value: "Cancer" },
+    { label: "Enfermedad Renal / Diálisis", value: "Renal" },
+    { label: "Asma / Problemas respiratorios", value: "Asma" },
+    { label: "Problemas de Tiroides", value: "Tiroides" },
+    { label: "Enfermedades Cardíacas / Infartos", value: "Cardiopatia" },
+    { label: "Depresión / Ansiedad / Psiquiátrico", value: "Psiquiatrico" },
+    { label: "Otras / Manual (Tipear)", value: "Otras" }
+];
+
 const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComplete, initialChatHistory }) => {
+    // NUEVA ESTRUCTURA DE DATOS
     const [familyTree, setFamilyTree] = useState({
-        parents: { diabetes: false, hypertension: false, cancer: false, obesity: false, renal: false },
-        grandparentsMaternal: { diabetes: false, hypertension: false, cancer: false, obesity: false, renal: false },
-        grandparentsPaternal: { diabetes: false, hypertension: false, cancer: false, obesity: false, renal: false },
-        siblings: { diabetes: false, hypertension: false, cancer: false, obesity: false, renal: false },
-        summary: "",
+        antecedentes: [],
         alert_detected: false
     });
 
     const ptCtx = patientData?.profile?.pediatric_profile;
     const isMinor = ptCtx?.is_minor === true;
-    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || "la menor").split(' ')[0];
+    const pName = (patientData?.identityLock?.name || patientData?.identificacion?.nombres || (isMinor ? "la menor" : "usted")).split(' ')[0];
+    
+    // Calcular edad para filtro
+    const ageStr = patientData?.profile?.pediatric_profile?.age || patientData?.identificacion?.edad || "0";
+    const age = parseInt(ageStr, 10) || 0;
+
+    // Máquina de estados
+    // ASK_START -> SELECT_DISEASE -> TYPE_DETAIL (if Cancer/Otras) -> SELECT_RELATIVE -> ASK_MORE
+    const [flowState, setFlowState] = useState('ASK_START');
+    const [currentAntecedente, setCurrentAntecedente] = useState(null); // { patologia, detalle, familiar }
 
     const [messages, setMessages] = useState(() => {
-        if (initialChatHistory && initialChatHistory.length > 0) return initialChatHistory;
-        const nameStr = pName !== "NOM" ? pName : "";
         const greeting = isMinor 
-            ? `Entendido. Ahora, para complementar el mapa de salud de ${nameStr}, ¿podría contarme si los padres o abuelos de la menor padecen alguna enfermedad como diabetes, hipertensión, obesidad o problemas renales?`
-            : `Entendido. Ahora, para complementar su mapa de salud, ${nameStr}, ¿podría contarme si sus padres o abuelos padecen alguna enfermedad como diabetes, hipertensión, obesidad o problemas renales?`;
-        return [{
+            ? `Entendido. Para complementar el mapa de salud de la menor ${pName}, ¿podría indicarme si existen antecedentes de enfermedades importantes en su familia directa (padres, abuelos, tíos o hermanos)?`
+            : `Entendido. Para complementar el mapa de salud de ${pName}, ¿podría indicarme si existen antecedentes de enfermedades importantes en su familia directa (padres, abuelos, tíos o hermanos)?`;
+        
+        const greetingMsg = {
             role: 'assistant', content: greeting, options: [
-                { label: "No, ninguno", value: "NO_ANTECEDENTES" },
-                { label: "Sí, hay antecedentes", value: "SI_ANTECEDENTES" }
+                { label: "❌ NO / DESCONOCE", value: "NO_ANTECEDENTES" },
+                { label: "✅ SÍ, HAY ANTECEDENTES", value: "SI_ANTECEDENTES" }
             ]
-        }];
+        };
+
+        if (initialChatHistory && initialChatHistory.length > 0) {
+            return [...initialChatHistory, greetingMsg];
+        }
+        return [greetingMsg];
     });
 
     const [inputValue, setInputValue] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [pendingBranchData, setPendingBranchData] = useState(null);
     const chatEndRef = useRef(null);
-
     const addAlert = useClinicalGenome(state => state.addAlert);
 
-    const syncGeneticData = (updates) => {
-        const newTree = { ...familyTree, ...updates };
-
-        // Evaluar Riesgos para emitir Alertas Pasivas al Espejo
-        const hasCancerRisk = updates.parents?.cancer || updates.grandparentsMaternal?.cancer || updates.grandparentsPaternal?.cancer || updates.siblings?.cancer || updates.cancer;
-        const hasDiabetesRisk = updates.parents?.diabetes || updates.grandparentsMaternal?.diabetes || updates.grandparentsPaternal?.diabetes || updates.siblings?.diabetes || updates.diabetes;
-        const hasCardioRisk = updates.parents?.hypertension || updates.grandparentsMaternal?.hypertension || updates.grandparentsPaternal?.hypertension || updates.siblings?.hypertension || updates.hypertension;
-
-        if (hasCancerRisk) {
-            newTree.alert_detected = true;
-            addAlert({
-                type: 'ALERTA ONCOLÓGICA FAMILIAR',
-                message: 'Antecedentes oncológicos detectados. Ajustar plan con dieta anti-inflamatoria de precisión.'
-            });
-        }
-        if (hasDiabetesRisk) {
-            addAlert({
-                type: 'RIESGO METABÓLICO HEREDITARIO',
-                message: 'Carga genética para Síndrome Metabólico. Pre-establecer monitoreo glucémico estructurado.'
-            });
-        }
-        if (hasCardioRisk) {
-            addAlert({
-                type: 'RIESGO CARDIOVASCULAR',
-                message: 'Vigilar marcadores de estrés endotelial y controlar ingesta de sodio (SAD).'
-            });
-        }
-
-        setFamilyTree(newTree);
-        setPatientData(prev => ({ ...prev, familyTree: newTree }));
-        return newTree;
+    // Dynamic relatives based on age
+    const getRelativesMenu = () => {
+        const base = [
+            { label: "Madre", value: "Madre" },
+            { label: "Padre", value: "Padre" },
+            { label: "Abuela Materna", value: "Abuela Materna" },
+            { label: "Abuelo Materno", value: "Abuelo Materno" },
+            { label: "Abuela Paterna", value: "Abuela Paterna" },
+            { label: "Abuelo Paterno", value: "Abuelo Paterno" },
+            { label: "Hermano(a)", value: "Hermano/a" },
+            { label: "Tío(a) Materno(a)", value: "Tio/a Materno/a" },
+            { label: "Tío(a) Paterno(a)", value: "Tio/a Paterno/a" }
+        ];
+        if (age >= 18) base.push({ label: "Hijo(a)", value: "Hijo/a" });
+        if (age >= 45) base.push({ label: "Nieto(a)", value: "Nieto/a" });
+        return base;
     };
 
-    const handleSend = (text) => {
+    const pushMessage = (msg) => {
+        setMessages(prev => {
+            const newMsgs = [...prev];
+            if (newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === 'assistant') {
+                newMsgs[newMsgs.length - 1].options = undefined;
+                newMsgs[newMsgs.length - 1].showMenu = undefined;
+            }
+            return [...newMsgs, msg];
+        });
+    };
+
+    const handleSend = (text, type = "text") => {
         const textToProcess = text || inputValue;
         if (!textToProcess.trim()) return;
 
         let userLabel = textToProcess;
-        // Map SI_ANTECEDENTES / NO_ANTECEDENTES back to text for display
         if (textToProcess === "SI_ANTECEDENTES") userLabel = "Sí, hay antecedentes";
-        if (textToProcess === "NO_ANTECEDENTES") userLabel = "No, ninguno";
+        if (textToProcess === "NO_ANTECEDENTES") userLabel = "No / Desconoce";
+        if (textToProcess === "FINISH") userLabel = "Continuar al historial";
+        if (textToProcess === "ADD_MORE") userLabel = "Agregar otro antecedente";
 
-        setMessages(prev => {
-            const newMsgs = [...prev];
-            // Remove options from last assistant message to prevent double-clicking later
-            if (newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === 'assistant') {
-                newMsgs[newMsgs.length - 1].options = undefined;
-            }
-            return [...newMsgs, { role: 'user', content: formatText(userLabel) }];
-        });
+        // Find label if coming from menu
+        if (type === "disease") userLabel = CAT_PATOLOGIAS.find(o => o.value === textToProcess)?.label || textToProcess;
+        if (type === "relative") userLabel = getRelativesMenu().find(o => o.value === textToProcess)?.label || textToProcess;
 
+        pushMessage({ role: 'user', content: formatText(userLabel) });
         setInputValue("");
         setIsAnalyzing(true);
 
         setTimeout(() => {
-            const lower = textToProcess.toLowerCase();
+            processState(textToProcess, type);
+        }, 600);
+    };
 
-            if (textToProcess === "NO_ANTECEDENTES" || (/no hay|ninguno|nadie|sanos|no/i.test(lower) && !lower.includes("si ") && lower.length < 15)) {
-                // Avanzar directamente
-                onPhaseComplete?.(familyTree, [...messages, { role: 'user', content: formatText(userLabel) }, { role: 'assistant', content: "Entendido, sin antecedentes registrados." }]);
+    const processState = (val, type) => {
+        if (flowState === 'ASK_START') {
+            if (val === "NO_ANTECEDENTES") {
+                onPhaseComplete?.(familyTree, [...messages, { role: 'user', content: "No / Desconoce" }, { role: 'assistant', content: "Entendido, sin antecedentes registrados." }]);
                 setIsAnalyzing(false);
                 return;
+            } else if (val === "SI_ANTECEDENTES") {
+                setFlowState('SELECT_DISEASE');
+                pushMessage({
+                    role: 'assistant',
+                    content: "Por favor, seleccione la condición o enfermedad que desea registrar:",
+                    showMenu: 'disease'
+                });
             }
-
-            if (textToProcess === "SI_ANTECEDENTES") {
-                setMessages(prev => [...prev, { role: 'assistant', content: "¿Qué familiares y qué padecimientos detectó? Puede escribirlos libremente o mencionarlos uno por uno (Ej. 'Mi mamá tiene diabetes')." }]);
-                setIsAnalyzing(false);
-                return;
-            }
-
-            // LÓGICA DE RAMAS PARA MATERNA/PATERNA
-            if (pendingBranchData) {
-                const isMat = /materna|mama/i.test(lower) || textToProcess === "Materna";
-                const isPat = /paterna|papa/i.test(lower) || textToProcess === "Paterna";
-
-                if (isMat) syncGeneticData({ grandparentsMaternal: pendingBranchData });
-                else if (isPat) syncGeneticData({ grandparentsPaternal: pendingBranchData });
-                else syncGeneticData({ grandparentsMaternal: pendingBranchData }); // Default fallback
-
-                setMessages(prev => [...prev, {
-                    role: 'assistant', content: "Registrado correctamente. ¿Desea agregar algún otro antecedente o podemos avanzar?", options: [
-                        { label: "Avanzar a Estilo de Vida", value: "NO_ANTECEDENTES" }
-                    ]
-                }]);
-                setPendingBranchData(null);
-                setIsAnalyzing(false);
-                return;
-            }
-
-            // INFERENCIA CLÍNICA
-            const hasD = /diabetes|azucar|glucosa/i.test(lower);
-            const hasH = /presion|hipertension|infarto|corazon|cardio/i.test(lower);
-            const hasO = /obesidad|sobrepeso/i.test(lower);
-            const hasR = /renal|riñon|dialisis/i.test(lower);
-            const hasC = /cancer|tumor|maligno|leucemia/i.test(lower);
-            const data = { diabetes: hasD, hypertension: hasH, obesity: hasO, renal: hasR, cancer: hasC };
-
-            if (hasD || hasH || hasO || hasR || data.cancer) {
-                if (/abuelo|abuela/i.test(lower) && !/materna|paterna/i.test(lower)) {
-                    setPendingBranchData(data);
-                    setMessages(prev => [...prev, {
-                        role: 'assistant', content: isMinor ? `¿Es abuelita(o) materna o paterna de ${pName}?` : "¿Es su abuelita(o) materna o paterna?", options: [
-                            { label: "Materna", value: "Materna" },
-                            { label: "Paterna", value: "Paterna" }
-                        ]
-                    }]);
-                } else {
-                    let isAssigned = false;
-                    if (/padre|madre|papa|mama/i.test(lower)) { syncGeneticData({ parents: data }); isAssigned = true; }
-                    if (/hermano|hermana/i.test(lower)) { syncGeneticData({ siblings: data }); isAssigned = true; }
-                    if (/abuelo|abuela/i.test(lower) && /materna|mama/i.test(lower)) { syncGeneticData({ grandparentsMaternal: data }); isAssigned = true; }
-                    if (/abuelo|abuela/i.test(lower) && /paterna|papa/i.test(lower)) { syncGeneticData({ grandparentsPaternal: data }); isAssigned = true; }
-
-                    if (!isAssigned) syncGeneticData({ parents: data });
-
-                    setMessages(prev => [...prev, {
-                        role: 'assistant', content: isMinor ? "Dato guardado en el expediente. ¿Algún otro detalle de la familia que debamos registrar?" : "Dato guardado en su expediente. ¿Algún otro detalle de su familia que debamos registrar?", options: [
-                            { label: "No, avanzar", value: "NO_ANTECEDENTES" }
-                        ]
-                    }]);
-                }
+        } 
+        else if (flowState === 'SELECT_DISEASE') {
+            const isCustom = val === "Otras" || val === "Cancer";
+            if (isCustom) {
+                setFlowState('TYPE_DETAIL');
+                setCurrentAntecedente({ patologia: val, detalle: "", familiar: "" });
+                pushMessage({
+                    role: 'assistant',
+                    content: val === "Cancer" 
+                        ? "¿Qué tipo de cáncer? Escríbalo brevemente (Ej. Cáncer de mama, Leucemia)."
+                        : "Por favor, escriba el nombre de la enfermedad o condición."
+                });
             } else {
-                setMessages(prev => [...prev, {
-                    role: 'assistant', content: isMinor ? "Lo tendré en cuenta. ¿Desea reportar diabetes, hipertensión, cáncer u obesidad en algún familiar cercano de la menor?" : "Lo tendré en cuenta. ¿Desea reportar diabetes, hipertensión, cáncer u obesidad en algún familiar cercano?", options: [
-                        { label: "No, avanzar", value: "NO_ANTECEDENTES" }
-                    ]
-                }]);
+                setFlowState('SELECT_RELATIVE');
+                setCurrentAntecedente({ patologia: val, detalle: "", familiar: "" });
+                pushMessage({
+                    role: 'assistant',
+                    content: `¿Qué familiar directo de ${pName} padece ${CAT_PATOLOGIAS.find(o=>o.value===val)?.label}?`,
+                    showMenu: 'relative'
+                });
             }
-            setIsAnalyzing(false);
-        }, 800);
+        }
+        else if (flowState === 'TYPE_DETAIL') {
+            const updated = { ...currentAntecedente, detalle: val };
+            setCurrentAntecedente(updated);
+            setFlowState('SELECT_RELATIVE');
+            const disLabel = updated.patologia === "Otras" ? val : `${updated.patologia} (${val})`;
+            pushMessage({
+                role: 'assistant',
+                content: `¿Qué familiar directo de ${pName} padece ${disLabel}?`,
+                showMenu: 'relative'
+            });
+        }
+        else if (flowState === 'SELECT_RELATIVE') {
+            const finalAnt = { ...currentAntecedente, familiar: val };
+            
+            // Evaluar Alertas
+            const isOnco = finalAnt.patologia === "Cancer";
+            const isMetabolic = finalAnt.patologia === "Diabetes" || finalAnt.patologia === "Obesidad";
+            const isCardio = finalAnt.patologia === "Hipertension" || finalAnt.patologia === "Cardiopatia";
+            
+            let hasAlert = familyTree.alert_detected;
+            if (isOnco) {
+                addAlert({
+                    type: 'ALERTA ONCOLÓGICA FAMILIAR',
+                    message: `Antecedente de Cáncer (${finalAnt.detalle || 'No especificado'}) en ${val}. Ajustar plan con dieta anti-inflamatoria.`
+                });
+                hasAlert = true;
+            }
+            if (isMetabolic) {
+                addAlert({
+                    type: 'RIESGO METABÓLICO HEREDITARIO',
+                    message: `Carga genética para Síndrome Metabólico (${finalAnt.patologia} en ${val}). Pre-establecer monitoreo glucémico.`
+                });
+            }
+            if (isCardio) {
+                addAlert({
+                    type: 'RIESGO CARDIOVASCULAR',
+                    message: `Vigilar marcadores de estrés endotelial debido a ${finalAnt.patologia} en ${val}.`
+                });
+            }
+
+            const newTree = {
+                ...familyTree,
+                antecedentes: [...familyTree.antecedentes, finalAnt],
+                alert_detected: hasAlert
+            };
+
+            setFamilyTree(newTree);
+            setPatientData(prev => ({ ...prev, familyTree: newTree }));
+
+            setFlowState('ASK_MORE');
+            pushMessage({
+                role: 'assistant',
+                content: "Antecedente registrado correctamente en el expediente. ¿Desea agregar otro antecedente?",
+                options: [
+                    { label: "➕ AGREGAR OTRO ANTECEDENTE", value: "ADD_MORE" },
+                    { label: "➡️ CONTINUAR AL HISTORIAL", value: "FINISH" }
+                ]
+            });
+        }
+        else if (flowState === 'ASK_MORE') {
+            if (val === "FINISH") {
+                onPhaseComplete?.(familyTree, [...messages, { role: 'user', content: "Continuar al historial" }, { role: 'assistant', content: "Perfecto. Avancemos a la siguiente fase." }]);
+            } else if (val === "ADD_MORE") {
+                setFlowState('SELECT_DISEASE');
+                pushMessage({
+                    role: 'assistant',
+                    content: "Por favor, seleccione la condición o enfermedad que desea registrar:",
+                    showMenu: 'disease'
+                });
+            }
+        }
+        
+        setIsAnalyzing(false);
     };
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-    const isInputDisabled = isAnalyzing || (messages.length > 0 && messages[messages.length - 1].options && messages[messages.length - 1].options.length > 0 && !messages[messages.length - 1].options.some(o => o.value === 'NO_ANTECEDENTES'));
+    const isInputDisabled = isAnalyzing || (flowState !== 'TYPE_DETAIL');
 
     return (
         <div className="flex flex-col h-full bg-white relative">
             <div className="flex-1 overflow-y-auto w-full px-4 md:px-12 py-8 relative custom-scrollbar">
-                <div className="max-w-2xl mx-auto space-y-6 pb-32">
+                <div className="max-w-2xl mx-auto space-y-6 pb-40">
                     {messages.map((msg, idx) => (
-                        <div key={idx} className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-6 items-start gap-3 animate-fade-in-up`}>
+                        <div key={idx} className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-6 items-start gap-3 animate-fade-in-up relative`}>
                             {msg.role === "assistant" && (
                                 <motion.div
                                     initial={{ scale: 0 }}
@@ -199,30 +251,39 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
                                 </motion.div>
                             )}
                             <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === 'assistant'
-                                ? msg.isBio
-                                    ? 'bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium'
-                                    : msg.isAcute
-                                        ? 'bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium'
-                                        : msg.isCritical
-                                            ? 'bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold'
-                                            : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
+                                ? 'bg-white border border-slate-100 text-slate-700 rounded-tl-none relative'
                                 : 'bg-indigo-600 text-white rounded-tr-none'
                                 }`}>
                                 <div className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" : "prose-invert"}`}>
                                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                                 </div>
 
-                                {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && (
+                                {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && (
                                     <div className="mt-4 flex flex-wrap gap-2">
                                         {msg.options.map((opt, i) => (
                                             <button
                                                 key={i}
-                                                onClick={() => handleSend(opt.value)}
-                                                className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
+                                                onClick={() => handleSend(opt.value, "text")}
+                                                className={`px-4 py-2 font-bold rounded-full text-xs shadow-sm border transition-colors ${
+                                                    opt.value === 'SI_ANTECEDENTES' || opt.value === 'ADD_MORE'
+                                                        ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200'
+                                                        : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                                }`}
                                             >
                                                 {opt.label}
                                             </button>
                                         ))}
+                                    </div>
+                                )}
+                                
+                                {/* Mostrar Menús */}
+                                {msg.showMenu && msg.role === 'assistant' && idx === messages.length - 1 && (
+                                    <div className="mt-4 w-full relative h-12">
+                                        {/* Espacio reservado para que el popup no tape todo, SearchableVerticalMenu es absolute bottom-[calc(100%+12px)] */}
+                                        <SearchableVerticalMenu 
+                                            options={msg.showMenu === 'disease' ? CAT_PATOLOGIAS : getRelativesMenu()} 
+                                            onSelect={(val) => handleSend(val, msg.showMenu)} 
+                                        />
                                     </div>
                                 )}
                             </div>
@@ -247,14 +308,14 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
             {/* Input Form */}
             <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-4 md:px-12 backdrop-blur-md bg-opacity-90">
                 <form
-                    onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }}
+                    onSubmit={(e) => { e.preventDefault(); handleSend(inputValue, "text"); }}
                     className="max-w-2xl mx-auto flex gap-3 relative"
                 >
                     <input
                         type="text"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        placeholder="Escriba aquí..."
+                        placeholder={isInputDisabled ? "Seleccione una opción arriba..." : "Escriba aquí..."}
                         className="flex-1 px-5 py-4 bg-gray-50 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1C75BC] focus:bg-white transition-all font-sansation text-slate-700 shadow-sm disabled:opacity-50 disabled:bg-gray-100"
                         disabled={isInputDisabled}
                     />
@@ -268,7 +329,7 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
                 </form>
                 <div className="text-center mt-3 text-xs text-gray-400 font-sansation flex items-center justify-center gap-2">
                     <i className="fi fi-rr-shield-check"></i>
-                    Terminal A - Comunicación Clínica Encriptada Extremo a Extremo
+                    Terminal A - Comunicación Clínica Encriptada Extremo a Extremo (Genómica V4.4)
                 </div>
             </div>
         </div>

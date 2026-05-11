@@ -4879,20 +4879,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                 setMessages={setMessages}
                 onPhaseComplete={(motiveData) => {
                   setFase3State(motiveData);
-                  setPatientData(prev => ({
-                    ...prev,
-                    clinical_context: {
-                      ...prev.clinical_context,
-                      motivo: motiveData.goal,
-                      detalles_motivo: motiveData.reason,
-                      sintomas: motiveData.symptoms,
-                      mapa_corporal: motiveData.bodyMap
-                    }
-                  }));
 
                   // --- MIDDLEWARE: VALIDADOR DE COHERENCIA (NOM-004) ---
-                  const aiAnalysis = patientData.clinical_context?.ai_analysis || {};
-                  if (!aiAnalysis.primaryRoute || !aiAnalysis.gem_reasoning) {
+                  if (!motiveData.primaryRoute || motiveData.primaryRoute === 'No especificado' || !motiveData.gem_reasoning) {
                     setMessages(prev => [...prev, {
                       role: "assistant",
                       content: "⚠️ **Interbloqueo de Seguridad (NOM-004)**: El motor Cortex no cuenta con datos suficientes para establecer una Ruta Clínica Principal o un Razonamiento validado. Por favor, proporcione más detalles de su motivo de consulta."
@@ -4907,6 +4896,8 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
               <Fase4_AntecedentesFamiliares
                 user={user}
                 appId={apiContext?.citaId}
+                patientData={patientData}
+                setPatientData={setPatientData}
                 patientProfile={patientData}
                 phase3Data={fase3State}
                 onStateChange={setFase4State}
@@ -4920,6 +4911,8 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
               <Fase5_EstiloVida
                 user={user}
                 appId={apiContext?.citaId}
+                patientData={patientData}
+                setPatientData={setPatientData}
                 patientProfile={patientData}
                 initialChatHistory={messages}
                 onPhaseComplete={(lifestyleData) => {

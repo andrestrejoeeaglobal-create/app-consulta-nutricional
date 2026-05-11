@@ -5,7 +5,7 @@ import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 import { motion } from 'framer-motion';
 import tiloImg from '../../assets/tilo.png';
 import ReactMarkdown from 'react-markdown';
-
+import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
 /**
  * T.I.L.O. - MÓDULO FASE 5 (ESTILO DE VIDA)
  * Versión: v4.1 - Standard Look & Feel Alignment + Pediatric Linguistics
@@ -53,8 +53,6 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
     });
 
     const [messages, setMessages] = useState(() => {
-        if (initialChatHistory && initialChatHistory.length > 0) return initialChatHistory;
-        
         let greeting = "";
         if (initialCp) {
             greeting = initialAltitude > 2000
@@ -70,14 +68,19 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                 : `${pName}, ahora vamos a evaluar la arquitectura de su día. ¿Cómo calificaría su nivel de energía del 1 al 10 al despertar?`;
         }
 
-        return [{
+        const greetingMsg = {
             role: 'assistant', content: greeting, isBio: true, options: [
                 { label: "1 a 3 (Muy Baja)", value: "3" },
                 { label: "4 a 6 (Regular)", value: "5" },
                 { label: "7 a 8 (Buena)", value: "7" },
                 { label: "9 a 10 (Excelente)", value: "9" }
             ]
-        }];
+        };
+
+        if (initialChatHistory && initialChatHistory.length > 0) {
+            return [...initialChatHistory, greetingMsg];
+        }
+        return [greetingMsg];
     });
 
     const [inputValue, setInputValue] = useState("");
@@ -140,8 +143,11 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                 const energyScore = parseInt(textToProcess.match(/\d+/)?.[0] || "5");
                 syncLifeData({ energy: { ...lifeStyle.energy, level: energyScore } });
 
-                // Dimensión 7: Sincronización Ciclo (Solo Mujeres)
-                if (isFemale) {
+                // Dimensión 7: Sincronización Ciclo (Solo Mujeres, >= 10 años)
+                const age = patientData?.identificacion?.edad || patientProfile?.age || 0;
+                const isAppropriateAgeForCycle = age >= 10;
+
+                if (isFemale && isAppropriateAgeForCycle) {
                     const cycleMsg = isMinor 
                         ? `Dato registrado. Como Bio-Arquitecto, debo sincronizar el plan con el ritmo hormonal de ${minorArticle}. ¿En qué fase del ciclo se encuentra hoy o cómo describiría los periodos recientes de ${pName}?`
                         : `Dato registrado. Como Bio-Arquitecto, debo sincronizar su plan con su ritmo hormonal. ¿En qué fase de su ciclo se encuentra hoy o cómo describiría sus periodos recientes?`;
@@ -240,17 +246,32 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                                 </div>
 
                                 {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && (
-                                    <div className="mt-4 flex flex-wrap gap-2">
-                                        {msg.options.map((opt, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => handleSend(opt.value)}
-                                                className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
-                                            >
-                                                {opt.label}
-                                            </button>
-                                        ))}
-                                    </div>
+                                    <>
+                                        {msg.options.length > 3 ? (
+                                            <div className="mt-4 w-full relative h-12">
+                                                <SearchableVerticalMenu
+                                                    options={msg.options}
+                                                    onSelect={(val) => handleSend(val)}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                                {msg.options.map((opt, i) => (
+                                                    <button
+                                                        key={i}
+                                                        onClick={() => handleSend(opt.value)}
+                                                        className={`px-4 py-2 font-bold rounded-full text-xs shadow-sm border transition-colors ${
+                                                            opt.value === 'FINISH_PHASE'
+                                                                ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200'
+                                                                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                                        }`}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
