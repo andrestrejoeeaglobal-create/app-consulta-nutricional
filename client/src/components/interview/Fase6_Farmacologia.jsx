@@ -9,7 +9,7 @@ import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
  * Maneja el bucle de recolección de medicamentos (Nombre, Dosis/Frecuencia, Duración).
  * Almacena los resultados en patientData.history.medications.
  */
-const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, setPatientData }) => {
+const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, setPatientData, onStateChange }) => {
 
     const { patientName: pName, patientAge } = usePatientLinguistics(patientData);
     const ptCtx = patientData?.profile?.pediatric_profile;
@@ -41,6 +41,16 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    // Update parent state (fase6State) when patientData changes
+    useEffect(() => {
+        if (onStateChange) {
+            onStateChange({
+                medications: patientData?.history?.medications || [],
+                supplements: patientData?.history?.supplements || []
+            });
+        }
+    }, [patientData?.history?.medications, patientData?.history?.supplements, onStateChange]);
 
     const handleSend = () => {
         if (!inputValue.trim() && currentOptions.length === 0) return;

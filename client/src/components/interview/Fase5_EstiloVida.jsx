@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { formatText } from '../../utils/utils';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
-import { motion } from 'framer-motion';
+
 import tiloImg from '../../assets/tilo.png';
 import ReactMarkdown from 'react-markdown';
 import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
@@ -25,8 +25,11 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
     const isFemale = patientSex?.toUpperCase().startsWith('F');
     
     // Pronombres dinámicos
-    const ptArticle = isFemale ? 'la paciente' : 'el paciente';
     const minorArticle = isFemale ? 'la menor' : 'el menor';
+
+    // Calcular edad para filtro
+    const ageStr = patientData?.profile?.pediatric_profile?.age || patientData?.identificacion?.edad || "0";
+    const age = parseInt(ageStr, 10) || 0;
 
     const initialCp = patientData?.identificacion?.codigoPostal || patientProfile?.postalCode;
     const initialAltitude = (() => {
@@ -167,7 +170,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                             { label: "Menos de 5 horas", value: "<5_hours" }
                         ]
                     }]);
-                    setCurrentStep('CIRCADIAN');
+                    setCurrentStep('SLEEP');
                 }
             }
             else if (currentStep === 'HORMONAL') {
@@ -184,28 +187,47 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                         { label: "Menos de 5 horas", value: "<5_hours" }
                     ]
                 }]);
-                setCurrentStep('CIRCADIAN');
+                setCurrentStep('SLEEP');
             }
-            else if (currentStep === 'CIRCADIAN') {
+            else if (currentStep === 'SLEEP') {
                 let hours = 7;
                 if (lower.includes('<5_hours') || lower.includes('menos de 5') || lower.includes('4') || lower.includes('5')) hours = 5;
                 if (lower.includes('6-7_hours') || lower.includes('6') || lower.includes('7')) hours = 7;
                 if (lower.includes('>8_hours') || lower.includes('8') || lower.includes('9')) hours = 8;
 
-                syncLifeData({ circadian: { ...lifeStyle.circadian, sleepHours: hours } });
+                const newCircadian = { ...lifeStyle.circadian, sleepHours: hours };
+                syncLifeData({ circadian: newCircadian });
 
-                const finalMsg = isMinor
-                    ? `Auditoría completada. He identificado los cuellos de botella en la flexibilidad metabólica de ${pName}. Estamos listos para cerrar los planos de salud e iniciar la transformación.`
-                    : `Auditoría completada. He identificado los cuellos de botella en su flexibilidad metabólica. Estamos listos para cerrar sus planos de salud e iniciar la transformación.`;
+                const summaryText = `- **Energía al despertar**: ${lifeStyle.energy.level}/10\n` +
+                                    (isFemale && age >= 10 ? `- **Ciclo Hormonal**: ${lifeStyle.hormonal.cyclePhase || 'No especificado'}\n` : '') +
+                                    `- **Horas de Sueño**: ${hours} horas\n`;
+
+                const finalMsg = `Auditoría completada. A continuación, le presento un resumen de la información capturada:\n\n${summaryText}\n\n¿Son correctos estos datos?`;
                 setMessages(prev => [...prev, {
                     role: 'assistant', content: finalMsg, isBio: true, options: [
-                        { label: "Continuar a la siguiente fase", value: "FINISH_PHASE" }
+                        { label: "Sí, los datos son correctos", value: "CONFIRM_DATA" },
+                        { label: "No, quiero corregir algo", value: "CORRECT_DATA" }
                     ]
                 }]);
-                setCurrentStep('COMPLETED');
+                setCurrentStep('REVIEW_SUMMARY');
             }
-            else if (currentStep === 'COMPLETED' && textToProcess === "FINISH_PHASE") {
-                onPhaseComplete?.(lifeStyle, messages);
+            else if (currentStep === 'REVIEW_SUMMARY') {
+                if (textToProcess === "CONFIRM_DATA") {
+                    onPhaseComplete?.(lifeStyle, [...messages, { role: 'user', content: "Sí, los datos son correctos" }, { role: 'assistant', content: "Perfecto. Avancemos a la siguiente fase." }]);
+                } else if (textToProcess === "CORRECT_DATA") {
+                    const energyMsg = isMinor
+                        ? `De acuerdo, vamos a corregir. ¿Cómo calificaría el nivel de energía de ${pName} del 1 al 10 al despertar?`
+                        : `De acuerdo, vamos a corregir. ¿Cómo calificaría su nivel de energía del 1 al 10 al despertar?`;
+                    setMessages(prev => [...prev, {
+                        role: 'assistant', content: energyMsg, isBio: true, options: [
+                            { label: "1 a 3 (Muy Baja)", value: "3" },
+                            { label: "4 a 6 (Regular)", value: "5" },
+                            { label: "7 a 8 (Buena)", value: "7" },
+                            { label: "9 a 10 (Excelente)", value: "9" }
+                        ]
+                    }]);
+                    setCurrentStep('ENVIRONMENT');
+                }
             }
 
             setIsAnalyzing(false);
@@ -241,7 +263,7 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                                             : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
                                 : 'bg-indigo-600 text-white rounded-tr-none'
                                 }`}>
-                                <div className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" : "prose-invert"}`}>
+                                <div className="w-full [&>p]:mb-2 [&>p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4">
                                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                                 </div>
 

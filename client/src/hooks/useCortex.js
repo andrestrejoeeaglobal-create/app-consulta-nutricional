@@ -452,30 +452,86 @@ export const useCortex = () => {
         setCurrentPhase('PHASE_2_SUMMARY_CONFIRM');
     };
 
-    const triggerPhase5Summary = (updatedPatientData, currentFase3State) => {
-        const h = updatedPatientData.history || {};
+    const triggerPhase3Summary = (updatedFase3State) => {
+        const motiveOptionsMap = {
+            "GOAL_ADDICTIONS": "Adicciones y Sustancias",
+            "GOAL_GERIATRICS": "Geriatría",
+            "GOAL_ALLERGIES": "Alergias Graves",
+            "GOAL_WEIGHT_LOSS": "Pérdida de Peso",
+            "GOAL_BARIATRIC": "Bariátrica / Quirúrgico",
+            "GOAL_MENOPAUSE": "Climaterio y Menopausia",
+            "GOAL_CLINICAL": "Control Clínico",
+            "GOAL_PALLIATIVE": "Cuidados Paliativos",
+            "GOAL_DISABILITY": "Discapacidad y Rehabilitación",
+            "GOAL_PREGNANCY": "Embarazo y Lactancia",
+            "GOAL_MUSCLE": "Deporte / Rendimiento",
+            "GOAL_ONCOLOGY": "Oncología Nutricional",
+            "GOAL_PEDIATRICS": "Pediatría (Crecimiento y Desarrollo)",
+            "GOAL_LONGEVITY": "Longevidad",
+            "GOAL_MENTAL_HEALTH": "Salud Mental",
+            "GOAL_RENAL": "Salud Renal",
+            "GOAL_IMMUNE": "Inmunodeficiencias"
+        };
+
+        const rawRoute = updatedFase3State?.primaryRoute || updatedFase3State?.goal_standard || 'No especificado';
+        const primaryRoute = motiveOptionsMap[rawRoute] || rawRoute;
         
+        const reasoning = updatedFase3State?.gem_reasoning || updatedFase3State?.patient_quote || updatedFase3State?.specific_ailment || 'No especificado';
 
-        let heredoStr = "Ninguna reportada";
-        if (h.family_structured && h.family_structured.length > 0) {
-            heredoStr = h.family_structured.map(item => item.condition === 'OTHER' ? item.detail : item.condition).join(', ');
-        } else if (h.family_raw_text) {
-            heredoStr = h.family_raw_text;
-        }
+        const summary = `Perfecto. Hemos terminado la fase de Motivo de Consulta. Verifique que este resumen sea correcto:\n\n` +
+            `🎯 **Objetivo Principal:** ${primaryRoute}\n` +
+            `🗣️ **Motivo reportado:** ${reasoning}\n\n` +
+            `¿Es correcta esta información?`;
 
-        let personalStr = "Ninguna reportada";
-        if (h.personal_structured && h.personal_structured.length > 0) {
-            personalStr = h.personal_structured.map(item => item.condition_category === 'OTHER' ? item.specific_condition : item.condition_category).join(', ');
-        } else if (h.personal_raw_text) {
-            personalStr = h.personal_raw_text;
-        }
+        setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return prev;
+            return [...prev, {
+                role: 'assistant',
+                content: summary,
+                avatar: tiloImg,
+                inputType: 'buttons',
+                options: [
+                    { label: '✅ Sí, es correcta', value: 'yes' },
+                    { label: '❌ No, quiero corregir algo', value: 'no' }
+                ]
+            }];
+        });
+        setCurrentPhase('PHASE_3_SUMMARY_CONFIRM');
+    };
 
-        const goalStr = currentFase3State?.goal_standard || "No especificado";
+    const triggerPhase4Summary = (updatedPatientData, overrideMessages = null) => {
+        const h = updatedPatientData.familyTree?.antecedentes || [];
+        const conditions = h.map(a => `${a.patologia || a.diagnostico || 'Condición no especificada'} (${a.familiar || a.parentesco || 'Familiar no especificado'})`);
 
-        const summary = `Perfecto. Hemos terminado la sección de Historial Clínico. Por protocolos de seguridad, verifique este resumen:\n\n` +
-            `🎯 **Objetivo Principal:** ${goalStr}\n` +
-            `🧬 **A. Heredofamiliares:** ${heredoStr}\n` +
-            `🩺 **A. Personales:** ${personalStr}\n\n` +
+        let heredoStr = conditions.length > 0 ? conditions.join(', ') : "Ninguna reportada";
+
+        const summary = `Perfecto. Hemos terminado la fase de Antecedentes Heredofamiliares. Verifique que este resumen sea correcto:\n\n` +
+            `🧬 **A. Heredofamiliares:** ${heredoStr}\n\n` +
+            `¿Es correcta esta información?`;
+
+        setMessages(prev => {
+            const baseMsgs = overrideMessages || prev;
+            const lastMsg = baseMsgs[baseMsgs.length - 1];
+            if (lastMsg && lastMsg.content === summary) return baseMsgs;
+            return [...baseMsgs, {
+                role: 'assistant',
+                content: summary,
+                avatar: tiloImg,
+                inputType: 'buttons',
+                options: [
+                    { label: '✅ Sí, es correcta', value: 'yes' },
+                    { label: '❌ No, quiero corregir algo', value: 'no' }
+                ]
+            }];
+        });
+        setCurrentPhase('PHASE_4_SUMMARY_CONFIRM');
+    };
+
+    const triggerPhase5Summary = () => {
+        const summary = `Perfecto. Hemos terminado la fase de Estilo de Vida y Personales. Verifique que este resumen sea correcto:\n\n` +
+            `🩺 **A. Personales:** Guardados en expediente.\n` +
+            `🏃‍♂️ **Estilo de Vida:** Registrado exitosamente.\n\n` +
             `¿Es correcta esta información?`;
 
         setMessages(prev => {
@@ -493,6 +549,50 @@ export const useCortex = () => {
             }];
         });
         setCurrentPhase('PHASE_5_SUMMARY_CONFIRM');
+    };
+
+    const triggerPhase6Summary = () => {
+        const summary = `Perfecto. Hemos terminado la fase de Farmacología. Verifique que este resumen sea correcto:\n\n` +
+            `💊 **Farmacología:** Suplementos y medicamentos registrados.\n\n` +
+            `¿Es correcta esta información?`;
+
+        setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return prev;
+            return [...prev, {
+                role: 'assistant',
+                content: summary,
+                avatar: tiloImg,
+                inputType: 'buttons',
+                options: [
+                    { label: '✅ Sí, es correcta', value: 'yes' },
+                    { label: '❌ No, quiero corregir algo', value: 'no' }
+                ]
+            }];
+        });
+        setCurrentPhase('PHASE_6_SUMMARY_CONFIRM');
+    };
+
+    const triggerPhase7Summary = () => {
+        const summary = `Perfecto. Hemos terminado la fase de Hábitos y Estilo de Vida. Verifique que este resumen sea correcto:\n\n` +
+            `🚭 **Hábitos:** Tabaquismo, Alcohol, Sueño, etc.\n\n` +
+            `¿Es correcta esta información?`;
+
+        setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return prev;
+            return [...prev, {
+                role: 'assistant',
+                content: summary,
+                avatar: tiloImg,
+                inputType: 'buttons',
+                options: [
+                    { label: '✅ Sí, es correcta', value: 'yes' },
+                    { label: '❌ No, quiero corregir algo', value: 'no' }
+                ]
+            }];
+        });
+        setCurrentPhase('PHASE_7_SUMMARY_CONFIRM');
     };
 
     /**
@@ -2718,135 +2818,59 @@ export const useCortex = () => {
                     break;
                 }
 
-                // =============== FASE 5: CICLO DE CORRECCIÓN ===============
-                case 'PHASE_5_SUMMARY_CONFIRM': {
+                // =============== SUMMARY CONFIRMATIONS (PHASES 3 - 6) ===============
+                case 'PHASE_3_SUMMARY_CONFIRM': {
                     if (text === 'yes') {
-                        console.log("💾 CHECKPOINT 4: Fase 5 (Clinical History) Completada y Validada.");
-                        // TRANSITION TO FASE 6: FARMACOLOGIA
-                        const ptCtx = patientData.profile.pediatric_profile;
-                        const isMinor = ptCtx?.is_minor;
-                        const pName = patientData.profile.first_name || 'el paciente';
-                        const msgContent = isMinor
-                            ? `Entendido. Perfil clínico actualizado y blindado.\n\nPasemos ahora a la Farmacología. ¿${pName} toma actualmente algún medicamento recetado por un médico?`
-                            : "Entendido. Perfil clínico actualizado y blindado.\n\nPasemos ahora a la Farmacología. ¿Toma usted actualmente algún medicamento recetado por un médico?";
-
-                        setMessages(prev => [...prev, {
-                            role: 'assistant',
-                            content: msgContent,
-                            avatar: tiloImg,
-                            options: [
-                                { label: "✅ Sí", value: "Sí" },
-                                { label: "❌ No", value: "No" }
-                            ]
-                        }]);
-                        setCurrentPhase('PHASE_6_FARMACOLOGIA');
+                        setCurrentPhase('PHASE_4_FAMILY_HISTORY');
                     } else if (text === 'no') {
-                        setMessages(prev => [...prev, {
-                            role: 'assistant',
-                            content: "¿Qué sección del historial necesita corregir?",
-                            avatar: tiloImg,
-                            inputType: 'buttons',
-                            options: [
-                                { label: 'Objetivo / Motivo', value: 'GOAL' },
-                                { label: 'Heredofamiliares', value: 'HEREDO' },
-                                { label: 'Personales', value: 'PERSONAL' },
-                                { label: 'Cancelar', value: 'CANCEL' }
-                            ]
-                        }]);
-                        setCurrentPhase('PHASE_5_CORRECTION_SELECT');
+                        setCurrentPhase('PHASE_3_MOTIVO_CONSULTA');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
                     }
                     break;
                 }
 
-                case 'PHASE_5_CORRECTION_SELECT': {
-                    const ptCtx = patientData.profile.pediatric_profile;
-                    const isMinor = ptCtx?.is_minor;
-                    const pName = patientData.profile.first_name || 'el paciente';
-
-                    if (text === 'CANCEL') {
-                        triggerPhase5Summary(patientData, fase3State);
-                    } else if (text === 'GOAL') {
-                        setMessages(prev => [...prev, {
-                            role: 'assistant',
-                            content: isMinor 
-                                ? `¿Cuál considerarían que es el enfoque principal para ${pName}?`
-                                : "¿Cuál consideraría usted que es su enfoque principal?",
-                            avatar: tiloImg,
-                            options: [
-                                { label: "Controlar Enfermedad", value: "Controlar Enfermedad" },
-                                { label: "Gestación y Maternidad", value: "Gestación y Maternidad" },
-                                { label: "Rendimiento y Bienestar", value: "Rendimiento y Bienestar" },
-                                { label: "Bienestar / Aprender a comer", value: "Bienestar / Aprender a comer" },
-                                { label: "Nutrición Pediátrica", value: "Nutrición para el Desarrollo" }
-                            ]
-                        }]);
-                        setCurrentPhase('PHASE_5_CORRECT_GOAL');
-                    } else if (text === 'HEREDO') {
-                        setPatientData(prev => ({
-                            ...prev,
-                            history: {
-                                ...prev.history,
-                                family_structured: [],
-                                family_raw_text: '',
-                                family_checklist_verified: false
-                            }
-                        }));
-                        setMessages(prev => [...prev, {
-                            role: 'assistant',
-                            content: isMinor
-                                ? `Vamos a registrar nuevamente los antecedentes heredofamiliares de ${pName}. ¿Algún familiar directo padece alguna de estas enfermedades?`
-                                : "Vamos a registrar nuevamente sus antecedentes heredofamiliares. ¿Algún familiar directo padece alguna de estas enfermedades?",
-                            avatar: tiloImg,
-                            options: [
-                                { label: "Diabetes", value: "Diabetes" },
-                                { label: "Hipertensión", value: "Hipertensión" },
-                                { label: "Cáncer", value: "Cáncer" },
-                                { label: "Enfermedades Cardíacas", value: "Enfermedades Cardíacas" },
-                                { label: "Otras", value: "Otras" },
-                                { label: "Ninguna", value: "Ninguna" }
-                            ]
-                        }]);
-                        setCurrentPhase('PHASE_4_SAFETY_GATE');
-                    } else if (text === 'PERSONAL') {
-                        setPatientData(prev => ({
-                            ...prev,
-                            history: {
-                                ...prev.history,
-                                personal_structured: [],
-                                personal_raw_text: '',
-                                personal_checklist_verified: false
-                            }
-                        }));
-                        setMessages(prev => [...prev, {
-                            role: 'assistant',
-                            content: isMinor
-                                ? `Vamos a registrar nuevamente los antecedentes personales de ${pName}. ¿Padece alguna de estas condiciones?`
-                                : "Vamos a registrar nuevamente sus antecedentes personales. ¿Padece usted alguna de estas condiciones?",
-                            avatar: tiloImg,
-                            options: [
-                                { label: "Diabetes (Tipo 1 o 2)", value: "Diabetes (Tipo 1 o 2)" },
-                                { label: "Hipertensión Arterial", value: "Hipertensión Arterial" },
-                                { label: "Hipotiroidismo / Tiroides", value: "Hipotiroidismo / Tiroides" },
-                                { label: "Dislipidemia", value: "Dislipidemia" },
-                                { label: "SOP", value: "SOP" },
-                                { label: "Gastritis / Colitis", value: "Gastritis / Colitis" },
-                                { label: "Artritis", value: "Artritis" },
-                                { label: "Otras", value: "Otras" },
-                                { label: "Ninguna", value: "Ninguna" }
-                            ]
-                        }]);
-                        setCurrentPhase('PHASE_5_SAFETY_GATE');
+                case 'PHASE_4_SUMMARY_CONFIRM': {
+                    if (text === 'yes') {
+                        setCurrentPhase('PHASE_5_LIFESTYLE');
+                    } else if (text === 'no') {
+                        setCurrentPhase('PHASE_4_FAMILY_HISTORY');
+                    } else {
+                        setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
                     }
                     break;
                 }
 
-                case 'PHASE_5_CORRECT_GOAL': {
-                    setFase3State(prev => ({ ...prev, goal_standard: text }));
-                    setTimeout(() => {
-                        triggerPhase5Summary(patientData, { ...fase3State, goal_standard: text });
-                    }, 0);
+                case 'PHASE_5_SUMMARY_CONFIRM': {
+                    if (text === 'yes') {
+                        setCurrentPhase('PHASE_6_PHARMACOLOGY');
+                    } else if (text === 'no') {
+                        setCurrentPhase('PHASE_5_LIFESTYLE');
+                    } else {
+                        setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
+                    }
+                    break;
+                }
+
+                case 'PHASE_6_SUMMARY_CONFIRM': {
+                    if (text === 'yes') {
+                        setCurrentPhase('PHASE_7_HABITS');
+                    } else if (text === 'no') {
+                        setCurrentPhase('PHASE_6_PHARMACOLOGY');
+                    } else {
+                        setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
+                    }
+                    break;
+                }
+
+                case 'PHASE_7_SUMMARY_CONFIRM': {
+                    if (text === 'yes') {
+                        setCurrentPhase('PHASE_8_DIGESTIVE');
+                    } else if (text === 'no') {
+                        setCurrentPhase('PHASE_7_HABITS');
+                    } else {
+                        setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
+                    }
                     break;
                 }
 
@@ -2905,7 +2929,11 @@ export const useCortex = () => {
         setFase3State,
         triggerPhase1Summary,
         triggerPhase2Summary,
-        triggerPhase5Summary
+        triggerPhase3Summary,
+        triggerPhase4Summary,
+        triggerPhase5Summary,
+        triggerPhase6Summary,
+        triggerPhase7Summary
     };
 };
 

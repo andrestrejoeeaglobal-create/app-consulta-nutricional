@@ -88,6 +88,7 @@ const goalMap = {
 
 const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientData, setPatientData }) => {
     const chatEndRef = useRef(null);
+    const initialMessageCountRef = useRef(messages?.length || 0);
     const identityLock = useClinicalGenome(state => state.identityLock);
     const { patientAge: age, patientSex: gender, patientName } = usePatientLinguistics(patientData);
 
@@ -202,9 +203,16 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
     }, [step, patientData]);
 
     const completePhase3 = () => {
+        let rawRoute = patientData.clinical_context?.goal || patientData.clinical_context?.ai_analysis?.primaryRoute;
+        let rawReasoning = patientData.clinical_context?.ai_analysis?.gem_reasoning;
+
+        // Sanitize string "undefined" or "null" returned by LLM or state engine
+        if (rawRoute === 'undefined' || rawRoute === 'null') rawRoute = null;
+        if (rawReasoning === 'undefined' || rawReasoning === 'null') rawReasoning = null;
+
         const phase3Data = {
-            primaryRoute: patientData.clinical_context?.goal || patientData.clinical_context?.ai_analysis?.primaryRoute || 'No especificado',
-            gem_reasoning: patientData.clinical_context?.ai_analysis?.gem_reasoning || '',
+            primaryRoute: rawRoute || 'No especificado',
+            gem_reasoning: rawReasoning || '',
             secondaryRoutes: []
         };
         onPhaseComplete(phase3Data);
@@ -218,9 +226,7 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
 
         setInputValue("");
         if (valueToProcess !== 'BODY_MAP_COMPLETE') {
-            if (step !== 'clinica_triage_start') {
-                setMessages(prev => [...prev, { role: "user", content: formatText(textToDisplay) }]);
-            }
+            setMessages(prev => [...prev, { role: "user", content: formatText(textToDisplay) }]);
         }
 
         setIsTyping(true);
@@ -239,8 +245,6 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                     if (selectedOpt) {
                         const label = selectedOpt.label;
                         const config = goalMap[userMsg] || { avatar: 'METABOLIC', risk: 'LOW' };
-
-                        setMessages(prev => [...prev, { role: "user", content: label }]);
 
                         updateClinicalContext({
                             primary_motive: label,
@@ -632,207 +636,207 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
     };
 
     return (
-        <div className="flex flex-col h-full bg-white relative">
-            <div className="flex-1 overflow-y-auto w-full px-4 md:px-12 py-8 relative custom-scrollbar">
-                <div className="max-w-2xl mx-auto space-y-6 pb-32">
-                    {messages && messages.map((msg, idx) => (
-                        <div key={idx} className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-6 items-start gap-3 animate-fade-in-up`}>
-                            {msg.role === "assistant" && (
-                                <motion.div
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden"
-                                >
-                                    <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
-                                </motion.div>
-                            )}
-                            <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === 'assistant'
-                                ? msg.isBio
-                                    ? 'bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium'
-                                    : msg.isAcute
-                                        ? 'bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium'
-                                        : msg.isCritical
-                                            ? 'bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold'
-                                            : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
-                                : 'bg-indigo-600 text-white rounded-tr-none'
-                                }`}>
-                                <div className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" : "prose-invert"}`}>
-                                    {msg.isAiAnalysisResult ? (
-                                        <div className="flex flex-col gap-3">
-                                            {/* Attributes List Container */}
-                                            <div className="flex flex-col gap-2 mb-3 w-full">
-                                                <div className="px-4 py-2.5 bg-slate-50/80 backdrop-blur-sm border border-slate-200/50 rounded-xl text-sm font-semibold text-slate-700 shadow-sm flex items-center gap-3">
-                                                    <span className="text-xl">👤</span> 
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Perfil</span>
-                                                        <span>{age < 18 ? `Pediátrico (${age} años)` : `Adulto (${age} años)`}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="px-4 py-2.5 bg-blue-50/80 backdrop-blur-sm border border-blue-100 rounded-xl text-sm font-semibold text-blue-700 shadow-sm flex items-center gap-3">
-                                                    <span className="text-xl">🎯</span> 
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Eje Clínico</span>
-                                                        <span>{routeToSpanish(msg.aiData?.primaryRoute || patientData.clinical_context?.goal || "Análisis Clínico")}</span>
-                                                    </div>
-                                                </div>
-                                                <div className={`px-4 py-2.5 backdrop-blur-sm border rounded-xl text-sm font-semibold shadow-sm flex items-center gap-3 ${
-                                                    msg.aiData?.redFlag ? 'bg-red-50/90 border-red-200 text-red-700' : 
-                                                    (msg.aiData?.risk_level === 'HIGH' ? 'bg-amber-50/90 border-amber-200 text-amber-700' : 'bg-emerald-50/90 border-emerald-200 text-emerald-700')
-                                                }`}>
-                                                    <span className="text-xl">⚠️</span> 
-                                                    <div className="flex flex-col">
-                                                        <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                                                            msg.aiData?.redFlag ? 'text-red-400' : 
-                                                            (msg.aiData?.risk_level === 'HIGH' ? 'text-amber-400' : 'text-emerald-500')
-                                                        }`}>Nivel de Riesgo</span>
-                                                        <span>{msg.aiData?.redFlag ? 'Crítico (Red Flag)' : riskToSpanish(msg.aiData?.risk_level || 'Base')}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            {/* Main Suspicion */}
-                                            <div className="text-sm text-slate-700">
-                                                <ReactMarkdown>{msg.content}</ReactMarkdown>
-                                            </div>
+        <>
+            <div className="flex-1 h-full overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar z-10 relative">
+                {messages && messages.map((msg, idx) => (
+                    <div 
+                        key={idx} 
+                        className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-6 items-start gap-3 ${idx >= initialMessageCountRef.current ? 'animate-in fade-in slide-in-from-bottom-2' : ''}`}
+                    >
+                        {/* AVATAR DE TILO: Solo para Asistente */}
+                        {msg.role === "assistant" && (
+                            <motion.div
+                                initial={idx >= initialMessageCountRef.current ? { scale: 0 } : { scale: 1 }}
+                                animate={{ scale: 1 }}
+                                className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden z-10"
+                            >
+                                <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
+                            </motion.div>
+                        )}
 
-                                            {/* Technical Detail (Glassmorphism Bento) */}
-                                            {msg.aiData?.reasoning && (
-                                                <div className="mt-2 p-3 bg-slate-50/40 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.05)] relative overflow-hidden group">
-                                                    <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-purple-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                                                    <details className="relative z-10 group/details">
-                                                        <summary className="text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 transition-colors list-none flex items-center gap-2">
-                                                            <svg className="w-3 h-3 text-slate-400 group-open/details:rotate-90 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                                            </svg>
-                                                            Deducción Sugerida (Matriz IFM)
-                                                        </summary>
-                                                        <div className="mt-2 text-xs text-slate-600 leading-relaxed border-l-2 border-slate-200/80 pl-3 ml-1 bg-white/50 p-2 rounded-r-lg">
-                                                            <ReactMarkdown>{msg.aiData.reasoning}</ReactMarkdown>
-                                                        </div>
-                                                    </details>
+                        <div
+                          className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === "assistant"
+                            ? msg.isBio
+                              ? "bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium"
+                              : msg.isAcute
+                                ? "bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium"
+                                : msg.isCritical
+                                  ? "bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold"
+                                  : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
+                            : "bg-indigo-600 text-white rounded-tr-none"
+                            }`}
+                        >
+                            <div className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" : "prose-invert"}`}>
+                                {msg.isAiAnalysisResult ? (
+                                    <div className="flex flex-col gap-3">
+                                        {/* Attributes List Container */}
+                                        <div className="flex flex-col gap-2 mb-3 w-full">
+                                            <div className="px-4 py-2.5 bg-slate-50/80 backdrop-blur-sm border border-slate-200/50 rounded-xl text-sm font-semibold text-slate-700 shadow-sm flex items-center gap-3">
+                                                <span className="text-xl">👤</span> 
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Perfil</span>
+                                                    <span>{age < 18 ? `Pediátrico (${age} años)` : `Adulto (${age} años)`}</span>
                                                 </div>
-                                            )}
+                                            </div>
+                                            <div className="px-4 py-2.5 bg-blue-50/80 backdrop-blur-sm border border-blue-100 rounded-xl text-sm font-semibold text-blue-700 shadow-sm flex items-center gap-3">
+                                                <span className="text-xl">🎯</span> 
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Eje Clínico</span>
+                                                    <span>{routeToSpanish(msg.aiData?.primaryRoute || patientData.clinical_context?.goal || "Análisis Clínico")}</span>
+                                                </div>
+                                            </div>
+                                            <div className={`px-4 py-2.5 backdrop-blur-sm border rounded-xl text-sm font-semibold shadow-sm flex items-center gap-3 ${
+                                                msg.aiData?.redFlag ? 'bg-red-50/90 border-red-200 text-red-700' : 
+                                                (msg.aiData?.risk_level === 'HIGH' ? 'bg-amber-50/90 border-amber-200 text-amber-700' : 'bg-emerald-50/90 border-emerald-200 text-emerald-700')
+                                            }`}>
+                                                <span className="text-xl">⚠️</span> 
+                                                <div className="flex flex-col">
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                                                        msg.aiData?.redFlag ? 'text-red-400' : 
+                                                        (msg.aiData?.risk_level === 'HIGH' ? 'text-amber-400' : 'text-emerald-500')
+                                                    }`}>Nivel de Riesgo</span>
+                                                    <span>{msg.aiData?.redFlag ? 'Crítico (Red Flag)' : riskToSpanish(msg.aiData?.risk_level || 'Base')}</span>
+                                                </div>
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <ReactMarkdown>{msg.content}</ReactMarkdown>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                    {isTyping && (
-                        <div className="flex justify-start animate-fade-in mb-4">
-                            <div className="bg-gray-100 p-4 rounded-xl rounded-bl-none border border-gray-200 shadow-sm">
-                                <div className="flex space-x-2">
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={chatEndRef} />
-                </div>
-            </div>
+                                        
+                                        {/* Main Suspicion */}
+                                        <div className="text-sm text-slate-700 prose prose-sm max-w-none prose-slate">
+                                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                        </div>
 
-            {/* Input Form */}
-            <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-4 md:px-12 backdrop-blur-md bg-opacity-90">
-                <div className="max-w-2xl mx-auto flex flex-col gap-3 relative">
-                    
-                    {step === 'clinica_triage_start' && !isTyping && (
-                        <div className="w-full relative animate-in fade-in zoom-in duration-300">
-                            {filteredMotiveOptions.length <= 3 ? (
-                                <div className="flex flex-wrap gap-2 justify-center mb-2">
-                                    {filteredMotiveOptions.map(opt => (
-                                        <button 
-                                            key={opt.value}
-                                            type="button"
+                                        {/* Technical Detail (Glassmorphism Bento) */}
+                                        {msg.aiData?.reasoning && (
+                                            <div className="mt-2 p-3 bg-slate-50/40 backdrop-blur-md border border-slate-200/60 rounded-xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.05)] relative overflow-hidden group">
+                                                <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-purple-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                                <details className="relative z-10 group/details">
+                                                    <summary className="text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 transition-colors list-none flex items-center gap-2">
+                                                        <svg className="w-3 h-3 text-slate-400 group-open/details:rotate-90 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                        </svg>
+                                                        Deducción Sugerida (Matriz IFM)
+                                                    </summary>
+                                                    <div className="mt-2 text-xs text-slate-600 leading-relaxed border-l-2 border-slate-200/80 pl-3 ml-1 bg-white/50 p-2 rounded-r-lg">
+                                                        <ReactMarkdown>{msg.aiData.reasoning}</ReactMarkdown>
+                                                    </div>
+                                                </details>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                )}
+                            </div>
+
+                            {/* Opciones dentro de la burbuja (estilo Nuclear Cleaning) */}
+                            {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && (
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    {msg.options.map((opt, i) => (
+                                        <button
+                                            key={i}
+                                            disabled={isTyping || step === 'clinica_triage_ai_complete'}
                                             onClick={(e) => { e.preventDefault(); handleSend(opt.label, opt.value); }}
-                                            className="px-5 py-2 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white text-sm font-medium rounded-full transition-colors shadow-sm"
+                                            className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
                                         >
                                             {opt.label}
                                         </button>
                                     ))}
                                 </div>
-                            ) : (
-                                <div className="relative w-full mb-2 z-50">
-                                    <SearchableVerticalMenu 
-                                        options={filteredMotiveOptions} 
-                                        onSelect={(val) => {
-                                            const opt = filteredMotiveOptions.find(o => o.value === val);
-                                            handleSend(opt ? opt.label : val, val);
-                                        }}
-                                        embedded={true}
-                                    />
-                                </div>
                             )}
                         </div>
-                    )}
+                    </div>
+                ))}
+                {isTyping && (
+                    <div className="flex justify-start mb-6 items-start gap-3 animate-in fade-in slide-in-from-bottom-2">
+                        <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden z-10"
+                        >
+                            <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
+                        </motion.div>
+                        <div className="flex gap-4 animate-pulse">
+                            <div className="bg-white border border-slate-100 w-16 h-10 rounded-2xl rounded-tl-none shadow-sm"></div>
+                        </div>
+                    </div>
+                )}
+                <div ref={chatEndRef} />
+            </div>
 
-                    {step === 'clinica_body_map' && !isTyping && (
-                        <div className="flex justify-center w-full mb-4">
-                            <div className="bg-gray-50 border border-gray-200 p-2 sm:p-4 rounded-xl w-full shadow-sm flex justify-center">
-                                <VisualBodyMap
-                                    gender={gender}
-                                    onComplete={handleBodyMapComplete}
+            {/* INPUT ZONE */}
+            <div className="p-6 bg-white border-t border-slate-50 shrink-0 relative z-[60]">
+                <div className="relative w-full max-w-3xl mx-auto flex flex-col items-center">
+                
+                {step === 'clinica_triage_start' && !isTyping && (
+                    <div className="w-full relative animate-in fade-in zoom-in duration-300">
+                        {filteredMotiveOptions.length <= 3 ? (
+                            <div className="flex flex-wrap gap-2 justify-center mb-2">
+                                {filteredMotiveOptions.map(opt => (
+                                    <button 
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={(e) => { e.preventDefault(); handleSend(opt.label, opt.value); }}
+                                        className="px-5 py-2 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white text-sm font-medium rounded-full transition-colors shadow-sm"
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="relative w-full mb-2 z-50">
+                                <SearchableVerticalMenu 
+                                    options={filteredMotiveOptions} 
+                                    onSelect={(val) => {
+                                        const opt = filteredMotiveOptions.find(o => o.value === val);
+                                        handleSend(opt ? opt.label : val, val);
+                                    }}
+                                    embedded={true}
                                 />
                             </div>
-                        </div>
-                    )}
-
-                    {messages[messages.length - 1]?.options?.length > 0 && !isTyping && step !== 'clinica_triage_ai_complete' && step !== 'clinica_triage_containment_complete' && (
-                        <div className="flex flex-col gap-2 mb-3 w-full">
-                            {messages[messages.length - 1].options.map((opt, oIdx) => (
-                                <button
-                                    key={oIdx}
-                                    onClick={(e) => { e.preventDefault(); handleSend(opt.label, opt.value); }}
-                                    className="w-full px-5 py-3 bg-white border-2 border-blue-100 text-slate-700 text-sm font-medium rounded-xl hover:border-blue-500 hover:bg-blue-50 hover:shadow-md transition-all flex items-center justify-between group"
-                                    disabled={isTyping || step === 'clinica_triage_ai_complete'}
-                                >
-                                    <span>{opt.label}</span>
-                                    <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors shrink-0 ml-3">
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                        </svg>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-
-                    {(!messages[messages.length - 1]?.options || messages[messages.length - 1]?.options?.length === 0) && step !== 'clinica_triage_ai_complete' && step !== 'clinica_triage_containment_complete' && (
-                        <div className="w-full flex gap-3 relative">
-                            <input
-                                type="text"
-                                value={inputValue}
-                                onChange={(e) => setInputValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === "Enter" && inputValue.trim() && !isTyping && step !== 'clinica_body_map' && step !== 'clinica_triage_containment' && step !== 'clinica_triage_ai_analysis') {
-                                        handleSend(inputValue);
-                                    }
-                                }}
-                                placeholder={step === 'clinica_body_map' ? "Seleccione una opción..." : (step === 'clinica_triage_start' ? "Seleccione o escriba su motivo libremente..." : "Escriba aquí...")}
-                                className="flex-1 px-5 py-4 bg-gray-50 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1C75BC] focus:bg-white transition-all font-sansation text-slate-700 shadow-sm disabled:opacity-50 disabled:bg-gray-100"
-                                disabled={isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis'}
-                            />
-                            <button
-                                type="button"
-                                onClick={(e) => { e.preventDefault(); handleSend(inputValue); }}
-                                disabled={!inputValue.trim() || isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis'}
-                                className="px-6 py-4 bg-[#1C75BC] text-white rounded-full font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center min-w-[60px]"
-                            >
-                                <i className="fi fi-rr-paper-plane text-xl"></i>
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="text-center mt-3 text-xs text-gray-400 font-sansation flex items-center justify-center gap-2">
-                        <i className="fi fi-rr-shield-check"></i>
-                        Terminal A - Comunicación Clínica Encriptada Extremo a Extremo
+                        )}
                     </div>
+                )}
+
+                {step === 'clinica_body_map' && !isTyping && (
+                    <div className="flex justify-center w-full mb-4">
+                        <div className="bg-gray-50 border border-gray-200 p-2 sm:p-4 rounded-xl w-full shadow-sm flex justify-center">
+                            <VisualBodyMap
+                                gender={gender}
+                                onComplete={handleBodyMapComplete}
+                            />
+                        </div>
+                    </div>
+                )}
+
+
+
+                {(!messages[messages.length - 1]?.options || messages[messages.length - 1]?.options?.length === 0) && step !== 'clinica_triage_ai_complete' && step !== 'clinica_triage_containment_complete' && (
+                    <form onSubmit={(e) => { e.preventDefault(); if (inputValue.trim() && !isTyping && step !== 'clinica_body_map' && step !== 'clinica_triage_containment' && step !== 'clinica_triage_ai_analysis') handleSend(inputValue); }} className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner relative z-10">
+                        <input
+                            type="text"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            placeholder={step === 'clinica_body_map' ? "Seleccione una opción..." : (step === 'clinica_triage_start' ? "Seleccione o escriba su motivo libremente..." : "Escriba aquí...")}
+                            className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
+                            disabled={isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis'}
+                        />
+                        <button
+                            type="submit"
+                            disabled={!inputValue.trim() || isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis'}
+                            className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Send size={18} />
+                        </button>
+                    </form>
+                )}
+
+                <div className="text-center mt-3 text-xs text-gray-400 font-sansation flex items-center justify-center gap-2">
+                    <i className="fi fi-rr-shield-check"></i>
+                    Terminal A - Comunicación Clínica Encriptada Extremo a Extremo
                 </div>
             </div>
         </div>
+        </>
     );
 };
 

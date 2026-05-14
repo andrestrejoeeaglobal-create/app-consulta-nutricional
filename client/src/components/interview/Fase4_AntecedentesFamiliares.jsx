@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { formatText } from '../../utils/utils';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
+
 import tiloImg from '../../assets/tilo.png';
 import ReactMarkdown from 'react-markdown';
 import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
@@ -27,9 +28,11 @@ const CAT_PATOLOGIAS = [
 
 const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComplete, initialChatHistory }) => {
     // NUEVA ESTRUCTURA DE DATOS
-    const [familyTree, setFamilyTree] = useState({
-        antecedentes: [],
-        alert_detected: false
+    const [familyTree, setFamilyTree] = useState(() => {
+        return patientData?.familyTree || {
+            antecedentes: [],
+            alert_detected: false
+        };
     });
 
     const ptCtx = patientData?.profile?.pediatric_profile;
@@ -42,10 +45,26 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
 
     // Máquina de estados
     // ASK_START -> SELECT_DISEASE -> TYPE_DETAIL (if Cancer/Otras) -> SELECT_RELATIVE -> ASK_MORE
-    const [flowState, setFlowState] = useState('ASK_START');
+    const [flowState, setFlowState] = useState(() => {
+        if (patientData?.familyTree?.antecedentes?.length > 0) return 'ASK_MORE';
+        return 'ASK_START';
+    });
     const [currentAntecedente, setCurrentAntecedente] = useState(null); // { patologia, detalle, familiar }
 
+    const [initialMessageCount] = useState(initialChatHistory?.length || 0);
     const [messages, setMessages] = useState(() => {
+        if (patientData?.familyTree?.antecedentes?.length > 0) {
+            const resumeMsg = {
+                role: 'assistant',
+                content: "De acuerdo. ¿Qué acción desea tomar respecto a los antecedentes familiares?",
+                options: [
+                    { label: "➕ AGREGAR OTRO ANTECEDENTE", value: "ADD_MORE" },
+                    { label: "➡️ CONTINUAR AL HISTORIAL", value: "FINISH" }
+                ]
+            };
+            return [...(initialChatHistory || []), resumeMsg];
+        }
+
         const greeting = isMinor 
             ? `Entendido. Para complementar el mapa de salud de la menor ${pName}, ¿podría indicarme si existen antecedentes de enfermedades importantes en su familia directa (padres, abuelos, tíos o hermanos)?`
             : `Entendido. Para complementar el mapa de salud de ${pName}, ¿podría indicarme si existen antecedentes de enfermedades importantes en su familia directa (padres, abuelos, tíos o hermanos)?`;
@@ -120,7 +139,7 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
         }, 600);
     };
 
-    const processState = (val, type) => {
+    const processState = (val) => {
         if (flowState === 'ASK_START') {
             if (val === "NO_ANTECEDENTES") {
                 onPhaseComplete?.(familyTree, [...messages, { role: 'user', content: "No / Desconoce" }, { role: 'assistant', content: "Entendido, sin antecedentes registrados." }]);
@@ -217,13 +236,40 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
         }
         else if (flowState === 'ASK_MORE') {
             if (val === "FINISH") {
-                onPhaseComplete?.(familyTree, [...messages, { role: 'user', content: "Continuar al historial" }, { role: 'assistant', content: "Perfecto. Avancemos a la siguiente fase." }]);
+                setFlowState('REVIEW_SUMMARY');
+                const summaryText = familyTree.antecedentes.length > 0
+                    ? familyTree.antecedentes.map(a => `- **${a.familiar || a.parentesco || 'Familiar no especificado'}**: ${a.patologia || a.diagnostico || 'Condición no especificada'}`).join('\n')
+                    : "Ningún antecedente registrado.";
+                
+                pushMessage({
+                    role: 'assistant',
+                    content: `A continuación, le presento un resumen de los Antecedentes Heredofamiliares capturados:\n\n${summaryText}\n\n¿Son correctos estos datos?`,
+                    options: [
+                        { label: "Sí, los datos son correctos", value: "CONFIRM_DATA" },
+                        { label: "No, quiero agregar o corregir algo", value: "CORRECT_DATA" }
+                    ]
+                });
             } else if (val === "ADD_MORE") {
                 setFlowState('SELECT_DISEASE');
                 pushMessage({
                     role: 'assistant',
                     content: "Por favor, seleccione la condición o enfermedad que desea registrar:",
                     showMenu: 'disease'
+                });
+            }
+        }
+        else if (flowState === 'REVIEW_SUMMARY') {
+            if (val === "CONFIRM_DATA") {
+                onPhaseComplete?.(familyTree, [...messages, { role: 'user', content: "Sí, los datos son correctos" }, { role: 'assistant', content: "Perfecto. Avancemos a la siguiente fase." }]);
+            } else if (val === "CORRECT_DATA") {
+                setFlowState('ASK_MORE');
+                pushMessage({
+                    role: 'assistant',
+                    content: "De acuerdo. ¿Qué acción desea tomar?",
+                    options: [
+                        { label: "➕ AGREGAR OTRO ANTECEDENTE", value: "ADD_MORE" },
+                        { label: "➡️ CONTINUAR AL HISTORIAL", value: "FINISH" }
+                    ]
                 });
             }
         }
@@ -242,19 +288,19 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
                     {messages.map((msg, idx) => (
                         <div key={idx} className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-6 items-start gap-3 animate-fade-in-up relative`}>
                             {msg.role === "assistant" && (
-                                <motion.div
-                                    initial={{ scale: 0 }}
+                                <Motion.div
+                                    initial={idx >= initialMessageCount ? { scale: 0 } : { scale: 1 }}
                                     animate={{ scale: 1 }}
                                     className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden"
                                 >
                                     <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
-                                </motion.div>
+                                </Motion.div>
                             )}
                             <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === 'assistant'
                                 ? 'bg-white border border-slate-100 text-slate-700 rounded-tl-none relative'
                                 : 'bg-indigo-600 text-white rounded-tr-none'
                                 }`}>
-                                <div className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" : "prose-invert"}`}>
+                                <div className="w-full prose prose-sm max-w-none prose-slate [&>p]:mb-2 [&>p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4">
                                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                                 </div>
 

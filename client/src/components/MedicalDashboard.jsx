@@ -134,7 +134,9 @@ export const MedicalDashboard = ({
     isEditing, onEditToggle, setPatientData,
     onTriggerEdit, // V3.5
     fase3State, // Prop del estado interactivo de la Fase 3
-    fase4State
+    fase4State,
+    fase5State,
+    fase6State
 }) => {
     // --- CONEXIÓN AL GENOMA (Stack Sagrado V1.0) ---
     const pendingAlerts = useClinicalGenome(state => state.pendingAlerts);
@@ -645,6 +647,8 @@ export const MedicalDashboard = ({
                             TAG_CONFIG={TAG_CONFIG}
                             fase3State={fase3State}
                             fase4State={fase4State}
+                            fase5State={fase5State}
+                            fase6State={fase6State}
                             pendingAlerts={pendingAlerts}
                             metabolicAxis={metabolicAxis}
                             currentStep={currentStep}

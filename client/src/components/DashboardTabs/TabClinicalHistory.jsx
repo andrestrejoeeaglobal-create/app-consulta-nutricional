@@ -56,25 +56,7 @@ export const TabClinicalHistory = ({
             >
                 <div className="space-y-6">
 
-                    {/* --- ALERTAS TEMPRANAS PASIVAS (DEL GENOMA TILO) --- */}
-                    {pendingAlerts?.length > 0 && (
-                        <div className="mb-2 space-y-3">
-                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <Activity className="w-3 h-3" /> Monitoreo Analítico Pasivo
-                            </h4>
-                            {pendingAlerts.map(alert => (
-                                <div key={alert.id} className="p-4 bg-[#FFFBEB] border border-amber-200 rounded-2xl flex items-start gap-4 shadow-sm animate-in zoom-in duration-300">
-                                    <div className="bg-amber-100 p-2 rounded-full text-amber-600 border border-amber-200 shrink-0">
-                                        <AlertTriangle size={18} />
-                                    </div>
-                                    <div>
-                                        <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider font-prototype">{alert.type || 'ALERTA TILO CORTEX'}</h4>
-                                        <p className="text-sm text-amber-900 mt-1 font-medium leading-relaxed max-w-lg">{alert.message}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+
 
                     {/* --- HIJO 0: Motivo de Consulta --- */}
                     <Accordion
@@ -98,6 +80,26 @@ export const TabClinicalHistory = ({
                                 onEdit={() => onTriggerEdit && onTriggerEdit('ahf')}
                                 showEdit={true}
                             />
+
+                            {/* --- ALERTAS TEMPRANAS PASIVAS (DEL GENOMA TILO) --- */}
+                            {pendingAlerts?.length > 0 && (
+                                <div className="mb-4 mt-4 space-y-3">
+                                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <Activity className="w-3 h-3" /> Monitoreo Analítico Pasivo
+                                    </h4>
+                                    {pendingAlerts.map(alert => (
+                                        <div key={alert.id} className="p-4 bg-[#FFFBEB] border border-amber-200 rounded-2xl flex items-start gap-4 shadow-sm animate-in zoom-in duration-300">
+                                            <div className="bg-amber-100 p-2 rounded-full text-amber-600 border border-amber-200 shrink-0">
+                                                <AlertTriangle size={18} />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider font-prototype">{alert.type || 'ALERTA TILO CORTEX'}</h4>
+                                                <p className="text-sm text-amber-900 mt-1 font-medium leading-relaxed max-w-lg">{alert.message}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                             {fase4State ? (
                                 <div className="px-4 pb-4 pt-2 space-y-6">
                                     <div className="flex justify-center">
@@ -229,7 +231,7 @@ export const TabClinicalHistory = ({
                                 {/* SECTION: MEDICATIONS */}
                                 <div>
                                     <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Medicamentos Prescritos</h4>
-                                    {patientData.history?.medications && patientData.history.medications.length > 0 ? (
+                                    {patientData.history?.medications?.length > 0 ? (
                                         <div className="space-y-2">
                                             {patientData.history.medications.map((item, idx) => (
                                                 <div key={idx} className="flex justify-between items-start p-3 bg-purple-50 rounded-xl text-sm border border-purple-100">
@@ -253,7 +255,7 @@ export const TabClinicalHistory = ({
                                 {/* SECTION: SUPPLEMENTS */}
                                 <div>
                                     <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Suplementación</h4>
-                                    {patientData.history?.supplements && patientData.history.supplements.length > 0 ? (
+                                    {patientData.history?.supplements?.length > 0 ? (
                                         <div className="space-y-2">
                                             {patientData.history.supplements.map((item, idx) => (
                                                 <div key={idx} className="flex justify-between items-start p-3 bg-emerald-50 rounded-xl text-sm border border-emerald-100">
@@ -473,8 +475,8 @@ export const TabClinicalHistory = ({
                                             <div className="text-sm font-bold text-slate-700">Tabaco / Vape</div>
                                             <div className="text-xs text-slate-500">
                                                 {patientData.habits?.smoking?.is_smoker ?
-                                                    `${patientData.habits.smoking.type} - ${patientData.habits.smoking.quantity_text}` :
-                                                    'Niega consumo'}
+                                                    (patientData.habits.smoking.details || 'Activo') :
+                                                    (patientData.habits?.smoking?.is_smoker === false ? 'Niega consumo' : '-')}
                                             </div>
                                         </div>
                                     </div>
@@ -492,29 +494,35 @@ export const TabClinicalHistory = ({
                                             <div className="text-xs text-slate-500">
                                                 {patientData.habits?.alcohol?.is_drinker ? (
                                                     <>
-                                                        {patientData.habits.alcohol.preferred_drink} ({patientData.habits.alcohol.frequency_days} días/sem)
-                                                        <br />
-                                                        <span className="text-slate-400">~{patientData.habits.alcohol.calculated_weekly_calories} kcal/semanales</span>
+                                                        Activo
+                                                        {patientData.habits.alcohol.log?.length > 0 && (
+                                                            <div className="mt-1">
+                                                                <strong>Detalle:</strong> {patientData.habits.alcohol.log.map(item => `${item.type} (${item.qty} ${item.unit})`).join(', ')}
+                                                            </div>
+                                                        )}
+                                                        {patientData.habits.alcohol.total_kcal_per_occasion > 0 && (
+                                                            <div className="text-slate-400 mt-1">~{patientData.habits.alcohol.total_kcal_per_occasion} kcal/ocasión</div>
+                                                        )}
                                                     </>
-                                                ) : 'Niega consumo'}
+                                                ) : (patientData.habits?.alcohol?.is_drinker === false ? 'Niega consumo' : '-')}
                                             </div>
                                         </div>
                                     </div>
-                                    {patientData.habits?.alcohol?.is_drinker && patientData.habits.alcohol.calculated_weekly_calories > 1000 && (
+                                    {patientData.habits?.alcohol?.is_drinker && patientData.habits.alcohol.total_kcal_per_occasion > 1000 && (
                                         <span className="bg-yellow-100 text-yellow-700 text-[10px] px-2 py-0.5 rounded font-bold">ALTO CALÓRICO</span>
                                     )}
                                 </div>
 
                                 {/* 4. DROGAS (CRITICAL) */}
-                                <div className="flex justify-between items-start">
+                                <div className="flex justify-between items-start border-b border-slate-50 pb-2">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xl">💊</span>
                                         <div>
                                             <div className="text-sm font-bold text-slate-700">Recreativo / Tóxicos</div>
                                             <div className="text-xs text-slate-500">
                                                 {patientData.habits?.drugs?.has_usage ?
-                                                    `${patientData.habits.drugs.substance_name} (${patientData.habits.drugs.frequency})` :
-                                                    'Niega consumo'}
+                                                    (patientData.habits.drugs.log?.length > 0 ? patientData.habits.drugs.log.join(', ') : 'Activo') :
+                                                    (patientData.habits?.drugs?.has_usage === false ? 'Niega consumo' : '-')}
                                             </div>
                                         </div>
                                     </div>
@@ -523,6 +531,20 @@ export const TabClinicalHistory = ({
                                             ALERTA
                                         </span>
                                     )}
+                                </div>
+                                
+                                {/* 5. SUEÑO Y ESTRÉS */}
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xl">💤</span>
+                                        <div>
+                                            <div className="text-sm font-bold text-slate-700">Descanso y Estrés</div>
+                                            <div className="text-xs text-slate-500">
+                                                Sueño: {patientData.habits?.sleep?.hours ? `${patientData.habits.sleep.hours} hrs (${patientData.habits.sleep.quality || 'N/A'})` : 'No especificado'} <br/>
+                                                Estrés: {patientData.habits?.stress ? <span className="capitalize">{patientData.habits.stress}</span> : 'No especificado'}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -25,6 +25,8 @@ import SearchableVerticalMenu from "./components/ui/SearchableVerticalMenu"; // 
 import Fase3_MotivoConsulta from "./components/interview/Fase3_MotivoConsulta";
 import Fase4_AntecedentesFamiliares from "./components/interview/Fase4_AntecedentesFamiliares";
 import Fase5_EstiloVida from "./components/interview/Fase5_EstiloVida";
+import Fase6_Farmacologia from "./components/interview/Fase6_Farmacologia";
+import Fase7_Habitos from "./components/interview/Fase7_Habitos";
 
 // 1. Función Auxiliar (Fuera del componente)
 // 2. Calculadora de Edad Exacta
@@ -489,7 +491,12 @@ function App() {
     apiContext,
     fase3State,
     setFase3State,
-    triggerPhase1Summary
+    triggerPhase1Summary,
+    triggerPhase3Summary,
+    triggerPhase4Summary,
+    triggerPhase5Summary,
+    triggerPhase6Summary,
+    triggerPhase7Summary
   } = useCortex();
 
   const [input, setInput] = useState("");
@@ -670,9 +677,10 @@ function App() {
     }
   }, [interviewStep, saveHistoryToBackend]);
 
-  // Add Phase 4 State handling
+  // Add Phase 4-6 State handling
   const [fase4State, setFase4State] = useState(null);
-
+  const [fase5State, setFase5State] = useState(null);
+  const [fase6State, setFase6State] = useState(null);
   // V9.0: Escuchar cuando Cortex cede el control a la fase antigua de App.jsx
   useEffect(() => {
     // 1. Mostrar Aviso de Privacidad cuando Cortex llega a la fase (evita rebotes con isIdentityConfirmed)
@@ -4889,7 +4897,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     return; // Bloquea el avance
                   }
 
-                  setCurrentPhase('PHASE_4_FAMILY_HISTORY');
+                  triggerPhase3Summary(motiveData);
                 }}
               />
             ) : currentPhase === 'PHASE_4_FAMILY_HISTORY' ? (
@@ -4902,9 +4910,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                 phase3Data={fase3State}
                 onStateChange={setFase4State}
                 initialChatHistory={messages}
-                onPhaseComplete={(familyTreeData) => {
+                onPhaseComplete={(familyTreeData, localMessages) => {
                   setPatientData(prev => ({ ...prev, familyTree: familyTreeData }));
-                  setCurrentPhase('PHASE_5_LIFESTYLE'); // Transition to Phase 5
+                  triggerPhase4Summary({ ...patientData, familyTree: familyTreeData }, localMessages);
                 }}
               />
             ) : currentPhase === 'PHASE_5_LIFESTYLE' ? (
@@ -4914,10 +4922,38 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                 patientData={patientData}
                 setPatientData={setPatientData}
                 patientProfile={patientData}
+                onStateChange={setFase5State}
                 initialChatHistory={messages}
                 onPhaseComplete={(lifestyleData) => {
                   setPatientData(prev => ({ ...prev, lifeStyleInfo: lifestyleData }));
-                  setCurrentPhase('PHASE_6_SOMETHING_ELSE'); // Placeholder for next phase
+                  triggerPhase5Summary({ ...patientData, lifeStyleInfo: lifestyleData });
+                }}
+              />
+            ) : currentPhase === 'PHASE_6_PHARMACOLOGY' ? (
+              <Fase6_Farmacologia
+                user={user}
+                appId={apiContext?.citaId}
+                patientData={patientData}
+                setPatientData={setPatientData}
+                patientProfile={patientData}
+                onStateChange={setFase6State}
+                initialChatHistory={messages}
+                onPhaseComplete={(pharmaData) => {
+                  setPatientData(prev => ({ ...prev, pharmacology: pharmaData }));
+                  triggerPhase6Summary({ ...patientData, pharmacology: pharmaData });
+                }}
+              />
+            ) : currentPhase === 'PHASE_7_HABITS' ? (
+              <Fase7_Habitos
+                user={user}
+                appId={apiContext?.citaId}
+                patientData={patientData}
+                setPatientData={setPatientData}
+                patientProfile={patientData}
+                initialChatHistory={messages}
+                onPhaseComplete={(habitsData) => {
+                  setPatientData(prev => ({ ...prev, habits: habitsData }));
+                  triggerPhase7Summary({ ...patientData, habits: habitsData });
                 }}
               />
             ) : (
@@ -5218,31 +5254,48 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
           </div>
 
           {/* PANEL DERECHO (50%) - DASHBOARD RESTAURADO (ACORDEONES) */}
-          <div className="w-1/2 h-full flex flex-col bg-gray-50 border-l border-gray-200">
-            {/* PASO 4: LA HIBERNACIÓN CLÍNICA DE LOS ACORDEONES */}
-            <div className={`
-               h-full w-full transition-all duration-700 ease-in-out
-               ${isPatientLoaded
-                ? 'opacity-100 pointer-events-auto grayscale-0'
-                : 'opacity-40 pointer-events-none grayscale select-none'
-              }
-             `}>
-
-              {/* DASHBOARD COMPONENT INTEGRATION */}
-              <MedicalDashboard
-                patientData={patientData}
-                setPatientData={setPatientData}
-                currentStep={interviewStep === 'appointment' ? currentPhase : interviewStep}
-                activeTab={activeTab}
-                onTabChange={setActiveTab}
-                isEditing={isEditing}
-                onEditToggle={() => setIsEditing(!isEditing)}
-                onTriggerEdit={handleTriggerEdit}
-                activeField={activeField}
-                fase3State={fase3State}
-                fase4State={fase4State}
-              />
-            </div>
+          <div className="w-1/2 h-full flex flex-col bg-gray-50 border-l border-gray-200 relative overflow-hidden">
+            {/* COMPUERTA NOM-004: BLOQUEO DE FASE 0 */}
+            {!isIdentityConfirmed ? (
+                // Fase 0 Activa: Muro de Contención
+                showPrivacyPolicy ? (
+                    <div className="absolute inset-0 z-10 w-full h-full bg-slate-50">
+                        <AvisoPrivacidad onAccept={handleAcceptPrivacy} onClose={() => setShowPrivacyPolicy(false)} />
+                    </div>
+                ) : (
+                    <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
+                        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                            <Lock className="w-16 h-16 text-slate-300 mb-6" />
+                            <h2 className="text-xl font-bold text-slate-700 uppercase tracking-widest font-prototype">
+                                Espejo Clínico Bloqueado
+                            </h2>
+                            <p className="text-slate-500 mt-3 text-sm font-medium max-w-sm">
+                                Esperando validación de identidad y aceptación del aviso de privacidad (NOM-004).
+                            </p>
+                        </div>
+                    </div>
+                )
+            ) : (
+                // Fase 1+: Dashboard Liberado
+                <div className="h-full w-full animate-in fade-in duration-1000">
+                  {/* DASHBOARD COMPONENT INTEGRATION */}
+                  <MedicalDashboard
+                    patientData={patientData}
+                    setPatientData={setPatientData}
+                    currentStep={interviewStep === 'appointment' ? currentPhase : interviewStep}
+                    activeTab={activeTab}
+                    onTabChange={setActiveTab}
+                    isEditing={isEditing}
+                    onEditToggle={() => setIsEditing(!isEditing)}
+                    onTriggerEdit={handleTriggerEdit}
+                    activeField={activeField}
+                    fase3State={fase3State}
+                    fase4State={fase4State}
+                    fase5State={fase5State}
+                    fase6State={fase6State}
+                  />
+                </div>
+            )}
           </div>
 
         </div >
@@ -5263,22 +5316,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
             </div>
           )
         }
-        {/* MODAL DE PRIVACIDAD (Renderizado Condicional) */}
-        <AnimatePresence>
-          {showPrivacyPolicy && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[5000]"
-            >
-              <AvisoPrivacidad
-                onAccept={handleAcceptPrivacy}
-                onClose={() => setShowPrivacyPolicy(false)}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* MODAL DE PRIVACIDAD ELIMINADO: Ahora se renderiza en el Panel Derecho bajo protocolo NOM-004 */}
 
         {/* V15.5 RECOVERY DIALOG (Renderizado Condicional) */}
         <AnimatePresence>

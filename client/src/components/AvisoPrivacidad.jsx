@@ -3,8 +3,8 @@ import LogoEABlanco from '../assets/LogoEABlanco.svg';
 
 const AvisoPrivacidad = ({ onAccept, onClose }) => {
     return (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-xl h-[85vh] flex flex-col overflow-hidden border border-slate-100">
+        <div className="w-full h-full bg-slate-50 p-6 flex flex-col overflow-hidden">
+            <div className="bg-white rounded-3xl shadow-xl w-full h-full flex flex-col overflow-hidden border border-slate-200 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
                 {/* 1. ENCABEZADO FIJO (Actualizado) */}
                 <div className="flex items-center justify-between bg-blue-600 p-6 rounded-t-2xl relative overflow-hidden shrink-0">

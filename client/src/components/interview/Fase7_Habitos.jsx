@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Send, Check } from 'lucide-react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import tiloImg from '../../assets/tilo.png';
-import usePatientLinguistics from '../../hooks/usePatientLinguistics';
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
 const formatText = (text) => text.trim();
 const strictBooleanValidator = (text) => {
@@ -16,7 +16,7 @@ const strictBooleanValidator = (text) => {
 // ==========================================
 // COMPONENTE: Fase 10 (Hábitos y Estilo de Vida)
 // ==========================================
-export default function Fase10_Habitos({ initialChatHistory, patientData, onPhaseComplete }) {
+export default function Fase7_Habitos({ initialChatHistory, patientData, onPhaseComplete }) {
     const { updateClinicalContext } = useClinicalGenome();
     const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
 
@@ -502,14 +502,58 @@ export default function Fase10_Habitos({ initialChatHistory, patientData, onPhas
 
                     setHabitsData(finalHabits);
 
-                    // Finalizando la recolección, actualizamos el Genoma Global
-                    updateClinicalContext({
-                        habits: finalHabits,
-                        activity: activityData
-                    });
+                    const finalMsg = isMinor 
+                        ? `Auditoría completada. Revise el panel derecho para confirmar que los hábitos de ${pName} están capturados correctamente.\n\n¿Son correctos estos datos?`
+                        : `Auditoría completada. Revise el panel derecho para confirmar que sus hábitos están capturados correctamente.\n\n¿Son correctos estos datos?`;
 
-                    // Transicionar a la siguiente fase
-                    onPhaseComplete();
+                    addMessage('assistant', finalMsg, {
+                        avatar: tiloImg,
+                        options: [
+                            { label: "Sí, los datos son correctos", value: "CONFIRM_DATA" },
+                            { label: "No, quiero corregir algo", value: "CORRECT_DATA" }
+                        ]
+                    });
+                    setCurrentStep('REVIEW_SUMMARY');
+                    break;
+                }
+
+                case 'REVIEW_SUMMARY': {
+                    if (text === "CONFIRM_DATA") {
+                        // Finalizando la recolección, actualizamos el Genoma Global
+                        updateClinicalContext({
+                            habits: habitsData,
+                            activity: activityData
+                        });
+                        
+                        addMessage('user', "Sí, los datos son correctos");
+                        addMessage('assistant', "Perfecto. Avancemos a la siguiente fase.", { avatar: tiloImg });
+
+                        setTimeout(() => {
+                            onPhaseComplete?.(habitsData, [...messages, { role: 'user', content: "Sí, los datos son correctos" }, { role: 'assistant', content: "Perfecto. Avancemos a la siguiente fase.", avatar: tiloImg }]);
+                        }, 1000);
+                    } else if (text === "CORRECT_DATA") {
+                        setHabitsData({
+                            smoking: { is_smoker: false, details: '' },
+                            alcohol: { is_drinker: false, log: [], total_kcal_per_occasion: 0 },
+                            drugs: { has_usage: false, log: [] },
+                            sleep: { hours: 0, quality: '' },
+                            stress: ''
+                        });
+                        setActivityData({
+                            exercise: { has_scheduled_exercise: false, log: [] }
+                        });
+                        
+                        addMessage('assistant', isMinor 
+                            ? `De acuerdo, vamos a corregir. ¿${pName} fuma o tiene antecedentes de tabaquismo?` 
+                            : 'De acuerdo, vamos a corregir. ¿Fuma actualmente o tiene antecedentes de tabaquismo?', {
+                            avatar: tiloImg,
+                            options: [
+                                { label: '✅ Sí', value: 'Sí' },
+                                { label: '❌ No', value: 'No' }
+                            ]
+                        });
+                        setCurrentStep('SMOKE_GATE');
+                    }
                     break;
                 }
 

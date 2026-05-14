@@ -333,18 +333,17 @@ export const Fase1_Identificacion = ({
                             </div>
                         )}
                         
-                        <div className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner relative z-10">
+                        <form onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }} className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner relative z-10">
                         <input
                             type={step.includes('phone') ? 'tel' : 'text'}
                             value={inputValue} onChange={step.includes('phone') ? handlePhoneChange : (e) => setInputValue(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend(inputValue)}
                             placeholder={step.includes('phone') ? "(123) 456-7890" : "Escribe tu respuesta..."} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
                             disabled={isInputDisabled}
                         />
-                        <button onClick={() => handleSend(inputValue)} disabled={isInputDisabled} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
+                        <button type="submit" disabled={isInputDisabled} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
                             <Send size={18} />
                         </button>
-                        </div>
+                        </form>
                     </div>
                 </div>
             </div>
