@@ -13,7 +13,7 @@ const symptomOptions = [
 ];
 
 export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
-    const { patientName: pName, isMinor, patientGender } = usePatientLinguistics(patientData);
+    const { patientName: pName, isMinor, isGeriatric, patientGender } = usePatientLinguistics(patientData);
 
     const [messages, setMessages] = useState(() => {
         if (initialChatHistory && initialChatHistory.length > 0) {
@@ -137,13 +137,13 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
                 finishPhase(true);
                 break;
             }
-            default:
+            default:
                 break;
         }
     };
 
     const finishPhase = (hadSymptoms = false) => {
-        const isFemale = patientGender.startsWith('F');
+        const isFemale = patientGender && patientGender.startsWith('F');
 
         const introText = hadSymptoms
             ? (isMinor ? `Entendido, los síntomas digestivos de ${pName} han sido registrados.` : "Entendido, sus síntomas digestivos han sido registrados.")
@@ -152,7 +152,7 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
         let nextMsg = "";
         let nextPhase = "";
 
-        if (!isFemale) {
+        if (!isFemale || isGeriatric) {
             nextMsg = isMinor ? `${introText}\n\nPasemos al Estilo de Vida.\n\n¿Fuma ${pName} tabaco o utiliza vapeadores?` : `${introText}\n\nPasemos a su Estilo de Vida.\n\n¿Fuma tabaco o utiliza vapeadores?`;
             nextPhase = 'PHASE_10_SMOKE_GATE';
         } else {
@@ -271,12 +271,12 @@ export default function Fase8_SaludDigestiva({ initialChatHistory, patientData, 
 
                     {(!isMultiSelect && currentOptions.length === 0) && (
                         <button
-                            onClick={handleSend}
-                            disabled={!inputValue.trim()}
-                            className="bg-blue-600 font-bold hover:bg-blue-700 text-white p-2 rounded-full transition-colors flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0 w-10 h-10"
-                        >
-                            <Send className="w-5 h-5 ml-1" />
-                        </button>
+  onClick={handleSend}
+  disabled={!inputValue.trim()}
+  className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  <Send className="w-5 h-5" />
+</button>
                     )}
                 </div>
             </div>

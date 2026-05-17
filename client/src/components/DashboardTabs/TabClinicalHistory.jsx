@@ -127,6 +127,23 @@ export const TabClinicalHistory = ({
                                         </div>
                                     )}
                                 </div>
+                            ) : (patientData.familyTree?.antecedentes?.length > 0) ? (
+                                <div className="space-y-2">
+                                    {patientData.familyTree.antecedentes.map((item, idx) => (
+                                        <div key={`ft-${idx}`} className="flex justify-between items-center p-3 bg-indigo-50 rounded-xl text-sm border border-indigo-100">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-indigo-700 uppercase p-0 m-0 leading-tight">
+                                                    {item.patologia || item.diagnostico || item.condition_category || item.condition || 'Condición no especificada'}
+                                                </span>
+                                                <span className="text-[10px] text-indigo-400 font-semibold tracking-wide">
+                                                    PARENTESCO: {item.familiar || item.parentesco || item.relative || 'No especificado'}
+                                                    {item.detalle && ` — ${item.detalle}`}
+                                                </span>
+                                            </div>
+                                            <div className="h-2 w-2 rounded-full bg-indigo-400"></div>
+                                        </div>
+                                    ))}
+                                </div>
                             ) : (patientData.history?.family_history?.length > 0 || patientData.history?.family_structured?.length > 0) ? (
                                 <div className="space-y-2">
                                     {patientData.history?.family_history?.map((item, idx) => (
@@ -146,10 +163,10 @@ export const TabClinicalHistory = ({
                                         <div key={`fs-${idx}`} className="flex justify-between items-center p-3 bg-indigo-50 rounded-xl text-sm border border-indigo-100">
                                             <div className="flex flex-col">
                                                 <span className="font-bold text-indigo-700 uppercase p-0 m-0 leading-tight">
-                                                    {item.condition_category === 'OTHER' ? item.specific_condition : item.condition_category}
+                                                    {item.condition_category === 'OTHER' ? item.specific_condition : item.condition_category || item.condition}
                                                 </span>
                                                 <span className="text-[10px] text-indigo-400 font-semibold tracking-wide">
-                                                    {item.source === 'CHECKLIST' ? 'NORMATIVA NOM-004' : 'REPORTE LIBRE'}
+                                                    {item.relative ? `PARENTESCO: ${item.relative}` : (item.source === 'CHECKLIST' ? 'NORMATIVA NOM-004' : 'REPORTE LIBRE')}
                                                 </span>
                                             </div>
                                             <div className="h-2 w-2 rounded-full bg-indigo-400"></div>

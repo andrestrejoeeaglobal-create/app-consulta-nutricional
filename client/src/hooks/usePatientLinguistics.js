@@ -29,11 +29,12 @@ export const usePatientLinguistics = (patientData) => {
     }
 
     const isMinor = patientAge < 18;
+    const isGeriatric = patientAge >= 65;
     const cleanName = patientName !== "NOM" ? patientName.split(' ')[0] : "el paciente";
     
     let placeholder = isMinor 
         ? `Escriba el motivo principal para ${cleanName}...`
         : "Describa brevemente su motivo...";
 
-    return { patientAge, patientSex, patientName: cleanName, placeholder, isMinor, pName: cleanName };
+    return { patientAge, patientSex, patientGender: patientSex, patientName: cleanName, placeholder, isMinor, isGeriatric, pName: cleanName };
 };

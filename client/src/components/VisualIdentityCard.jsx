@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { TriangleAlert } from 'lucide-react'; // Added alert icon
 import { formatPhoneNumber } from '../utils/utils'; // V15.6 Format phone number
+import { classifyLifeStage } from '../utils/ageClassifier';
 
 // Helper for rendering fields (Defined outside to avoid re-creation on render)
 const IdentityField = ({ label, value, fullWidth = false, isMono = false, hasDiscrepancy = false }) => {
@@ -91,7 +92,7 @@ const VisualIdentityCard = ({ patientData }) => {
             {/* NIVEL 2: BIOMETRÍA BÁSICA */}
             <div className="grid grid-cols-3 gap-4">
                 <IdentityField label="Fecha Nacimiento" value={profileData.birthdate || idData.fechanac} />
-                <IdentityField label="Edad" value={profileData.age ? `${profileData.age} Años` : (idData.edad ? `${idData.edad} Años` : "")} />
+                <IdentityField label="Edad" value={profileData.age ? `${profileData.age} Años (${classifyLifeStage(profileData.age)?.toUpperCase()})` : (idData.edad ? `${idData.edad} Años (${classifyLifeStage(idData.edad)?.toUpperCase()})` : "")} />
                 <IdentityField label="Sexo Biológico" value={profileData.sex || idData.sexo} />
             </div>
 

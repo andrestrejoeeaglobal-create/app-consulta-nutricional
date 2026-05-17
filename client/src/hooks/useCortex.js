@@ -9,7 +9,7 @@ const INITIAL_ACTIVE_TAB = 'profile';
 const INITIAL_MESSAGES = [
     {
         role: "assistant",
-        content: "Hola, soy el Sistema de **T**ransformación **I**nteligente y **L**ogro **O**ptimizado (T.I.L.O.), el Asistente Nutricional de Equipo en Acción. Estoy listo para procesar una nueva consulta. ¿Podría proporcionarme su número de cita para validarlo aquí en el sistema, por favor?",
+        content: "Hola, soy el Sistema de Transformación Inteligente y Logro Optimizado (**T.I.L.O.**), el **Asistente Nutricional** de Equipo en Acción. He inicializado mis protocolos de seguridad para garantizar la protección absoluta de su información clínica y validar la vigencia de su consulta.\n\nPara blindar su sesión e iniciar el proceso, por favor **proporcione su número de cita** (recuerde que esta es personal e intransferible):",
         avatar: tiloImg,
         inputType: 'number' // Explicit declaration of expected input type
     },
@@ -400,7 +400,7 @@ export const useCortex = () => {
         const showMarital = !(ptCtx && ptCtx.ui_controls && ptCtx.ui_controls.show_marital_status === false);
         const marital = p.marital_status || id.estadoCivil || "";
 
-        const summary = `Excelente. Hemos terminado de capturar su perfil. Por regulaciones de la NOM-004, verifique que esta información de identificación sea correcta:\n\n` +
+        const summary = `Mapeo demográfico y sociocultural completado.\n\nPara dar cumplimiento a la NOM-004 y sellar formalmente este bloque del expediente clínico, por favor verifique la exactitud de los datos registrados:\n\n` +
             `- 👤 **Nombre:** ${name}\n` +
             `- 📞 **Teléfono:** ${tel}\n` +
             `- 🆔 **CURP:** ${curp}\n` +
@@ -429,7 +429,7 @@ export const useCortex = () => {
 
     const triggerPhase2Summary = (updatedPatientData) => {
         const e = updatedPatientData.profile?.emergencyContact || updatedPatientData.emergencia || {};
-        const summary = `Perfecto. He registrado a su contacto de emergencia. Verifique que los datos sean correctos:\n\n` +
+        const summary = `Red de apoyo primario registrada en sistema.\n\nComo protocolo de seguridad clínica, le solicito que verifique la exactitud de los datos de contacto de emergencia:\n\n` +
             `- 👤 **Nombre:** ${e.name || e.nombre || ''}\n` +
             `- 🤝 **Parentesco:** ${e.kin || e.parentesco || ''}\n` +
             `- 📞 **Teléfono:** ${e.phone || e.telefono || ''}\n\n` +
@@ -628,7 +628,7 @@ export const useCortex = () => {
                     if (/^\d+$/.test(text)) {
                         const apiResponse = await validateCitation(text);
                         if (!apiResponse) {
-                            setMessages(prev => [...prev, { role: "assistant", content: "⚠️  Error de conexión con el servidor de citas. Intente nuevamente." }]);
+                            setMessages(prev => [...prev, { role: "assistant", content: "⛔ **Fallo de Sincronización.**\n\nNo fue posible establecer conexión con la Red Institucional. Por favor, verifique su acceso e intente nuevamente." }]);
                             return;
                         }
 
@@ -670,7 +670,7 @@ export const useCortex = () => {
 
                             setMessages(prev => [...prev, {
                                 role: 'assistant',
-                                content: `✅ Cita Encontrada.\n\n👤 Titular: ${titularName}\n📍 Sucursal y Fecha: ${formattedInfo.sede} — ${formattedInfo.display}\n\nPor protocolos de seguridad, confirme:\n**¿Es usted el paciente titular mencionado arriba?**`,
+                                content: `Validación de Credencial Exitosa.\n\n👤 **Titular:** ${titularName}\n📍 **Sede:** ${formattedInfo.sede}\n📅 **Agenda:** ${formattedInfo.display}\n\nPara iniciar la recolección clínica bajo los estándares de confidencialidad y seguridad:\n**¿Es usted el paciente titular mencionado arriba?**`,
                                 avatar: tiloImg,
                                 inputType: 'buttons',
                                 options: [
@@ -686,7 +686,7 @@ export const useCortex = () => {
                             if (newAttempts >= 3) {
                                 setMessages(prev => [...prev, {
                                     role: 'assistant',
-                                    content: "🗣️ ⚠️ **Validación bloqueada por seguridad.**\nHemos superado el número de intentos permitidos. Por favor, acuda a la recepción para que uno de nuestros compañeros le asista directamente con su registro.",
+                                    content: "⛔ **Cierre de Sesión Normativo.**\n\nSe ha superado el número máximo de intentos permitidos. Para proteger la integridad de los datos de la red de pacientes, el acceso ha sido suspendido temporalmente.\n\nPor favor, acuda a recepción para validar su identidad presencialmente.",
                                     avatar: tiloImg,
                                     inputType: 'none' // Bloquea el input
                                 }]);
@@ -712,14 +712,14 @@ export const useCortex = () => {
 
                                 setMessages(prev => [...prev, {
                                     role: 'assistant',
-                                    content: `🏁 **Folio ya utilizado.**\n\nNuestros registros indican que esta cita ya fue utilizada previamente por el titular ${titularName} y el estudio aparece como completado. Este folio ha caducado.\n\nLe quedan ${3 - newAttempts} intento(s). Por favor, verifique su número de cita.`,
+                                    content: `⛔ **Protección contra Duplicidad de Expediente.**\n\nEl sistema indica que este folio ya fue procesado y cerrado previamente por el titular **${titularName}**.\n\nLe quedan **${3 - newAttempts} intento(s)**. Por favor, asegúrese de ingresar un folio de cita vigente:`,
                                     avatar: tiloImg,
                                     inputType: 'number'
                                 }]);
                             } else {
                                 setMessages(prev => [...prev, {
                                     role: 'assistant',
-                                    content: `❌ **Cita No Encontrada.**\nEl número que ingresó no es válido para realizar el estudio.\n\nLe quedan ${3 - newAttempts} intento(s). Por favor, verifique el número e intente nuevamente.`,
+                                    content: `⛔ **Credencial Clínica No Reconocida.**\n\nEl folio ingresado no se encuentra activo en nuestros registros o no está programado para el día de hoy.\n\nLe quedan **${3 - newAttempts} intento(s)**. Por favor, verifique el número e intente nuevamente:`,
                                     avatar: tiloImg,
                                     inputType: 'number'
                                 }]);
@@ -728,7 +728,7 @@ export const useCortex = () => {
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Por favor, ingrese un número de cita válido (numérico).",
+                            content: "Para iniciar la integración clínica, es mandatorio autenticar su sesión.\n\nPor favor, introduzca un **Número de Cita** válido (formato numérico) para conectar con la Red Institucional:",
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);
@@ -737,9 +737,10 @@ export const useCortex = () => {
 
                 case 'PHASE_0_IDENTITY_CHECK':
                     if (text === 'yes') {
+                        const firstName = apiContext?.extractedFirst || apiContext?.rawName?.split(' ')[0] || "Paciente";
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Excelente. Para activar su expediente, es obligatorio leer y aceptar nuestro **Aviso de Privacidad**.",
+                            content: `Identidad del titular confirmada y vinculada con éxito a nuestra red institucional. Este proceso activa formalmente los protocolos de protección de su información clínica bajo los estándares de la **NOM-004**.\n\n**${formatText(firstName)}**, para habilitar la estructura de su expediente digital y blindar el tratamiento de sus **Datos Personales Sensibles**, por favor **lea** y **acepte** nuestro **Aviso de Privacidad** institucional:`,
                             avatar: tiloImg,
                             inputType: 'none' // Espera al modal de privacidad
                         }]);
@@ -749,7 +750,7 @@ export const useCortex = () => {
                         setApiContext({});
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Entendido. Limpiando datos en memoria...\nPor favor, vuelva a proporcionar su número de cita correcto.",
+                            content: "Entendido. Desvinculando el registro precargado para garantizar la seguridad de identidad del titular oficial.\n\nPor favor, introduzca nuevamente su **Número de Cita** correcto:",
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);
@@ -793,12 +794,12 @@ export const useCortex = () => {
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `Comencemos. El sistema tiene registrado el nombre:\n${formatText(safeName)}\n\nVamos a validar sus datos personales uno a uno por la NOM-004.\n¿Es ${formatText(safeFirstName)} su Primer Nombre de Pila (sin apellidos)?`,
+                        content: `La integridad de su expediente clínico bajo la NOM-004 depende de la precisión ortográfica de sus datos. Le recordamos que su cita es personal e intransferible, por lo que este proceso es exclusivo para el pulido de su identidad registrada.\n\nPor favor, valide si **${formatText(safeFirstName)}** corresponde exactamente a su **Nombre de Pila completo** (verifique acentos, espacios o nombres omitidos en caso de ser compuesto):`,
                         avatar: tiloImg,
                         inputType: 'buttons',
                         options: [
-                            { label: '✅ Sí', value: 'yes' },
-                            { label: '❌ No, corregir', value: 'no' }
+                            { label: '✅ SÍ, ES CORRECTO', value: 'yes' },
+                            { label: '⌨️ EDITAR ORTOGRAFÍA', value: 'no' }
                         ]
                     }]);
                     setActiveTab('profile'); // Sync UI Dashboard
@@ -819,12 +820,12 @@ export const useCortex = () => {
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Excelente. ¿Es ${apiContext.extractedPat} su Apellido Paterno?`,
+                            content: `🗣️ **Modo de precisión ortográfica activado.** Para garantizar la coherencia biográfica de su expediente clínico bajo la **NOM-004**, es vital que su primer apellido coincida exactamente con su documentación oficial.\n\n**${cleanFirstName}**, ¿es **${apiContext.extractedPat}** su **Apellido Paterno** correcto?`,
                             avatar: tiloImg,
                             inputType: 'buttons',
                             options: [
-                                { label: '✅ Sí', value: 'yes' },
-                                { label: '❌ No, corregir', value: 'no' }
+                                { label: '✅ SÍ, ES CORRECTO', value: 'yes' },
+                                { label: '⌨️ EDITAR ORTOGRAFÍA', value: 'no' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_PAT');
@@ -847,7 +848,7 @@ export const useCortex = () => {
                     if (!isMatch) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "⚠️ **Alerta de Seguridad (Identity Lock)**\nEl nombre ingresado es drásticamente distinto al de la cita. Por protocolos de validación, por favor vuelva a escribir su **Nombre(s) de Pila** con cuidado:",
+                            content: "⛔ **Bloqueo de Integridad Biométrica.**\nLa divergencia entre el nombre ingresado y el registro primario excede el umbral normativo. Para garantizar la trazabilidad de su expediente, por favor escriba su **Nombre(s) de Pila** exactamente como figura en su identificación oficial:",
                             avatar: tiloImg,
                             inputType: 'text'
                         }]);
@@ -863,12 +864,12 @@ export const useCortex = () => {
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `Entendido. ¿Es ${apiContext.extractedPat} su Apellido Paterno?`,
+                        content: `🗣️ **Modo de precisión ortográfica activado.** Para garantizar la coherencia biográfica de su expediente clínico bajo la **NOM-004**, es vital que su primer apellido coincida exactamente con su documentación oficial.\n\n**${parsedName}**, ¿es **${apiContext.extractedPat}** su **Apellido Paterno** correcto?`,
                         avatar: tiloImg,
                         inputType: 'strict_select',
                         options: [
-                            { label: '✅ Sí', value: 'yes' },
-                            { label: '❌ No, corregir', value: 'no' }
+                            { label: '✅ SÍ, ES CORRECTO', value: 'yes' },
+                            { label: '⌨️ EDITAR ORTOGRAFÍA', value: 'no' }
                         ]
                     }]);
                     setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_PAT');
@@ -883,7 +884,7 @@ export const useCortex = () => {
                     } else if (text === 'no') {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Por favor, escriba su **Apellido Paterno** correcto:",
+                            content: "Entendido. Por favor **escriba** su **Apellido Paterno** con la grafía y acentos correctos:",
                             avatar: tiloImg,
                             inputType: 'text'
                         }]);
@@ -893,12 +894,12 @@ export const useCortex = () => {
                         // RECHAZO DE TEXTO LIBRE
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "⚠️ Por favor, seleccione una de las opciones con los botones para confirmar si el apellido es correcto.",
+                            content: "⛔ **Interacción Restringida.**\nPor protocolos de integridad de la NOM-004, este campo requiere una validación exacta. Por favor, utilice las opciones táctiles presentadas para confirmar la procedencia de su apellido.",
                             avatar: tiloImg,
                             inputType: 'strict_select',
                             options: [
-                                { label: '✅ Sí', value: 'yes' },
-                                { label: '❌ No, corregir', value: 'no' }
+                                { label: '✅ SÍ, ES CORRECTO', value: 'yes' },
+                                { label: '⌨️ EDITAR ORTOGRAFÍA', value: 'no' }
                             ]
                         }]);
                         return;
@@ -916,24 +917,24 @@ export const useCortex = () => {
                     if (hasValidMatSurname) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Y por último, ¿Es ${matSurname} su Apellido Materno?`,
+                            content: `El protocolo requiere validar la estructura completa de su nombre. Si usted cuenta con un segundo apellido en sus documentos oficiales, debemos registrarlo.\n\n¿Es **${matSurname}** su **Apellido Materno** correcto?`,
                             avatar: tiloImg,
                             inputType: 'strict_select',
                             options: [
-                                { label: '✅ Sí', value: 'yes' },
-                                { label: '❌ No, corregir', value: 'no' },
-                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
+                                { label: '✅ SÍ, ES CORRECTO', value: 'yes' },
+                                { label: '⌨️ EDITAR ORTOGRAFÍA', value: 'no' },
+                                { label: '➖ NO USO APELLIDO MATERNO', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT');
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Y por último, el sistema no me muestra un segundo apellido. Si usted cuenta con un Apellido Materno, por favor dígame cuál es.`,
+                            content: `El protocolo requiere validar la estructura completa de su nombre. El sistema no me muestra un segundo apellido en su registro inicial.\n\nSi usted cuenta con un **Apellido Materno** oficial, por favor escríbalo a continuación:`,
                             avatar: tiloImg,
                             inputType: 'text',
                             options: [
-                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
+                                { label: '➖ NO USO APELLIDO MATERNO', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT_MANUAL');
@@ -949,7 +950,7 @@ export const useCortex = () => {
                     if (!isMatch) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "⚠️ **Identity Lock:** El apellido paterno difiere significativamente de la cita. Por favor verifique e ingrese su **Apellido Paterno** nuevamente:",
+                            content: "⛔ **Bloqueo de Identidad Oficial.**\nLa modificación de raíz de la titularidad vulnera los protocolos de seguridad. Este canal está habilitado exclusivamente para la corrección ortográfica de sus apellidos.\n\nPor rigor clínico, escriba nuevamente su **Apellido Paterno** respetando la concordancia fonética del registro base:",
                             avatar: tiloImg,
                             inputType: 'text'
                         }]);
@@ -968,24 +969,24 @@ export const useCortex = () => {
                     if (hasValidMatSurname) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Entendido. ¿Y es ${matSurname} su Apellido Materno?`,
+                            content: `El protocolo requiere validar la estructura completa de su nombre. Si usted cuenta con un segundo apellido en sus documentos oficiales, debemos registrarlo.\n\n¿Es **${matSurname}** su **Apellido Materno** correcto?`,
                             avatar: tiloImg,
                             inputType: 'strict_select',
                             options: [
-                                { label: '✅ Sí', value: 'yes' },
-                                { label: '❌ No, corregir', value: 'no' },
-                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
+                                { label: '✅ SÍ, ES CORRECTO', value: 'yes' },
+                                { label: '⌨️ EDITAR ORTOGRAFÍA', value: 'no' },
+                                { label: '➖ NO USO APELLIDO MATERNO', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT');
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Entendido. Y por último, el sistema no me muestra un segundo apellido. Si usted cuenta con un Apellido Materno, por favor dígame cuál es.`,
+                            content: `El protocolo requiere validar la estructura completa de su nombre. El sistema no me muestra un segundo apellido en su registro inicial.\n\nSi usted cuenta con un **Apellido Materno** oficial, por favor escríbalo a continuación:`,
                             avatar: tiloImg,
                             inputType: 'text',
                             options: [
-                                { label: '➖ No uso Apellido Materno', value: 'CONFIRM_MAT_NONE' }
+                                { label: '➖ NO USO APELLIDO MATERNO', value: 'CONFIRM_MAT_NONE' }
                             ]
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_LAST_NAME_MAT_MANUAL');
@@ -1013,7 +1014,7 @@ export const useCortex = () => {
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `✅ Identidad Estructurada Correctamente (Sin Apellido Materno).\n\nPasemos a su Fecha de Nacimiento.\n\n¿En qué **DÍA** nació? (Ej: 12)`,
+                            content: `✅ **Perfil biográfico estructurado y blindado** con éxito (Sin Apellido Materno). Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);
@@ -1036,7 +1037,7 @@ export const useCortex = () => {
                         // RECHAZO DE TEXTO LIBRE
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "⚠️ Por favor, seleccione una de las opciones con los botones para confirmar si el apellido es correcto.",
+                            content: "⛔ **Interacción Restringida.**\nPor protocolos de integridad de la NOM-004, este campo requiere una validación exacta. Por favor, utilice las opciones táctiles presentadas para confirmar la procedencia de su apellido materno.",
                             avatar: tiloImg,
                             inputType: 'strict_select',
                             options: [
@@ -1063,7 +1064,7 @@ export const useCortex = () => {
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `✅ Identidad Estructurada Correctamente.\n\nPasemos a su Fecha de Nacimiento.\n\n¿En qué **DÍA** nació? (Ej: 12)`,
+                        content: `✅ **Perfil biográfico estructurado y blindado** con éxito. Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
                         avatar: tiloImg,
                         inputType: 'number'
                     }]);
@@ -1089,7 +1090,7 @@ export const useCortex = () => {
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `✅ Identidad Estructurada Correctamente (Sin Apellido Materno).\n\nPasemos a su Fecha de Nacimiento.\n\n¿En qué **DÍA** nació? (Ej: 12)`,
+                            content: `✅ **Perfil biográfico estructurado y blindado** con éxito (Sin Apellido Materno). Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);
@@ -1116,7 +1117,7 @@ export const useCortex = () => {
                     // C. Siguiente pregunta de Tilo (Q4)
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `✅ Identidad Estructurada Correctamente.\n\nPasemos a su Fecha de Nacimiento.\n\n¿En qué **DÍA** nació? (Ej: 12)`,
+                        content: `✅ **Perfil biográfico estructurado y blindado** con éxito. Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
                         avatar: tiloImg,
                         inputType: 'number'
                     }]);
@@ -1129,7 +1130,7 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_DOB_DAY': {
                     const day = parseInt(text, 10);
                     if (isNaN(day) || day < 1 || day > 31) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "Por favor indique un día válido (1-31).", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Dato de Precisión Biológica Requerido.**\nEl valor ingresado no corresponde a un día de calendario válido. Por favor ingrese el **DÍA** numérico exacto de su nacimiento (ej. 12):", avatar: tiloImg }]);
                         return;
                     }
                     setPatientData(prev => ({
@@ -1138,7 +1139,7 @@ export const useCortex = () => {
                     }));
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: "¿En qué **mes**? (Ej: Mayo)",
+                        content: "✅ **Dato fijado.**\n\nPara continuar con su cronología biológica, por favor indique el **MES** de su nacimiento (ej. Mayo):",
                         avatar: tiloImg,
                         inputType: 'text'
                     }]);
@@ -1164,7 +1165,7 @@ export const useCortex = () => {
                     };
                     const monthCode = months[rawMonth];
                     if (!monthCode) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "No reconocí ese mes. Intente escribirlo completo (ej: Enero) o el número.", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Dato de Precisión Biológica Requerido.**\nEl sistema no logró clasificar la entrada. Por favor, escriba el nombre completo del **MES** (ej: Enero) o su designación numérica exacta:", avatar: tiloImg }]);
                         return;
                     }
                     setPatientData(prev => ({
@@ -1173,7 +1174,7 @@ export const useCortex = () => {
                     }));
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: "¿De qué **año**? (Ej: 1990)",
+                        content: "✅ **Dato fijado.**\n\nPara finalizar la calibración de su edad metabólica, por favor indique su **AÑO** de nacimiento a 4 dígitos (ej. 1990):",
                         avatar: tiloImg,
                         inputType: 'number'
                     }]);
@@ -1185,7 +1186,7 @@ export const useCortex = () => {
                     const year = parseInt(text, 10);
                     const currentYear = new Date().getFullYear();
                     if (isNaN(year) || year < 1920 || year > currentYear) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "Por favor indique un año válido (4 dígitos).", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Dato de Precisión Biológica Requerido.**\nEl año ingresado presenta un desfase cronológico incongruente. Por favor, indique su **AÑO** real de nacimiento a 4 dígitos (ej. 1990):", avatar: tiloImg }]);
                         return;
                     }
 
@@ -1196,7 +1197,7 @@ export const useCortex = () => {
 
                     const checkDate = new Date(year, m - 1, d);
                     if (checkDate.getFullYear() !== year || checkDate.getMonth() !== (m - 1) || checkDate.getDate() !== d) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ Fecha inexistente. Verifique día/mes.\n\n¿En qué **DÍA** nació?", avatar: tiloImg, inputType: 'number' }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Discrepancia de Calendario Detectada.**\nLa fecha biológica ingresada es matemáticamente inexistente. El protocolo de cronología se ha reiniciado por motivos de integridad de expediente.\n\nPor favor, indique nuevamente el **DÍA** numérico de su nacimiento:", avatar: tiloImg, inputType: 'number' }]);
                         setCurrentPhase('PHASE_1_PROFILE_DOB_DAY');
                         return;
                     }
@@ -1224,9 +1225,12 @@ export const useCortex = () => {
                     } else if (age >= 12 && age < 18) {
                         interaction_mode = "TEENAGER_MODE";
                         system_prompt_addon = `El paciente es un adolescente de ${age} años llamado ${firstName}. Dirígete a él/ella directamente de 'TÚ', usando un tono empático, amigable y accesible, sin perder la autoridad clínica.`;
-                    } else {
+                    } else if (age >= 18 && age < 65) {
                         interaction_mode = "ADULT_MODE";
                         system_prompt_addon = `El paciente es un adulto de ${age} años llamado ${firstName}. Dirígete a él/ella directamente de 'USTED', usando un tono profesional, empático y respetuoso en todo momento.`;
+                    } else {
+                        interaction_mode = "GERIATRIC_MODE";
+                        system_prompt_addon = `El paciente es un adulto mayor de ${age} años llamado ${firstName}. Dirígete a él/ella directamente de 'USTED', usando un tono de autoridad médica sumamente empático, paciente y respetuoso.`;
                     }
 
                     // Remove temporary variables to keep Data Lake clean
@@ -1251,12 +1255,13 @@ export const useCortex = () => {
                         };
                     });
 
-                    const formatOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-                    const formattedDOB = checkDate.toLocaleDateString('es-ES', formatOptions);
 
                     let sexMsg = "";
-                    if (age < 18) sexMsg = `Registrado: ${formattedDOB}.\n\n¿Cuál es el sexo biológico de ${firstName}?`;
-                    else sexMsg = `Registrado: ${formattedDOB}.\n\n¿Cuál es su sexo biológico?`;
+                    if (age < 18) {
+                        sexMsg = `Perfil cronológico consolidado. El sistema ha detectado un usuario en etapa de crecimiento activo y ha habilitado el **Protocolo Pediátrico de Nutrición Celular** para optimizar su desarrollo metabólico.\n\nComo tutor responsable de la cuenta, iniciemos la evaluación biológica: ¿Cuál es el **sexo biológico** de **${firstName}**?`;
+                    } else {
+                        sexMsg = `Perfil cronológico consolidado. El sistema ha calibrado su edad cronológica base en **${age} años**.\n\nPara configurar su arquitectura biológica con precisión, iniciemos la evaluación: ¿Cuál es su **sexo biológico**?`;
+                    }
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -1283,16 +1288,19 @@ export const useCortex = () => {
                         }));
 
                         const ptCtx = patientData.profile.pediatric_profile;
-                        let occupationPrompt = "¿Cuál es su ocupación actual?"; // Default ADULT
+                        let occupationPrompt = `Identidad biológica confirmada.\n\nPara perfilar el impacto metabólico de sus actividades diarias en el expediente (NOM-004): ¿Cuál es su **ocupación principal** actual?`; // Default ADULT
 
                         if (ptCtx && ptCtx.is_minor) {
+                            const pName = patientData.profile.first_name || "el menor";
                             if (ptCtx.category === 'ADOLESCENTE') {
-                                occupationPrompt = "Para tu registro oficial, ¿en qué semestre de secundaria o preparatoria te encuentras?";
+                                occupationPrompt = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa adolescente, el sistema ha bloqueado automáticamente la recolección de estado civil para proteger tu expediente.\n\nPara tu registro oficial y cálculo de requerimientos cognitivos: ¿En qué semestre de secundaria o preparatoria te encuentras?`;
                             } else if (ptCtx.category === 'ESCOLAR') {
-                                occupationPrompt = `Para el expediente de ${patientData.profile.first_name || "el menor"}, ¿me indican en qué grado escolar va?`;
+                                occupationPrompt = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa pediátrica, el sistema ha bloqueado automáticamente la recolección de estado civil y actividad laboral para proteger su expediente.\n\nPara mapear correctamente su gasto energético escolar: ¿En qué grado cursa **${pName}** actualmente?`;
                             } else if (ptCtx.category === 'PREESCOLAR' || ptCtx.category === 'LACTANTE') {
-                                occupationPrompt = `¿${patientData.profile.first_name || "El menor"} asiste a guardería o kínder actualmente?`;
+                                occupationPrompt = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa pediátrica, el sistema ha bloqueado automáticamente la recolección de estado civil y actividad laboral para proteger su expediente.\n\nPara mapear correctamente su gasto energético y exposición ambiental diaria: ¿**${pName}** asiste a guardería o kínder actualmente?`;
                             }
+                        } else if (ptCtx && ptCtx.category === 'GERIATRICO') {
+                            occupationPrompt = `Identidad biológica confirmada.\n\nPara perfilar el gasto energético base en su expediente clínico: ¿Se encuentra actualmente **jubilado(a)**, **pensionado(a)** o mantiene alguna **ocupación activa**?`;
                         }
 
                         setMessages(prev => [...prev, {
@@ -1303,7 +1311,7 @@ export const useCortex = () => {
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_JOB');
                     } else {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "Por favor seleccione una opción válida.", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Fallo de Integridad.**\n\nEl dato proporcionado no es reconocido por el sistema. Por favor, seleccione una opción válida del menú para continuar con el protocolo.", avatar: tiloImg }]);
                     }
                     break;
                 }
@@ -1319,8 +1327,11 @@ export const useCortex = () => {
                     const firstName = (patientData.profile?.first_name || patientData.identificacion?.nombre || "el paciente").split(' ')[0];
                     
                     let curpPromptMsg = "";
-                    if (isMinor) curpPromptMsg = `¿Podría indicarme la Clave Única de Registro de Población (CURP) de ${firstName}? (Escríbala o elija una opción)`;
-                    else curpPromptMsg = `¿Podría indicarme su Clave Única de Registro de Población (CURP)? (Escríbala o elija una opción)`;
+                    if (isMinor) {
+                        curpPromptMsg = `Mapeo sociocultural completado y encriptado. Para proceder con la apertura oficial del expediente pediátrico conforme a la normativa vigente de salud.\n\nPor favor, introduzca la **Clave Única de Registro de Población (CURP)** de **${firstName}** (si no la tiene a la mano, puede seleccionarlo abajo).`;
+                    } else {
+                        curpPromptMsg = `Mapeo sociocultural completado y encriptado. Para proceder con la apertura oficial del expediente clínico conforme a la normativa vigente de salud.\n\nPor favor, introduzca su **Clave Única de Registro de Población (CURP)** (si no la tiene a la mano, puede seleccionarlo abajo).`;
+                    }
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -1345,20 +1356,23 @@ export const useCortex = () => {
                     
                     if (text === 'Manual') {
                         let msg = "";
-                        if (isMinor) msg = `Entendido. Por favor, escriba la CURP de ${firstName} a 18 caracteres:`;
-                        else msg = "Entendido. Por favor, escriba su CURP a 18 caracteres:";
+                        if (isMinor) msg = `Sincronización automática declinada. Para asegurar la identificación legal del paciente pediátrico conforme a la **NOM-004**.\n\nPor favor, introduzca manualmente la **CURP** de **${firstName}** (18 caracteres alfanuméricos):`;
+                        else msg = `Sincronización automática declinada. Para asegurar su identificación legal conforme a la normativa oficial de salud (**NOM-004**).\n\nPor favor, introduzca manualmente su **CURP** (18 caracteres alfanuméricos):`;
                         setMessages(prev => [...prev, { role: 'assistant', content: msg, avatar: tiloImg, inputType: 'text' }]);
                         setCurrentPhase('PHASE_1_PROFILE_CURP_MANUAL');
                     } else if (text === 'Extranjero') {
                         let msg = "";
-                        if (isMinor) msg = `Ingrese el ID de Pasaporte o ID oficial del país de origen de ${firstName}:`;
-                        else msg = "Ingrese su ID de Pasaporte o ID oficial de su país:";
+                        if (isMinor) msg = `Protocolo de extranjería activado. Para asegurar la identificación legal internacional del paciente pediátrico en el sistema de salud.\n\nPor favor, introduzca el **ID de Pasaporte** o **Documento Oficial** del país de origen de **${firstName}**:`;
+                        else msg = `Protocolo de extranjería activado. Para asegurar su identificación legal internacional en el sistema de salud.\n\nPor favor, introduzca su **ID de Pasaporte** o **Documento Oficial** de su país de origen:`;
                         setMessages(prev => [...prev, { role: 'assistant', content: msg, avatar: tiloImg, inputType: 'text' }]);
                         setCurrentPhase('PHASE_1_PROFILE_ID_EXTRANJERO');
                     } else if (text === 'Buscala') {
                         let msg = "";
-                        if (isMinor) msg = `¿En qué **Estado de la República** nació ${firstName}? (Ej. Chiapas, CDMX, Jalisco)`;
-                        else msg = "¿En qué **Estado de la República** nació? (Ej. Chiapas, CDMX, Jalisco)";
+                        if (isMinor) {
+                            msg = `Motor Concierge activado para búsqueda oficial en RENAPO. Para localizar el registro y sincronizarlo con el expediente de **${firstName}**, es necesario identificar la entidad federativa de su origen.\n\nPor favor, seleccione en el listado inferior el Estado de la República en el que nació **${firstName}**.`;
+                        } else {
+                            msg = `Motor Concierge activado para búsqueda oficial en RENAPO. Para localizar su registro y sincronizarlo con su expediente clínico, es necesario identificar la entidad federativa de su origen.\n\nPor favor, seleccione en el listado inferior el Estado de la República en el que nació.`;
+                        }
                         setMessages(prev => [...prev, { role: 'assistant', content: msg, avatar: tiloImg, inputType: 'StateSelector' }]);
                         setCurrentPhase('PHASE_1_PROFILE_CURP_ASSIST');
                     } else {
@@ -1368,13 +1382,13 @@ export const useCortex = () => {
                             setPatientData(prev => ({ ...prev, profile: { ...prev.profile, curp: text.toUpperCase() } }));
                             
                             let phoneMsg = "";
-                            if (isMinor) phoneMsg = `CURP Registrada. ¿Cuál es el número de teléfono celular de contacto para ${firstName} a 10 dígitos?`;
-                            else phoneMsg = "CURP Registrada. ¿Cuál es su número de teléfono celular a 10 dígitos?";
+                            if (isMinor) phoneMsg = `Identidad nacional sellada en expediente. Para habilitar el protocolo de notificaciones críticas y asegurar una vía de comunicación directa ante cualquier alerta clínica del paciente.\n\nPor favor, indique el número de teléfono celular a 10 dígitos del tutor responsable de **${firstName}**:`;
+                            else phoneMsg = `Identidad nacional sellada en expediente. Para habilitar el protocolo de notificaciones críticas y asegurar una vía de comunicación directa ante cualquier alerta clínica.\n\nPor favor, indique su número de teléfono celular a 10 dígitos:`;
 
                             setMessages(prev => [...prev, { role: 'assistant', content: phoneMsg, avatar: tiloImg, inputType: 'tel' }]);
                             setCurrentPhase('PHASE_1_PROFILE_PHONE');
                         } else {
-                            setMessages(prev => [...prev, { role: 'assistant', content: "Formato incorrecto o respuesta inválida. Elija una opción.", avatar: tiloImg }]);
+                            setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Fallo de Formato.**\n\nEl dato no cumple con la estructura requerida. Por favor, elija una opción válida o verifique la captura.", avatar: tiloImg }]);
                         }
                     }
                     break;
@@ -1404,12 +1418,15 @@ export const useCortex = () => {
                     setPatientData(prev => ({ ...prev, profile: { ...prev.profile, curp: calculatedCurp } }));
                     
                     let curpMsg = "";
-                    if (isMinor) curpMsg = `He calculado la CURP base de ${firstName}: ${calculatedCurp}\n\n¿Es correcta esta CURP?`;
-                    else curpMsg = `He calculado su CURP base: ${calculatedCurp}\n\n¿Es correcta esta CURP?`;
+                    if (isMinor) {
+                        curpMsg = `Análisis demográfico completado. El motor de integración ha proyectado la siguiente Clave Única de Registro de Población (CURP) para **${firstName}**:\n\n**${calculatedCurp}**\n\nPara garantizar la protección legal del expediente pediátrico: ¿Confirma que esta clave coincide exactamente con el documento oficial?`;
+                    } else {
+                        curpMsg = `Análisis demográfico completado. El motor de integración ha proyectado la siguiente Clave Única de Registro de Población (CURP) para su expediente:\n\n**${calculatedCurp}**\n\nPara garantizar la protección legal de su información clínica: ¿Confirma que esta clave coincide exactamente con su documento oficial?`;
+                    }
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `✅ Motor Concierge activado.\n\n${curpMsg}`,
+                        content: curpMsg,
                         avatar: tiloImg,
                         inputType: 'buttons',
                         options: [
@@ -1427,8 +1444,8 @@ export const useCortex = () => {
                     const firstName = (patientData.profile?.first_name || patientData.identificacion?.nombre || "el paciente").split(' ')[0];
                     if (text === 'yes') {
                         let phoneMsg = "";
-                        if (isMinor) phoneMsg = `Perfecto. ¿Cuál es el **número de teléfono celular** de contacto para ${firstName} a 10 dígitos?`;
-                        else phoneMsg = "Perfecto. ¿Cuál es su **número de teléfono celular** a 10 dígitos?";
+                        if (isMinor) phoneMsg = `Identidad nacional sellada en expediente. Para habilitar el protocolo de notificaciones críticas y asegurar una vía de comunicación directa ante cualquier alerta clínica del paciente.\n\nPor favor, indique el número de teléfono celular a 10 dígitos del tutor responsable de **${firstName}**:`;
+                        else phoneMsg = `Identidad nacional sellada en expediente. Para habilitar el protocolo de notificaciones críticas y asegurar una vía de comunicación directa ante cualquier alerta clínica.\n\nPor favor, indique su número de teléfono celular a 10 dígitos:`;
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
@@ -1442,8 +1459,8 @@ export const useCortex = () => {
                         setPatientData(prev => ({ ...prev, profile: { ...prev.profile, curp: '' } }));
                         
                         let manualMsg = "";
-                        if (isMinor) manualMsg = `Entendido. Por favor, escriba la CURP de ${firstName} a 18 caracteres:`;
-                        else manualMsg = "Entendido. Por favor, escriba su CURP a 18 caracteres:";
+                        if (isMinor) manualMsg = `Registro descartado. Para garantizar la precisión del expediente legal pediátrico bajo la **NOM-004**.\n\nPor favor, introduzca manualmente la **CURP exacta** de **${firstName}** (18 caracteres alfanuméricos):`;
+                        else manualMsg = `Registro descartado. Para garantizar la precisión de su expediente legal bajo la **NOM-004**.\n\nPor favor, introduzca manualmente su **CURP exacta** (18 caracteres alfanuméricos):`;
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
@@ -1462,7 +1479,7 @@ export const useCortex = () => {
                     const curpRegex = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]{2}$/;
 
                     if (!curpRegex.test(curpInput)) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "El formato de la CURP no es válido. Debe tener 18 caracteres alfanuméricos.\nPor favor intente nuevamente:" }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Inconsistencia de Formato Legal.**\n\nLa CURP introducida no cumple con la validación de 18 caracteres alfanuméricos establecida por RENAPO.\n\nPor favor, verifique el dato e intente capturarlo nuevamente:" }]);
                         return;
                     }
 
@@ -1478,7 +1495,7 @@ export const useCortex = () => {
                         const inputDateAndSex = curpInput.substring(4, 11);
 
                         if (expectedDateAndSex !== inputDateAndSex) {
-                            setMessages((prev) => [...prev, { role: "assistant", content: `⛔ **Error de Validación**\n\nEl año, mes, día o sexo de la CURP introducida no coincide con los datos biológicos que registramos previamente.\n\nPor favor verifique e intente nuevamente:` }]);
+                            setMessages((prev) => [...prev, { role: "assistant", content: `⛔ **Fallo de Integridad Biométrica.**\n\nLa fecha de nacimiento o sexo detectados en la CURP introducida no coinciden con los datos biológicos registrados al inicio del protocolo.\n\nPara mantener la legalidad del expediente, verifique el dato e intente nuevamente:` }]);
                             return;
                         }
                     }
@@ -1492,8 +1509,8 @@ export const useCortex = () => {
                     const isMinor = age < 18;
                     const firstName = (p?.first_name || patientData.identificacion?.nombre || "el paciente").split(' ')[0];
                     let msgContentPhone = "";
-                    if (isMinor) msgContentPhone = `✅ CURP Confirmada.\n\nPasemos ahora a los datos de contacto. ¿Cuál es el **número de teléfono celular** de contacto para ${firstName} a 10 dígitos?`;
-                    else msgContentPhone = "✅ CURP Confirmada.\n\nPasemos ahora a sus datos de contacto. ¿Cuál es su **número de teléfono celular** a 10 dígitos?";
+                    if (isMinor) msgContentPhone = `Identidad nacional sellada en expediente. Para habilitar el protocolo de notificaciones críticas y asegurar una vía de comunicación directa ante cualquier alerta clínica del paciente.\n\nPor favor, indique el número de teléfono celular a 10 dígitos del tutor responsable de **${firstName}**:`;
+                    else msgContentPhone = `Identidad nacional sellada en expediente. Para habilitar el protocolo de notificaciones críticas y asegurar una vía de comunicación directa ante cualquier alerta clínica.\n\nPor favor, indique su número de teléfono celular a 10 dígitos:`;
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -1508,7 +1525,7 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_ID_EXTRANJERO': {
                     const idInput = text.trim().toUpperCase();
                     if (idInput.length < 5) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "El ID o Pasaporte debe tener al menos 5 caracteres. Por favor verifique e intente nuevamente:", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Fallo de Validación Internacional.**\n\nEl ID o Pasaporte debe tener al menos 5 caracteres para ser aceptado como identificador legal válido.\n\nPor favor, verifique el documento e intente nuevamente:", avatar: tiloImg }]);
                         return;
                     }
 
@@ -1523,8 +1540,8 @@ export const useCortex = () => {
                     const firstName = (patientData.profile?.first_name || patientData.identificacion?.nombre || "el paciente").split(' ')[0];
                     
                     let msgContent = "";
-                    if (isMinor) msgContent = `✅ Identificación Registrada.\n\nPasemos ahora a los datos de contacto. ¿Cuál es el **número de teléfono celular** de contacto para ${firstName} a 10 dígitos?`;
-                    else msgContent = "✅ Identificación Registrada.\n\nPasemos ahora a sus datos de contacto. ¿Cuál es su **número de teléfono celular** a 10 dígitos?";
+                    if (isMinor) msgContent = `Identidad nacional sellada en expediente. Para habilitar el protocolo de notificaciones críticas y asegurar una vía de comunicación directa ante cualquier alerta clínica del paciente.\n\nPor favor, indique el número de teléfono celular a 10 dígitos del tutor responsable de **${firstName}**:`;
+                    else msgContent = `Identidad nacional sellada en expediente. Para habilitar el protocolo de notificaciones críticas y asegurar una vía de comunicación directa ante cualquier alerta clínica.\n\nPor favor, indique su número de teléfono celular a 10 dígitos:`;
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -1539,7 +1556,7 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_PHONE': {
                     const phoneRegex = /^[0-9]{10}$/;
                     if (!phoneRegex.test(text.replace(/\D/g, ''))) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "El número debe tener exactamente 10 dígitos. Por favor verifíquelo.", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Formato de Contacto Inválido.**\n\nEl sistema requiere exactamente 10 dígitos numéricos para establecer la vía de comunicación oficial.\n\nPor favor, verifique el número e intente nuevamente.", avatar: tiloImg }]);
                         return;
                     }
                     setPatientData(prev => ({
@@ -1551,8 +1568,8 @@ export const useCortex = () => {
                     const firstName = patientData.profile.first_name || patientData.identificacion?.nombres || "el paciente";
                     
                     const msgContent = (ptCtx && ptCtx.is_minor)
-                        ? `Protocolo de entorno pediátrico activo. Como tutor legal de ${firstName}, le informamos que el entorno cultural impacta la adherencia nutricional infantil. Para la integración de su expediente NOM-004, ¿la familia profesa alguna religión con restricciones dietéticas?`
-                        : `Protocolo de adecuación cultural activo. ${firstName}, para garantizar que su plan metabólico respete sus principios éticos o espirituales, ¿profesa alguna religión que debamos registrar en su expediente bajo la NOM-004?`;
+                        ? `Vía de comunicación asegurada para notificaciones críticas.\n\nEl entorno cultural impacta directamente la adherencia nutricional infantil. Para la integración del expediente clínico (NOM-004), ¿la familia de **${firstName}** profesa alguna religión con restricciones dietéticas?`
+                        : `Vía de comunicación asegurada para notificaciones críticas.\n\nPara garantizar que su plan metabólico respete sus principios éticos o espirituales, ¿profesa alguna religión con restricciones dietéticas que debamos registrar en su expediente clínico (NOM-004)?`;
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -1572,6 +1589,7 @@ export const useCortex = () => {
                     const hasReligion = text === "SI" || text.toLowerCase() === "sí" || text.toLowerCase() === "si" || text === "✅ Sí";
 
                     const ptCtx = patientData.profile?.pediatric_profile;
+                    const firstName = (patientData.profile?.first_name || patientData.identificacion?.nombre || "el paciente").split(' ')[0];
                     if (hasReligion) {
                         setPatientData(prev => ({
                             ...prev,
@@ -1579,7 +1597,9 @@ export const useCortex = () => {
                         }));
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: (ptCtx && ptCtx.is_minor) ? `Para considerar cualquier restricción alimentaria en el menú de ${patientData.profile?.first_name || "el paciente"}, ¿me podría indicar cuál es?` : "Para considerar cualquier restricción alimentaria en su menú, ¿me podría indicar cuál es?",
+                            content: (ptCtx && ptCtx.is_minor) 
+                                ? `Alineación de adecuación cultural registrada.\n\nPara calibrar con precisión el algoritmo nutricional y asegurar que el menú de **${firstName}** contemple rigurosamente cualquier restricción dietética asociada:\n\nPor favor, seleccione el marco de creencias correspondiente:` 
+                                : `Alineación de adecuación cultural registrada.\n\nPara calibrar con precisión el algoritmo nutricional y asegurar que su menú contemple rigurosamente cualquier restricción dietética asociada:\n\nPor favor, seleccione el marco de creencias correspondiente:`,
                             avatar: tiloImg,
                             inputType: 'buttons',
                             options: [
@@ -1613,7 +1633,7 @@ export const useCortex = () => {
                             const sx = patientData.profile?.sex || patientData.identificacion?.sexo || "";
                             setMessages(prev => [...prev, {
                                 role: 'assistant',
-                                content: (ptCtx && ptCtx.is_minor) ? `¿Cuál es el **Estado Civil** legal de ${patientData.profile?.first_name || "el paciente"}?` : "¿Cuál es su **Estado Civil** legal?",
+                                content: (ptCtx && ptCtx.is_minor) ? `Alineación de adecuación cultural confirmada.\n\nPara cerrar el bloque de identificación legal pediátrica: ¿Cuál es el **Estado Civil** de **${patientData.profile?.first_name || "el paciente"}**?` : `Alineación de adecuación cultural confirmada.\n\nPara cerrar el bloque de identificación oficial en su expediente: ¿Cuál es su **Estado Civil** legal actual?`,
                                 avatar: tiloImg,
                                 options: [
                                     { label: getGenderedTerm('Soltero', sx), value: getGenderedTerm('Soltero', sx) },
@@ -1647,7 +1667,7 @@ export const useCortex = () => {
                         const sx = patientData.profile?.sex || patientData.identificacion?.sexo || "";
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: (ptCtx && ptCtx.is_minor) ? `¿Cuál es el **Estado Civil** legal de ${patientData.profile?.first_name || "el paciente"}?` : "¿Cuál es su **Estado Civil** legal?",
+                            content: (ptCtx && ptCtx.is_minor) ? `Restricción dietética registrada.\n\nPara cerrar el bloque de identificación legal pediátrica: ¿Cuál es el **Estado Civil** de **${patientData.profile?.first_name || "el paciente"}**?` : `Restricción dietética registrada.\n\nPara cerrar el bloque de identificación oficial en su expediente: ¿Cuál es su **Estado Civil** legal actual?`,
                             avatar: tiloImg,
                             options: [
                                 { label: getGenderedTerm('Soltero', sx), value: getGenderedTerm('Soltero', sx) },
@@ -1675,12 +1695,12 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_ZIPCODE': {
                     const zipInput = text.trim();
                     if (!/^\d{5}$/.test(zipInput)) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "El Código Postal debe ser numérico y tener exactamente 5 dígitos. Por favor intente nuevamente:", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "Anomalía de formato detectada.\n\nEl código debe contener exactamente 5 dígitos numéricos.\n\nPor favor, **verifique e ingrese** el Código Postal nuevamente:", avatar: tiloImg }]);
                         return;
                     }
 
                     // Tilo replies while thinking:
-                    setMessages(prev => [...prev, { role: 'assistant', content: "Buscando colonias...", avatar: tiloImg }]);
+                    setMessages(prev => [...prev, { role: 'assistant', content: "Sincronizando base de datos postal...", avatar: tiloImg }]);
 
                     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
                     fetch(`${apiUrl}/api/cp/${zipInput}`)
@@ -1713,7 +1733,7 @@ export const useCortex = () => {
                                 const withoutThinking = prev.slice(0, prev.length - 1);
                                 return [...withoutThinking, {
                                     role: 'assistant',
-                                    content: `He encontrado estas colonias en ${data.municipio}, ${data.estado}. Por favor seleccione la correspondiente:`,
+                                    content: `Mapeo geográfico exitoso (${data.municipio}, ${data.estado}).\n\nPor favor, **seleccione** la colonia correspondiente para el registro oficial:`,
                                     inputType: 'strict_select',
                                     options: data.colonias.map(c => ({ label: c, value: c }))
                                 }];
@@ -1726,7 +1746,9 @@ export const useCortex = () => {
                                 const withoutThinking = prev.slice(0, prev.length - 1);
                                 return [...withoutThinking, {
                                     role: 'assistant',
-                                    content: (patientData.profile?.pediatric_profile?.is_minor) ? `Ese código postal no se encuentra en la base de datos nacional. Por favor verifique e ingrese el **Código Postal** de ${patientData.profile?.first_name || "el paciente"} nuevamente:` : "Ese código postal no se encuentra en la base de datos nacional. Por favor verifique e ingrese su **Código Postal** nuevamente:",
+                                    content: (patientData.profile?.pediatric_profile?.is_minor) 
+                                        ? `Discordancia geográfica en base de datos nacional.\n\nPor favor, **verifique e ingrese** el Código Postal de **${patientData.profile?.first_name || "paciente"}** nuevamente:` 
+                                        : `Discordancia geográfica en base de datos nacional.\n\nPor favor, **verifique e ingrese** su Código Postal nuevamente:`,
                                     inputType: 'number'
                                 }];
                             });
@@ -1745,7 +1767,9 @@ export const useCortex = () => {
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: (patientData.profile?.pediatric_profile?.is_minor) ? `¿Cuál es el **Municipio / Delegación** de residencia de ${patientData.profile?.first_name || "el paciente"}?` : "¿Cuál es su **Municipio / Delegación**?",
+                        content: (patientData.profile?.pediatric_profile?.is_minor) 
+                            ? `Estado territorial registrado.\n\nPor favor, **indique** el Municipio o Delegación de residencia de **${patientData.profile?.first_name || "paciente"}**:` 
+                            : `Estado territorial registrado.\n\nPor favor, **indique** su Municipio o Delegación de residencia:`,
                         inputType: 'text'
                     }]);
                     setCurrentPhase('PHASE_1_PROFILE_MUNICIPALITY_MANUAL');
@@ -1761,7 +1785,9 @@ export const useCortex = () => {
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: (patientData.profile?.pediatric_profile?.is_minor) ? `Entendido. Ahora, por favor escriba la **Colonia/Asentamiento** de residencia de ${patientData.profile?.first_name || "el paciente"}:` : "Entendido. Ahora, por favor escriba su **Colonia/Asentamiento**:",
+                        content: (patientData.profile?.pediatric_profile?.is_minor) 
+                            ? `Demarcación municipal capturada.\n\nPor favor, **escriba** la Colonia o Asentamiento de residencia de **${patientData.profile?.first_name || "paciente"}**:` 
+                            : `Demarcación municipal capturada.\n\nPor favor, **escriba** su Colonia o Asentamiento de residencia:`,
                         inputType: 'text'
                     }]);
                     // Redirect back to normal colony logic, which expects a text response and sets the colony, then asks for street
@@ -1778,7 +1804,9 @@ export const useCortex = () => {
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: (patientData.profile?.pediatric_profile?.is_minor) ? `Finalmente, ¿cuál es la **Calle y Número exterior/interior** de la residencia de ${patientData.profile?.first_name || "el paciente"}?` : "Finalmente, ¿cuál es su **Calle y Número exterior/interior**?",
+                        content: (patientData.profile?.pediatric_profile?.is_minor) 
+                            ? `Colonia registrada con éxito.\n\nPara finalizar el bloque demográfico, **escriba** la Calle y Número (exterior/interior) de la residencia de **${patientData.profile?.first_name || "paciente"}**:` 
+                            : `Colonia registrada con éxito.\n\nPara finalizar el bloque demográfico, **escriba** su Calle y Número (exterior/interior):`,
                         inputType: 'text'
                     }]);
                     setCurrentPhase('PHASE_1_PROFILE_STREET');
@@ -1793,7 +1821,7 @@ export const useCortex = () => {
                     if (!/^[a-zA-ZñÑáéíóúÁÉÍÓÚ0-9\s#\-.,]+$/.test(cleanStreet) || cleanStreet.length < 3) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Por favor, ingrese un nombre de calle y número válidos (ej. Morelos 13).",
+                            content: `Anomalía de formato detectada.\n\nLa dirección debe contener al menos 3 caracteres (ej. Morelos 13).\n\nPor favor, **verifique e ingrese** la Calle y Número nuevamente:`,
                             avatar: tiloImg
                         }]);
                         return; // No avanza si falla la validación
@@ -1868,7 +1896,7 @@ export const useCortex = () => {
                             const withoutThinking = prev.slice(0, prev.length - 1);
                             return [...withoutThinking, {
                                 role: 'assistant',
-                                content: `🗺️ Ubicación cartográfica sincronizada. **${addressedName}**, he vinculado las coordenadas de su residencia al análisis de determinantes ambientales para ${ptCtx?.is_minor ? 'el expediente clínico del paciente' : 'su expediente clínico'}.\n\nPor favor, revise el Domicilio Geográfico en el panel lateral. Esta es la dirección que nos entregó Google Maps:\n\n📍 Google Maps: **${formattedAddress || "No disponible"}**\n\n¿La ubicación marcada en el mapa y los datos en el panel son correctos?`,
+                                content: `Ubicación cartográfica sincronizada. **${addressedName}**, he vinculado las coordenadas de su residencia al análisis de determinantes ambientales para ${ptCtx?.is_minor ? 'el expediente pediátrico' : 'su expediente clínico'}.\n\nPara cumplir con la verificación geográfica de la **NOM-004**, revise el Domicilio Geográfico proyectado en el panel lateral por el sistema cartográfico:\n\n📍 **${formattedAddress || "No disponible"}**\n\n¿Confirma que la ubicación marcada y los datos extraídos son correctos?`,
                                 avatar: tiloImg,
                                 inputType: 'strict_select',
                                 options: [
@@ -1894,7 +1922,7 @@ export const useCortex = () => {
                             const withoutThinking = prev.slice(0, prev.length - 1);
                             return [...withoutThinking, {
                                 role: 'assistant',
-                                content: "No he podido sincronizar automáticamente las coordenadas del mapa con precisión. Por favor, **valide manualmente su ubicación** rellenando la Calle en el Domicilio Geográfico del panel lateral o arrastrando el marcador, ya que es requerido bajo la NOM-004.\n\n¿Ha completado la validación manual o desea capturar su calle otra vez?",
+                                content: "Sincronización cartográfica automática interrumpida. La resolución de coordenadas no ha alcanzado el margen de precisión clínica requerida.\n\nPara garantizar la exactitud de su expediente bajo la **NOM-004**, por favor **valide manualmente la ubicación** arrastrando el marcador en el mapa o corrigiendo los datos del panel lateral.\n\n¿Confirma que ha completado la validación manual o prefiere reiniciar la captura de la calle?",
                                 avatar: tiloImg,
                                 inputType: 'strict_select',
                                 options: [
@@ -1956,12 +1984,11 @@ export const useCortex = () => {
                         const ptCtx = patientData.profile.pediatric_profile;
                         const isMinor = ptCtx?.is_minor;
                         const pName = patientData.profile.first_name || 'paciente';
-                        const tName = ptCtx?.tutor_first_name || patientData.identificacion?.emergency_contact_name?.split(' ')[0] || 'Tutor';
-                        const introStr = isMinor ? `${tName}, e` : `E`;
-                        
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: isMinor ? `${introStr}ntendido. Pasemos al domicilio de ${pName}. ¿Podría indicarme el **Código Postal**?` : "Entendido. Pasemos a su domicilio. ¿Podría indicarme su **Código Postal**?",
+                            content: isMinor 
+                                ? `Bloque demográfico sellado.\n\nLa ubicación geográfica es un determinante ambiental clave para el expediente clínico (NOM-004).\n\nPor favor, **indique** el Código Postal (5 dígitos) de la residencia de **${pName}**:` 
+                                : `Bloque demográfico sellado.\n\nLa ubicación geográfica es un determinante ambiental clave para el expediente clínico (NOM-004).\n\nPor favor, **indique** su Código Postal (5 dígitos) actual:`,
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);

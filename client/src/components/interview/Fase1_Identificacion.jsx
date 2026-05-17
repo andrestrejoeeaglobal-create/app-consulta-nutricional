@@ -139,7 +139,11 @@ export const Fase1_Identificacion = ({
                     });
                     updateSocioculturalProfile({ lifeStage });
 
-                    responseMsg = `Registrado (${age} años - ${lifeStage}).\n\n¿Cuál es su **sexo biológico** al nacer?`;
+                    if (age < 18) {
+                        responseMsg = `Perfil cronológico consolidado. El sistema ha detectado a un usuario en etapa de crecimiento activo y ha habilitado el **Protocolo Pediátrico de Nutrición Celular**.\n\nComo tutor responsable de la cuenta, iniciemos la evaluación biológica: ¿Cuál es el **sexo biológico** de **${pName}**?`;
+                    } else {
+                        responseMsg = `Perfil cronológico consolidado. El sistema ha calibrado su edad cronológica base en **${age} años**.\n\nPara configurar su arquitectura biológica con precisión, iniciemos la evaluación: ¿Cuál es su **sexo biológico**?`;
+                    }
                     options = [
                         { label: "Femenino", value: "Femenino" },
                         { label: "Masculino", value: "Masculino" }
@@ -165,18 +169,15 @@ export const Fase1_Identificacion = ({
                         // BYPASS LOGIC (Lógica Kinética)
                         const currentAge = identityLock.patientInfo?.age || 20; // fallback safety
                         if (currentAge < 18) {
-                            // Si es menor de 18, setear soltero y omitir ocupación
-                            updateSocioculturalProfile({ civilStatus: "Soltero", occupation: "Estudiante/Menor" });
-                            responseMsg = "Debido a su edad, he omitido los datos laborales. ¿Profesa alguna **religión**? (Importante para determinar dietas, Ej: Mormón, Católico. Seleccione 'Ninguna' si no aplica)";
-                            options = [
-                                { label: "Católico", value: "Católico" },
-                                { label: "Cristiano / Evangélico", value: "Cristiano" },
-                                { label: "Mormón / SUD", value: "Mormón" },
-                                { label: "Ninguna / Ateo / Agnóstico", value: "Ninguna" },
-                                { label: "Otra", value: "Otra" },
-                                { label: "Testigo de Jehová", value: "Testigo de Jehová" }
-                            ];
-                            nextStep = 'intro_religion';
+                            // Si es menor de 18, setear soltero y omitir estado civil
+                            updateSocioculturalProfile({ civilStatus: "Soltero" });
+                            const pName = identityLock.patientInfo?.firstName || "el paciente";
+                            if (currentAge < 12) {
+                                responseMsg = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa pediátrica, el sistema ha bloqueado automáticamente la recolección de estado civil y actividad laboral para proteger su expediente.\n\nPara mapear correctamente su gasto energético y exposición ambiental diaria: ¿**${pName}** asiste a guardería o kínder actualmente?`;
+                            } else {
+                                responseMsg = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa adolescente, el sistema ha bloqueado automáticamente la recolección de estado civil para proteger tu expediente.\n\nPara tu registro oficial y cálculo de requerimientos cognitivos: ¿En qué semestre de secundaria o preparatoria te encuentras?`;
+                            }
+                            nextStep = 'intro_job';
                         } else {
                             responseMsg = "¿Cuál es su **estado civil** actual?";
                             options = [
@@ -194,7 +195,7 @@ export const Fase1_Identificacion = ({
 
                 case 'intro_civil_status':
                     updateSocioculturalProfile({ civilStatus: cleanText });
-                    responseMsg = "¿A qué se dedica actualmente? (Ej: Docente, Estudiante, Ingeniero)";
+                    responseMsg = "¿Cuál es su ocupación actual?";
                     nextStep = 'intro_job';
                     break;
 

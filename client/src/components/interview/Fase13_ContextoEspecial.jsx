@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import tiloImg from '../../assets/tilo.png';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
+import { Send } from 'lucide-react';
 
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
@@ -145,23 +146,21 @@ const Fase13_ContextoEspecial = ({ patientData, setPatientData, onPhaseComplete 
             </div>
 
             {/* Input Area */}
-            <div className="p-4 bg-white border-t border-slate-100 shrink-0">
-                <form onSubmit={handleSend} className="relative">
+            <div className="p-6 bg-white border-t border-slate-100 shrink-0">
+                <form onSubmit={handleSend} className="flex items-center gap-3 bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner">
                     <input
                         type="text"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
                         placeholder="Escribe tu respuesta..."
-                        className="w-full p-4 pr-16 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm md:text-base transition-shadow"
+                        className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
                     />
                     <button
                         type="submit"
                         disabled={!inputValue.trim()}
-                        className="absolute right-2 top-2 bottom-2 aspect-square bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 flex items-center justify-center transition-colors"
+                        className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0"
                     >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
+                        <Send className="w-5 h-5" />
                     </button>
                 </form>
             </div>

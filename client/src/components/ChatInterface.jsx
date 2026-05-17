@@ -185,13 +185,10 @@ const ChatInterface = ({
                             <button
                                 onClick={handleSend}
                                 disabled={(!input.trim() && !customInputControl) || isTyping}
-                                className={`w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0 transition-transform active:scale-95 shadow-md ${((input.trim() || customInputControl) && !isTyping)
-                                    ? 'bg-[#1C75BC] text-white hover:bg-blue-700'
-                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                    }`}
+                                className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Enviar mensaje"
                             >
-                                <Send size={18} />
+                                <Send className="w-5 h-5" />
                             </button>
                         </div>
                     </div>

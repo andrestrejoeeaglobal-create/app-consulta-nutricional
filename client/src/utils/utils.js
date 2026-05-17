@@ -398,6 +398,18 @@ export const buildPediatricContext = (dateString) => {
             tone_key: "YOUTH_EMP_TONE",
             auto_fill_marital: "ADOLESCENTE"
         };
+    } else if (years >= 65) {
+        context.category = "GERIATRICO";
+        context.is_minor = false;
+        context.tutor_present = false;
+        context.tone_modifier = "GERIATRIC_DIRECT";
+        context.growth_charts = null;
+        context.ui_controls = {
+            show_marital_status: true,
+            occupation_label: "Ocupación",
+            tone_key: "GERIATRIC_MODE",
+            auto_fill_marital: null
+        };
     }
 
     return context;

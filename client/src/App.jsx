@@ -492,8 +492,6 @@ function App() {
     fase3State,
     setFase3State,
     triggerPhase1Summary,
-    triggerPhase3Summary,
-    triggerPhase4Summary,
     triggerPhase5Summary,
     triggerPhase6Summary,
     triggerPhase7Summary
@@ -4821,9 +4819,6 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
   // En Fase 0 inicializa en 'basal'.
   const systemState = (isCortexPhaseZero || isLegacyPhaseZero) ? 'basal' : 'processing';
 
-  // Estado de carga del paciente (Fase 0 = false)
-  const isPatientLoaded = !(isCortexPhaseZero || isLegacyPhaseZero);
-
   return (
     <div className="relative w-full h-screen overflow-hidden bg-white">
       {/* CAPA -2: El Sistema Nervioso Visual (Motor Físico V15.6) */}
@@ -4897,7 +4892,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     return; // Bloquea el avance
                   }
 
-                  triggerPhase3Summary(motiveData);
+                  setCurrentPhase('PHASE_4_FAMILY_HISTORY');
                 }}
               />
             ) : currentPhase === 'PHASE_4_FAMILY_HISTORY' ? (
@@ -4912,7 +4907,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                 initialChatHistory={messages}
                 onPhaseComplete={(familyTreeData, localMessages) => {
                   setPatientData(prev => ({ ...prev, familyTree: familyTreeData }));
-                  triggerPhase4Summary({ ...patientData, familyTree: familyTreeData }, localMessages);
+                  // Bypass redundant confirmation summary in Phase 4
+                  setMessages(localMessages);
+                  setCurrentPhase('PHASE_5_LIFESTYLE');
                 }}
               />
             ) : currentPhase === 'PHASE_5_LIFESTYLE' ? (

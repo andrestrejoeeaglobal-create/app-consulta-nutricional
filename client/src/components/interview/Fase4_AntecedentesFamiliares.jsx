@@ -6,6 +6,7 @@ import { motion as Motion } from 'framer-motion';
 import tiloImg from '../../assets/tilo.png';
 import ReactMarkdown from 'react-markdown';
 import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
+import { Send } from 'lucide-react';
 
 /**
  * T.I.L.O. - FASE 4 (ANTECEDENTES FAMILIARES)
@@ -368,9 +369,9 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
                     <button
                         type="submit"
                         disabled={!inputValue.trim() || isInputDisabled}
-                        className="px-6 py-4 bg-[#1C75BC] text-white rounded-full font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center min-w-[60px]"
+                        className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0"
                     >
-                        <i className="fi fi-rr-paper-plane text-xl"></i>
+                        <Send className="w-5 h-5" />
                     </button>
                 </form>
                 <div className="text-center mt-3 text-xs text-gray-400 font-sansation flex items-center justify-center gap-2">

@@ -647,12 +647,12 @@ export default function Fase7_Habitos({ initialChatHistory, patientData, onPhase
                                 autoFocus
                             />
                             <button
-                                onClick={() => handleInput(inputValue)}
-                                className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
-                                disabled={!inputValue.trim()}
-                            >
-                                <Send className="w-5 h-5" />
-                            </button>
+  onClick={() => handleInput(inputValue)}
+  disabled={!inputValue.trim()}
+  className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  <Send className="w-5 h-5" />
+</button>
                         </div>
                     )}
                 </div>

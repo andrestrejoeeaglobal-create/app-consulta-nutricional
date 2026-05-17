@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
-import { ShieldCheck, User, Calendar, MapPin, CheckCircle2, Zap } from 'lucide-react';
+import { ShieldCheck, User, Calendar, MapPin, CheckCircle2, Zap, Send } from 'lucide-react';
 import { formatText } from '../../utils/utils';
 import tiloImg from '../../assets/tilo.png';
 
@@ -149,18 +149,17 @@ export const Fase0_Identidad = ({
 
                 {/* INPUT ZONE */}
                 <div className="p-6 bg-white border-t border-slate-100">
-                    <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner">
+                    <form onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }} className="flex items-center gap-3 bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner">
                         <input
                             type={step === 'intro_phone' ? 'tel' : 'text'}
                             value={inputValue} onChange={step === 'intro_phone' ? handlePhoneChange : (e) => setInputValue(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend(inputValue)}
                             placeholder={step === 'intro_phone' ? "(123) 456-7890" : "Escribe tu respuesta..."} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
                             disabled={isAnalyzing || step === 'completed'}
                         />
-                        <button onClick={() => handleSend(inputValue)} disabled={isAnalyzing || step === 'completed'} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
-                            <Zap size={18} fill="currentColor" />
+                        <button type="submit" disabled={isAnalyzing || step === 'completed'} className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0">
+                            <Send className="w-5 h-5" />
                         </button>
-                    </div>
+                    </form>
                 </div>
             </div>
         </div>

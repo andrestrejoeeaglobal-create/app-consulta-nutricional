@@ -12,10 +12,11 @@ export const classifyLifeStage = (ageYears) => {
     const age = Number(ageYears);
 
     if (age < 2) return 'Lactante';
-    if (age >= 2 && age <= 11) return 'Escolar';
+    if (age >= 2 && age <= 5) return 'Preescolar';
+    if (age >= 6 && age <= 11) return 'Escolar';
     if (age >= 12 && age <= 17) return 'Adolescente';
-    if (age >= 18 && age <= 59) return 'Adulto';
-    if (age >= 60) return 'Geriátrico';
+    if (age >= 18 && age <= 64) return 'Adulto';
+    if (age >= 65) return 'Geriátrico';
 
     return 'Desconocido';
 };

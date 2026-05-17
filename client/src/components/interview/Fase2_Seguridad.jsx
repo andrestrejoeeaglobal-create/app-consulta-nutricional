@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
-import { Zap, ShieldCheck } from 'lucide-react';
+import { Zap, ShieldCheck, Send } from 'lucide-react';
 import { formatText } from '../../utils/utils';
 import { getBinaryGateLabels } from '../../utils/ageClassifier';
 import tiloImg from '../../assets/tilo.png';
@@ -112,12 +112,12 @@ export const Fase2_Seguridad = ({
 
                     // 4. Validación de Redundancia (Inmunidad)
                     if (phoneInput === patientPhone) {
-                        if (patientAge >= 18) {
-                            // Hard Stop para Adultos
+                        if (patientAge >= 12) {
+                            // Hard Stop para Adolescentes y Adultos
                             responseMsg = "🚫 **Alerta de Redundancia**\n\nEl número ingresado es idéntico a su número personal. Por normativas de seguridad en emergencias, debe proveer un número de contacto **distinto** al suyo. Intente de nuevo:";
                             break;
                         } else {
-                            // Bifurcación Empática para Menores
+                            // Bifurcación Empática para Lactantes y Escolares (< 12)
                             responseMsg = "He notado que el número de emergencia es el mismo que el registrado inicialmente. ¿Desea mantener este mismo número para contactar a su tutor?";
                             options = [
                                 { label: "No, usar otro", value: "CHANGE_PHONE" },
@@ -267,8 +267,8 @@ export const Fase2_Seguridad = ({
                             placeholder={step.includes('phone') ? "(123) 456-7890" : "Escribe tu respuesta..."} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
                             disabled={isAnalyzing || step === 'completed'}
                         />
-                        <button type="submit" disabled={isAnalyzing || step === 'completed'} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
-                            <Zap size={18} fill="currentColor" />
+                        <button type="submit" disabled={isAnalyzing || step === 'completed'} className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0">
+                            <Send className="w-5 h-5" />
                         </button>
                     </form>
                 </div>

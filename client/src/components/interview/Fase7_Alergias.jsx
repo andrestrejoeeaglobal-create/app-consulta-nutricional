@@ -300,12 +300,12 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
 
                     {currentOptions.length === 0 && (
                         <button
-                            onClick={handleSend}
-                            disabled={!inputValue.trim()}
-                            className="bg-blue-600 font-bold hover:bg-blue-700 text-white p-2 rounded-full transition-colors flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0 w-10 h-10"
-                        >
-                            <Send className="w-5 h-5 ml-1" />
-                        </button>
+  onClick={handleSend}
+  disabled={!inputValue.trim()}
+  className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  <Send className="w-5 h-5" />
+</button>
                     )}
                 </div>
             </div>

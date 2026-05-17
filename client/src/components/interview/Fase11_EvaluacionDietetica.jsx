@@ -380,7 +380,7 @@ const Fase11_EvaluacionDietetica = ({
                         <button
                             onClick={handleSend}
                             disabled={!inputValue.trim() || internalStep === 'FINALIZED'}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 transition-all shadow-sm flex items-center justify-center h-10 w-10 active:scale-95"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Send size={18} className="ml-0.5" />
                         </button>

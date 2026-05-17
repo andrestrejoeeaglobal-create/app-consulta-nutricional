@@ -821,12 +821,12 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                             disabled={isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis'}
                         />
                         <button
-                            type="submit"
-                            disabled={!inputValue.trim() || isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis'}
-                            className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a] disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <Send size={18} />
-                        </button>
+  type="submit"
+  disabled={!inputValue.trim() || isTyping || step === 'clinica_body_map' || step === 'clinica_triage_containment' || step === 'clinica_triage_ai_analysis'}
+  className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  <Send className="w-5 h-5" />
+</button>
                     </form>
                 )}
 

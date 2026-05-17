@@ -198,7 +198,7 @@ export const MedicalDashboard = ({
         const stepsClinical = [
             'ph2_', 'ph3_', 'ahf_', 'app_', 'meds_', 'supp_', 'digestive_', 'allergies_',
             'ipas_', 'clinica_', 'intro_triage', 'intro_triage_surgery', 'clinica_body_map', 'clinica_intensity',
-            'habit', 'substance_'
+            'habit', 'substance_', 'phase_4_', 'phase_6_', 'phase_7_', 'phase_8_', 'phase_9_'
         ];
         const stepsLifestyle = ['lifestyle_', 'activity_', 'sleep_', 'stress_', 'logistics_'];
         const stepsDiet = ['diet_', 'r24h_', 'ffq_', 'food_'];
@@ -245,13 +245,13 @@ export const MedicalDashboard = ({
             targetParent = 'parentClinical';
             if (step.includes('ahf_') || step.includes('family') || step.includes('phase_4_') || step.includes('ph4_')) { targetChild = 'childAhf'; targetCardId = 'card-ahf'; }
             else if (step.includes('app_') || step.includes('patho')) { targetChild = 'childApp'; targetCardId = 'card-app'; }
-            else if (step.includes('meds_') || step.includes('supp_')) { targetChild = 'childFarma'; targetCardId = 'card-meds'; }
+            else if (step.includes('meds_') || step.includes('supp_') || step.includes('phase_6_')) { targetChild = 'childFarma'; targetCardId = 'card-meds'; }
             else if (step.includes('allergies_')) { targetChild = 'childAllergies'; targetCardId = 'card-allergy'; }
-            else if (step.includes('digestive_') || step.includes('digestive')) { targetChild = 'childDigestive'; targetCardId = 'card-digestive'; }
-            else if (step.includes('physio_') || step.includes('menstrual_') || step.includes('preg_')) {
+            else if (step.includes('digestive_') || step.includes('digestive') || step.includes('phase_8_')) { targetChild = 'childDigestive'; targetCardId = 'card-digestive'; }
+            else if (step.includes('physio_') || step.includes('menstrual_') || step.includes('preg_') || step.includes('phase_9_')) {
                 targetChild = 'childPhysio'; targetCardId = 'card-physio';
             }
-            else if (step.includes('habit') || step.includes('activity_') || step.includes('sleep_') || step.includes('substance_')) {
+            else if (step.includes('habit') || step.includes('activity_') || step.includes('sleep_') || step.includes('substance_') || step.includes('phase_7_')) {
                 targetChild = 'childHabits'; targetCardId = 'card-habit';
             }
             else { targetChild = 'childAhf'; targetCardId = 'card-ahf'; } // Fallback for general clinical

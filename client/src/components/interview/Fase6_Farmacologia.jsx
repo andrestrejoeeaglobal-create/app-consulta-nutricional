@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { formatText } from '../../utils/utils';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+import { Send } from 'lucide-react';
 
 /**
  * T.I.L.O. - FASE 6 (FARMACOLOGÍA)
@@ -248,7 +249,7 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
         <div className="flex flex-col h-full bg-white">
             {/* Header / Titular */}
             <div className="flex items-center p-4 border-b border-gray-100 bg-gray-50/50">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center mr-4">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-4">
                     <span className="text-xl">💊</span>
                 </div>
                 <div>
@@ -293,27 +294,31 @@ const Fase6_Farmacologia = ({ initialChatHistory, onPhaseComplete, patientData, 
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
+            {/* Input Form */}
             {currentOptions.length === 0 && (
-                <div className="p-4 border-t border-gray-100 bg-white shadow-[0_-4px_10px_-4px_rgba(0,0,0,0.05)]">
-                    <div className="h-14 bg-gray-50 rounded-2xl flex items-center px-4 border border-gray-200">
+                <div className="w-full bg-white border-t border-gray-100 px-4 py-4 md:px-12 backdrop-blur-md bg-opacity-90">
+                    <form
+                        onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+                        className="max-w-2xl mx-auto flex gap-3 relative"
+                    >
                         <input
                             type="text"
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                             placeholder="Escriba aquí..."
-                            className="flex-1 bg-transparent border-none outline-none text-gray-700 placeholder-gray-400 text-[15px]"
+                            className="flex-1 px-5 py-4 bg-gray-50 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1C75BC] focus:bg-white transition-all font-sansation text-slate-700 shadow-sm disabled:opacity-50 disabled:bg-gray-100"
                         />
                         <button
-                            onClick={handleSend}
+                            type="submit"
                             disabled={!inputValue.trim()}
-                            className="ml-3 w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center disabled:opacity-50 disabled:bg-gray-300 transition-colors"
+                            className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0"
                         >
-                            <svg className="w-5 h-5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                            </svg>
+                            <Send className="w-5 h-5" />
                         </button>
+                    </form>
+                    <div className="text-center mt-3 text-xs text-gray-400 font-sansation flex items-center justify-center gap-2">
+                        <i className="fi fi-rr-shield-check"></i>
+                        Terminal A - Comunicación Clínica Encriptada Extremo a Extremo
                     </div>
                 </div>
             )}

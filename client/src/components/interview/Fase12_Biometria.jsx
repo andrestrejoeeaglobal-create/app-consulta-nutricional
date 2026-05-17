@@ -23,7 +23,7 @@ const Fase12_Biometria = ({
     patientData,
     setPatientData
 }) => {
-    const { pName, isMinor } = usePatientLinguistics(patientData);
+    const { pName, isMinor, patientSex } = usePatientLinguistics(patientData);
 
     // ESTADO DEL COMPONENTE
     const [messages, setMessages] = useState([
@@ -43,6 +43,7 @@ const Fase12_Biometria = ({
         vitals: {
             height: patientData?.vitals?.height || null,
             weight: patientData?.vitals?.weight || null,
+            max_weight: patientData?.vitals?.max_weight || null,
             waist: patientData?.vitals?.waist || null,
             hip: patientData?.vitals?.hip || null,
             blood_pressure: patientData?.vitals?.blood_pressure || "",
@@ -84,17 +85,14 @@ const Fase12_Biometria = ({
         if (internalStep === 'BIO_START') {
             const isValid = strictBooleanValidator(userMsg);
             if (isValid === false) {
-                // Skips biometrics completely
-            if (setPatientData) {
-                setPatientData(prev => ({
-                    ...prev,
-                    vitals: { ...prev.vitals, ...biometria.vitals },
-                    clinical_flags: [...(prev.clinical_flags || []), ...clinicalFlags]
-                }));
-            }
-                addBotMsg("Entendido. Pasando a la siguiente sección...");
-                setInternalStep('FINALIZED');
-                if (onPhaseComplete) onPhaseComplete('PHASE_13_SPECIAL_CONTEXT');
+                // Skips biometrics completely, but we must ask for Historical Weight
+                const isFemale = patientSex === 'FEMALE' || patientSex === 'F';
+                const extraPregnancyInstruction = isFemale ? ", sin contar embarazo," : "";
+                
+                addBotMsg(isMinor 
+                    ? `Entendido, omitiremos las mediciones actuales.\n\nSin embargo, para calcular el punto de ajuste termogénico de ${pName}: ¿Cuál es el peso máximo que ha alcanzado en su vida${extraPregnancyInstruction} en kilogramos? (Ej: 80)` 
+                    : `Entendido, omitiremos las mediciones actuales.\n\nSin embargo, para calcular su punto de ajuste termogénico: ¿Cuál es el peso máximo que ha alcanzado en su vida${extraPregnancyInstruction} en kilogramos? (Ej: 80)`);
+                setInternalStep('MAX_WEIGHT_SKIP_REST');
             } else if (isValid === true) {
                 addBotMsg(isMinor ? `¿Cuál es la estatura de ${pName} en metros? (Ej: 1.65)` : "¿Cuál es su estatura en metros? (Ej: 1.65)");
                 setInternalStep('HEIGHT');
@@ -127,8 +125,60 @@ const Fase12_Biometria = ({
                 return;
             }
             setBiometria(prev => ({ ...prev, vitals: { ...prev.vitals, weight: val } }));
+            
+            const isFemale = patientSex === 'FEMALE' || patientSex === 'F';
+            const extraPregnancyInstruction = isFemale ? ", sin contar embarazo," : "";
+            
+            addBotMsg(isMinor 
+                ? `Para calcular el punto de ajuste termogénico de ${pName}: ¿Cuál es el peso máximo que ha alcanzado en su vida${extraPregnancyInstruction} en kilogramos? (Ej: 80)` 
+                : `Para calcular su punto de ajuste termogénico: ¿Cuál es el peso máximo que ha alcanzado en su vida${extraPregnancyInstruction} en kilogramos? (Ej: 80)`);
+            setInternalStep('MAX_WEIGHT');
+        }
+
+        // -------------------------------------------------------------
+        // MAX_WEIGHT
+        // -------------------------------------------------------------
+        else if (internalStep === 'MAX_WEIGHT') {
+            const val = normalizeMetricMatch(userMsg);
+            if (!val && !lower.includes("no") && !lower.includes("na") && !lower.includes("se")) {
+                addBotMsg(isMinor ? "Por favor ingresa un número válido (ej: 80) o di 'No lo sé'." : "Por favor ingrese un número válido (ej: 80) o diga 'No lo sé'.");
+                return;
+            }
+            
+            if (val) {
+                setBiometria(prev => ({ ...prev, vitals: { ...prev.vitals, max_weight: val } }));
+            }
+            
             addBotMsg(isMinor ? `¿Cuál es la circunferencia de cintura de ${pName} en centímetros? (Ej: 80)` : "¿Cuál es su circunferencia de cintura en centímetros? (Ej: 80)");
             setInternalStep('WAIST');
+        }
+
+        // -------------------------------------------------------------
+        // MAX_WEIGHT_SKIP_REST
+        // -------------------------------------------------------------
+        else if (internalStep === 'MAX_WEIGHT_SKIP_REST') {
+            const val = normalizeMetricMatch(userMsg);
+            if (!val && !lower.includes("no") && !lower.includes("na") && !lower.includes("se")) {
+                addBotMsg(isMinor ? "Por favor ingresa un número válido (ej: 80) o di 'No lo sé'." : "Por favor ingrese un número válido (ej: 80) o diga 'No lo sé'.");
+                return;
+            }
+            
+            const finalBio = { ...biometria };
+            if (val) {
+                finalBio.vitals.max_weight = val;
+                setBiometria(finalBio);
+            }
+            
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    vitals: { ...prev.vitals, ...finalBio.vitals },
+                    clinical_flags: [...(prev.clinical_flags || []), ...clinicalFlags]
+                }));
+            }
+            addBotMsg("Entendido. Pasando a la siguiente sección...");
+            setInternalStep('FINALIZED');
+            if (onPhaseComplete) onPhaseComplete('PHASE_13_SPECIAL_CONTEXT');
         }
 
         // -------------------------------------------------------------
@@ -435,9 +485,9 @@ const Fase12_Biometria = ({
                         <button
                             onClick={handleSend}
                             disabled={!inputValue.trim() || internalStep === 'FINALIZED'}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 transition-all shadow-sm flex items-center justify-center h-10 w-10 active:scale-95"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <Send size={18} className="ml-0.5" />
+                            <Send className="w-5 h-5" />
                         </button>
                     </div>
                 </div>
