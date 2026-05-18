@@ -4677,12 +4677,11 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
             <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-blue-700 opacity-100"></div>
 
             <div className="relative z-10">
-              <h1 className="text-white text-2xl font-bold tracking-tight">
-                Sistema Nutricional
+              <h1 className="text-white text-base font-semibold tracking-tight leading-snug">
+                Ecosistema de<br />
+                <span className="font-extrabold text-lg">T</span>ransformación <span className="font-extrabold text-lg">I</span>nteligente<br />
+                y <span className="font-extrabold text-lg">L</span>ogro <span className="font-extrabold text-lg">O</span>ptimizado
               </h1>
-              <p className="text-blue-100 text-lg font-normal mt-1 opacity-90">
-                Equipo en Acción AI
-              </p>
             </div>
 
             {/* LOGOTIPO */}

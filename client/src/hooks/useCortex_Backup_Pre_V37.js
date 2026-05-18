@@ -14,7 +14,7 @@ const INITIAL_ACTIVE_TAB = 'profile';
 const INITIAL_MESSAGES = [
     {
         role: "assistant",
-        content: "Hola, soy el Sistema de Transformación Inteligente y Logro Optimizado (**T.I.L.O.**), el **Asistente Nutricional** de Equipo en Acción. He inicializado mis protocolos de seguridad para garantizar la protección absoluta de su información clínica y validar la vigencia de su consulta.\n\nPara blindar su sesión e iniciar el proceso, por favor **proporcione su número de cita** (recuerde que esta es personal e intransferible):",
+        content: "Hola, soy el Ecosistema de Transformación Inteligente y Logro Optimizado (**T.I.L.O.**), el **Asistente Nutricional** de Equipo en Acción. He inicializado mis protocolos de seguridad para garantizar la protección absoluta de su información clínica y validar la vigencia de su consulta.\n\nPara blindar su sesión e iniciar el proceso, por favor **proporcione su número de cita** (recuerde que esta es personal e intransferible):",
         avatar: tiloImg,
         inputType: 'number' // Explicit declaration of expected input type
     },

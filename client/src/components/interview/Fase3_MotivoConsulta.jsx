@@ -94,6 +94,42 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+    const getBinaryGateReviewMsg = () => {
+        const sxUpper = String(gender).toUpperCase();
+        const genderChar = (sxUpper === 'F' || sxUpper === 'FEMENINO' || sxUpper === 'MUJER') ? 'F' : 'M';
+        const cleanName = patientName !== "NOM" ? patientName : "el paciente";
+        const firstName = cleanName.split(' ')[0];
+
+        let positiveLabel = "✅ SÍ, ES CORRECTA";
+        let p2Text = "";
+
+        if (age <= 2.99) {
+            positiveLabel = genderChar === 'M' ? "✅ SÍ, ES ÉL" : "✅ SÍ, ES ELLA";
+            p2Text = `Para blindar el expediente, confirme si los datos clínicos ${genderChar === 'M' ? 'del niño' : 'de la niña'} son correctos:`;
+        } else if (age < 13) {
+            positiveLabel = genderChar === 'M' ? "✅ SÍ, ES CORRECTO" : "✅ SÍ, ES CORRECTA";
+            p2Text = `Para blindar el expediente, confirme si los datos clínicos de su hij${genderChar === 'M' ? 'o' : 'a'} son correctos:`;
+        } else if (age < 18) {
+            positiveLabel = "✅ SÍ, SOY YO";
+            p2Text = `${firstName}, indique si la evaluación clínica ingresada es precisa para su caso:`;
+        } else if (age < 65) {
+            positiveLabel = genderChar === 'M' ? "✅ SÍ, SOY USUARIO" : "✅ SÍ, SOY USUARIA";
+            p2Text = `${firstName}, como usuari${genderChar === 'M' ? 'o' : 'a'}, por favor confirme si esta evaluación clínica es precisa:`;
+        } else {
+            positiveLabel = genderChar === 'M' ? "✅ SÍ, ES CORRECTO" : "✅ SÍ, ES CORRECTA";
+            p2Text = `Para blindar su expediente, Usted, confirme si la evaluación clínica mostrada es correcta:`;
+        }
+
+        return {
+            role: "assistant",
+            content: `**P1: 📍 Bloque de triage clínico preliminar sellado.** La información capturada y el análisis de T.I.L.O. formarán la base de su abordaje clínico bajo los lineamientos de la NOM-004.\n\n**P2:** ${p2Text}`,
+            options: [
+                { label: positiveLabel, value: "CONFIRM_DATA" },
+                { label: "❌ NO, CORREGIR DATOS", value: "CORRECT_DATA" }
+            ]
+        };
+    };
+
     const updateClinicalContext = (updates) => {
         setPatientData(prev => ({
             ...prev,
@@ -395,14 +431,7 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                                  isAiAnalysisResult: true, 
                                  aiData: aiResult 
                              };
-                             const reviewMsg = {
-                                 role: "assistant",
-                                 content: "¿Es correcta esta información o desea agregar algo más antes de continuar con su historial clínico?",
-                                 options: [
-                                     { label: "Sí, todo es correcto", value: "CONFIRM_DATA" },
-                                     { label: "Quiero agregar algo", value: "CORRECT_DATA" }
-                                 ]
-                             };
+                             const reviewMsg = getBinaryGateReviewMsg();
 
                              setMessages(prev => [...prev, bentoMsg, reviewMsg]);
                              setStep('clinica_triage_review');
@@ -447,14 +476,7 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                              isAiAnalysisResult: true, 
                              aiData: aiResult 
                          };
-                         const reviewMsg = {
-                             role: "assistant",
-                             content: "¿Es correcta esta información o desea agregar algo más antes de continuar con su historial clínico?",
-                             options: [
-                                 { label: "Sí, todo es correcto", value: "CONFIRM_DATA" },
-                                 { label: "Quiero agregar algo", value: "CORRECT_DATA" }
-                             ]
-                         };
+                         const reviewMsg = getBinaryGateReviewMsg();
 
                          setMessages(prev => [...prev, bentoMsg, reviewMsg]);
                          setStep('clinica_triage_review');
