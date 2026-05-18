@@ -1964,8 +1964,8 @@ export const useCortex = () => {
                     const isMinor = ptCtx?.is_minor;
                     const pName = patientData.profile.first_name || 'el paciente';
                     const msgContent = isMinor
-                        ? `En caso de emergencia, ¿quién es el contacto responsable o tutor de ${pName}? Necesito su **nombre completo**.`
-                        : "En caso de emergencia, ¿quién es su contacto responsable? Necesito su **nombre completo**.";
+                        ? `Director, para cumplir con los lineamientos de seguridad de la NOM-004, es obligatorio designar un tutor o contacto de emergencia legal para **${pName}**.\n\nPor favor, indique el **Nombre Completo** de esta persona:`
+                        : `Director, para cumplir con los lineamientos de seguridad de la NOM-004, es obligatorio registrar un contacto de emergencia.\n\nPor favor, indique el **Nombre Completo** de su contacto responsable:`;
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -2180,13 +2180,13 @@ export const useCortex = () => {
                     const patientFirstName = (patientData.identificacion.nombre || "Paciente").split(' ')[0];
                     let msgContent = "";
 
-                    // Trifurcación de Edad - Texto Hablado
+                    // Trifurcación de Edad - Texto Hablado (Párrafos de Poder)
                     if (age < 12) {
-                        msgContent = `¿Qué parentesco tiene ${eName} con ${patientFirstName}?`;
+                        msgContent = `Entendido. Para establecer el vínculo legal en el expediente, ¿qué parentesco tiene **${eName}** con **${patientFirstName}**?`;
                     } else if (age >= 12 && age < 18) {
-                        msgContent = `${patientFirstName}, ¿qué parentesco tiene ${eName} contigo?`;
+                        msgContent = `Entendido **${patientFirstName}**. Para establecer el vínculo legal, ¿qué parentesco tiene **${eName}** contigo?`;
                     } else {
-                        msgContent = `${patientFirstName}, ¿qué parentesco tiene ${eName} con usted?`;
+                        msgContent = `Entendido **${patientFirstName}**. Para establecer el vínculo en su expediente, ¿qué parentesco tiene **${eName}** con usted?`;
                     }
 
                     // Dinámica de Botones (Cruce de Edad + Género)
@@ -2245,8 +2245,8 @@ export const useCortex = () => {
                     const ptCtx = patientData.profile.pediatric_profile;
                     const isMinor = ptCtx?.is_minor;
                     const msgContent = isMinor
-                        ? "¿Me dicta el **teléfono** a 10 dígitos de esa persona?"
-                        : "¿Me dicta el **número de teléfono** a 10 dígitos de esa persona?";
+                        ? `Vínculo registrado. Como protocolo de seguridad, requiero el **Teléfono a 10 dígitos** de esta persona para contacto inmediato:`
+                        : `Vínculo registrado. Como protocolo de seguridad, requiero el **Número de Teléfono (10 dígitos)** de su contacto para emergencias:`;
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -2263,7 +2263,7 @@ export const useCortex = () => {
                     const cleanPhone = text.replace(/\D/g, '');
 
                     if (!phoneRegex.test(cleanPhone)) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "El número debe tener exactamente 10 dígitos. Por favor verifíquelo.", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ **Fallo de Formato Telefónico**\n\nEl sistema requiere exactamente 10 dígitos numéricos sin espacios ni guiones para validar el contacto de emergencia. Por favor, intente nuevamente:", avatar: tiloImg }]);
                         return;
                     }
 
@@ -2272,7 +2272,7 @@ export const useCortex = () => {
                     const curPtCtx = patientData.profile.pediatric_profile;
                     if (cleanPhone === patientData.profile.phone) {
                         if (!curPtCtx || !curPtCtx.is_minor) {
-                            setMessages(prev => [...prev, { role: 'assistant', content: "El número de emergencia no puede ser el mismo que su número personal celular. Por favor proporcione otro:", avatar: tiloImg }]);
+                            setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ **Redundancia de Contacto Detectada**\n\nPor protocolos de seguridad (NOM-004), el número de emergencia no puede ser idéntico a su número personal. Por favor, proporcione un número alternativo válido:", avatar: tiloImg }]);
                             return;
                         }
                     }
@@ -2303,7 +2303,7 @@ export const useCortex = () => {
                     } else if (text === 'no') {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "¿Qué dato del contacto de emergencia necesita corregir?",
+                            content: "⚠️ **Protocolo de Corrección de Seguridad**\n\n¿Qué dato del contacto de emergencia requiere ser ajustado?",
                             avatar: tiloImg,
                             inputType: 'buttons',
                             options: [
@@ -2326,7 +2326,7 @@ export const useCortex = () => {
                     } else if (text === 'NAME') {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Por favor, escriba el **Nombre Completo Correcto** de su contacto de emergencia:",
+                            content: "Por protocolo de integridad, proporcione el **Nombre Completo Correcto** de su contacto de emergencia:",
                             avatar: tiloImg,
                             inputType: 'text'
                         }]);
@@ -2334,7 +2334,7 @@ export const useCortex = () => {
                     } else if (text === 'RELATION') {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Por favor, escriba el **Parentesco Correcto** (Ej. Madre, Hermano, Amigo):",
+                            content: "Para corregir el vínculo legal, indique el **Parentesco Correcto** (Ej. Madre, Hermano, Amigo):",
                             avatar: tiloImg,
                             inputType: 'text'
                         }]);
@@ -2342,7 +2342,7 @@ export const useCortex = () => {
                     } else if (text === 'PHONE') {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Por favor, escriba el **Teléfono Correcto** a 10 dígitos:",
+                            content: "Por protocolo de seguridad, ingrese el **Teléfono Correcto** a 10 dígitos numéricos:",
                             avatar: tiloImg,
                             inputType: 'tel'
                         }]);
@@ -2386,7 +2386,7 @@ export const useCortex = () => {
                     const phoneRegex = /^[0-9]{10}$/;
                     const cleanPhone = text.replace(/\D/g, '');
                     if (!phoneRegex.test(cleanPhone)) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "El número debe tener exactamente 10 dígitos. Por favor intente nuevamente.", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ **Fallo de Formato Telefónico**\n\nEl sistema requiere exactamente 10 dígitos numéricos para validar el contacto de emergencia. Por favor, intente nuevamente:", avatar: tiloImg }]);
                         return;
                     }
                     const newData = {
