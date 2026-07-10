@@ -4,11 +4,11 @@ export const usePatientLinguistics = (patientData) => {
     const identityLock = useClinicalGenome(state => state.identityLock);
 
     let patientAge = 30;
-    if (identityLock?.patientInfo?.age) {
+    if (identityLock?.patientInfo?.age !== undefined && identityLock?.patientInfo?.age !== null) {
         patientAge = Number(identityLock.patientInfo.age);
     } else if (patientData) {
-        if (patientData.profile?.age) patientAge = Number(patientData.profile.age);
-        else if (patientData.identificacion?.edad) patientAge = Number(patientData.identificacion.edad);
+        if (patientData.profile?.age !== undefined && patientData.profile?.age !== null) patientAge = Number(patientData.profile.age);
+        else if (patientData.identificacion?.edad !== undefined && patientData.identificacion?.edad !== null) patientAge = Number(patientData.identificacion.edad);
     }
 
     let patientSex = 'M';
@@ -28,7 +28,11 @@ export const usePatientLinguistics = (patientData) => {
         else if (patientData.identificacion?.nombre) patientName = patientData.identificacion.nombre;
     }
 
-    const isMinor = patientAge < 18;
+    // Para efectos lingüísticos en las plantillas de chat, consideramos "isMinor" 
+    // a los pacientes menores de 12 años (pediátricos). Para adolescentes (12-17),
+    // el protocolo de comunicación exige el tratamiento directo de "Usted" 
+    // (soberanía biológica), comportándose igual que los adultos en el diálogo.
+    const isMinor = patientAge < 12;
     const isGeriatric = patientAge >= 65;
     const cleanName = patientName !== "NOM" ? patientName.split(' ')[0] : "el paciente";
     

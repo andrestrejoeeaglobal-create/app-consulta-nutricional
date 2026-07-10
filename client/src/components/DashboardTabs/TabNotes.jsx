@@ -1,22 +1,33 @@
-/* eslint-disable no-unused-vars */
 import React from 'react';
-import { FileText } from 'lucide-react';
 
-export const TabNotes = ({ patientData, isEditing }) => {
+export const TabNotes = ({
+    patientData,
+    setPatientData,
+    isEditing,
+    Accordion,
+    openSections,
+    toggleSection
+}) => {
     return (
-        <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="bg-amber-100 p-2 rounded-lg text-amber-600">
-                        <FileText size={20} />
-                    </div>
-                    <h3 className="font-bold text-slate-700">Notas de Evolución</h3>
-                </div>
-                <div className="h-64 flex items-center justify-center bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
-                    <span className="text-slate-400 text-sm">Espacio para notas SOAP y Evolución...</span>
-                </div>
+        <Accordion
+            title="Notas de Evolución"
+            id="accordion-notes"
+            isOpen={openSections.childNotes}
+            onToggle={() => toggleSection('childNotes')}
+        >
+            <div id="card-notes" className="space-y-4">
+                <textarea
+                    className="w-full h-64 p-5 rounded-2xl bg-tilo-bg-base/40 border border-tilo-border text-tilo-text-main placeholder-tilo-text-muted/50 focus:ring-2 focus:ring-tilo-primary/20 focus:border-tilo-primary outline-none transition-all resize-none text-sm font-sans disabled:opacity-70 disabled:cursor-not-allowed"
+                    placeholder="Espacio para notas SOAP y Evolución..."
+                    value={patientData?.notes || ''}
+                    onChange={(e) => setPatientData && setPatientData(prev => ({
+                        ...prev,
+                        notes: e.target.value
+                    }))}
+                    disabled={!isEditing}
+                />
             </div>
-        </div>
+        </Accordion>
     );
 };
 

@@ -1,134 +1,178 @@
 import React, { useState, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import tiloImg from "../../assets/tilo.png";
-import { Send } from 'lucide-react';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+import { useClinicalGenome } from '../../store/useClinicalGenome';
+import { toSentenceCase } from '../../utils/utils';
 
-const formatText = (text) => {
-    return text
-        .toLowerCase()
-        .replace(/(^\w|\s\w)/g, m => m.toUpperCase()); // Capitalize words
-};
-
-export default function Fase7_Alergias({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
+export default function Fase7_Alergias({ messages, setMessages, patientData, setPatientData, onPhaseComplete, registerInputHandler, setIsGlobalTyping, onStateChange }) {
     const { patientName: pName, patientAge, patientSex } = usePatientLinguistics(patientData);
     const ptCtx = patientData?.profile?.pediatric_profile;
-    const isMinor = ptCtx?.is_minor === true || patientAge < 18;
+    // Para efectos de diálogo, solo consideramos menor (3ra persona) si tiene menos de 12 años (pediátricos).
+    // Para adolescentes (12-17) el protocolo exige tratamiento directo ("Usted").
+    const isMinor = ptCtx?.is_minor === true && patientAge < 12;
     const isFemale = patientSex?.toUpperCase().startsWith('F');
     const allergicSuf = isFemale ? 'a' : 'o';
 
-    // Estado Local Initialize
-    const [messages, setMessages] = useState(() => {
-        if (initialChatHistory && initialChatHistory.length > 0) {
-            return initialChatHistory;
-        }
-        const initialMsg = isMinor
-            ? `Entendido. Pasemos a las alergias e intolerancias.\n\n¿Es ${pName} alérgic${allergicSuf} a algún alimento? (Ej. Mariscos, Nuez, Lácteos).`
-            : `Entendido. Pasemos a sus alergias e intolerancias.\n\n¿Es usted alérgic${allergicSuf} a algún alimento? (Ej. Mariscos, Nuez, Lácteos).`;
-        return [{ sender: 'tilo', text: initialMsg }];
-    });
+    // Integración de Genoma Clínico y Alertas
+    const addAlert = useClinicalGenome(state => state.addAlert);
+    const updateAxis = useClinicalGenome(state => state.updateAxis);
 
-    const [inputValue, setInputValue] = useState("");
     const [step, setStep] = useState('food_gate');
-    const [currentOptions, setCurrentOptions] = useState([
-        { label: "❌ No", value: "No" },
-        { label: "✅ Sí", value: "Sí" }
-    ]);
 
     // Almacenamiento temporal para el ítem actual (comida o medicamento)
     const [tempAllergy, setTempAllergy] = useState({ agent: '', reaction: '', type: '' });
 
-    const messagesEndRef = useRef(null);
-
-    // Auto-scroll a la base de la conversación
+    // Send greeting on mount
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+        const initialMsg = isMinor
+            ? `He registrado y sellado el perfil farmacológico de **${pName || "su menor"}** de manera exitosa.\n\nPasemos a la evaluación de sensibilidades inmunológicas. ¿Es **${pName || "su menor"}** alérgic${allergicSuf} a algún alimento? (Ej. Mariscos, Lácteos, Nuez).`
+            : `He registrado y sellado su perfil farmacológico de manera exitosa.\n\nPasemos a la evaluación de sensibilidades inmunológicas. ¿Es usted alérgic${allergicSuf} a algún alimento? (Ej. Mariscos, Lácteos, Nuez).`;
+        
+        setMessages(prev => {
+            const alreadyGreeted = prev.some(msg => msg.role === 'assistant' && msg.content.includes("sensibilidades inmunológicas"));
+            if (alreadyGreeted) return prev;
+            return [...prev, { 
+                role: 'assistant', 
+                content: initialMsg,
+                inputType: 'strict_select',
+                options: [
+                    { label: "✅ Sí", value: "Sí" },
+                    { label: "❌ No", value: "No" }
+                ]
+            }];
+        });
+    }, [isMinor, pName, allergicSuf, setMessages]);
 
-    const handleSend = () => {
-        if (!inputValue.trim() && currentOptions.length === 0) return;
+    const handleSend = (text, directValue = null) => {
+        const userInput = text.trim();
+        const inputToSave = toSentenceCase(userInput);
+        const newUserMsg = { role: 'user', content: inputToSave };
 
-        const userInput = inputValue.trim();
-        const inputToSave = formatText(userInput);
-
-        setMessages(prev => [...prev, { sender: 'user', text: inputToSave }]);
-        setInputValue("");
-
-        processStep(inputToSave);
+        setMessages(prev => [...prev, newUserMsg]);
+        processStep(inputToSave, newUserMsg);
     };
 
-    const handleOptionSelect = (optionValue) => {
-        setMessages(prev => [...prev, { sender: 'user', text: optionValue }]);
-        processStep(optionValue);
-    };
-
-    const processStep = (input) => {
+    const processStep = (input, newUserMsg) => {
         switch (step) {
             // ================= ALIMENTOS =================
             case 'food_gate': {
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: isMinor ? `¿A qué alimento es alérgic${allergicSuf} ${pName}?` : `¿A qué alimento es alérgic${allergicSuf}?`
+                        role: 'assistant',
+                        content: isMinor 
+                            ? `He registrado la presencia de reacciones alérgicas alimentarias en el expediente de **${pName || "su menor"}**.\n\nPara proteger su plan metabólico, por favor especifique: ¿A qué alimento en particular es alérgic${allergicSuf} **${pName || "su menor"}**?` 
+                            : `He registrado la presencia de reacciones alérgicas alimentarias en su expediente.\n\nPara proteger su plan metabólico, por favor especifique: ¿A qué alimento en particular es alérgic${allergicSuf}?`
                     }]);
                     setStep('food_agent');
-                    setCurrentOptions([]);
                 } else if (input === "No") {
                     transitionToDrugs();
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { 
+                        role: 'assistant', 
+                        content: "Verificación de entrada de seguridad.\n\nPor favor seleccione Sí o No.",
+                        inputType: 'strict_select',
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" }
+                        ]
+                    }]);
                 }
                 break;
             }
             case 'food_agent': {
-                setTempAllergy(prev => ({ ...prev, agent: input, type: 'FOOD' }));
+                const cleanAgent = toSentenceCase(input.trim());
+                setTempAllergy(prev => ({ ...prev, agent: cleanAgent, type: 'FOOD' }));
                 setMessages(prev => [...prev, {
-                    sender: 'tilo',
-                    text: isMinor ? `Entendido (${input}). ¿Qué reacción le provoca a ${pName}? (Ej. Inflamación, ronchas, anafilaxia, picazón).` : `Entendido (${input}). ¿Qué reacción le provoca? (Ej. Inflamación, ronchas, anafilaxia, picazón).`
+                    role: 'assistant',
+                    content: isMinor 
+                        ? `Entendido. Hemos etiquetado **${cleanAgent}** como restricción absoluta en la matriz nutricional de **${pName || "su menor"}**.\n\nPara determinar el nivel de riesgo clínico, ¿qué reacción específica le provoca el consumo de este alimento a **${pName || "su menor"}**? (Ej. Inflamación, ronchas, anafilaxia, picazón).` 
+                        : `Entendido. Hemos etiquetado **${cleanAgent}** como restricción absoluta en su matriz nutricional.\n\nPara determinar el nivel de riesgo clínico, ¿qué reacción específica le provoca el consumo de este alimento? (Ej. Inflamación, ronchas, anafilaxia, picazón).`
                 }]);
                 setStep('food_reaction');
                 break;
             }
             case 'food_reaction': {
+                const cleanReaction = toSentenceCase(input.trim());
                 const newFoodAllergy = {
                     agent: tempAllergy.agent,
-                    reaction: input,
+                    reaction: cleanReaction,
                     status: 'ACTIVE'
+                };
+
+                const updatedAllergies = {
+                    ...(patientData.history?.allergies || {}),
+                    food: [...(patientData.history?.allergies?.food || []), newFoodAllergy]
                 };
 
                 setPatientData(prev => ({
                     ...prev,
                     history: {
                         ...(prev.history || {}),
-                        allergies: {
-                            ...(prev.history?.allergies || {}),
-                            food: [...(prev.history?.allergies?.food || []), newFoodAllergy]
-                        }
+                        allergies: updatedAllergies
                     }
                 }));
+
+                // --- INTEGRACIÓN SINFÓNICA CON EL SAFETY ENGINE ---
+                const finalAgent = String(tempAllergy.agent).toUpperCase();
+                
+                if (finalAgent.includes("MARISCO") || finalAgent.includes("CAMARON") || finalAgent.includes("PULPO") || finalAgent.includes("LANGOS")) {
+                    addAlert({
+                        type: 'BANDERA ROJA - ALERGIA INMUNOLÓGICA DE ALTO RIESGO (IgE)',
+                        message: `El paciente presenta alergia declarada a MARISCOS con reacción de ${input.toLowerCase()}. Se prohíbe de forma absoluta la prescripción de suplementos que contengan quitosano, extracto de cartílago marino o derivados de algas no purificados.`
+                    });
+                    updateAxis('immuneAxis', { hyperReactivity: true });
+                }
+                else if (finalAgent.includes("LACT") || finalAgent.includes("LECHE") || finalAgent.includes("QUESO") || finalAgent.includes("YOGUR")) {
+                    addAlert({
+                        type: 'SENSIBILIDAD DE MUCOSA - REACTIVIDAD A LÁCTEOS',
+                        message: `Alergia/Intolerancia a Lácteos activa. Restringir proteínas de suero de leche (Whey) y modular la ingesta de inmunoglobulinas. Se aconseja priorizar proteínas vegetales o hidrolizados libres de caseína.`
+                    });
+                    updateAxis('digestiveAxis', { mucosalInflammation: true });
+                }
+                else if (finalAgent.includes("NUEZ") || finalAgent.includes("ALMENDRA") || finalAgent.includes("CACAHUATE") || finalAgent.includes("FRUTO SEC")) {
+                    addAlert({
+                        type: 'CRÍTICO: SENSIBILIDAD ANAFILÁCTICA A FRUTOS SECOS',
+                        message: `Riesgo crítico de anafilaxia por exposición a frutos secos (${finalAgent}). Excluir grasas vegetales derivadas de estas oleaginosas del recetario.`
+                    });
+                    updateAxis('immuneAxis', { hyperReactivity: true });
+                }
 
                 setTempAllergy({ agent: '', reaction: '', type: '' });
 
                 setMessages(prev => [...prev, {
-                    sender: 'tilo',
-                    text: isMinor ? `Registrado. ¿Es alérgic${allergicSuf} a algún otro alimento?` : `Registrado. ¿Es alérgic${allergicSuf} a algún otro alimento?`
+                    role: 'assistant',
+                    content: isMinor 
+                        ? `Alergia alimentaria registrada de forma satisfactoria.\n\n¿Existe algún otro alimento al que **${pName || "su menor"}** presente sensibilidades o reacciones adversas?` 
+                        : `Alergia alimentaria registrada de forma satisfactoria.\n\n¿Existe algún otro alimento al que presente sensibilidades o reacciones adversas?`,
+                    inputType: 'strict_select',
+                    options: [
+                        { label: "✅ Sí", value: "Sí" },
+                        { label: "❌ No", value: "No" }
+                    ]
                 }]);
                 setStep('food_next');
-                setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
                 break;
             }
             case 'food_next': {
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: isMinor ? `¿A qué otro alimento es alérgic${allergicSuf}?` : `¿A qué otro alimento es alérgic${allergicSuf}?`
+                        role: 'assistant',
+                        content: isMinor 
+                            ? `Panel de antígenos alimentarios reactivado de forma exitosa.\n\n¿A qué otro alimento en particular es alérgic${allergicSuf} **${pName || "su menor"}**?` 
+                            : `Panel de antígenos alimentarios reactivado de forma exitosa.\n\n¿A qué otro alimento en particular es alérgic${allergicSuf}?`
                     }]);
                     setStep('food_agent');
-                    setCurrentOptions([]);
                 } else if (input === "No") {
                     transitionToDrugs();
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Responde SÍ o NO." : "Responda SÍ o NO." }]);
+                    setMessages(prev => [...prev, { 
+                        role: 'assistant', 
+                        content: "Verificación de entrada.\n\nResponda SÍ o NO.",
+                        inputType: 'strict_select',
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" }
+                        ]
+                    }]);
                 }
                 break;
             }
@@ -137,67 +181,115 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
             case 'drug_gate': {
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: isMinor ? `¿A qué medicamento es alérgic${allergicSuf} ${pName}?` : `¿A qué medicamento es alérgic${allergicSuf}?`
+                        role: 'assistant',
+                        content: isMinor 
+                            ? `He registrado la presencia de sensibilidades farmacológicas en el expediente de **${pName || "su menor"}**.\n\nPara salvaguardar la integridad clínica, por favor especifique: ¿A qué fármaco o sustancia activa en particular es alérgic${allergicSuf} **${pName || "su menor"}**?` 
+                            : `He registrado la presencia de sensibilidades farmacológicas en su expediente.\n\nPara salvaguardar la integridad clínica, por favor especifique: ¿A qué fármaco o sustancia activa en particular es alérgic${allergicSuf}?`
                     }]);
                     setStep('drug_agent');
-                    setCurrentOptions([]);
                 } else if (input === "No") {
-                    handleFinish();
+                    handleFinish(newUserMsg);
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { 
+                        role: 'assistant', 
+                        content: "Verificación de entrada de seguridad.\n\nPor favor seleccione Sí o No.",
+                        inputType: 'strict_select',
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" }
+                        ]
+                    }]);
                 }
                 break;
             }
             case 'drug_agent': {
-                setTempAllergy(prev => ({ ...prev, agent: input, type: 'DRUG' }));
+                const cleanAgent = toSentenceCase(input.trim());
+                setTempAllergy(prev => ({ ...prev, agent: cleanAgent, type: 'DRUG' }));
                 setMessages(prev => [...prev, {
-                    sender: 'tilo',
-                    text: isMinor ? `Entendido (${input}). ¿Qué reacción le provoca a ${pName}?` : `Entendido (${input}). ¿Qué reacción le provoca?`
+                    role: 'assistant',
+                    content: isMinor 
+                        ? `Entendido. Hemos registrado **${cleanAgent}** como contraindicación farmacológica crítica en el expediente.\n\nPara determinar la severidad del riesgo clínico, ¿qué reacción específica le provoca el contacto o consumo de esta sustancia a **${pName || "su menor"}**?` 
+                        : `Entendido. Hemos registrado **${cleanAgent}** como contraindicación farmacológica crítica en su expediente.\n\nPara determinar la severidad del riesgo clínico, ¿qué reacción específica le provoca el contacto o consumo de esta sustancia?`
                 }]);
                 setStep('drug_reaction');
                 break;
             }
             case 'drug_reaction': {
+                const cleanReaction = toSentenceCase(input.trim());
                 const newDrugAllergy = {
                     agent: tempAllergy.agent,
-                    reaction: input,
+                    reaction: cleanReaction,
                     status: 'ACTIVE'
+                };
+
+                const updatedAllergies = {
+                    ...(patientData.history?.allergies || {}),
+                    drug: [...(patientData.history?.allergies?.drug || []), newDrugAllergy]
                 };
 
                 setPatientData(prev => ({
                     ...prev,
                     history: {
                         ...(prev.history || {}),
-                        allergies: {
-                            ...(prev.history?.allergies || {}),
-                            drug: [...(prev.history?.allergies?.drug || []), newDrugAllergy]
-                        }
+                        allergies: updatedAllergies
                     }
                 }));
+
+                // --- INTEGRACIÓN SINFÓNICA CON EL SAFETY ENGINE ---
+                const finalAgent = String(tempAllergy.agent).toUpperCase();
+
+                if (finalAgent.includes("PENICILINA") || finalAgent.includes("AMPICILINA") || finalAgent.includes("AMOXI")) {
+                    addAlert({
+                        type: 'CONTRAINDICACIÓN FARMACOLÓGICA - BETA-LACTÁMICOS',
+                        message: `Alergia crítica a Penicilina / Beta-lactámicos declarada. Red-flag activa en el expediente de farmacia digital para evitar prescripciones cruzadas.`
+                    });
+                    updateAxis('immuneAxis', { hyperReactivity: true });
+                }
+                else if (finalAgent.includes("ASPIRINA") || finalAgent.includes("SALICIL") || finalAgent.includes("ACETIL")) {
+                    addAlert({
+                        type: 'FARMACOVIGILANCIA - SALICILATOS',
+                        message: `Sensibilidad declarada a Salicilatos (Aspirina). Evitar fitoterapéuticos con alta carga de ácido salicílico (como extracto de sauce blanco) y vigilar mucosa gástrica.`
+                    });
+                    updateAxis('digestiveAxis', { mucosalInflammation: true });
+                }
 
                 setTempAllergy({ agent: '', reaction: '', type: '' });
 
                 setMessages(prev => [...prev, {
-                    sender: 'tilo',
-                    text: isMinor ? `Registrado. ¿Es alérgic${allergicSuf} a algún otro medicamento?` : `Registrado. ¿Es alérgic${allergicSuf} a algún otro medicamento?`
+                    role: 'assistant',
+                    content: isMinor 
+                        ? `Sensibilidad farmacológica registrada exitosamente en el expediente base.\n\n¿Existe alguna otra sustancia activa o medicamento al que **${pName || "su menor"}** presente una reacción adversa?` 
+                        : `Sensibilidad farmacológica registrada exitosamente en el expediente base.\n\n¿Existe alguna otra sustancia activa o medicamento al que presente una reacción adversa?`,
+                    inputType: 'strict_select',
+                    options: [
+                        { label: "✅ Sí", value: "Sí" },
+                        { label: "❌ No", value: "No" }
+                    ]
                 }]);
                 setStep('drug_next');
-                setCurrentOptions([{ label: "❌ No", value: "No" }, { label: "✅ Sí", value: "Sí" }]);
                 break;
             }
             case 'drug_next': {
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: isMinor ? `¿A qué otro medicamento es alérgic${allergicSuf}?` : `¿A qué otro medicamento es alérgic${allergicSuf}?`
+                        role: 'assistant',
+                        content: isMinor 
+                            ? `Panel de antígenos farmacológicos reactivado de forma exitosa.\n\n¿A qué otro medicamento o sustancia activa en particular es alérgic${allergicSuf} **${pName || "su menor"}**?` 
+                            : `Panel de antígenos farmacológicos reactivado de forma exitosa.\n\n¿A qué otro medicamento o sustancia activa en particular es alérgic${allergicSuf}?`
                     }]);
                     setStep('drug_agent');
-                    setCurrentOptions([]);
                 } else if (input === "No") {
-                    handleFinish();
+                    handleFinish(newUserMsg);
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Responde SÍ o NO." : "Responda SÍ o NO." }]);
+                    setMessages(prev => [...prev, { 
+                        role: 'assistant', 
+                        content: "Verificación de entrada.\n\nResponda SÍ o NO.",
+                        inputType: 'strict_select',
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" }
+                        ]
+                    }]);
                 }
                 break;
             }
@@ -209,106 +301,43 @@ export default function Fase7_Alergias({ initialChatHistory, patientData, setPat
 
     const transitionToDrugs = () => {
         const msgContent = isMinor
-            ? `Perfecto. Ahora pasemos a los medicamentos.\n\n¿Es ${pName} alérgic${allergicSuf} a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).`
-            : `Perfecto. Ahora pasemos a los medicamentos.\n\n¿Es usted alérgic${allergicSuf} a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).`;
+            ? `He consolidado el registro de sensibilidades alimentarias en el expediente de **${pName || "su menor"}**.\n\nPasemos a la evaluación de sensibilidades farmacológicas. ¿Es **${pName || "su menor"}** alérgic${allergicSuf} a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).`
+            : `He consolidado el registro de sensibilidades alimentarias en su expediente.\n\nPasemos a la evaluación de sensibilidades farmacológicas. ¿Es usted alérgic${allergicSuf} a algún fármaco, antibiótico o sustancia activa? (Ej. Penicilina, Aspirina).`;
 
         setMessages(prev => [...prev, {
-            sender: 'tilo',
-            text: msgContent
+            role: 'assistant',
+            content: msgContent,
+            inputType: 'strict_select',
+            options: [
+                { label: "✅ Sí", value: "Sí" },
+                { label: "❌ No", value: "No" }
+            ]
         }]);
         setStep('drug_gate');
-        setCurrentOptions([
-            { label: "❌ No", value: "No" },
-            { label: "✅ Sí", value: "Sí" }
-        ]);
     };
 
-    const handleFinish = () => {
-        // Enviar historial final y pasar a Fase 8 (Salud Digestiva)
-        const finalMessages = messages.map(msg => ({
-            role: msg.sender === 'user' ? 'user' : 'assistant',
-            content: msg.text
-        }));
-
-        onPhaseComplete(finalMessages);
+    const handleFinish = (newUserMsg) => {
+        const finalMsgs = newUserMsg ? [...messages, newUserMsg] : messages;
+        onPhaseComplete(patientData.history?.allergies || {}, finalMsgs);
     };
 
-    return (
-        <div className="flex-col flex h-full bg-slate-50 relative">
-            <div className="flex-1 h-full overflow-y-auto p-8 space-y-6 custom-scrollbar relative z-10">
-                {messages.map((msg, index) => (
-                    <div
-                        key={index}
-                        className={`flex ${msg.sender === "tilo" ? "justify-start" : "justify-end"} mb-6 items-start gap-3`}
-                    >
-                        {msg.sender === "tilo" && (
-                            <div className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden">
-                                <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
-                            </div>
-                        )}
+    const handleSendRef = useRef(handleSend);
+    useEffect(() => {
+        handleSendRef.current = handleSend;
+    });
 
-                        <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${(msg.sender === "tilo" || msg.role === "assistant")
-                                ? msg.isBio
-                                    ? "bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium"
-                                    : msg.isAcute
-                                        ? "bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium"
-                                        : msg.isCritical
-                                            ? "bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold"
-                                            : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
-                                : "bg-indigo-600 text-white rounded-tr-none"
-                            }`}>
-                            <div className={`prose prose-sm max-w-none ${msg.sender === "tilo" ? "prose-slate" : "prose-invert"}`}>
-                                <ReactMarkdown>{msg.text}</ReactMarkdown>
-                            </div>
+    // Register Handler
+    useEffect(() => {
+        if (registerInputHandler) {
+            registerInputHandler(() => (text, val) => handleSendRef.current(text, val));
+        }
+    }, [registerInputHandler]);
 
-                            {/* Opciones interactivas si es el último mensaje */}
-                            {msg.sender === 'tilo' && index === messages.length - 1 && currentOptions.length > 0 && (
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                    {currentOptions.map((opt, i) => (
-                                        <button
-                                            key={i}
-                                            onClick={() => handleOptionSelect(opt.value)}
-                                            className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ))}
-                <div ref={messagesEndRef} />
-            </div>
+    useEffect(() => {
+        if (setIsGlobalTyping) {
+            setIsGlobalTyping(false);
+        }
+    }, [setIsGlobalTyping]);
 
-            <div className="p-6 bg-white border-t border-slate-50 shrink-0">
-                <div className="relative flex items-center gap-2 bg-white border border-slate-200 rounded-full px-2 py-2 shadow-sm focus-within:ring-4 focus-within:ring-blue-50 focus-within:border-blue-400 transition-all w-full">
-                    {currentOptions.length > 0 ? (
-                        <div className="flex-1 px-3 py-2 text-slate-400 text-sm italic border-l border-slate-100 flex items-center">
-                            Por favor, seleccione una opción superior.
-                        </div>
-                    ) : (
-                        <input
-                            type="text"
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                            placeholder="Escriba aquí..."
-                            className="flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2"
-                        />
-                    )}
-
-                    {currentOptions.length === 0 && (
-                        <button
-  onClick={handleSend}
-  disabled={!inputValue.trim()}
-  className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
->
-  <Send className="w-5 h-5" />
-</button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
+    return null;
 }

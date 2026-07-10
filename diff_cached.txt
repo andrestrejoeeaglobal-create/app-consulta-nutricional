@@ -1,0 +1,117 @@
+﻿diff --git a/client/src/App.jsx b/client/src/App.jsx
+index 8e33114..0f362c3 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -3,7 +3,7 @@ import axios from 'axios';
+ 
+ // eslint-disable-next-line no-unused-vars
+ import { AnimatePresence, motion } from "framer-motion";
+-import { User, Lock, AlertCircle, Apple, Activity, FlaskConical, FileText, ClipboardList, Calendar, Utensils, Send, CreditCard, Sparkles, Check, Settings2, Baby, Zap } from "lucide-react";
++import { User, Lock, AlertCircle, Apple, Activity, FlaskConical, FileText, ClipboardList, Calendar, Utensils, Send, CreditCard, Sparkles, Check, Settings2, Baby } from "lucide-react";
+ import MedicalDashboard from "./components/MedicalDashboard"; // Re-enabled
+ import AvisoPrivacidad from "./components/AvisoPrivacidad";
+ import ReactMarkdown from "react-markdown"; // <--- Importamos ReactMarkdown
+@@ -4808,7 +4808,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
+                           {isLoading ? (
+                             <Loader2 className="w-5 h-5 animate-spin" />
+                           ) : (
+-                            <Zap className="w-5 h-5" fill="currentColor" />
++                            <Send className="w-5 h-5" fill="currentColor" />
+                           )}
+                         </button>
+                       ) : null}
+diff --git a/client/src/components/DashboardTabs/TabDiagnosis.jsx b/client/src/components/DashboardTabs/TabDiagnosis.jsx
+index b8bdd42..2e3be1c 100644
+--- a/client/src/components/DashboardTabs/TabDiagnosis.jsx
++++ b/client/src/components/DashboardTabs/TabDiagnosis.jsx
+@@ -1,5 +1,5 @@
+ import React, { useState } from 'react';
+-import { Activity, ShieldAlert, CheckCircle, AlertTriangle, Stethoscope, Zap, HeartPulse, Lock } from 'lucide-react';
++import { Activity, ShieldAlert, CheckCircle, AlertTriangle, Stethoscope, Send, HeartPulse, Lock } from 'lucide-react';
+ 
+ export const TabDiagnosis = ({ patientData }) => {
+     // === SAFETY ENGINE (Medical Override) ===
+@@ -174,7 +174,7 @@ export const TabDiagnosis = ({ patientData }) => {
+                 <div className="bg-amber-50 border-b border-amber-100 p-6 flex justify-between items-center">
+                     <div>
+                         <h3 className="text-amber-800 font-bold text-xl flex items-center gap-2">
+-                            <Zap className="w-6 h-6 text-amber-500" />
++                            <Send className="w-6 h-6 text-amber-500" />
+                             Arquitectura de Oro Recomendada
+                         </h3>
+                         <p className="text-amber-700 text-sm mt-1 opacity-80">Suplementación de alto impacto sugerida por Bio-Arquitecto</p>
+diff --git a/client/src/components/DashboardTabs/TabIdentity.jsx b/client/src/components/DashboardTabs/TabIdentity.jsx
+index 903a039..373d641 100644
+--- a/client/src/components/DashboardTabs/TabIdentity.jsx
++++ b/client/src/components/DashboardTabs/TabIdentity.jsx
+@@ -1,6 +1,6 @@
+ /* eslint-disable no-unused-vars */
+ import React from 'react';
+-import { User, Edit2, Search, AlertTriangle, AlertCircle, MapPin, FileText, Timer, Zap, Star, Activity, ShieldAlert, Heart, ChevronDown, HeartPulse, Droplets, Thermometer, Brain, Footprints, Baby, ShieldCheck } from 'lucide-react';
++import { User, Edit2, Search, AlertTriangle, AlertCircle, MapPin, FileText, Timer, Star, Activity, ShieldAlert, Heart, ChevronDown, HeartPulse, Droplets, Thermometer, Brain, Footprints, Baby, ShieldCheck } from 'lucide-react';
+ 
+ import { formatDateShort } from '../../utils/utils';
+ import { GamificationRings, StreakCard } from '../ui/GamificationRings';
+diff --git a/client/src/components/interview/Fase0_Identidad.jsx b/client/src/components/interview/Fase0_Identidad.jsx
+index 61b6af0..d50aa5f 100644
+--- a/client/src/components/interview/Fase0_Identidad.jsx
++++ b/client/src/components/interview/Fase0_Identidad.jsx
+@@ -1,6 +1,6 @@
+ import React, { useState, useEffect, useRef } from 'react';
+ import { useClinicalGenome } from '../../store/useClinicalGenome';
+-import { Zap, ShieldCheck, User, Calendar, MapPin, CheckCircle2 } from 'lucide-react';
++import { Send, ShieldCheck, User, Calendar, MapPin, CheckCircle2 } from 'lucide-react';
+ import { formatText } from '../../utils/utils';
+ import tiloImg from '../../assets/tilo.png';
+ 
+@@ -105,7 +105,7 @@ export const Fase0_Identidad = ({
+                             disabled={isAnalyzing || step === 'completed'}
+                         />
+                         <button onClick={() => handleSend(inputValue)} disabled={isAnalyzing || step === 'completed'} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
+-                            <Zap size={18} fill="currentColor" />
++                            <Send size={18} />
+                         </button>
+                     </div>
+                 </div>
+diff --git a/client/src/components/interview/Fase1_Identificacion.jsx b/client/src/components/interview/Fase1_Identificacion.jsx
+index 6e652dd..07c3079 100644
+--- a/client/src/components/interview/Fase1_Identificacion.jsx
++++ b/client/src/components/interview/Fase1_Identificacion.jsx
+@@ -1,6 +1,6 @@
+ import React, { useState, useEffect, useRef } from 'react';
+ import { useClinicalGenome } from '../../store/useClinicalGenome';
+-import { Zap } from 'lucide-react';
++import { Send } from 'lucide-react';
+ import { formatText } from '../../utils/utils';
+ import { calculateAge, classifyLifeStage } from '../../utils/ageClassifier';
+ import tiloImg from '../../assets/tilo.png';
+@@ -241,7 +241,7 @@ export const Fase1_Identificacion = ({
+                             disabled={isAnalyzing || step === 'completed'}
+                         />
+                         <button onClick={() => handleSend(inputValue)} disabled={isAnalyzing || step === 'completed'} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
+-                            <Zap size={18} fill="currentColor" />
++                            <Send size={18} />
+                         </button>
+                     </div>
+                 </div>
+diff --git a/client/src/components/interview/Fase2_Seguridad.jsx b/client/src/components/interview/Fase2_Seguridad.jsx
+index 2006d59..b641eac 100644
+--- a/client/src/components/interview/Fase2_Seguridad.jsx
++++ b/client/src/components/interview/Fase2_Seguridad.jsx
+@@ -1,6 +1,6 @@
+ import React, { useState, useEffect, useRef } from 'react';
+ import { useClinicalGenome } from '../../store/useClinicalGenome';
+-import { Zap, ShieldCheck } from 'lucide-react';
++import { Send, ShieldCheck } from 'lucide-react';
+ import { formatText } from '../../utils/utils';
+ import tiloImg from '../../assets/tilo.png';
+ 
+@@ -218,7 +218,7 @@ export const Fase2_Seguridad = ({
+                             disabled={isAnalyzing || step === 'completed'}
+                         />
+                         <button onClick={() => handleSend(inputValue)} disabled={isAnalyzing || step === 'completed'} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
+-                            <Zap size={18} fill="currentColor" />
++                            <Send size={18} />
+                         </button>
+                     </div>
+                 </div>

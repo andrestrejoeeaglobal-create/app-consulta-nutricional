@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import logo from '../assets/logo.png'; // Confirmar ruta
 import {
     Grid3x3,
@@ -14,16 +14,27 @@ import {
     Lock,
     Unlock,
     CheckCircle,
-    RefreshCw
+    RefreshCw,
+    AlertTriangle
 } from 'lucide-react';
 
-const Header = ({ sessionInfo, user, clearSession, showSessionInfo, activeTab, onTabChange }) => {
+const Header = ({ sessionInfo, user, clearSession, showSessionInfo, activeTab, onTabChange, patientData, currentPhase, hardwareStatus }) => {
+    const [showResetModal, setShowResetModal] = useState(false);
+    
     // Lógica de Estado de Cita (Simulada/Derivada)
     // En V13.0 se manejan PENDIENTE, COMPLETADO, NO DISPONIBLE
     // Asumiremos lógica basada en si hay folio o status explícito en sessionInfo
 
     const getStatusUI = () => {
-        // En estado post-login la píldora siempre es gris neutral
+        if (patientData?.is_completed) {
+            return {
+                label: '✓ COMPLETADO',
+                bg: 'bg-green-100',
+                border: 'border-green-200',
+                text: 'text-green-700 font-bold',
+                icon: <CheckCircle className="w-4 h-4 text-green-600" />
+            };
+        }
         return {
             label: '🔒 PENDIENTE',
             bg: 'bg-slate-200',
@@ -44,8 +55,8 @@ const Header = ({ sessionInfo, user, clearSession, showSessionInfo, activeTab, o
             <div className="h-[48px] border-b border-slate-200 flex items-center justify-between px-8 text-[13px] bg-white">
 
                 {/* Sistema TILO */}
-                <div className="font-medium text-slate-700 tracking-wide">
-                    Sistema de <span className="font-bold text-blue-700">T</span>ransformación <span className="font-bold text-blue-700">I</span>nteligente y <span className="font-bold text-blue-700">L</span>ogro <span className="font-bold text-blue-700">O</span>ptimizado
+                <div className="font-medium text-slate-700 tracking-wide select-none">
+                    Ecosistema de <span className="font-bold text-[#1C75BC]">T</span>ransformación <span className="font-bold text-[#1C75BC]">I</span>nteligente y <span className="font-bold text-[#1C75BC]">L</span>ogro <span className="font-bold text-[#1C75BC]">O</span>ptimizado
                 </div>
 
                 {/* Perfil Profesional */}
@@ -62,12 +73,8 @@ const Header = ({ sessionInfo, user, clearSession, showSessionInfo, activeTab, o
 
                     {/* Nueva Consulta Button */}
                     <button
-                        onClick={() => {
-                            if (window.confirm("¿Estás seguro de iniciar una nueva consulta? Se perderá el progreso no guardado.")) {
-                                clearSession && clearSession();
-                            }
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors border border-blue-100"
+                        onClick={() => setShowResetModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 hover:text-slate-900 transition-colors border border-slate-200"
                         title="Reiniciar Sesión a Fase 0"
                     >
                         <RefreshCw size={14} className="animate-spin-hover" />
@@ -120,14 +127,49 @@ const Header = ({ sessionInfo, user, clearSession, showSessionInfo, activeTab, o
 
                     {/* Navegación Iconos (Siempre visible en Post-Login) */}
                     <nav className="flex items-center gap-1.5 mr-6 bg-slate-50 border border-slate-100 p-1.5 rounded-xl shadow-sm">
-                        <NavItem icon={<Calendar size={18} />} active={activeTab === 'schedule'} onClick={() => onTabChange('schedule')} title="Calendario" />
-                        <NavItem icon={<FlaskConical size={18} />} active={activeTab === 'lab'} onClick={() => onTabChange('lab')} title="Laboratorio" />
-                        <NavItem icon={<Utensils size={18} />} active={activeTab === 'diet'} onClick={() => onTabChange('diet')} title="Nutrición" />
-                        <NavItem icon={<User size={18} />} active={activeTab === 'profile'} onClick={() => onTabChange('profile')} title="Perfil" />
-                        <NavItem icon={<ClipboardList size={18} />} active={activeTab === 'intervention'} onClick={() => onTabChange('intervention')} title="Plan de Acción" />
-                        <NavItem icon={<FileText size={18} />} active={activeTab === 'notes'} onClick={() => onTabChange('notes')} title="Reporte Integral" />
-                        <NavItem icon={<Activity size={18} />} active={activeTab === 'vitals'} onClick={() => onTabChange('vitals')} title="Vitales" />
+                        <NavItem icon={<User size={18} />} active={activeTab === 'profile'} onClick={() => onTabChange('profile')} title="Identidad y Perfil" />
+                        <NavItem icon={<ClipboardList size={18} />} active={activeTab === 'clinical_history'} onClick={() => onTabChange('clinical_history')} title="Historia Clínica" />
+                        <NavItem icon={<Utensils size={18} />} active={activeTab === 'lifestyle'} onClick={() => onTabChange('lifestyle')} title="Estilo de Vida y Nutrición" />
+                        <NavItem icon={<Activity size={18} />} active={activeTab === 'vitals'} onClick={() => onTabChange('vitals')} title="Biometría y Vitales" />
+                        <NavItem 
+                            icon={<FlaskConical size={18} />} 
+                            active={activeTab === 'lab' || currentPhase === 'PHASE_18_ELECTRET'} 
+                            onClick={() => onTabChange('lab')} 
+                            title="Bioquímicos y Escáner"
+                            isElectretActive={currentPhase === 'PHASE_18_ELECTRET'}
+                            hardwareStatus={hardwareStatus}
+                        />
+                        <NavItem icon={<FileText size={18} />} active={activeTab === 'diagnosis'} onClick={() => onTabChange('diagnosis')} title="Diagnóstico y Seguridad" />
+                        <NavItem icon={<Calendar size={18} />} active={activeTab === 'schedule'} onClick={() => onTabChange('schedule')} title="Calendario y Sprint" />
                     </nav>
+
+                    {/* Insignia de Hardware Electret en Fase 18 */}
+                    {currentPhase === 'PHASE_18_ELECTRET' && (
+                        <div className={`flex items-center gap-2 px-4 py-2 rounded-full border text-[11px] font-bold tracking-wider uppercase transition-all shadow-sm select-none ${
+                            hardwareStatus === 'searching' 
+                                ? 'bg-purple-50 border-purple-200 text-purple-700 animate-pulse' 
+                                : hardwareStatus === 'connected' 
+                                ? 'bg-purple-100 border-purple-300 text-purple-800' 
+                                : hardwareStatus === 'scanning' 
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 animate-pulse'
+                                : 'bg-green-50 border-green-200 text-green-700'
+                        }`}>
+                            <span className="relative flex h-2 w-2">
+                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 @media-reduced-motion-stop ${
+                                    hardwareStatus === 'complete' ? 'bg-green-400' : 'bg-purple-400'
+                                }`}></span>
+                                <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                                    hardwareStatus === 'complete' ? 'bg-green-500' : 'bg-purple-500'
+                                }`}></span>
+                            </span>
+                            {hardwareStatus === 'searching' && "🔍 BUSCANDO SENSOR..."}
+                            {hardwareStatus === 'connected' && "✅ SENSOR ENLAZADO"}
+                            {hardwareStatus === 'scanning' && "⚡ ESCANEANDO..."}
+                            {hardwareStatus === 'sanitizing_data' && "🛡️ REGULACIÓN COFEPRIS..."}
+                            {hardwareStatus === 'complete' && "✓ ESCANEO SELLADO"}
+                            {hardwareStatus === 'error' && "⚠️ ERROR HARDWARE"}
+                        </div>
+                    )}
 
                     {/* Status Pill */}
                     <div className={`flex items-center gap-2 px-5 py-2 rounded-full border ${statusUI.bg} ${statusUI.border} transition-colors shadow-sm`}>
@@ -141,17 +183,52 @@ const Header = ({ sessionInfo, user, clearSession, showSessionInfo, activeTab, o
 
             </div>
 
+            {/* Modal de Confirmación NOM-004 */}
+            {showResetModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0a1428]/80 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-[90%] max-w-[420px] overflow-hidden animate-in zoom-in-95 p-8 border border-white/10">
+                        <h3 className="font-bold text-[22px] text-slate-800 mb-4 text-center tracking-tight">
+                            Nueva Consulta
+                        </h3>
+                        <p className="text-slate-600 text-[15px] leading-relaxed mb-8 text-center">
+                            Este sistema procesa datos sensibles de salud mediante <strong>Modelos Avanzados de Visión Artificial y Análisis Clínico Metabólico</strong>. Al continuar, confirmas la depuración de los datos no sellados del expediente actual (NOM-004).
+                        </p>
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowResetModal(false);
+                                    clearSession && clearSession();
+                                }}
+                                className="w-full py-3.5 text-[16px] font-bold text-white bg-[#1C75BC] hover:bg-[#155A92] rounded-xl transition-colors shadow-md flex justify-center items-center gap-2"
+                            >
+                                Iniciar Consulta ➔
+                            </button>
+                            <button
+                                onClick={() => setShowResetModal(false)}
+                                className="w-full py-3.5 text-[15px] font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700 rounded-xl transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </header>
     );
 };
 
 // Componente Auxiliar para Iconos de Navegación
-const NavItem = ({ icon, active, title, onClick }) => (
+const NavItem = ({ icon, active, title, onClick, isElectretActive, hardwareStatus }) => (
     <button
         onClick={onClick}
         className={`
             flex flex-col items-center justify-center p-2 rounded-lg cursor-pointer transition-all duration-200 relative group
-            ${active ? 'bg-white text-blue-600 shadow-sm ring-1 ring-blue-100 scale-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'}
+            ${active 
+                ? (isElectretActive 
+                    ? 'bg-purple-50 text-purple-700 shadow-sm ring-1 ring-purple-100 scale-100' 
+                    : 'bg-white text-blue-600 shadow-sm ring-1 ring-blue-100 scale-100') 
+                : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'}
         `}
         title={title}
     >
@@ -160,7 +237,7 @@ const NavItem = ({ icon, active, title, onClick }) => (
         </div>
         {/* Active Indicator */}
         {active && (
-            <div className="absolute -bottom-1 w-3/4 h-[3px] bg-blue-600 rounded-t-sm" />
+            <div className={`absolute -bottom-1 w-3/4 h-[3px] rounded-t-sm ${isElectretActive ? 'bg-purple-600' : 'bg-blue-600'}`} />
         )}
     </button>
 );

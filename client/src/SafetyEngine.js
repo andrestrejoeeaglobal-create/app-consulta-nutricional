@@ -47,6 +47,15 @@ const PLM_DB = [
         concentration: "75 mg",
         safety_tags: ["ANTICOAGULANTE"],
         image: "https://via.placeholder.com/50?text=PLV"
+    },
+    {
+        id: "plm_106",
+        brand_name: "Metformina",
+        substance: "Metformina Clorhidrato",
+        presentation: "Tabletas",
+        concentration: "850 mg",
+        safety_tags: ["HIPOGLUCEMIANTE", "GASTROLESIVE_SENSITIVE"],
+        image: "https://via.placeholder.com/50?text=MET"
     }
 ];
 

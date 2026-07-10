@@ -69,6 +69,23 @@ export const checkInteractionsAndProceed = (patientData, hasDrugs, drugName = ""
     });
   }
 
+  // 5. Antibiotics + Alcohol (Moderate/Info)
+  const hasAntibiotics = meds.some(m => {
+    const n = m.name.toUpperCase();
+    return n.includes("AMOX") || n.includes("PENI") || n.includes("CEFA") || 
+           n.includes("CIPR") || n.includes("AZIT") || n.includes("ERIT") || 
+           n.includes("SULF") || n.includes("METRO") || n.includes("CLIN");
+  });
+  if (hasAntibiotics && alcohol.is_drinker) {
+    flags.push({
+      severity: "MODERATE",
+      trigger_source_A: "ANTIBIOTICO",
+      trigger_source_B: "ALCOHOL",
+      risk_code: "RISK_LIVER_LOAD",
+      user_message: "INFO: Reducción de eficacia y sobrecarga hepática. Evite el consumo de alcohol mientras toma antibióticos."
+    });
+  }
+
   const critical = flags.find(f => f.severity === "CRITICAL");
 
   return { flags, critical };

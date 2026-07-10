@@ -92,14 +92,26 @@ const VisualIdentityCard = ({ patientData }) => {
             {/* NIVEL 2: BIOMETRÍA BÁSICA */}
             <div className="grid grid-cols-3 gap-4">
                 <IdentityField label="Fecha Nacimiento" value={profileData.birthdate || idData.fechanac} />
-                <IdentityField label="Edad" value={profileData.age ? `${profileData.age} Años (${classifyLifeStage(profileData.age)?.toUpperCase()})` : (idData.edad ? `${idData.edad} Años (${classifyLifeStage(idData.edad)?.toUpperCase()})` : "")} />
+                <IdentityField label="Edad" value={profileData.age !== undefined && profileData.age !== null ? (profileData.age === 0 ? `${profileData.baby_age_months ?? '--'} Meses` : `${profileData.age} Años`) : (idData.edad !== undefined && idData.edad !== null ? (idData.edad === 0 ? `${idData.baby_age_months ?? '--'} Meses` : `${idData.edad} Años`) : "")} />
                 <IdentityField label="Sexo Biológico" value={profileData.sex || idData.sexo} />
             </div>
 
             {/* NIVEL 3: PERFIL SOCIAL */}
             <div className="grid grid-cols-2 gap-4">
                 <IdentityField label="Estado Civil" value={profileData.marital_status || idData.civil_status} />
-                <IdentityField label="Ocupación" value={profileData.occupation || idData.ocupacion} />
+                <IdentityField 
+                    label="Ocupación" 
+                    value={(() => {
+                        const val = profileData.occupation || idData.ocupacion;
+                        const mapping = {
+                            'HOME_PARENTS': 'En casa (Cuidado materno/paterno)',
+                            'HOME_CAREGIVER': 'En casa (Familiar o Niñera)',
+                            'DAYCARE': 'Guardería / Estancia infantil',
+                            'KINDER': 'Kínder / Preescolar'
+                        };
+                        return typeof val === 'string' ? (mapping[val.toUpperCase()] || val) : val;
+                    })()} 
+                />
             </div>
 
             {/* NIVEL 4: IDENTIDAD LEGAL */}

@@ -1,0 +1,317 @@
+[
+  {
+    "id": "antigravity_001",
+    "brand_name": "Fórmula 33Plus",
+    "generic_name": "Adaptógenos y Termogénesis Cognitiva",
+    "priority": 1,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "antigravity_002",
+    "brand_name": "Fórmula 34Plus",
+    "generic_name": "Modulador Metabólico y Celular",
+    "priority": 1,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_001",
+    "brand_name": "Aminoácidos (BCAA, etc.)",
+    "generic_name": "Aminoácidos",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_002",
+    "brand_name": "Arroz de levadura roja",
+    "generic_name": "Suplemento",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_003",
+    "brand_name": "Colágeno Hidrolizado",
+    "generic_name": "Colágeno",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_004",
+    "brand_name": "Complejo B",
+    "generic_name": "Vitamina B",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_005",
+    "brand_name": "Creatina Monohidratada",
+    "generic_name": "Creatina",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_006",
+    "brand_name": "Magnesio (Citrato / Glicinato)",
+    "generic_name": "Magnesio",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_007",
+    "brand_name": "Melatonina",
+    "generic_name": "Melatonina",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_008",
+    "brand_name": "Omega 3 (Aceite de Pescado)",
+    "generic_name": "Omega 3",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_009",
+    "brand_name": "Pre-Entreno / Termogénicos",
+    "generic_name": "Suplemento",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_010",
+    "brand_name": "Probióticos",
+    "generic_name": "Probióticos",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_011",
+    "brand_name": "Proteína Suero de Leche (Whey)",
+    "generic_name": "Proteína Whey",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_012",
+    "brand_name": "Vitamina C",
+    "generic_name": "Vitamina C",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_013",
+    "brand_name": "Vitamina D3",
+    "generic_name": "Vitamina D3",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_014",
+    "brand_name": "Zinc",
+    "generic_name": "Zinc",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "supp_015",
+    "brand_name": "Otro Suplemento Comercial",
+    "generic_name": "Suplemento",
+    "priority": 200,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "plm_101",
+    "brand_name": "Diabion",
+    "generic_name": "Suplemento Vitamínico",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "None",
+    "is_nutraceutical": true
+  },
+  {
+    "id": "plm_001",
+    "brand_name": "Metformina",
+    "generic_name": "Metformina",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Lactic Acidosis",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_002",
+    "brand_name": "Enalapril",
+    "generic_name": "Enalapril",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Hypotension",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_003",
+    "brand_name": "Losartán",
+    "generic_name": "Losartán",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Hyperkalemia",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_004",
+    "brand_name": "Omeprazol",
+    "generic_name": "Omeprazol",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Decreased B12 absorption",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_005",
+    "brand_name": "Paracetamol",
+    "generic_name": "Paracetamol",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Hepatotoxicity",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_006",
+    "brand_name": "Atorvastatina",
+    "generic_name": "Atorvastatina",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Myopathy",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_007",
+    "brand_name": "Levotiroxina",
+    "generic_name": "Levotiroxina",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Thyrotoxicosis",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_008",
+    "brand_name": "Aspirina Protect",
+    "generic_name": "Ácido Acetilsalicílico",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Bleeding",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_009",
+    "brand_name": "Ibuprofeno",
+    "generic_name": "Ibuprofeno",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "GI Bleeding",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_010",
+    "brand_name": "Sertralina",
+    "generic_name": "Sertralina",
+    "priority": 100,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Serotonin syndrome",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_011",
+    "brand_name": "Diane",
+    "generic_name": "Ciproterona / Etinilestradiol",
+    "priority": 100,
+    "gender_restriction": "F",
+    "interaction_risk": "Thrombosis",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_012",
+    "brand_name": "Levonorgestrel",
+    "generic_name": "Levonorgestrel",
+    "priority": 100,
+    "gender_restriction": "F",
+    "interaction_risk": "Ectopic pregnancy",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_013",
+    "brand_name": "Clomifeno",
+    "generic_name": "Citrato de Clomifeno",
+    "priority": 100,
+    "gender_restriction": "F",
+    "interaction_risk": "Ovarian Enlargement",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_014",
+    "brand_name": "Tamsulosina",
+    "generic_name": "Tamsulosina",
+    "priority": 100,
+    "gender_restriction": "M",
+    "interaction_risk": "Orthostatic hypotension",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_015",
+    "brand_name": "Sildenafil",
+    "generic_name": "Sildenafil",
+    "priority": 100,
+    "gender_restriction": "M",
+    "interaction_risk": "Severe hypotension with nitrates",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "plm_016",
+    "brand_name": "Dutasterida",
+    "generic_name": "Dutasterida",
+    "priority": 100,
+    "gender_restriction": "M",
+    "interaction_risk": "Teratogenic to female fetus",
+    "is_nutraceutical": false
+  },
+  {
+    "id": "meds_001",
+    "brand_name": "Otro Fármaco Especializado (Vigilar)",
+    "generic_name": "Fármaco",
+    "priority": 200,
+    "gender_restriction": "NONE",
+    "interaction_risk": "Manual review",
+    "is_nutraceutical": false
+  }
+]

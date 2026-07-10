@@ -2,6 +2,29 @@
 import React from 'react';
 import { FlaskConical, AlertTriangle, Salad } from 'lucide-react';
 
+const severityMap = {
+    'HIGH': 'Alto',
+    'MEDIUM': 'Moderado',
+    'LOW': 'Bajo',
+    'PENDING': 'Pendiente'
+};
+
+const smokingMap = {
+    'CIGARETTE': 'Cigarrillo',
+    'VAPE': 'Vapeador / Electrónico',
+    'BOTH': 'Ambos (Cigarrillo y Vapeador)',
+    'NONE': 'Ninguno'
+};
+
+const alcoholMap = {
+    'BEER_355': 'Cerveza (355ml)',
+    'BEER_940': 'Cerveza Caguama (940ml)',
+    'WINE': 'Vino',
+    'SPIRITS': 'Destilados / Licores',
+    'COCKTAILS': 'Coctelería / Mezclas',
+    'NONE': 'Ninguno'
+};
+
 export const TabRestrictions = ({
     patientData,
     setPatientData,
@@ -82,7 +105,7 @@ export const TabRestrictions = ({
                     </div>
 
                     {/* TARJETA: ALERGIAS Y SEGURIDAD */}
-                    <div id="card-allergy" className={`w-full bg-white p-6 rounded-2xl shadow-sm border border-rose-100 transition-all duration-300 ${currentStep?.includes('allergies_') ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}>
+                    <div id="card-allergy" className={`w-full bg-white p-6 rounded-2xl shadow-sm border border-rose-100 transition-all duration-300 ${(currentStep?.toLowerCase().includes('allergies') || currentStep?.toLowerCase().includes('phase_7_') || currentStep?.toLowerCase().includes('ph7_')) ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}>
                         <CardHeader icon={AlertTriangle} title="Alergias y Seguridad" colorClass="text-rose-500"
                             onEdit={() => onTriggerEdit && onTriggerEdit('allergies')}
                             showEdit={true}
@@ -91,9 +114,9 @@ export const TabRestrictions = ({
                             {/* SECTION: FOOD ALLERGIES */}
                             <div>
                                 <h4 className="text-xs font-bold text-rose-400 uppercase tracking-wider mb-2">Alimentos (Filtro Seguridad)</h4>
-                                {patientData.allergies?.food && patientData.allergies.food.length > 0 ? (
+                                {patientData.history?.allergies?.food && patientData.history.allergies.food.length > 0 ? (
                                     <div className="space-y-2">
-                                        {patientData.allergies.food.map((item, idx) => (
+                                        {patientData.history.allergies.food.map((item, idx) => (
                                             <div key={idx} className="flex justify-between items-center p-3 bg-rose-50 rounded-xl text-sm border border-rose-100">
                                                 <div>
                                                     <div className="font-bold text-rose-700">{item.agent}</div>
@@ -104,7 +127,7 @@ export const TabRestrictions = ({
                                                         item.severity === 'MEDIUM' ? 'bg-orange-100 text-orange-600 border-orange-200' :
                                                             'bg-slate-100 text-slate-500 border-slate-200'
                                                         }`}>
-                                                        {item.severity || 'PENDING'}
+                                                        {severityMap[item.severity?.toUpperCase()] || item.severity || 'Pendiente'}
                                                     </span>
                                                 </div>
                                             </div>
@@ -120,9 +143,9 @@ export const TabRestrictions = ({
                             {/* SECTION: DRUG ALLERGIES */}
                             <div>
                                 <h4 className="text-xs font-bold text-rose-400 uppercase tracking-wider mb-2">Medicamentos (Alerta Clínica)</h4>
-                                {patientData.allergies?.drug && patientData.allergies.drug.length > 0 ? (
+                                {patientData.history?.allergies?.drug && patientData.history.allergies.drug.length > 0 ? (
                                     <div className="space-y-2">
-                                        {patientData.allergies.drug.map((item, idx) => (
+                                        {patientData.history.allergies.drug.map((item, idx) => (
                                             <div key={idx} className="flex justify-between items-center p-3 bg-red-50 rounded-xl text-sm border border-red-100">
                                                 <div>
                                                     <div className="font-bold text-red-700">{item.agent}</div>
@@ -146,7 +169,7 @@ export const TabRestrictions = ({
                     </div>
 
                     {/* TARJETA: HÁBITOS Y TOXICOLOGÍA */}
-                    <div id="card-habit" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <div id="card-habit" className={`bg-white p-6 rounded-2xl shadow-sm border border-slate-100 transition-all duration-300 ${(currentStep?.toLowerCase().includes('habit') || currentStep?.toLowerCase().includes('phase_10_') || currentStep?.toLowerCase().includes('ph10_')) ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}>
                         <CardHeader icon={Salad} title="Hábitos y Toxicología" colorClass="text-green-600"
                             onEdit={() => onTriggerEdit && onTriggerEdit('habits')}
                             showEdit={true}
@@ -178,9 +201,11 @@ export const TabRestrictions = ({
                                     <div>
                                         <div className="text-sm font-bold text-slate-700">Tabaco / Vape</div>
                                         <div className="text-xs text-slate-500">
-                                            {patientData.habits?.smoking?.is_smoker ?
-                                                `${patientData.habits.smoking.type} - ${patientData.habits.smoking.quantity_text}` :
-                                                'Niega consumo'}
+                                            {patientData.habits?.smoking?.is_smoker ? (
+                                                `${smokingMap[patientData.habits.smoking.type?.toUpperCase()] || patientData.habits.smoking.type || 'Activo'} - ${patientData.habits.smoking.quantity_text || 'Detalle pendiente'}`
+                                            ) : (
+                                                patientData.habits?.smoking?.is_smoker === false ? 'Niega consumo' : 'Pendiente de evaluación'
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -198,16 +223,16 @@ export const TabRestrictions = ({
                                         <div className="text-xs text-slate-500">
                                             {patientData.habits?.alcohol?.is_drinker ? (
                                                 <>
-                                                    {patientData.habits.alcohol.preferred_drink} ({patientData.habits.alcohol.frequency_days} días/sem)
+                                                    {alcoholMap[patientData.habits.alcohol.preferred_drink?.toUpperCase()] || patientData.habits.alcohol.preferred_drink || 'Activo'} ({patientData.habits.alcohol.frequency_days || 0} días/sem)
                                                     <br />
-                                                    <span className="text-slate-400">~{patientData.habits.alcohol.calculated_weekly_calories} kcal/semanales</span>
+                                                    <span className="text-slate-400">~{patientData.habits.alcohol.calculated_weekly_calories || 0} kcal/semanales</span>
                                                 </>
-                                            ) : 'Niega consumo'}
+                                            ) : (patientData.habits?.alcohol?.is_drinker === false ? 'Niega consumo' : 'Pendiente de evaluación')}
                                         </div>
                                     </div>
                                 </div>
                                 {patientData.habits?.alcohol?.is_drinker && patientData.habits.alcohol.calculated_weekly_calories > 1000 && (
-                                    <span className="bg-yellow-100 text-yellow-700 text-[10px] px-2 py-0.5 rounded font-bold">ALTO CALÓRICO</span>
+                                    <span className="bg-yellow-100 text-yellow-750 text-[10px] px-2 py-0.5 rounded font-bold">ALTO CALÓRICO</span>
                                 )}
                             </div>
 
@@ -218,9 +243,11 @@ export const TabRestrictions = ({
                                     <div>
                                         <div className="text-sm font-bold text-slate-700">Recreativo / Tóxicos</div>
                                         <div className="text-xs text-slate-500">
-                                            {patientData.habits?.drugs?.has_usage ?
-                                                `${patientData.habits.drugs.substance_name} (${patientData.habits.drugs.frequency})` :
-                                                'Niega consumo'}
+                                            {patientData.habits?.drugs?.has_usage ? (
+                                                `${patientData.habits.drugs.substance_name || 'Activo'} (${patientData.habits.drugs.frequency || 'Frecuencia pendiente'})`
+                                            ) : (
+                                                patientData.habits?.drugs?.has_usage === false ? 'Niega consumo' : 'Pendiente de evaluación'
+                                            )}
                                         </div>
                                     </div>
                                 </div>

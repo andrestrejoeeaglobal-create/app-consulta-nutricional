@@ -1,6 +1,11 @@
 /* eslint-disable no-unused-vars */
 import React from 'react';
-import { Activity, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Activity, AlertCircle, AlertTriangle, Dumbbell, Moon, Brain, Briefcase } from 'lucide-react';
+
+const capitalizeFirst = (str) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+};
 
 export const TabLogistics = ({
     patientData,
@@ -15,6 +20,79 @@ export const TabLogistics = ({
     toggleSection,
     currentStep
 }) => {
+    // --- UNIFICACIÓN RESILIENTE DE FUENTES DE DATOS CLÍNICOS (ESTADO ACTIVIDAD/SUEÑO/ESTRÉS) ---
+    const hasLifestyle = (!!patientData.lifestyle_profile && 
+                          patientData.lifestyle_profile.activity?.has_scheduled_exercise !== null &&
+                          patientData.lifestyle_profile.activity?.has_scheduled_exercise !== undefined) ||
+                         (!!patientData.clinical_context?.activity?.exercise &&
+                          patientData.clinical_context.activity.exercise.has_scheduled_exercise !== null &&
+                          patientData.clinical_context.activity.exercise.has_scheduled_exercise !== undefined);
+
+    // 1. Actividad Física
+    const hasExercise = patientData.lifestyle_profile?.activity?.has_scheduled_exercise || 
+                        patientData.clinical_context?.activity?.exercise?.has_scheduled_exercise;
+    
+    // Contexto Pediátrico / Lactante para mapeo NEAT
+    const ageStr = patientData?.profile?.pediatric_profile?.age || patientData?.identificacion?.edad || "0";
+    const age = parseInt(ageStr, 10) || 0;
+    const babyMonths = patientData?.profile?.baby_age_months !== undefined ? patientData.profile.baby_age_months : (patientData?.identificacion?.baby_age_months !== undefined ? patientData.identificacion.baby_age_months : null);
+    const isLactante = age === 0 || (babyMonths !== null && babyMonths < 24);
+
+    const neatMap = isLactante
+        ? { SEDENTARY: 'Tranquilo', LIGHT: 'Gateo Inicial', MODERATE: 'Gateo Activo', HEAVY: 'Explorador' }
+        : { SEDENTARY: 'Sedentario', LIGHT: 'Ligero', MODERATE: 'Moderado', HEAVY: 'Pesado' };
+
+    const neatDescMap = isLactante
+        ? {
+            SEDENTARY: 'Tranquilo / Acostado la mayor parte del tiempo',
+            LIGHT: 'Gateo inicial / Juego sentado',
+            MODERATE: 'Gateo activo / Ya camina con apoyo',
+            HEAVY: 'Explora activamente / Corre / Salta'
+          }
+        : {
+            SEDENTARY: 'Principalmente sentado / Oficina',
+            LIGHT: 'De pie o caminando poco',
+            MODERATE: 'Movimiento constante / Trabajo activo',
+            HEAVY: 'Trabajo físico demandante'
+          };
+
+    const neatLevelRaw = patientData.lifestyle_profile?.activity?.neat_level ||
+                         patientData.clinical_context?.activity?.exercise?.neat_level;
+    const neatLevel = neatLevelRaw ? (neatMap[neatLevelRaw] || neatLevelRaw) : 'Sin evaluar';
+    const neatDesc = neatLevelRaw ? (neatDescMap[neatLevelRaw] || '--') : 'Sin evaluar';
+    
+    const exerciseLog = patientData.lifestyle_profile?.activity?.log || [];
+    const exerciseLogF10 = patientData.clinical_context?.activity?.exercise?.log || [];
+
+    // 2. Sueño y Descanso
+    const sleepHours = patientData.lifestyle_profile?.sleep?.hours_avg || 
+                       patientData.clinical_context?.habits?.sleep?.hours || 0;
+    
+    const sleepQualityRaw = patientData.lifestyle_profile?.sleep?.quality || 
+                            patientData.clinical_context?.habits?.sleep?.quality;
+    
+    const sleepQuality = (sleepQualityRaw?.toUpperCase() === 'GOOD' || sleepQualityRaw?.toLowerCase() === 'buena') ? 'GOOD' :
+                         (sleepQualityRaw?.toUpperCase() === 'POOR' || sleepQualityRaw?.toLowerCase() === 'mala') ? 'POOR' :
+                         (sleepQualityRaw?.toUpperCase() === 'REGULAR' || sleepQualityRaw?.toLowerCase() === 'regular') ? 'REGULAR' : null;
+
+    // 3. Estrés y Cortisol
+    const stressLevelRaw = patientData.lifestyle_profile?.stress?.level || 
+                           patientData.clinical_context?.habits?.stress;
+    
+    const stressLevel = (stressLevelRaw?.toUpperCase() === 'LOW' || stressLevelRaw?.toLowerCase() === 'bajo') ? 'BAJO' :
+                        (stressLevelRaw?.toUpperCase() === 'HIGH' || stressLevelRaw?.toLowerCase() === 'alto') ? 'ALTO' :
+                        (stressLevelRaw?.toUpperCase() === 'MODERATE' || stressLevelRaw?.toLowerCase() === 'moderado') ? 'MODERADO' : 
+                        stressLevelRaw ? stressLevelRaw.toUpperCase() : 'SIN DATO';
+    
+    const stressOrigin = patientData.lifestyle_profile?.stress?.origin || 
+                         patientData.clinical_context?.habits?.stress_origin || 
+                         'N/A';
+    
+    const isCortisolAlert = patientData.lifestyle_profile?.stress?.cortisol_management_needed || 
+                            (stressLevel === 'ALTO');
+
+    // Food logistics variables moved to TabNutrition.jsx
+
     return (
         <div className="space-y-6">
             <Accordion
@@ -25,140 +103,141 @@ export const TabLogistics = ({
                 variant="parent"
             >
                 <div className="space-y-6">
-                    {/* TARJETA I: ACTIVIDAD Y SUEÑO (PHASE 11 V1.0) */}
-                    <div id="card-lifestyle" className="bg-white p-6 rounded-2xl shadow-sm border border-emerald-100 relative overflow-hidden transition-all duration-300">
-                        <CardHeader icon={Activity} title="Actividad y Entorno" colorClass="text-emerald-600"
-                            onEdit={() => onTriggerEdit && onTriggerEdit('activity')}
-                            showEdit={true}
-                        />
-
-                        <div className="space-y-4">
-                            {/* 1. ACTIVIDAD FÍSICA & NEAT */}
-                            <div className="border-b border-slate-50 pb-3">
+                    <Accordion
+                        title="Actividad y Entorno"
+                        id="accordion-activity"
+                        isOpen={openSections.childActivity}
+                        onToggle={() => toggleSection('childActivity')}
+                    >
+                        <div id="card-lifestyle" className="space-y-4">
+                            {/* 1. ACTIVIDAD FÍSICA / EJERCICIO */}
+                            <div className="border-b border-tilo-border pb-3">
                                 <div className="flex justify-between items-start mb-2">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-xl">🏃</span>
+                                        <Dumbbell className="w-5 h-5 text-tilo-text-muted" />
                                         <div>
-                                            <div className="text-sm font-bold text-slate-700">Actividad Física</div>
-                                            <div className="text-xs text-slate-500 font-medium">
-                                                NEAT: {patientData.lifestyle_profile?.activity?.neat_level || 'N/A'}
-                                            </div>
+                                            <div className="text-sm font-bold text-tilo-text-main">Actividad Física / Ejercicio</div>
                                         </div>
                                     </div>
-                                    {patientData.lifestyle_profile?.activity?.has_scheduled_exercise ? (
-                                        <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded font-bold">EJERCITANTE</span>
+                                    {!hasLifestyle ? (
+                                        <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-text-muted/20">SIN EVALUAR</span>
+                                    ) : hasExercise ? (
+                                        <span className="bg-tilo-success/10 text-tilo-success text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-success/20">EJERCITANTE</span>
                                     ) : (
-                                        <span className="bg-slate-100 text-slate-500 text-[10px] px-2 py-0.5 rounded font-bold">SEDENTARIO</span>
+                                        <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-text-muted/20">SEDENTARIO</span>
                                     )}
                                 </div>
 
                                 {/* Activity Log */}
-                                {patientData.lifestyle_profile?.activity?.log?.length > 0 ? (
-                                    <div className="space-y-1 mt-2">
-                                        {patientData.lifestyle_profile.activity.log.map((act, idx) => (
-                                            <div key={idx} className="flex justify-between items-center bg-emerald-50 px-2 py-1.5 rounded text-xs text-emerald-800">
-                                                <span className="font-semibold">{act.type}</span>
-                                                <span className="opacity-80">{act.frequency}d/sem - {act.duration}min</span>
+                                {exerciseLog.length > 0 ? (
+                                    <div className="space-y-1 mt-2 pl-7">
+                                        {exerciseLog.map((act, idx) => (
+                                            <div key={idx} className="flex justify-between items-center py-1 text-xs text-tilo-text-main">
+                                                <span className="font-semibold">{capitalizeFirst(act.type)}</span>
+                                                <span>{act.frequency}d/sem - {act.duration}min</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : exerciseLogF10.length > 0 ? (
+                                    <div className="space-y-1 mt-2 pl-7">
+                                        {exerciseLogF10.map((actStr, idx) => (
+                                            <div key={idx} className="flex justify-between items-center py-1 text-xs text-tilo-text-main font-semibold">
+                                                <span>{capitalizeFirst(actStr)}</span>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    (patientData.lifestyle_profile?.activity?.has_scheduled_exercise) && <div className="text-xs text-slate-400 italic pl-8">Sin detalles de actividad</div>
+                                    hasExercise && <div className="text-xs text-tilo-text-muted italic pl-7">Sin detalles de actividad</div>
                                 )}
                             </div>
 
-                            {/* 2. SUEÑO Y RITMO CIRCADIANO */}
-                            <div className="border-b border-slate-50 pb-3">
+                            {/* 2. ACTIVIDAD DIARIA (NEAT) */}
+                            <div className="border-b border-tilo-border pb-3">
                                 <div className="flex justify-between items-start">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-xl">💤</span>
+                                        <Briefcase className="w-5 h-5 text-tilo-text-muted" />
                                         <div>
-                                            <div className="text-sm font-bold text-slate-700">Sueño y Descanso</div>
-                                            <div className="text-xs text-slate-500">
-                                                {patientData.lifestyle_profile?.sleep?.hours_avg ? `${patientData.lifestyle_profile.sleep.hours_avg} horas/noche` : '--'}
+                                            <div className="text-sm font-bold text-tilo-text-main">Actividad Diaria (NEAT)</div>
+                                            <div className="text-xs text-tilo-text-muted font-medium">
+                                                {neatDesc}
                                             </div>
                                         </div>
                                     </div>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${patientData.lifestyle_profile?.sleep?.quality === 'GOOD' ? 'bg-blue-100 text-blue-700' :
-                                        patientData.lifestyle_profile?.sleep?.quality === 'POOR' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${
+                                        neatLevelRaw === 'LIGHT' ? 'bg-tilo-success/10 text-tilo-success border-tilo-success/20' :
+                                        neatLevelRaw === 'MODERATE' ? 'bg-tilo-primary/10 text-tilo-primary border-tilo-primary/20' :
+                                        neatLevelRaw === 'HEAVY' ? 'bg-tilo-danger/10 text-tilo-danger border-tilo-danger/20' :
+                                        neatLevelRaw === 'SEDENTARY' ? 'bg-tilo-text-muted/10 text-tilo-text-muted border-tilo-text-muted/20' :
+                                        'bg-tilo-text-muted/10 text-tilo-text-muted border-tilo-text-muted/20'
+                                    }`}>
+                                        {neatLevelRaw ? (neatMap[neatLevelRaw]?.toUpperCase() || neatLevelRaw.toUpperCase()) : 'SIN EVALUAR'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* 2. SUEÑO Y RITMO CIRCADIANO */}
+                            <div className="border-b border-tilo-border pb-3">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-2">
+                                        <Moon className="w-5 h-5 text-tilo-text-muted" />
+                                        <div>
+                                            <div className="text-sm font-bold text-tilo-text-main">Sueño y Descanso</div>
+                                            <div className="text-xs text-tilo-text-muted">
+                                                {sleepHours > 0 ? `${sleepHours} horas/noche` : '--'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${sleepQuality === 'GOOD' ? 'bg-tilo-primary/10 text-tilo-primary border-tilo-primary/20' :
+                                        sleepQuality === 'POOR' ? 'bg-tilo-danger/10 text-tilo-danger border-tilo-danger/20' :
+                                        sleepQuality === 'REGULAR' ? 'bg-tilo-primary/5 text-tilo-primary/80 border-tilo-primary/10' :
+                                        'bg-tilo-text-muted/10 text-tilo-text-muted border-tilo-text-muted/20'
                                         }`}>
-                                        {patientData.lifestyle_profile?.sleep?.quality === 'GOOD' ? 'CALIDAD BUENA' :
-                                            patientData.lifestyle_profile?.sleep?.quality === 'POOR' ? 'MALA CALIDAD' : 'REGULAR'}
+                                        {sleepQuality === 'GOOD' ? 'CALIDAD BUENA' :
+                                            sleepQuality === 'POOR' ? 'MALA CALIDAD' : sleepQuality === 'REGULAR' ? 'REGULAR' : 'SIN DATO'}
                                     </span>
                                 </div>
                                 {/* Ghrelin Warning */}
-                                {patientData.lifestyle_profile?.sleep?.hours_avg > 0 && patientData.lifestyle_profile.sleep.hours_avg < 6 && (
-                                    <div className="mt-2 flex items-center gap-2 bg-yellow-50 px-2 py-1 rounded text-[10px] text-yellow-800 border border-yellow-100">
+                                {sleepHours > 0 && sleepHours < 6 && (
+                                    <div className="mt-2 flex items-center gap-2 bg-tilo-primary/5 px-2 py-1 rounded text-[10px] text-tilo-primary border border-tilo-primary/20">
                                         <AlertCircle size={12} />
                                         <span>Riesgo Hormonal: Posible aumento de Grelina (Apetito).</span>
                                     </div>
                                 )}
                                 {patientData.lifestyle_profile?.sleep?.issue_type && patientData.lifestyle_profile?.sleep?.issue_type !== 'NONE' && (
-                                    <div className="mt-1 pl-8 text-xs text-slate-500">
-                                        Problema: <span className="font-medium text-slate-700">{patientData.lifestyle_profile?.sleep?.issue_type}</span>
+                                    <div className="mt-1 pl-7 text-xs text-tilo-text-muted">
+                                        Problema: <span className="font-medium text-tilo-text-main">{patientData.lifestyle_profile?.sleep?.issue_type}</span>
                                     </div>
                                 )}
                             </div>
 
                             {/* 3. ESTRÉS Y CORTISOL */}
-                            <div className="flex justify-between items-start">
+                            <div className="flex justify-between items-start pb-3 border-b border-tilo-border">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xl">🧠</span>
+                                    <Brain className="w-5 h-5 text-tilo-text-muted" />
                                     <div>
-                                        <div className="text-sm font-bold text-slate-700">Nivel de Estrés</div>
-                                        <div className="text-xs text-slate-500">
-                                            Origen: {patientData.lifestyle_profile?.stress?.origin === 'NONE' ? '--' : patientData.lifestyle_profile?.stress?.origin}
-                                        </div>
+                                        <div className="text-sm font-bold text-tilo-text-main font-prototype">Nivel de Estrés</div>
+                                        {!(stressLevel === 'BAJO' && (!stressOrigin || stressOrigin === 'NONE' || stressOrigin === 'N/A')) && (
+                                            <div className="text-xs text-tilo-text-muted font-medium">
+                                                Origen: {!stressOrigin || stressOrigin === 'NONE' || stressOrigin === 'N/A' ? 'No refiere' : stressOrigin}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${patientData.lifestyle_profile?.stress?.level === 'LOW' ? 'bg-green-100 text-green-700' :
-                                    patientData.lifestyle_profile?.stress?.level === 'HIGH' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${stressLevel === 'BAJO' ? 'bg-tilo-success/10 text-tilo-success border-tilo-success/20' :
+                                    stressLevel === 'ALTO' ? 'bg-tilo-danger/10 text-tilo-danger border-tilo-danger/20' :
+                                    'bg-tilo-primary/10 text-tilo-primary border-tilo-primary/20'
                                     }`}>
-                                    {patientData.lifestyle_profile?.stress?.level || 'SIN DATO'}
+                                    {stressLevel}
                                 </span>
                             </div>
-                            {patientData.lifestyle_profile?.stress?.cortisol_management_needed && (
-                                <div className="mt-2 flex items-center gap-2 bg-red-50 px-2 py-1 rounded text-[10px] text-red-800 border border-red-100">
+                            {isCortisolAlert && (
+                                <div className="mt-2 flex items-center gap-2 bg-tilo-danger/10 px-2 py-1 rounded text-[10px] text-tilo-danger border border-tilo-danger/20">
                                     <AlertTriangle size={12} />
                                     <span>Alerta Cortisol: Gestión de estrés prioritaria.</span>
                                 </div>
                             )}
-
-                            {/* 4. LOGÍSTICA Y REALIDAD (PHASE 12) */}
-                            <div className="border-t border-slate-100 pt-3 mt-3">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xl">🍱</span>
-                                        <div>
-                                            <div className="text-sm font-bold text-slate-700">Logística Alimentaria</div>
-                                            <div className="text-xs text-slate-500">
-                                                {patientData.logistics_profile?.cook_type === 'SELF' ? 'Cocina Propia' :
-                                                    patientData.logistics_profile?.cook_type === 'FAMILY' ? 'Familiar Cocina' :
-                                                        patientData.logistics_profile?.cook_type === 'STAFF' ? 'Personal Cocina' :
-                                                            patientData.logistics_profile?.cook_type === 'BUYING' ? 'Compra Comida' : '--'}
-                                                {' • '}
-                                                {patientData.logistics_profile?.environment?.venue === 'HOME' ? 'Come en Casa' :
-                                                    patientData.logistics_profile?.environment?.venue === 'WORK' ? 'Come en Trabajo' :
-                                                        patientData.logistics_profile?.environment?.venue === 'STREET' ? 'Come en Calle' : ''}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {/* Constraints Badges */}
-                                    <div className="flex flex-col gap-1 items-end">
-                                        {!patientData.logistics_profile?.recipe_filters?.requires_reheating && (
-                                            <span className="bg-slate-100 text-slate-600 text-[9px] px-1.5 py-0.5 rounded border border-slate-200">NO MICROONDAS</span>
-                                        )}
-                                        {!patientData.logistics_profile?.recipe_filters?.requires_refrigeration && (
-                                            <span className="bg-rose-50 text-rose-600 text-[9px] px-1.5 py-0.5 rounded border border-rose-100">NO REFRIGERACIÓN</span>
-                                        )}
-                                        {patientData.logistics_profile?.cooking_time === 'LOW' && (
-                                            <span className="bg-blue-50 text-blue-600 text-[9px] px-1.5 py-0.5 rounded border border-blue-100">TIEMPO LIMITADO</span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
                         </div>
-                    </div>
+                    </Accordion>
                 </div>
             </Accordion>
         </div>

@@ -10,6 +10,15 @@ export const TabVitals = ({
     // Safe access
     const { peso, imc, imcEstado } = patientData?.vitals || {};
 
+    const isVitalsCompleted = patientData?.vitals?.status === 'COMPLETED' || (
+        patientData?.vitals?.blood_pressure?.systolic != null &&
+        patientData?.vitals?.blood_pressure?.diastolic != null &&
+        patientData?.vitals?.heart_rate != null &&
+        patientData?.vitals?.respiratory_rate != null &&
+        patientData?.vitals?.temperature != null &&
+        patientData?.vitals?.spo2 != null
+    );
+
     return (
         <div className="space-y-6">
 
@@ -99,9 +108,9 @@ export const TabVitals = ({
                 />
 
                 <div className="flex justify-between items-center mb-4">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold border flex items-center gap-1 ${patientData.vitals?.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-                        {patientData.vitals?.status === 'COMPLETED' ? <Check size={10} /> : <Lock size={10} />}
-                        {patientData.vitals?.status === 'COMPLETED' ? 'COMPLETADO' : 'REQUERIDO'}
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold border flex items-center gap-1 ${isVitalsCompleted ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                        {isVitalsCompleted ? <Check size={10} /> : <Lock size={10} />}
+                        {isVitalsCompleted ? 'COMPLETADO' : 'REQUERIDO'}
                     </span>
                     {patientData.vitals?.blood_pressure?.alert_level === 'CRISIS' && (
                         <span className="bg-red-600 text-white px-3 py-1 rounded-full text-[10px] font-bold animate-pulse">
@@ -133,34 +142,7 @@ export const TabVitals = ({
                         </div>
                         <div>
                             <div className="flex justify-between items-center mb-1">
-                                <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Frecuencia Respiratoria</label>
-                                <button
-                                    onClick={() => {
-                                        const btn = document.getElementById('rr-timer-btn');
-                                        if (btn.innerText.includes('Inicia')) {
-                                            let left = 30;
-                                            btn.innerText = `⏱️ ${left}s`;
-                                            btn.classList.add('bg-rose-100', 'text-rose-700');
-                                            const interval = setInterval(() => {
-                                                left--;
-                                                btn.innerText = `⏱️ ${left}s`;
-                                                if (left <= 0) {
-                                                    clearInterval(interval);
-                                                    btn.innerText = "🔔 TIEMPO";
-                                                    btn.classList.remove('bg-rose-100');
-                                                    btn.classList.add('bg-emerald-100', 'text-emerald-700');
-                                                    // Vibrate if supported
-                                                    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-                                                    setTimeout(() => { btn.innerText = "⏱️ Iniciar 30s"; btn.className = "text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200 hover:bg-slate-200 transition-colors"; }, 5000);
-                                                }
-                                            }, 1000);
-                                        }
-                                    }}
-                                    id="rr-timer-btn"
-                                    className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200 hover:bg-slate-200 transition-colors"
-                                >
-                                    ⏱️ Iniciar 30s
-                                </button>
+                                <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider leading-none">Frecuencia Respiratoria</label>
                             </div>
                             <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
                                 <span className="text-xl font-bold text-slate-700">{patientData.vitals?.respiratory_rate || '--'}</span>

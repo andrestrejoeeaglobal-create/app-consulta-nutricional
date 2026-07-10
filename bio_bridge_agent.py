@@ -52,5 +52,30 @@ def start_scan_sequence(patient_name, patient_age, patient_height, patient_weigh
     print("✅ Secuencia de inicio completada. Esperando hardware...")
 
 if __name__ == "__main__":
-    # Prueba manual
-    start_scan_sequence("Test User", 30, 175, 75)
+    if len(sys.argv) > 1 and sys.argv[1].endswith('.json'):
+        import json
+        json_path = sys.argv[1]
+        try:
+            print(f"🔒 Python Bridge: Cargando JSON de paciente de forma segura desde: {json_path}")
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            name = data.get('name', 'Paciente Demo')
+            age = data.get('age', 30)
+            height = data.get('height', 170)
+            weight = data.get('weight', 70)
+            
+            start_scan_sequence(name, age, height, weight)
+            
+            # Intentar eliminar el archivo temporal una vez procesado
+            try:
+                os.remove(json_path)
+                print(f"🧹 Archivo temporal removido: {json_path}")
+            except Exception as e:
+                print(f"⚠️ No se pudo remover archivo temporal: {e}")
+        except Exception as e:
+            print(f"🔥 Error al procesar el JSON: {e}")
+            sys.exit(1)
+    else:
+        # Prueba manual
+        start_scan_sequence("Test User", 30, 175, 75)

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { Zap, ShieldCheck, Send } from 'lucide-react';
-import { formatText } from '../../utils/utils';
+import { formatText, applyPhoneMask } from '../../utils/utils';
 import { getBinaryGateLabels } from '../../utils/ageClassifier';
 import tiloImg from '../../assets/tilo.png';
+import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
 
 export const Fase2_Seguridad = ({
     onPhaseComplete,
@@ -16,14 +17,13 @@ export const Fase2_Seguridad = ({
     const patientAge = identityLock.patientInfo?.age || 30;
     const patientPhone = identityLock.patientInfo?.phone || "";
 
-    // 1. Trifurcación de Tono
     const getStarterMessage = () => {
         if (patientAge < 12) {
-            return "Por seguridad del menor, necesitamos registrar un contacto responsable. ¿Cuál es el nombre completo de la persona a contactar en caso de emergencia?";
+            return "Para garantizar la integridad del menor conforme a los lineamientos de asistencia clínica infantil, requerimos documentar una Red de Apoyo Primario.\n\n---\n\n¿Cuál es el nombre completo del tutor o responsable a contactar?";
         } else if (patientAge >= 12 && patientAge <= 17) {
-            return "Por tu seguridad, necesitamos registrar un contacto responsable. ¿A quién podemos contactar por ti en caso de emergencia? (Dime su nombre completo)";
+            return "Para asegurar tu bienestar bajo el protocolo de asistencia a menores, requerimos establecer tu Red de Apoyo Primario.\n\n---\n\n¿Cuál es el nombre completo de la persona a contactar?";
         } else {
-            return "Por protocolo de seguridad clínica, requerimos un contacto de emergencia. ¿Cuál es el nombre completo de la persona a contactar?";
+            return "Para garantizar su respaldo clínico conforme a la normatividad de seguridad de pacientes, requerimos documentar su Red de Apoyo Primario.\n\n---\n\n¿Cuál es el nombre completo de la persona a contactar?";
         }
     };
 
@@ -79,11 +79,11 @@ export const Fase2_Seguridad = ({
                     updateIdentityLock({ emergencyContact: { ...identityLock.emergencyContact, name: cleanText } });
 
                     if (patientAge < 12) {
-                        responseMsg = `¿Qué parentesco tiene ${cleanText} con el o la menor?`;
+                        responseMsg = `Para establecer el nivel de autoridad clínica sobre las decisiones del paciente, es necesario definir la relación familiar.\n\n---\n\n¿Qué parentesco tiene ${cleanText} con el menor?`;
                     } else if (patientAge >= 12 && patientAge <= 17) {
-                        responseMsg = `¿Qué es ${cleanText} tuyo?`;
+                        responseMsg = `Para establecer la vía de comunicación principal de su Red de Apoyo Primario, es necesario definir la relación familiar.\n\n---\n\n¿Qué parentesco tiene ${cleanText} con usted?`;
                     } else {
-                        responseMsg = `¿Qué parentesco tiene ${cleanText} con usted?`;
+                        responseMsg = `Para establecer la vía de comunicación principal de su Red de Apoyo Primario, es necesario definir la relación familiar.\n\n---\n\n¿Qué parentesco tiene ${cleanText} con usted?`;
                     }
 
                     options = getKinshipOptions();
@@ -94,9 +94,9 @@ export const Fase2_Seguridad = ({
                     updateIdentityLock({ emergencyContact: { ...identityLock.emergencyContact, relation: cleanText } });
 
                     if (patientAge < 18) {
-                        responseMsg = `Por favor, escríbeme el **número de teléfono** a 10 dígitos de ${identityLock.emergencyContact.name}.`;
+                        responseMsg = `Para habilitar la vía de comunicación de emergencia, requerimos registrar el número telefónico de ${identityLock.emergencyContact.name}.\n\n---\n\nPor favor, escriba el **número de teléfono** a 10 dígitos.`;
                     } else {
-                        responseMsg = `Para finalizar este bloque, ¿me proporciona el **número de teléfono** de ${identityLock.emergencyContact.name}? (10 dígitos)`;
+                        responseMsg = `Para habilitar la vía de comunicación de emergencia, requerimos registrar el número telefónico de ${identityLock.emergencyContact.name}.\n\n---\n\nPor favor, escriba el **número de teléfono** a 10 dígitos.`;
                     }
                     nextStep = 'emergency_phone';
                     break;
@@ -106,7 +106,7 @@ export const Fase2_Seguridad = ({
                     const phoneInput = cleanText.replace(/\D/g, '');
 
                     if (phoneInput.length !== 10) {
-                        responseMsg = "El número ingresado no tiene 10 dígitos. Por favor, verifíquelo e intente nuevamente:";
+                        responseMsg = "El número ingresado no cumple con el formato de 10 dígitos requerido para contacto de emergencia.\n\n---\n\nPor favor, verifíquelo e intente nuevamente:";
                         break;
                     }
 
@@ -114,11 +114,11 @@ export const Fase2_Seguridad = ({
                     if (phoneInput === patientPhone) {
                         if (patientAge >= 12) {
                             // Hard Stop para Adolescentes y Adultos
-                            responseMsg = "🚫 **Alerta de Redundancia**\n\nEl número ingresado es idéntico a su número personal. Por normativas de seguridad en emergencias, debe proveer un número de contacto **distinto** al suyo. Intente de nuevo:";
+                            responseMsg = "🚫 **Alerta de Redundancia**\n\nEl número ingresado es idéntico a su número personal. Las normativas de seguridad exigen proveer un número de contacto **distinto** al suyo.\n\n---\n\nPor favor, intente con otro número:";
                             break;
                         } else {
                             // Bifurcación Empática para Lactantes y Escolares (< 12)
-                            responseMsg = "He notado que el número de emergencia es el mismo que el registrado inicialmente. ¿Desea mantener este mismo número para contactar a su tutor?";
+                            responseMsg = "Se ha detectado coincidencia con el número principal registrado. Para menores de edad, es aceptable utilizar la misma vía de contacto.\n\n---\n\n¿Desea mantener este mismo número para contactar al tutor?";
                             options = [
                                 { label: "No, usar otro", value: "CHANGE_PHONE" },
                                 { label: "Sí, mantener número", value: "CONFIRM_SAME_PHONE" }
@@ -132,11 +132,7 @@ export const Fase2_Seguridad = ({
                     const eContact = { ...identityLock.emergencyContact, phone: phoneInput };
                     const { confirmLabel, rejectLabel } = getBinaryGateLabels(patientAge, identityLock.patientInfo?.sex || 'Femenino');
                     
-                    responseMsg = `A continuación, le presento un resumen de la Red de Apoyo capturada:\n\n` +
-                                  `**Contacto de Emergencia:** ${eContact.name}\n` +
-                                  `**Parentesco/Relación:** ${eContact.relation}\n` +
-                                  `**Teléfono de Emergencia:** ${eContact.phone}\n\n` +
-                                  `¿Son correctos estos datos?`;
+                    responseMsg = `Hemos recopilado la información necesaria para establecer su Red de Apoyo conforme al protocolo clínico.\n\n---\n\n- 👤 **Contacto:** ${eContact.name}\n- 🤝 **Relación:** ${eContact.relation}\n- 📱 **Teléfono:** ${applyPhoneMask(eContact.phone)}\n\n¿Confirma que estos datos son correctos?`;
                                   
                     options = [
                         { label: confirmLabel, value: "CONFIRM_DATA" },
@@ -153,11 +149,7 @@ export const Fase2_Seguridad = ({
                         const eContact = { ...identityLock.emergencyContact, phone: previousPhone };
                         const { confirmLabel, rejectLabel } = getBinaryGateLabels(patientAge, identityLock.patientInfo?.sex || 'Femenino');
                         
-                        responseMsg = `A continuación, le presento un resumen de la Red de Apoyo capturada:\n\n` +
-                                      `**Contacto de Emergencia:** ${eContact.name}\n` +
-                                      `**Parentesco/Relación:** ${eContact.relation}\n` +
-                                      `**Teléfono de Emergencia:** ${eContact.phone}\n\n` +
-                                      `¿Son correctos estos datos?`;
+                        responseMsg = `Hemos recopilado la información necesaria para establecer su Red de Apoyo conforme al protocolo clínico.\n\n---\n\n- 👤 **Contacto:** ${eContact.name}\n- 🤝 **Relación:** ${eContact.relation}\n- 📱 **Teléfono:** ${applyPhoneMask(eContact.phone)}\n\n¿Confirma que estos datos son correctos?`;
                                       
                         options = [
                             { label: confirmLabel, value: "CONFIRM_DATA" },
@@ -165,17 +157,17 @@ export const Fase2_Seguridad = ({
                         ];
                         nextStep = 'emergency_review';
                     } else {
-                        responseMsg = "De acuerdo. Por favor, escriba el **nuevo número** telefónico de emergencia (10 dígitos):";
+                        responseMsg = "Procederemos a registrar un número alternativo para la Red de Apoyo.\n\n---\n\nPor favor, escriba el **nuevo número** telefónico de emergencia a 10 dígitos:";
                         nextStep = 'emergency_phone';
                     }
                     break;
 
                 case 'emergency_review': {
                     if (directValue === 'CONFIRM_DATA') {
-                        responseMsg = "Red de apoyo establecida exitosamente. Identidad Blindada completada. ✅";
+                        responseMsg = "Red de Apoyo Primario establecida exitosamente. Identidad Blindada completada. ✅";
                         nextStep = 'completed';
                     } else {
-                        responseMsg = "Entendido, vamos a corregir los datos.\n\n" + getStarterMessage();
+                        responseMsg = "Procederemos a rectificar la información de la Red de Apoyo Primario.\n\n---\n\n¿Cuál es el nombre completo de la persona a contactar?";
                         nextStep = 'emergency_name';
                     }
                     break;
@@ -198,20 +190,16 @@ export const Fase2_Seguridad = ({
         }, 800);
     };
 
-    useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+    useEffect(() => { 
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); 
+        const timer = setTimeout(() => {
+            chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [messages]);
 
     const handlePhoneChange = (e) => {
-        let val = e.target.value.replace(/\D/g, '');
-        if (val.length > 10) val = val.slice(0, 10);
-        let formatted = val;
-        if (val.length > 6) {
-            formatted = `(${val.slice(0, 3)}) ${val.slice(3, 6)}-${val.slice(6)}`;
-        } else if (val.length > 3) {
-            formatted = `(${val.slice(0, 3)}) ${val.slice(3)}`;
-        } else if (val.length > 0) {
-            formatted = `(${val}`;
-        }
-        setInputValue(formatted);
+        setInputValue(applyPhoneMask(e.target.value));
     };
 
     return (
@@ -231,15 +219,13 @@ export const Fase2_Seguridad = ({
                                 </div>
                                 <div className={`p-4 rounded-2xl text-sm shadow-sm leading-relaxed max-w-[80%] whitespace-pre-line ${msg.role === 'user' ? 'bg-[#1C75BC] text-white rounded-tr-none' : 'bg-white border border-slate-200 rounded-tl-none text-slate-700'}`}>
                                     {msg.content}
-                                    
-                                    {/* Render Options if any (Only for the latest message from assistant) */}
-                                    {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && (
-                                        <div className="mt-4 flex flex-col gap-2">
-                                            {msg.options.map((opt, oIdx) => (
+                                    {msg.role === 'assistant' && idx === messages.length - 1 && messages[messages.length - 1].options?.length > 0 && messages[messages.length - 1].options?.length <= 3 && !isAnalyzing && step !== 'completed' && (
+                                        <div className="mt-4 flex flex-wrap gap-2">
+                                            {messages[messages.length - 1].options.map((opt, oIdx) => (
                                                 <button
                                                     key={oIdx}
                                                     onClick={() => handleSend(opt.label, opt.value)}
-                                                    className="w-full text-left px-4 py-3 rounded-lg border border-[#1C75BC] text-[#1C75BC] hover:bg-[#1C75BC] hover:text-white transition-all duration-200 font-medium bg-white"
+                                                    className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-full text-xs hover:bg-slate-200 hover:text-slate-900 transition-colors shadow-sm border border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                     disabled={isAnalyzing || step === 'completed'}
                                                 >
                                                     {opt.label}
@@ -251,26 +237,40 @@ export const Fase2_Seguridad = ({
                             </div>
                         </div>
                     ))}
-                    {isAnalyzing && (
-                        <div className="flex gap-4 animate-pulse ml-11 mt-4">
-                            <div className="bg-slate-100 border border-slate-200 w-20 h-8 rounded-2xl rounded-tl-none"></div>
-                        </div>
+                    {messages.length > 0 && messages[messages.length - 1].options?.length > 3 && !isAnalyzing && step !== 'completed' && (
+                        <div className="h-72 sm:h-80 w-full pointer-events-none" />
                     )}
                     <div ref={chatEndRef} />
                 </div>
 
-                <div className="p-6 bg-white border-t border-slate-100">
-                    <form onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }} className="flex items-center gap-3 bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner">
+                <div className="p-6 bg-white border-t border-slate-100 relative z-[60]">
+                    <div className="relative w-full max-w-3xl mx-auto flex flex-col items-center">
+                        {messages[messages.length - 1]?.options?.length > 3 && !isAnalyzing && step !== 'completed' && (
+                            <SearchableVerticalMenu
+                                options={messages[messages.length - 1].options}
+                                onSelect={(val) => {
+                                    const opt = messages[messages.length - 1].options.find(o => o.value === val);
+                                    handleSend(opt.label, opt.value);
+                                }}
+                                searchQuery={inputValue}
+                                setSearchQuery={setInputValue}
+                            />
+                        )}
+                        
+
+                        
+                        <form onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }} className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner relative z-10">
                         <input
                             type={step.includes('phone') ? 'tel' : 'text'}
                             value={inputValue} onChange={step.includes('phone') ? handlePhoneChange : (e) => setInputValue(e.target.value)}
-                            placeholder={step.includes('phone') ? "(123) 456-7890" : "Escribe tu respuesta..."} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
+                            placeholder={isAnalyzing || step === 'completed' ? "Seleccione una opción arriba..." : (step.includes('phone') ? "(123) 456-7890" : "Escribe tu respuesta...")} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none disabled:opacity-50"
                             disabled={isAnalyzing || step === 'completed'}
                         />
-                        <button type="submit" disabled={isAnalyzing || step === 'completed'} className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0">
-                            <Send className="w-5 h-5" />
+                        <button type="submit" disabled={!inputValue.trim() || isAnalyzing || step === 'completed'} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a] disabled:opacity-50 flex-shrink-0">
+                            <Send size={18} />
                         </button>
-                    </form>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

@@ -86,7 +86,7 @@ export const TabBiochemicals = ({
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" id="card-lab">
             <div className="bg-white rounded-2xl border border-blue-500 ring-4 ring-blue-50 shadow-md overflow-hidden">
                 <div className="p-4 border-b border-blue-100 bg-blue-50">
                     <h4 className="font-bold text-blue-800 flex items-center gap-2 text-sm"><FlaskConical size={16} /> Procesador de Docs Bio-Cuánticos</h4>

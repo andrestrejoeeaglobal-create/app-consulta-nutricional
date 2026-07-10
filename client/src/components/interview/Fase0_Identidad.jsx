@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { ShieldCheck, User, Calendar, MapPin, CheckCircle2, Zap, Send } from 'lucide-react';
-import { formatText } from '../../utils/utils';
+import { formatText, applyPhoneMask } from '../../utils/utils';
 import tiloImg from '../../assets/tilo.png';
+import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
 
 export const Fase0_Identidad = ({
     onPhaseComplete,
@@ -52,12 +53,18 @@ export const Fase0_Identidad = ({
                     nextStep = 'intro_phone';
                     break;
                 case 'intro_phone': {
-                    updateIdentityLock({ patientInfo: { ...identityLock.patientInfo, phone: cleanText } });
-                    const pInfo = { ...identityLock.patientInfo, phone: cleanText };
+                    const phoneInput = cleanText.replace(/\D/g, '');
+                    if (phoneInput.length !== 10) {
+                        responseMsg = "Por favor ingrese un número de teléfono celular válido a 10 dígitos.";
+                        nextStep = 'intro_phone';
+                        break;
+                    }
+                    updateIdentityLock({ patientInfo: { ...identityLock.patientInfo, phone: phoneInput } });
+                    const pInfo = { ...identityLock.patientInfo, phone: phoneInput };
                     responseMsg = `A continuación, le presento un resumen de los datos capturados:\n\n` +
-                                  `**Nombre Completo:** ${pInfo.name}\n` +
-                                  `**CURP:** ${pInfo.curp}\n` +
-                                  `**Teléfono Celular:** ${pInfo.phone}\n\n` +
+                                  `- 👤 **Nombre Completo:** ${pInfo.name}\n` +
+                                  `- 📝 **CURP:** ${pInfo.curp}\n` +
+                                  `- 📱 **Teléfono Celular:** ${applyPhoneMask(pInfo.phone)}\n\n` +
                                   `¿Son correctos estos datos?`;
                     options = [
                         { label: "✅ SÍ, SON CORRECTOS", value: "CONFIRM_DATA" },
@@ -93,20 +100,16 @@ export const Fase0_Identidad = ({
         }, 800);
     };
 
-    useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+    useEffect(() => { 
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); 
+        const timer = setTimeout(() => {
+            chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [messages]);
 
     const handlePhoneChange = (e) => {
-        let val = e.target.value.replace(/\D/g, '');
-        if (val.length > 10) val = val.slice(0, 10);
-        let formatted = val;
-        if (val.length > 6) {
-            formatted = `(${val.slice(0, 3)}) ${val.slice(3, 6)}-${val.slice(6)}`;
-        } else if (val.length > 3) {
-            formatted = `(${val.slice(0, 3)}) ${val.slice(3)}`;
-        } else if (val.length > 0) {
-            formatted = `(${val}`;
-        }
-        setInputValue(formatted);
+        setInputValue(applyPhoneMask(e.target.value));
     };
 
     return (
@@ -120,15 +123,13 @@ export const Fase0_Identidad = ({
                             </div>
                             <div className={`p-4 rounded-2xl text-sm shadow-sm leading-relaxed max-w-[80%] whitespace-pre-line ${msg.role === 'user' ? 'bg-[#1C75BC] text-white rounded-tr-none' : 'bg-white border border-slate-200 rounded-tl-none text-slate-700'}`}>
                                 {msg.content}
-                                
-                                {/* Render Options if any (Only for the latest message from assistant) */}
-                                {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && (
-                                    <div className="mt-4 flex flex-col gap-2">
-                                        {msg.options.map((opt, oIdx) => (
+                                {msg.role === 'assistant' && idx === messages.length - 1 && messages[messages.length - 1].options?.length > 0 && messages[messages.length - 1].options?.length <= 3 && !isAnalyzing && step !== 'completed' && (
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {messages[messages.length - 1].options.map((opt, oIdx) => (
                                             <button
                                                 key={oIdx}
                                                 onClick={() => handleSend(opt.label, opt.value)}
-                                                className="w-full text-left px-4 py-3 rounded-lg border border-[#1C75BC] text-[#1C75BC] hover:bg-[#1C75BC] hover:text-white transition-all duration-200 font-medium bg-white"
+                                                className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-full text-xs hover:bg-slate-200 hover:text-slate-900 transition-colors shadow-sm border border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 disabled={isAnalyzing || step === 'completed'}
                                             >
                                                 {opt.label}
@@ -139,27 +140,45 @@ export const Fase0_Identidad = ({
                             </div>
                         </div>
                     ))}
-                    {isAnalyzing && (
-                        <div className="flex gap-4 animate-pulse ml-11">
-                            <div className="bg-slate-100 border border-slate-200 w-20 h-8 rounded-2xl rounded-tl-none"></div>
-                        </div>
+                    {messages.length > 0 && (
+                        messages[messages.length - 1].options?.length > 3 ||
+                        messages[messages.length - 1].inputType === 'StateSelector' ||
+                        step === 'intro_curp_state'
+                    ) && !isAnalyzing && (
+                        <div className="h-72 sm:h-80 w-full pointer-events-none" />
                     )}
                     <div ref={chatEndRef} />
                 </div>
 
                 {/* INPUT ZONE */}
-                <div className="p-6 bg-white border-t border-slate-100">
-                    <form onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }} className="flex items-center gap-3 bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner">
+                <div className="p-6 bg-white border-t border-slate-100 relative z-[60]">
+                    <div className="relative w-full max-w-3xl mx-auto flex flex-col items-center">
+                        {messages[messages.length - 1]?.options?.length > 3 && !isAnalyzing && step !== 'completed' && (
+                            <SearchableVerticalMenu
+                                options={messages[messages.length - 1].options}
+                                onSelect={(val) => {
+                                    const opt = messages[messages.length - 1].options.find(o => o.value === val);
+                                    handleSend(opt.label, opt.value);
+                                }}
+                                searchQuery={inputValue}
+                                setSearchQuery={setInputValue}
+                            />
+                        )}
+                        
+
+                        
+                        <form onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }} className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner relative z-10">
                         <input
-                            type={step === 'intro_phone' ? 'tel' : 'text'}
-                            value={inputValue} onChange={step === 'intro_phone' ? handlePhoneChange : (e) => setInputValue(e.target.value)}
-                            placeholder={step === 'intro_phone' ? "(123) 456-7890" : "Escribe tu respuesta..."} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
+                            type={step.includes('phone') ? 'tel' : 'text'}
+                            value={inputValue} onChange={step.includes('phone') ? handlePhoneChange : (e) => setInputValue(e.target.value)}
+                            placeholder={step.includes('phone') ? "(123) 456-7890" : "Escribe tu respuesta..."} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none disabled:opacity-50"
                             disabled={isAnalyzing || step === 'completed'}
                         />
-                        <button type="submit" disabled={isAnalyzing || step === 'completed'} className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0">
-                            <Send className="w-5 h-5" />
+                        <button type="submit" disabled={!inputValue.trim() || isAnalyzing || step === 'completed'} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a] disabled:opacity-50 flex-shrink-0">
+                            <Send size={18} />
                         </button>
-                    </form>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

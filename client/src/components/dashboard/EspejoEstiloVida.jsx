@@ -60,18 +60,18 @@ const EspejoEstiloVida = ({ patientProfile, lifeStyleState, isPhaseComplete }) =
 
                 <div className={`px-10 pb-12 space-y-6 transition-all duration-500 ${containerGlow}`}>
                     {/* INDICADOR DE ALTITUD (Dimensión 2) */}
-                    <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[32px] flex items-center gap-4 animate-in slide-in-from-right">
-                        <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center shadow-sm">
+                    <div className="bg-blue-50 border border-blue-100 p-6 rounded-[32px] flex items-center gap-4 animate-in slide-in-from-right">
+                        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shadow-sm">
                             <Wind size={24} />
                         </div>
                         <div className="flex-1">
-                            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest font-prototype">Fisiología Ambiental</p>
-                            <p className="text-[14px] font-bold text-indigo-900 leading-none font-prototype">
+                            <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest font-prototype">Fisiología Ambiental</p>
+                            <p className="text-[14px] font-bold text-blue-900 leading-none font-prototype">
                                 {localState.environment.city}: {localState.environment.altitude} msnm
                             </p>
                         </div>
                         {localState.environment.hypoxiaRisk && (
-                            <div className="bg-indigo-600 text-white text-[9px] font-black px-4 py-2 rounded-full uppercase font-prototype animate-pulse">
+                            <div className="bg-blue-600 text-white text-[9px] font-black px-4 py-2 rounded-full uppercase font-prototype animate-pulse">
                                 Hipoxia Detectada
                             </div>
                         )}

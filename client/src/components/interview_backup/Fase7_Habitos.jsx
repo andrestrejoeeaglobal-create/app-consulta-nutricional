@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Send, Check } from 'lucide-react';
+import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import tiloImg from '../../assets/tilo.png';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
@@ -615,6 +616,19 @@ export default function Fase7_Habitos({ initialChatHistory, patientData, onPhase
                                 <ReactMarkdown className="prose prose-sm max-w-none">
                                     {msg.content}
                                 </ReactMarkdown>
+                                {msg.role === 'assistant' && idx === messages.length - 1 && msg.options && msg.options.length > 0 && msg.options.length <= 3 && !isAnalyzing && (
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {msg.options.map((opt, oIdx) => (
+                                            <button
+                                                key={oIdx}
+                                                onClick={() => handleOptionSelect(opt.value)}
+                                                className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -623,38 +637,33 @@ export default function Fase7_Habitos({ initialChatHistory, patientData, onPhase
 
                 {/* Input Area */}
                 <div className="flex-shrink-0 p-4 bg-white border-t border-gray-200">
-                    {getCurrentOptions() ? (
-                        <div className="flex flex-wrap gap-2 mb-2">
-                            {getCurrentOptions().map((opt, i) => (
-                                <button
-                                    key={i}
-                                    onClick={() => handleOptionSelect(opt.value)}
-                                    className="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-full text-sm font-medium transition-colors border border-indigo-200"
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2">
+                    {getCurrentOptions() && getCurrentOptions().length > 3 && !isAnalyzing && (
+                        <SearchableVerticalMenu
+                            options={getCurrentOptions()}
+                            onSelect={(val) => handleOptionSelect(val)}
+                        />
+                    )}
+                    <form
+                        onSubmit={(e) => { e.preventDefault(); handleInput(inputValue); }}
+                        className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner relative z-10"
+                    >
                             <input
                                 type={hasInputTypeNumber() ? "number" : "text"}
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleInput(inputValue)}
-                                placeholder="Escribe tu respuesta..."
-                                className="flex-1 px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-gray-800"
-                                autoFocus
+                                placeholder="Escriba aquí..."
+                                className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none disabled:opacity-50"
+                                disabled={!!getCurrentOptions()}
                             />
                             <button
-  onClick={() => handleInput(inputValue)}
-  disabled={!inputValue.trim()}
-  className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
->
-  <Send className="w-5 h-5" />
-</button>
-                        </div>
-                    )}
+                                type="submit"
+                                disabled={!inputValue.trim() || !!getCurrentOptions()}
+                                className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a] disabled:opacity-50 flex-shrink-0"
+                            >
+                                <Send size={18} />
+                            </button>
+                        </form>
                 </div>
             </div>
 

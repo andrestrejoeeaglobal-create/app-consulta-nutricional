@@ -2,10 +2,24 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --color-background: #f8fafc;
-  --color-accent: #2563eb;
-  --font-sans: "Sansation", "Inter", "Roboto", sans-serif;
+  --color-background: #FAFAFA;
+  --color-accent: #1C75BC;
+  --font-sans: "Inter", "Roboto", sans-serif;
   --font-prototype: "Prototype", "Inter", sans-serif;
+
+  /* --- TILO DESIGN SYSTEM THEME EXTENSION (v1.0) --- */
+  --color-tilo-bg-base: var(--tilo-bg-main);
+  --color-tilo-bg-panel: var(--tilo-bg-card);
+  --color-tilo-bg-chat-sys: var(--tilo-clinical-gray-50);
+  --color-tilo-text-main: var(--tilo-text-primary);
+  --color-tilo-text-muted: var(--tilo-text-secondary);
+  --color-tilo-border: var(--tilo-border-light);
+  --color-tilo-primary: var(--tilo-brand-blue);
+  --color-tilo-success: var(--tilo-brand-success);
+  --color-tilo-danger: var(--tilo-brand-danger);
+  --color-tilo-warning: var(--tilo-brand-warning);
+  --color-tilo-warning-text: var(--tilo-warning-text);
+  --color-tilo-success-text: var(--tilo-success-text);
 }
 
 /* Fonts are missing from project, falling back to Inter/Roboto 
@@ -27,41 +41,27 @@
 :root {
   color-scheme: light;
   /* --- TILO DESIGN TOKENS (v1.0) --- */
-  /* Brand Colors */
-  --tilo-brand-blue: #1a73e8;
-  /* Primary Interaction */
-  --tilo-brand-dark: #0f172a;
-  /* Deep Text / Backgrounds */
-  --tilo-brand-success: #10b981;
-  /* Positive Actions */
-  --tilo-brand-warning: #f59e0b;
-  /* Alerts */
-  --tilo-brand-danger: #ef4444;
-  /* Critical */
+  /* Brand Colors (Calibrados según el manual de marca oficial) */
+  --tilo-brand-blue: #1C75BC;    /* Azul Corporativo - Estabilizador */
+  --tilo-brand-dark: #0f172a;    /* Slate-900 */
+  --tilo-brand-success: #3AAA35; /* Verde Vida / Ingeniería Tisular */
+  --tilo-brand-warning: #FFCC00; /* Amarillo Creatividad */
+  --tilo-brand-danger: #E30613;  /* Rojo Pasión / Ignición Mitocondrial */
 
   /* Text Colors */
-  --tilo-text-primary: #334155;
-  /* Main Body (Slate-700) */
-  --tilo-text-secondary: #64748b;
-  /* Metadata (Slate-500) */
-  --tilo-text-on-dark: #f8fafc;
-  /* White/Light on Dark */
+  --tilo-text-primary: #334155;   /* Slate-700 */
+  --tilo-text-secondary: #64748b; /* Slate-500 */
+  --tilo-text-on-dark: #f8fafc;   /* Slate-50 */
 
-  /* Surface Colors */
-  --tilo-bg-main: #f8fafc;
-  /* 60% - Zen Empty Space (Slate-50) */
-  --tilo-bg-card: #ffffff;
-  /* Card Background */
-  --tilo-bg-hover: #f1f5f9;
-  /* Item Hover (Slate-100) */
-  --tilo-bg-secondary: #e2e8f0;
-  /* 30% - Secondary structure (Slate-200) */
+  /* Surface Colors (Regla 60-30-10) */
+  --tilo-bg-main: #FAFAFA;        /* 60% Blanco Quirúrgico - Estéril */
+  --tilo-bg-card: #ffffff;        /* Fondo Panel */
+  --tilo-bg-hover: #f1f5f9;       /* Slate-100 */
+  --tilo-bg-secondary: #F1F5F9;   /* 30% Estructural */
 
   /* Borders & Shadows */
-  --tilo-border-light: #f1f5f9;
-  /* Softer borders for Bento Grids */
+  --tilo-border-light: #e2e8f0;   /* Slate-200 */
   --tilo-shadow-soft: 0 4px 20px -2px rgb(0 0 0 / 0.03), 0 2px 4px -2px rgb(0 0 0 / 0.02);
-  /* Apple-like soft shadow */
   --tilo-shadow-hover: 0 10px 25px -4px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
 
   /* Glassmorphism / Neumorphism */
@@ -73,6 +73,49 @@
   --tilo-clinical-white: #ffffff;
   --tilo-clinical-gray-50: #f8fafc;
   --tilo-clinical-gray-100: #f1f5f9;
+
+  /* Text Contrast Override Colors (WCAG 2.1 AA) */
+  --tilo-warning-text: #B45309;  /* Ámbar Oscuro */
+  --tilo-success-text: #1E6B1A;  /* Verde Oscuro */
+}
+
+/* --- MODO OSCURO ERGONÓMICO (Previene la halación visual y fatiga) --- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    
+    /* Superficies Carbón No Emisoras (60% Dominante) */
+    --tilo-bg-main: #121212;
+    --tilo-bg-card: #1E1E1E;        /* Tarjeta Nivel 1 */
+    --tilo-bg-secondary: #252525;   /* Tarjeta Nivel 2 / Elevación */
+    --tilo-bg-hover: #2d2d2d;
+    
+    /* Textos con Opacidad Controlada */
+    --tilo-text-primary: rgba(255, 255, 255, 0.87);   /* 87% Opacidad */
+    --tilo-text-secondary: rgba(255, 255, 255, 0.60); /* 60% Opacidad */
+    --tilo-text-on-dark: rgba(255, 255, 255, 0.87);
+    
+    /* Bordes Suaves en Modo Oscuro */
+    --tilo-border-light: #2c2c2c;
+    
+    /* Colores Desaturados (Evitan la vibración retiniana) */
+    --tilo-brand-blue: #5C9CD8;       /* Azul Suave */
+    --tilo-brand-success: #76D773;    /* Verde Menta */
+    --tilo-brand-danger: #F85A5A;     /* Rojo Coral */
+    --tilo-brand-warning: #FFE169;    /* Amarillo Pastel */
+    
+    /* Glassmorphic overrides para Modo Oscuro */
+    --tilo-glass-bg: rgba(30, 30, 30, 0.65);
+    --tilo-glass-border: rgba(255, 255, 255, 0.1);
+    
+    --tilo-clinical-white: #1e1e1e;
+    --tilo-clinical-gray-50: #121212;
+    --tilo-clinical-gray-100: #1e1e1e;
+
+    /* Text Contrast Override Colors (WCAG 2.1 AA) */
+    --tilo-warning-text: #FFE169;  /* Amarillo Pastel */
+    --tilo-success-text: #76D773;  /* Verde Menta */
+  }
 }
 
 body {
@@ -275,4 +318,19 @@ body {
   color: var(--tilo-text-secondary);
   width: 1.25rem;
   height: 1.25rem;
+}
+
+/* --- TENSEGRITY DIVIDER (NOM-004) --- */
+.prose hr, hr {
+  border: 0 !important;
+  border-top: 1px solid #e2e8f0 !important; /* slate-200 */
+  margin: 1.5rem 0 !important;
+  opacity: 1 !important;
+  height: 1px !important;
+  display: block !important;
+}
+
+/* --- STRONG ACCENTUATION (Bolding Bug Fix) --- */
+strong, b, .prose strong {
+  font-weight: 700 !important;
 }

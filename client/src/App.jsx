@@ -3,18 +3,18 @@ import axios from 'axios';
 
 // eslint-disable-next-line no-unused-vars
 import { AnimatePresence, motion } from "framer-motion";
-import { User, Lock, AlertCircle, Apple, Activity, FlaskConical, FileText, ClipboardList, Calendar, Utensils, Send, CreditCard, Sparkles, Check, Settings2, Baby, Zap } from "lucide-react";
+import { User, Lock, AlertCircle, Apple, Activity, FlaskConical, FileText, ClipboardList, Calendar, Utensils, Send, CreditCard, Sparkles, Check, Settings2, Baby, Zap, Eye, EyeOff, Target, AlertTriangle } from "lucide-react";
 import MedicalDashboard from "./components/MedicalDashboard"; // Re-enabled
 import AvisoPrivacidad from "./components/AvisoPrivacidad";
 import ReactMarkdown from "react-markdown"; // <--- Importamos ReactMarkdown
-import tiloImg from "./assets/tilo.png"; // IMPORTAMOS A TILO ðŸ§©
+import tiloImg from "./assets/tilo.png"; // IMPORTAMOS A TILO 🧩
 // import { searchDrug, searchSupplement, checkInteractions, calibrateGutProtocol } from "./SafetyEngine"; // <--- Safety Engine V3.0 (Unused)
 import LogoEABlanco from "./assets/LogoEABlanco.svg"; // <--- Logo Equipo en Acción Blanco
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { FooterLoader } from "./components/FooterLoader"; // V15.6 Footer Aislado
 import { generateSecurityConstraints } from "./ClinicalRules"; // <--- Motor de Seguridad Cultural
-import { cleanServerInfo, formatText, strictBooleanValidator, formatDateLong } from "./utils/utils"; // <--- SAFE-ID Utils
+import { cleanServerInfo, formatText, strictBooleanValidator, formatDateLong, cleanBinaryGateMessage } from "./utils/utils"; // <--- SAFE-ID Utils
 import useCitationValidation from "./hooks/useCitationValidation"; // <--- SAFE-ID Hook
 import AntigravityCanvas from "./components/AntigravityCanvas"; // <--- Antigravity Physics Engine (Old)
 import { AntigravityBlobs } from "./components/AntigravityBlobs"; // V15.6 Glow Blobs
@@ -24,9 +24,23 @@ import useCortex from "./hooks/useCortex"; // <--- T.I.L.O Logical Engine
 import SearchableVerticalMenu from "./components/ui/SearchableVerticalMenu"; // V8.0 Searchable Vertical Menu
 import Fase3_MotivoConsulta from "./components/interview/Fase3_MotivoConsulta";
 import Fase4_AntecedentesFamiliares from "./components/interview/Fase4_AntecedentesFamiliares";
-import Fase5_EstiloVida from "./components/interview/Fase5_EstiloVida";
+import Fase5_EstiloVida from "./components/interview/Fase11_ActividadSueno";
 import Fase6_Farmacologia from "./components/interview/Fase6_Farmacologia";
-import Fase7_Habitos from "./components/interview/Fase7_Habitos";
+import Fase7_Habitos from "./components/interview/Fase10_HabitosConsumo";
+import Fase5_PatologicosPersonales from "./components/interview/Fase5_PatologicosPersonales";
+import Fase7_Alergias from "./components/interview/Fase7_Alergias";
+import Fase8_SaludDigestiva from "./components/interview/Fase8_Digestivo";
+import Fase9_EstadoFisiologico from "./components/interview/Fase9_EstadoFisiologico";
+import Fase12_Logistica from "./components/interview/Fase12_Logistica";
+import Fase13_PreferenciasAlimentarias from "./components/interview/Fase13_PreferenciasAlimentarias";
+import Fase14_CrononutricionR24H from "./components/interview/Fase14_CrononutricionR24H";
+import Fase15_FrecuenciaConsumoFFQ from "./components/interview/Fase15_FrecuenciaConsumoFFQ";
+import Fase16_BiometriaGeneral from "./components/interview/Fase16_BiometriaGeneral";
+import Fase17_SignosVitales from "./components/interview/Fase17_SignosVitales";
+import Fase18_EscanerBioelectrico from "./components/interview/Fase18_EscanerBioelectrico";
+import Fase19_DiagnosticoIntegral from "./components/interview/Fase19_DiagnosticoIntegral";
+import Fase20_Portapapeles from "./components/interview/Fase20_Portapapeles";
+import Fase21_Calendario from "./components/interview/Fase21_Calendario";
 
 // 1. Función Auxiliar (Fuera del componente)
 // 2. Calculadora de Edad Exacta
@@ -82,6 +96,177 @@ const normalizeInput = (text) => {
   if (negatives.some(n => lower === n)) return "Niega";
 
   return formatText(text); // Capitalizar si es texto válido
+};
+
+const getDevelopmentStage = (age) => {
+    if (age == null) return "Etapa no definida";
+    if (age < 2) return "Primera Infancia";
+    if (age < 12) return "Infancia";
+    if (age < 18) return "Adolescencia";
+    if (age < 35) return "Adulto Joven";
+    if (age < 60) return "Adultez";
+    return "Adulto Mayor";
+};
+
+const routeToSpanish = (route) => {
+    const map = {
+        'GOAL_ADDICTIONS': 'Adicciones y Sustancias',
+        'GOAL_GERIATRICS': 'Geriatría',
+        'GOAL_ALLERGIES': 'Alergias Graves',
+        'GOAL_WEIGHT_LOSS': 'Pérdida de Peso',
+        'GOAL_BARIATRIC': 'Bariátrica / Quirúrgico',
+        'GOAL_MENOPAUSE': 'Climaterio y Menopausia',
+        'GOAL_CLINICAL': 'Control Clínico',
+        'GOAL_PALLIATIVE': 'Cuidados Paliativos',
+        'GOAL_DISABILITY': 'Discapacidad y Rehabilitación',
+        'GOAL_PREGNANCY': 'Embarazo y Lactancia',
+        'GOAL_MUSCLE': 'Deporte / Rendimiento',
+        'GOAL_ONCOLOGY': 'Oncología Nutricional',
+        'GOAL_PEDIATRICS': 'Pediatría',
+        'GOAL_LONGEVITY': 'Longevidad',
+        'GOAL_MENTAL_HEALTH': 'Salud Mental',
+        'GOAL_RENAL': 'Salud Renal',
+        'GOAL_IMMUNE': 'Inmunodeficiencias'
+    };
+    const cleanRoute = (route || "").replace('@ ', '');
+    return map[cleanRoute] || cleanRoute;
+};
+
+const riskToSpanish = (risk) => {
+    const map = {
+        'LOW': 'Estable',
+        'BASE': 'Estable',
+        'MEDIUM': 'Moderado',
+        'HIGH': 'Riesgo Alto / Límite',
+        'SEVERE': 'Crítico (Red Flag)'
+    };
+    const cleanRisk = (risk || "").toUpperCase();
+    return map[cleanRisk] || risk;
+};
+
+const renderFormattedContent = (content) => {
+    if (!content) return null;
+    const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const hasBullets = lines.some(line => line.startsWith('-'));
+    
+    if (hasBullets) {
+        return (
+            <ul className="list-disc pl-4 space-y-1 mt-1 text-[11px] text-tilo-text-main leading-snug">
+                {lines.map((line, lIdx) => {
+                    const cleanLine = line.startsWith('-') ? line.substring(1).trim() : line;
+                    return (
+                        <li key={lIdx} className="text-[11px] text-tilo-text-main leading-snug">
+                            {cleanLine}
+                        </li>
+                    );
+                })}
+            </ul>
+        );
+    }
+    
+    if (content.includes(' - ')) {
+        const parts = content.split(' - ').map(p => p.trim()).filter(p => p.length > 0);
+        return (
+            <ul className="list-disc pl-4 space-y-1 mt-1 text-[11px] text-tilo-text-main leading-snug">
+                {parts.map((part, pIdx) => (
+                    <li key={pIdx} className="text-[11px] text-tilo-text-main leading-snug">
+                        {part}
+                    </li>
+                ))}
+            </ul>
+        );
+    }
+    
+    return <p className="text-[11px] text-tilo-text-main leading-snug">{content}</p>;
+};
+
+const parseSubItems = (subText) => {
+    const items = [];
+    const regex = /-\s*(Antecedentes|Desencadenantes|Mediadores|Asimilación|Integridad Estructural|Energía|Defensa y Reparación):\s*([\s\S]*?)(?=-\s*(Antecedentes|Desencadenantes|Mediadores|Asimilación|Integridad Estructural|Energía|Defensa y Reparación)|$)/gi;
+    let match;
+    while ((match = regex.exec(subText)) !== null) {
+        items.push({
+            title: match[1].trim(),
+            content: match[2].trim()
+        });
+    }
+    return items;
+};
+
+const renderClinicalCards = (text) => {
+    if (!text) return null;
+    
+    const cleanText = text.replace(/\r\n/g, '\n').trim();
+    
+    const forenseMatch = cleanText.match(/Análisis Forense:\s*([\s\S]*?)(?=Modelo ATM:|Nodos de la Matriz IFM afectados:|$)/i);
+    const atmMatch = cleanText.match(/Modelo ATM:\s*([\s\S]*?)(?=Nodos de la Matriz IFM afectados:|\*Nota Clínica\*|$)/i);
+    const nodesMatch = cleanText.match(/Nodos de la Matriz IFM afectados:\s*([\s\S]*?)(?=\*Nota Clínica\*|\*Nota Clínica:\*|$)/i);
+    const noteMatch = cleanText.match(/\*Nota Clínica:\*?\s*([\s\S]*?)$/i);
+    
+    const forenseText = forenseMatch ? forenseMatch[1].trim() : "";
+    const atmText = atmMatch ? atmMatch[1].trim() : "";
+    const nodesText = nodesMatch ? nodesMatch[1].trim() : "";
+    const noteText = noteMatch ? noteMatch[1].trim() : "";
+    
+    const atmItems = parseSubItems(atmText);
+    const nodeItems = parseSubItems(nodesText);
+    
+    if (atmItems.length === 0 && nodeItems.length === 0) {
+        let formatted = cleanText
+            .replace(/\n\s*-\s*/g, '\n\n- ')
+            .replace(/([a-zA-Z0-9]):\s+-/g, '$1:\n\n-');
+        return (
+            <div className="text-sm text-tilo-text-main leading-relaxed">
+                <ReactMarkdown>{formatted}</ReactMarkdown>
+            </div>
+        );
+    }
+    
+    return (
+        <div className="space-y-4 mt-2">
+            {forenseText && (
+                <div className="bg-tilo-bg-base/30 p-3.5 rounded-xl border border-tilo-border">
+                    <span className="text-[10px] text-tilo-text-muted font-bold uppercase tracking-wider block mb-1">Análisis Forense</span>
+                    <p className="text-xs text-tilo-text-main leading-relaxed">{forenseText}</p>
+                </div>
+            )}
+            
+            {atmItems.length > 0 && (
+                <div className="bg-tilo-bg-panel p-3.5 rounded-xl border border-tilo-border">
+                    <span className="text-[10px] text-tilo-primary font-bold uppercase tracking-wider block mb-2">Modelo ATM</span>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {atmItems.map((item, idx) => (
+                            <div key={idx} className="bg-tilo-bg-base/20 p-2.5 rounded-lg border border-tilo-border/50">
+                                <span className="text-[10px] text-tilo-text-muted font-bold block mb-0.5">{item.title}</span>
+                                {renderFormattedContent(item.content)}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+            
+            {nodeItems.length > 0 && (
+                <div className="bg-tilo-bg-panel p-3.5 rounded-xl border border-tilo-border">
+                    <span className="text-[10px] text-tilo-success font-bold uppercase tracking-wider block mb-2">Nodos Matriz IFM Afectados</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {nodeItems.map((item, idx) => (
+                            <div key={idx} className="bg-tilo-bg-base/20 p-2.5 rounded-lg border border-tilo-border/50">
+                                <span className="text-[10px] text-tilo-success font-bold block mb-0.5">{item.title}</span>
+                                {renderFormattedContent(item.content)}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+            
+            {noteText && (
+                <div className="border-t border-tilo-border/60 pt-2.5 text-[10px] text-tilo-text-muted italic flex items-center gap-1.5">
+                    <span className="font-bold uppercase tracking-wider text-[9px] bg-tilo-bg-base/60 px-1.5 py-0.5 rounded border border-tilo-border">Nota Clínica</span>
+                    <span>{noteText.replace(/\*Nota Clínica:\*?\s*/i, "")}</span>
+                </div>
+            )}
+        </div>
+    );
 };
 
 
@@ -442,6 +627,32 @@ const RecoveryDialog = ({ data, onResume, onRestart }) => {
   );
 };
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex-1 h-full p-8 bg-red-50 text-red-900 overflow-auto">
+          <h2 className="text-lg font-bold mb-2">🔴 Error en la columna de chat:</h2>
+          <pre className="text-xs p-4 bg-red-100 rounded border border-red-200 whitespace-pre-wrap">
+            {this.state.error?.stack || this.state.error?.toString()}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function App() {
   // --- ESTADO DE ACCESO ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -452,8 +663,38 @@ function App() {
   // --- ESTADOS INPUTS LOGIN ---
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false); // Estado de carga para login
+  const [inputHandler, setInputHandler] = useState(null); // Handler para reencauzar input a fases headless
+  const [hardwareStatus, setHardwareStatus] = useState({ connected: false, scanning: false });
+  const [timerState, setTimerState] = useState('IDLE'); // 'IDLE' | 'RUNNING' | 'FINISHED'
+  const [timeLeft, setTimeLeft] = useState(30);
+
+  useEffect(() => {
+    let interval = null;
+    if (timerState === 'RUNNING') {
+      interval = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            setTimerState('FINISHED');
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+            setTimeout(() => {
+              setTimerState('IDLE');
+            }, 5000);
+            return 30;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else if (timerState === 'IDLE') {
+      setTimeLeft(30);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [timerState]);
+
 
   // --- SAFE-ID STATE (V4.0) ---
   const [sessionMetadata, setSessionMetadata] = useState({ userId: null, citation: null, serverName: null });
@@ -494,8 +735,19 @@ function App() {
     triggerPhase1Summary,
     triggerPhase5Summary,
     triggerPhase6Summary,
-    triggerPhase7Summary
+    triggerPhase7Summary,
+    triggerPhase8Summary,
+    triggerPhase9Summary
   } = useCortex();
+
+  const messagesList = messages || [];
+
+  const isSpecificLogisticsQuestion = React.useMemo(() => {
+    return messagesList.length > 0 && 
+      messagesList[messagesList.length - 1].role === 'assistant' &&
+      (messagesList[messagesList.length - 1].content.includes('¿Para cuántas personas en total') || 
+       messagesList[messagesList.length - 1].content.includes('¿hay niños pequeños o adultos mayores'));
+  }, [messagesList]);
 
   const [input, setInput] = useState("");
 
@@ -522,6 +774,16 @@ function App() {
   //     setActiveTab(targetTab);
   //   }
   // }, [interviewStep]);
+
+  // Sincronizar confirmación de identidad con la fase activa de useCortex tras recarga
+  useEffect(() => {
+    if (currentPhase) {
+      const isPhaseZero = ['PHASE_0_AUTH', 'PHASE_0_IDENTITY_CHECK', 'PHASE_0_PRIVACY'].includes(currentPhase);
+      if (!isPhaseZero) {
+        setIsIdentityConfirmed(true);
+      }
+    }
+  }, [currentPhase]);
 
   // 2. Estado de los datos del paciente (Movido a useCortex.js)
   // patientData and setPatientData are now imported from useCortex
@@ -551,8 +813,19 @@ function App() {
 
   // V8.0 Shared Option Selection Dispatch
   const handleOptionSelect = (msg, val) => {
+    console.log("🖱️ [handleOptionSelect] Clicked option value:", val, "in message:", msg);
     const opt = msg?.options?.find(o => o.value === val);
-    if (!opt) return;
+    if (!opt) {
+      if (val) {
+        console.log("✍️ [handleOptionSelect] Custom option selected:", val);
+        setMessages(prev => [...prev, { role: 'user', content: `Registrar "${val}"` }]);
+        handleSend(val);
+      } else {
+        console.warn("⚠️ [handleOptionSelect] Option not found and value is empty.");
+      }
+      return;
+    }
+    console.log("✅ [handleOptionSelect] Option found:", opt);
 
     if (opt.value === 'COMMIT_NAME' || opt.value === 'CONFIRM_GRANULARITY_YES') {
       setPatientData(prev => ({ ...prev, identificacion: { ...prev.identificacion, nombre: formatText(tempNameInput) } }));
@@ -616,10 +889,13 @@ function App() {
       setCurrentPhase(jumpTo);
 
       // 4. User Feedback
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: `✅ **Sesión Recuperada Exitosamente**\n\nContinuemos desde la Fase ${recoveryData.last_active_phase} donde nos quedamos.`
-      }]);
+      setMessages(prev => {
+        const safePrev = prev || [];
+        return [...safePrev, {
+          role: "assistant",
+          content: `✅ **Sesión Recuperada Exitosamente**\n\nContinuemos desde la Fase ${recoveryData.last_active_phase} donde nos quedamos.`
+        }];
+      });
 
       // 5. Clear Modal
       setRecoveryData(null);
@@ -629,7 +905,10 @@ function App() {
       // Fallback
       setRecoveryData(null);
       setInterviewStep("verify_identity");
-      setMessages(prev => [...prev, { role: "assistant", content: "⚠️ Error al recuperar los datos. Se iniciará una nueva sesión." }]);
+      setMessages(prev => {
+        const safePrev = prev || [];
+        return [...safePrev, { role: "assistant", content: "⚠️ Error al recuperar los datos. Se iniciará una nueva sesión." }];
+      });
     }
   };
 
@@ -643,8 +922,15 @@ function App() {
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    if (isSpecificLogisticsQuestion) {
+      const timer = setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+      return () => clearTimeout(timer);
+    } else {
+      scrollToBottom();
+    }
+  }, [messages, scrollToBottom, isSpecificLogisticsQuestion]);
 
   // --- AUTOSAVE EFFECT (PHASE 4 PERSISTENCE) ---
   const saveHistoryToBackend = useCallback(async () => {
@@ -676,9 +962,13 @@ function App() {
   }, [interviewStep, saveHistoryToBackend]);
 
   // Add Phase 4-6 State handling
+  const [fase3Step, setFase3Step] = useState(null);
   const [fase4State, setFase4State] = useState(null);
   const [fase5State, setFase5State] = useState(null);
   const [fase6State, setFase6State] = useState(null);
+  const [fase7State, setFase7State] = useState(null);
+  const [fase8State, setFase8State] = useState(null);
+  const [fase9State, setFase9State] = useState(null);
   // V9.0: Escuchar cuando Cortex cede el control a la fase antigua de App.jsx
   useEffect(() => {
     // 1. Mostrar Aviso de Privacidad cuando Cortex llega a la fase (evita rebotes con isIdentityConfirmed)
@@ -779,15 +1069,43 @@ function App() {
     // CORRECCIÓN: Usamos logic híbrida (input manual o botón)
     const rawMsg = optionalInput !== null ? optionalInput : input;
     const userMsg = typeof rawMsg === 'string' ? rawMsg : "";
+    console.log("➡️ [handleSend] userMsg:", userMsg, "optionalInput:", optionalInput);
 
-    if (!userMsg.trim()) return;
+    if (!userMsg.trim()) {
+      console.warn("⚠️ [handleSend] Empty message, returning.");
+      return;
+    }
 
     // LIMPIEZA INCONDICIONAL: Siempre limpiamos el input visual,
     // incuso si el usuario hizo clic en un botón teniendo texto escrito.
     setInput("");
 
+    console.log("🔍 [handleSend] Checking inputHandler:", inputHandler);
+    // REDIRECCIÓN HEADLESS: Si hay un handler registrado de fase headless y la identidad está confirmada, delegar
+    if (isIdentityConfirmed && inputHandler) {
+      console.log("➡️ Delegating input to registered inputHandler:", userMsg);
+      let handlerFn = null;
+      if (typeof inputHandler === 'function') {
+        console.log("inputHandler is a function. Length:", inputHandler.length);
+        if (inputHandler.length === 0) {
+          const evaluated = inputHandler();
+          handlerFn = typeof evaluated === 'function' ? evaluated : inputHandler;
+          console.log("Evaluated inputHandler to:", handlerFn);
+        } else {
+          handlerFn = inputHandler;
+        }
+      }
+      if (typeof handlerFn === 'function') {
+        const isButton = optionalInput !== null;
+        console.log("🚀 Executing handlerFn with:", userMsg, isButton ? 'button' : 'text');
+        handlerFn(userMsg, isButton ? 'button' : 'text');
+        return;
+      }
+    }
+
     // ENRUTADOR PRINCIPAL: Si estamos en las nuevas fases de Cortex, usamos processUserInput
-    const isCortexPhase = currentPhase.startsWith('PHASE_0') || currentPhase.startsWith('PHASE_1') || currentPhase.startsWith('PHASE_2') || currentPhase.startsWith('PHASE_3') || currentPhase.startsWith('PHASE_4') || currentPhase.startsWith('PHASE_5') || currentPhase.startsWith('PHASE_6') || currentPhase.startsWith('PHASE_7') || currentPhase.startsWith('PHASE_8') || currentPhase.startsWith('PHASE_9') || currentPhase.startsWith('PHASE_10') || currentPhase.startsWith('PHASE_11') || currentPhase.startsWith('PHASE_12') || currentPhase.startsWith('PHASE_13');
+
+    const isCortexPhase = currentPhase.startsWith('PHASE_');
     const isHandoff = currentPhase === 'PHASE_2_COMPLETE_HANDOFF' || currentPhase === 'PHASE_9_COMPLETE_HANDOFF' || currentPhase === 'PHASE_10_COMPLETE_HANDOFF' || currentPhase === 'PHASE_11_COMPLETE_HANDOFF' || currentPhase === 'PHASE_12_COMPLETE_HANDOFF' || currentPhase === 'PHASE_13_COMPLETE_HANDOFF';
 
     if (isCortexPhase && !isHandoff) {
@@ -1540,7 +1858,7 @@ function App() {
           ...prev,
           identificacion: { ...prev.identificacion, curp: curpInput, curpValidated: true }
         }));
-        setMessages((prev) => [...prev, { role: "assistant", content: "✅ CURP Validada.\n\nPasemos ahora a sus datos de contacto. ¿Cuál es su número de teléfono celular?" }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: "✅ CURP Validada.\n\nPasemos ahora a sus datos de contacto. ¿Cuál es su número de teléfono celular?", inputType: "tel" }]);
         setInterviewStep("intro_phone");
       } else {
         setMessages((prev) => [...prev, { role: "assistant", content: "El formato de la CURP no es válido. Debe tener 18 caracteres alfanuméricos.\nIntente nuevamente o seleccione otra opción:" }]);
@@ -1585,7 +1903,7 @@ function App() {
             ...prev,
             identificacion: { ...prev.identificacion, curp: curpToSave, curpValidated: true }
           }));
-          setMessages(prev => [...prev, { role: "assistant", content: "✅ CURP Confirmada y Guardada.\n\nPasemos ahora a sus datos de contacto. ¿Cuál es su número de teléfono celular?" }]);
+          setMessages(prev => [...prev, { role: "assistant", content: "✅ CURP Confirmada y Guardada.\n\nPasemos ahora a sus datos de contacto. ¿Cuál es su número de teléfono celular?", inputType: "tel" }]);
           setInterviewStep("intro_phone");
         } else {
           // Fallback por seguridad si se perdió el temp
@@ -1621,7 +1939,7 @@ function App() {
             nationality_type: 'FOREIGN' // Reinforce
           }
         }));
-        setMessages((prev) => [...prev, { role: "assistant", content: "Documento Migratorio Registrado. \n\nContinuemos. ¿Cuál es su número de teléfono celular?" }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: "Documento Migratorio Registrado. \n\nContinuemos. ¿Cuál es su número de teléfono celular?", inputType: "tel" }]);
         setInterviewStep("intro_phone");
       }, 600);
     }
@@ -1631,14 +1949,15 @@ function App() {
       setTimeout(() => {
         // Validación Estricta 10 Digitos
         const phoneRegex = /^[0-9]{10}$/;
-        if (!phoneRegex.test(userMsg.trim())) {
-          setMessages((prev) => [...prev, { role: "assistant", content: "El número debe tener exactamente 10 dígitos. Por favor verifíquelo." }]);
+        const inputClean = userMsg.replace(/\D/g, ''); // Limpiar input
+        if (!phoneRegex.test(inputClean)) {
+          setMessages((prev) => [...prev, { role: "assistant", content: "El número debe tener exactamente 10 dígitos. Por favor verifíquelo.", inputType: "tel" }]);
           return; // ⛔ BLOCK
         }
 
         setPatientData((prev) => ({
           ...prev,
-          identificacion: { ...prev.identificacion, telefono: userMsg }
+          identificacion: { ...prev.identificacion, telefono: inputClean }
         }));
         const isPediatric = patientData?.identificacion?.edad < 12;
         const isTutor = patientData?.emergencia?.parentezco === 'Tutor/Madre/Padre';
@@ -1924,7 +2243,7 @@ function App() {
           ...prev,
           emergencia: { ...prev.emergencia, parentesco: parentescoVal }
         }));
-        setMessages((prev) => [...prev, { role: "assistant", content: "¿Me dicta el **número de teléfono** a 10 dígitos de esa persona?" }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: "¿Me dicta el **número de teléfono** a 10 dígitos de esa persona?", inputType: "tel" }]);
         setInterviewStep("emergency_phone");
       }, 600);
     }
@@ -1935,7 +2254,7 @@ function App() {
         const inputClean = userMsg.replace(/\D/g, ''); // Limpiar input
 
         if (!phoneRegex.test(inputClean)) {
-          setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ¡Atención! El número debe tener exactamente 10 dígitos (usted ingresó ${inputClean.length}). Por favor verifíquelo e intente de nuevo.` }]);
+          setMessages((prev) => [...prev, { role: "assistant", content: `⚠️  ¡Atención! El número debe tener exactamente 10 dígitos (usted ingresó ${inputClean.length}). Por favor verifíquelo e intente de nuevo.`, inputType: "tel" }]);
           return; // ⛔ BLOCK
         }
 
@@ -1943,7 +2262,7 @@ function App() {
         // El número de emergencia NO debe ser igual al del paciente
         const patientPhone = patientData.identificacion?.telefono?.replace(/\D/g, '');
         if (patientPhone && inputClean === patientPhone) {
-          setMessages((prev) => [...prev, { role: "assistant", content: "Por seguridad, el número de emergencia debe ser distinto al suyo. ¿Tiene otro número de contacto?" }]);
+          setMessages((prev) => [...prev, { role: "assistant", content: "Por seguridad, el número de emergencia debe ser distinto al suyo. ¿Tiene otro número de contacto?", inputType: "tel" }]);
           return; // ⛔ BLOCK
         }
 
@@ -3899,7 +4218,11 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
       const currentVal = patientData.identificacion[field];
 
       setTempItem({ editField: field });
-      setMessages((prev) => [...prev, { role: "assistant", content: `El valor actual es: ** ${currentVal || '--'}**.\n\nPor favor escriba el nuevo valor: ` }]);
+      setMessages((prev) => [...prev, { 
+        role: "assistant", 
+        content: `El valor actual es: ** ${currentVal || '--'}**.\n\nPor favor escriba el nuevo valor: `,
+        ...(field === 'telefono' ? { inputType: 'tel' } : {})
+      }]);
       setInterviewStep("edit_identity_input");
     }
 
@@ -3930,6 +4253,16 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
 
       let integrityBroken = false;
       let feedbackMsg = "Dato actualizado correctamente.";
+
+      if (editField === 'telefono') {
+        const phoneRegex = /^[0-9]{10}$/;
+        const cleanedPhone = newValue.replace(/\D/g, '');
+        if (!phoneRegex.test(cleanedPhone)) {
+          setMessages((prev) => [...prev, { role: "assistant", content: "El número debe tener exactamente 10 dígitos. Por favor verifíquelo.", inputType: "tel" }]);
+          return; // ⛔ BLOCK
+        }
+        newValue = cleanedPhone;
+      }
 
       if (isSensitive) {
         if (editField === 'sexo') {
@@ -4668,28 +5001,27 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
   // ==============================================================================
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#151515] flex items-center justify-center p-4">
         {/* TARJETA PRINCIPAL */}
-        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden font-sans">
-          {/* 1. ENCABEZADO (Azul Eléctrico) */}
-          <div className="bg-blue-600 p-6 flex justify-between items-center relative overflow-hidden">
-            {/* Patrón de fondo sutil opcional */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-blue-700 opacity-100"></div>
-
-            <div className="relative z-10">
-              <h1 className="text-white text-base font-semibold tracking-tight leading-snug">
-                Ecosistema de<br />
-                <span className="font-extrabold text-lg">T</span>ransformación <span className="font-extrabold text-lg">I</span>nteligente<br />
-                y <span className="font-extrabold text-lg">L</span>ogro <span className="font-extrabold text-lg">O</span>ptimizado
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden font-sans border border-slate-100">
+          {/* 1. ENCABEZADO BENTO CLÍNICO */}
+          <div className="bg-[#FAFAFA] p-6 flex justify-between items-center border-b border-slate-200/60 relative">
+            <div>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+                Ecosistema de
+              </span>
+              <h1 className="text-slate-800 font-extrabold text-base tracking-tight leading-tight">
+                Transformación Inteligente<br />
+                <span className="text-slate-500 font-normal">y</span> Logro Optimizado
               </h1>
             </div>
 
-            {/* LOGOTIPO */}
-            <div className="relative z-10 bg-white/10 p-2 rounded-lg backdrop-blur-sm shadow-sm">
+            {/* LOGOTIPO EN CONTENEDOR AZUL CORPORATIVO */}
+            <div className="bg-[#1C75BC] p-2.5 rounded-xl shadow-sm flex items-center justify-center">
               <img
                 src={LogoEABlanco}
                 alt="Logo"
-                className="h-10 w-auto object-contain"
+                className="h-8 w-auto object-contain"
               />
             </div>
           </div>
@@ -4737,8 +5069,8 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       <Lock className="h-5 w-5 text-slate-400" />
                     </div>
                     <input
-                      type="password"
-                      className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
+                      type={showPassword ? "text" : "password"}
+                      className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => {
@@ -4746,6 +5078,13 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                         if (error) setError("");
                       }}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                    >
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
                   </div>
                   <div className="flex justify-end mt-2">
                     <a
@@ -4758,22 +5097,21 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                 </div>
               </div>
 
-              {/* --- TEXTO BIO-CUÁNTICA (Ahora está ANTES del botón) --- */}
+              {/* --- TEXTO BIO-CUÁNTICA (Ahora sanitizado a Modelos Avanzados) --- */}
               <p className="text-slate-600 text-sm leading-relaxed text-justify px-1">
-                Este sistema procesa datos sensibles de salud mediante
-                <span className="font-semibold text-slate-800">
-                  {" "}
-                  Inteligencia Artificial Bio-Cuántica
+                Este sistema procesa datos sensibles de salud mediante{" "}
+                <span className="font-bold text-slate-700">
+                  Modelos Avanzados de Visión Artificial y Análisis Clínico Metabólico
                 </span>
                 . Al ingresar, confirmas que tienes autorización para gestionar
                 estos expedientes.
               </p>
 
-              {/* --- BOTÓN DE ACCIÓN (Ahora está al FINAL del formulario) --- */}
+              {/* --- BOTÓN DE ACCIÓN (Ahora está al FINAL del formulario y estilizado plano) --- */}
               <button
                 type="submit"
                 disabled={isLoading}
-                className={`w-full ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-500/20'} text-white py-4 rounded-lg transition-all font-bold text-lg flex items-center justify-center gap-2 group`}
+                className={`w-full ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#1C75BC] hover:bg-[#155A92] shadow-md'} text-white py-4 rounded-lg transition-all font-bold text-lg flex items-center justify-center gap-2 group`}
               >
                 {isLoading ? 'Verificando y Autenticando...' : 'Iniciar Sesión'}
                 {/* Flecha animada al hacer hover */}
@@ -4785,10 +5123,10 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
               </button>
             </form>
 
-            {/* --- NOTA LEGAL (Footer Gris) --- */}
+            {/* --- NOTA LEGAL (Footer Gris con Alto Contraste) --- */}
             <div className="mt-8 pt-4 border-t border-slate-100">
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <p className="text-[10px] text-slate-400 leading-tight text-center uppercase tracking-wide font-medium">
+                <p className="text-[10px] text-slate-600 leading-tight text-center uppercase tracking-wide font-bold">
                   La información mostrada es para uso exclusivo de profesionales
                   de la salud. Protocolos de encriptación estándar activos.
                 </p>
@@ -4846,407 +5184,945 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
         )}
 
         {/* CONTENEDOR PRINCIPAL (2 COLUMNAS) */}
-        {/* ✅ BARRA DE WORKSPACE (Limpia y Dinámica) */}
-
-
-
-        {/* CONTENEDOR PRINCIPAL (2 COLUMNAS) */}
         <div className="flex flex-1 w-full overflow-hidden">
 
           {/* --- COLUMNA IZQUIERDA: CHAT --- */}
-          <div className="w-1/2 flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 relative">
-
-            {interviewStep === 'finished' ? (
-              <div className="flex-1 h-full flex items-center justify-center p-8 bg-slate-50 relative">
-                <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 max-w-sm text-center flex flex-col items-center gap-6">
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="w-20 h-20 rounded-full bg-slate-100 flex-shrink-0 border shadow-md flex items-center justify-center overflow-hidden mb-2 mx-auto"
-                  >
-                    <img src={tiloImg} alt="Tilo" className="w-16 h-16 object-contain" />
-                  </motion.div>
-                  <h2 className="text-xl font-bold text-slate-800">Entrevista Finalizada</h2>
-                  <p className="text-slate-600 leading-relaxed text-sm">
-                    Expediente cerrado y guardado. Cediendo el control total al Bio-Arquitecto para la explicación final del plan al paciente.
-                  </p>
-                  <div className="w-16 h-1 bg-blue-500 rounded-full mt-2 opacity-50 mx-auto"></div>
-                </div>
-              </div>
-            ) : currentPhase === 'PHASE_3_MOTIVO_CONSULTA' ? (
-              <Fase3_MotivoConsulta
-                patientData={patientData}
-                setPatientData={setPatientData}
-                messages={messages}
-                setMessages={setMessages}
-                onPhaseComplete={(motiveData) => {
-                  setFase3State(motiveData);
-
-                  // --- MIDDLEWARE: VALIDADOR DE COHERENCIA (NOM-004) ---
-                  if (!motiveData.primaryRoute || motiveData.primaryRoute === 'No especificado' || !motiveData.gem_reasoning) {
-                    setMessages(prev => [...prev, {
-                      role: "assistant",
-                      content: "⚠️ **Interbloqueo de Seguridad (NOM-004)**: El motor Cortex no cuenta con datos suficientes para establecer una Ruta Clínica Principal o un Razonamiento validado. Por favor, proporcione más detalles de su motivo de consulta."
-                    }]);
-                    return; // Bloquea el avance
-                  }
-
-                  setCurrentPhase('PHASE_4_FAMILY_HISTORY');
-                }}
-              />
-            ) : currentPhase === 'PHASE_4_FAMILY_HISTORY' ? (
-              <Fase4_AntecedentesFamiliares
-                user={user}
-                appId={apiContext?.citaId}
-                patientData={patientData}
-                setPatientData={setPatientData}
-                patientProfile={patientData}
-                phase3Data={fase3State}
-                onStateChange={setFase4State}
-                initialChatHistory={messages}
-                onPhaseComplete={(familyTreeData, localMessages) => {
-                  setPatientData(prev => ({ ...prev, familyTree: familyTreeData }));
-                  // Bypass redundant confirmation summary in Phase 4
-                  setMessages(localMessages);
-                  setCurrentPhase('PHASE_5_LIFESTYLE');
-                }}
-              />
-            ) : currentPhase === 'PHASE_5_LIFESTYLE' ? (
-              <Fase5_EstiloVida
-                user={user}
-                appId={apiContext?.citaId}
-                patientData={patientData}
-                setPatientData={setPatientData}
-                patientProfile={patientData}
-                onStateChange={setFase5State}
-                initialChatHistory={messages}
-                onPhaseComplete={(lifestyleData) => {
-                  setPatientData(prev => ({ ...prev, lifeStyleInfo: lifestyleData }));
-                  triggerPhase5Summary({ ...patientData, lifeStyleInfo: lifestyleData });
-                }}
-              />
-            ) : currentPhase === 'PHASE_6_PHARMACOLOGY' ? (
-              <Fase6_Farmacologia
-                user={user}
-                appId={apiContext?.citaId}
-                patientData={patientData}
-                setPatientData={setPatientData}
-                patientProfile={patientData}
-                onStateChange={setFase6State}
-                initialChatHistory={messages}
-                onPhaseComplete={(pharmaData) => {
-                  setPatientData(prev => ({ ...prev, pharmacology: pharmaData }));
-                  triggerPhase6Summary({ ...patientData, pharmacology: pharmaData });
-                }}
-              />
-            ) : currentPhase === 'PHASE_7_HABITS' ? (
-              <Fase7_Habitos
-                user={user}
-                appId={apiContext?.citaId}
-                patientData={patientData}
-                setPatientData={setPatientData}
-                patientProfile={patientData}
-                initialChatHistory={messages}
-                onPhaseComplete={(habitsData) => {
-                  setPatientData(prev => ({ ...prev, habits: habitsData }));
-                  triggerPhase7Summary({ ...patientData, habits: habitsData });
-                }}
-              />
-            ) : (
-              <>
-                <div className="flex-1 h-full overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar z-10 relative">
-                  {messages.map((msg, index) => (
-                    <div
-                      key={index}
-                      className={`flex ${msg.role === "assistant" ? "justify-start" :
-                        "justify-end"
-                        } mb-6 items-start gap-3`}
-                    >
-                      {/* AVATAR DE TILO: Solo para Asistente */}
-                      {msg.role === "assistant" && (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden"
-                        >
-                          <img
-                            src={tiloImg}
-                            alt="Tilo"
-                            className="w-10 h-10 object-contain" // Tilo ahora ocupa mejor su contenedor
-                          />
-                        </motion.div>
-                      )}
-
-                      <div
-                        className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === "assistant"
-                          ? msg.isBio
-                            ? "bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium"
-                            : msg.isAcute
-                              ? "bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium"
-                              : msg.isCritical
-                                ? "bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold"
-                                : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
-                          : "bg-indigo-600 text-white rounded-tr-none"
-                          }`}
-                      >
-                        {/* Envolvemos el Markdown en un div para los estilos de tipografía */}
-                        <div
-                          className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" :
-                            "prose-invert"
-                            }`}
-                        >
-                          <ReactMarkdown>{msg.content}</ReactMarkdown>
-                        </div>
-
-                        {/* V7.1 RENDERIZADO DE BOTONES (Chips Interactivos) */}
-                        {/* ADAPTIVE UI: Todos los botones se muestran. Si hay > 3, usar Select Dropdown */}
-                        {msg.options && (
-                          (msg.options.length > 3) ? null : (
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {msg.options.map((opt, i) => {
-                                const isLastMessage = index === messages.length - 1;
-                                return (
-                                  <button
-                                    key={i}
-                                    disabled={!isLastMessage}
-                                    onClick={() => {
-                                      if (!isLastMessage) return;
-                                      handleOptionSelect(msg, opt.value);
-                                    }}
-                                    className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
-                                  >
-                                    {opt.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )
-                        )}
-
-                        {/* V2.6 INFERENCE ENGINE UI */}
-                        {msg.inputType === 'analyzing' && (
-                          <div className="flex flex-col items-center py-4 space-y-3 animate-pulse mt-4">
-                            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Sintetizando diagnóstico...</p>
-                          </div>
-                        )}
-
-
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                <div className="p-6 bg-white border-t border-slate-50 shrink-0">
-
-                  {/* V8.0 IDENTITY BIFURCATION UI */}
-                  {interviewStep === 'intro_curp' && (
+          <div className="w-1/2 flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 relative overflow-hidden">
+            <AnimatePresence mode="wait">
+              {interviewStep === 'finished' ? (
+                <motion.div
+                  key="finished"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="flex-1 h-full flex items-center justify-center p-8 bg-slate-50 relative"
+                >
+                  <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 max-w-sm text-center flex flex-col items-center gap-6">
                     <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="mb-3 flex justify-end"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="w-20 h-20 rounded-full bg-slate-100 flex-shrink-0 border shadow-md flex items-center justify-center overflow-hidden mb-2 mx-auto"
                     >
-                      <button
-                        onClick={() => {
-                          setPatientData(prev => ({
-                            ...prev,
-                            identificacion: { ...prev.identificacion, nationality_type: 'FOREIGN', curp: null, curpValidated: true }
-                          }));
-                          setMessages(prev => [...prev, { role: "assistant", content: `Entendido. Paciente ${patientData.identificacion.sexo === 'Femenino' ? 'Extranjera' : 'Extranjero'}.\n\nPor favor, ingrese su **Número de Pasaporte** o Documento Migratorio.` }]);
-                          setInterviewStep('intro_passport');
-                        }}
-                        className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors flex items-center gap-2"
-                      >
-                        {patientData.identificacion.sexo === 'Femenino' ? 'Soy Extranjera' : 'Soy Extranjero'} / No tengo CURP
-                      </button>
+                      <img src={tiloImg} alt="Tilo" className="w-16 h-16 object-contain" />
                     </motion.div>
+                    <h2 className="text-xl font-bold text-slate-800">Entrevista Finalizada</h2>
+                    <p className="text-slate-600 leading-relaxed text-sm">
+                      Expediente cerrado y guardado. Cediendo el control total al Bio-Arquitecto para la explicación final del plan al paciente.
+                    </p>
+                    <div className="w-16 h-1 bg-blue-500 rounded-full mt-2 opacity-50 mx-auto"></div>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="chat-shell"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="flex flex-1 flex-col h-full overflow-hidden"
+                >
+                  {/* --- RENDERIZACIÓN DE COMPONENTES INTERACTIVOS HEADLESS (EN SEGUNDO PLANO) --- */}
+                  {currentPhase === 'PHASE_3_MOTIVO_CONSULTA' && (
+                    <Fase3_MotivoConsulta
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onStepChange={setFase3Step}
+                      onPhaseComplete={(motiveData) => {
+                        setFase3State(motiveData);
+
+                        // --- MIDDLEWARE: VALIDADOR DE COHERENCIA (NOM-004) ---
+                        if (!motiveData.primaryRoute || motiveData.primaryRoute === 'No especificado' || !motiveData.gem_reasoning) {
+                          setMessages(prev => [...prev, {
+                            role: "assistant",
+                            content: "⚠️ **Interbloqueo de Seguridad (NOM-004)**: El motor Cortex no cuenta con datos suficientes para establecer una Ruta Clínica Principal o un Razonamiento validado. Por favor, proporcione más detalles de su motivo de consulta."
+                          }]);
+                          return; // Bloquea el avance
+                        }
+
+                        setCurrentPhase('PHASE_4_FAMILY_HISTORY');
+                      }}
+                    />
                   )}
 
-                  {/* V9.6 VISUAL BODY MAP (PHASE 3A) - STANDALONE CONTAINER */}
-                  {interviewStep === 'clinica_body_map' ? (
-                    <div className="w-full flex justify-center p-2 mb-2">
-                      <VisualBodyMap
-                        gender={patientData.identificacion.sexo} // V10.3 FIX: PASS GENDER PROP
-                        onComplete={(payload) => {
-                          // V9.9 PAYLOAD DESTRUCTURING (ZONES + INTENSITY)
-                          const { zones, intensity } = payload;
+                  {currentPhase === 'PHASE_4_FAMILY_HISTORY' && (
+                    <Fase4_AntecedentesFamiliares
+                      user={user}
+                      appId={apiContext?.citaId}
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      patientProfile={patientData}
+                      phase3Data={fase3State}
+                      onStateChange={setFase4State}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={(familyTreeData, localMessages) => {
+                        setPatientData(prev => ({ ...prev, familyTree: familyTreeData }));
+                        // Bypass redundant confirmation summary in Phase 4
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
+                        setCurrentPhase('PHASE_5_PERSONAL');
+                      }}
+                    />
+                  )}
 
-                          // V9.9 DATA MAPPING: GRANULAR MALE/FEMALE ZONES
-                          // V9.9 DATA MAPPING: GRANULAR MALE/FEMALE ZONES (V10 UPDATE)
-                          const tagMap = {
-                            // --- MALE ---
-                            'M_HEAD': 'HEADACHE_RISK', 'M_NECK': 'CERVICAL_RISK', 'M_SHOULDERS': 'JOINT_SHOULDER',
-                            'M_CHEST': 'CARDIO_RISK', 'M_STOMACH': 'GASTRIC_RISK', 'M_ABDOMEN_LOW': 'INTESTINAL_RISK',
-                            'M_LOWER_BACK': 'LUMBAR_RISK',
-                            'M_LUNGS_R': 'RESPIRATORY_RISK', 'M_LUNGS_L': 'RESPIRATORY_RISK', // New
-                            'M_KIDNEY_R': 'RENAL_RISK', 'M_KIDNEY_L': 'RENAL_RISK', // Split
-                            'M_ELBOW_R': 'JOINT_ELBOW', 'M_ELBOW_L': 'JOINT_ELBOW', // Split
-                            'M_WRIST_R': 'JOINT_WRIST', 'M_WRIST_L': 'JOINT_WRIST', // Split
-                            'M_HAND_R': 'JOINT_WRIST', 'M_HAND_L': 'JOINT_WRIST', // Split
-                            'M_KNEE_R': 'JOINT_KNEE', 'M_KNEE_L': 'JOINT_KNEE', // Split
-                            'M_LEG_R': 'CIRCULATION_RISK', 'M_LEG_L': 'CIRCULATION_RISK', // Split
-                            'M_ANKLE_R': 'JOINT_ANKLE', 'M_ANKLE_L': 'JOINT_ANKLE', // Split
-                            'M_FOOT_R': 'JOINT_FOOT', 'M_FOOT_L': 'JOINT_FOOT', // Split
-
-                            // --- FEMALE ---
-                            'F_HEAD': 'HEADACHE_RISK', 'F_NECK': 'CERVICAL_RISK', 'F_UPPER_BACK': 'POSTURAL_RISK',
-                            'F_STOMACH_UP': 'GASTRIC_RISK', 'F_STOMACH_LOW': 'INTESTINAL_RISK',
-                            'F_HIPS': 'JOINT_HIP', 'F_LOWER_BACK': 'LUMBAR_RISK',
-                            'F_LUNG_R': 'RESPIRATORY_RISK', 'F_LUNG_L': 'RESPIRATORY_RISK', // New
-                            'F_BREAST_R': 'BREAST_RISK', 'F_BREAST_L': 'BREAST_RISK', // New
-                            'F_OVARY_R': 'GYNECO_RISK', 'F_OVARY_L': 'GYNECO_RISK', // New
-                            'F_KIDNEY_R': 'RENAL_RISK', 'F_KIDNEY_L': 'RENAL_RISK', // Split
-                            'F_HAND_R': 'JOINT_WRIST', 'F_HAND_L': 'JOINT_WRIST', // Split
-                            'F_KNEE_R': 'JOINT_KNEE', 'F_KNEE_L': 'JOINT_KNEE', // Split
-                            'F_LEG_R': 'CIRCULATION_RISK', 'F_LEG_L': 'CIRCULATION_RISK', // Split
-                            'F_FOOT_R': 'JOINT_FOOT', 'F_FOOT_L': 'JOINT_FOOT' // Split
-                          };
-
-                          // VISUAL LABELS (SPANISH)
-                          const zoneLabels = {
-                            // GENERAL MAPPING FALLBACK
-                            'M_HEAD': 'Cabeza', 'F_HEAD': 'Cabeza',
-                            // NEW SPECIFICS WILL BE USED DIRECTLY FROM KEYS IF NOT FOUND
-                            'M_LUNGS_R': 'Pulmón Derecho', 'M_LUNGS_L': 'Pulmón Izquierdo',
-                            'F_LUNG_R': 'Pulmón Derecho', 'F_LUNG_L': 'Pulmón Izquierdo',
-                            'F_BREAST_R': 'Seno Derecho', 'F_BREAST_L': 'Seno Izquierdo',
-                            'F_OVARY_R': 'Ovario Derecho', 'F_OVARY_L': 'Ovario Izquierdo',
-                            'F_KIDNEY_R': 'Riñón Derecho', 'F_KIDNEY_L': 'Riñón Izquierdo',
-                            'M_KIDNEY_R': 'Riñón Derecho', 'M_KIDNEY_L': 'Riñón Izquierdo'
-                          };
-
-
-                          const newTags = zones.map(z => tagMap[z] || 'PAIN_GENERAL');
-
-                          // SAFETY TRIGGER (RED FLAG)
-                          let isRedFlag = false;
-                          if (intensity >= 8 && (newTags.includes('CARDIO_RISK') || newTags.includes('GASTRIC_RISK') || newTags.includes('HEADACHE_RISK'))) {
-                            isRedFlag = true;
-                            newTags.push('red_flag_symptom');
+                  {currentPhase === 'PHASE_5_PERSONAL' && (
+                    <Fase5_PatologicosPersonales
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onStateChange={setFase5State}
+                      onPhaseComplete={(personalStructuredData, surgicalDataOrMessages, maybeMessages) => {
+                        let personalStructured = personalStructuredData;
+                        let surgical = 'Niega';
+                        let localMessages = maybeMessages;
+                        if (Array.isArray(surgicalDataOrMessages)) {
+                          localMessages = surgicalDataOrMessages;
+                        } else {
+                          surgical = surgicalDataOrMessages;
+                        }
+                        setPatientData(prev => ({
+                          ...prev,
+                          history: {
+                            ...(prev.history || {}),
+                            personal_structured: personalStructured,
+                            personal_checklist_verified: true,
+                            surgical: surgical
                           }
+                        }));
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
+                        setInputHandler(null);
+                        setFase5State(null);
+                        setCurrentPhase('PHASE_6_PHARMACOLOGY');
+                      }}
+                    />
+                  )}
 
-                          setPatientData(prev => ({
-                            ...prev,
-                            clinical_context: {
-                              ...prev.clinical_context,
-                              intensity: intensity, // Store Intensity
-                              pain_zones: zones,    // V10.1: PERSIST ZONES FOR DASHBOARD
-                              ai_analysis: {
-                                ...prev.clinical_context.ai_analysis,
-                                detected_tags: [...prev.clinical_context.ai_analysis.detected_tags, ...newTags]
-                              }
-                            }
-                          }));
+                  {currentPhase === 'PHASE_6_PHARMACOLOGY' && (
+                    <Fase6_Farmacologia
+                      user={user}
+                      appId={apiContext?.citaId}
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      patientProfile={patientData}
+                      onStateChange={setFase6State}
+                      initialChatHistory={messages}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={(pharmaData) => {
+                        setPatientData(prev => ({ ...prev, pharmacology: pharmaData }));
+                        triggerPhase6Summary({ ...patientData, pharmacology: pharmaData });
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_6_SUMMARY_CONFIRM');
+                      }}
+                    />
+                  )}
 
-                          // Generate summary using Spanish labels
-                          const summary = zones.length > 0 ? zones.map(z => zoneLabels[z] || z).join(', ') : "Ninguna";
-                          setMessages(prev => [...prev, { role: "user", content: `Zonas: ${summary} | Intensidad: ${intensity}/10` }]);
-
-                          // CONDITIONAL ROUTING BASED ON RISK
-                          if (isRedFlag) {
-                            setMessages(prev => [...prev, { role: "assistant", content: "⚠️ **ALERTA DE SEGURIDAD**: He detectado un nivel de dolor severo en una zona sensible. \n\n¿Desea que activemos el protocolo de emergencia o contactemos a su familiar registrado?" }]);
-                            // Here we could route to emergency, but for now we follow standard flow with alert
-                            handleSend('BODY_MAP_COMPLETE');
-                          } else {
-                            handleSend('BODY_MAP_COMPLETE');
+                  {currentPhase === 'PHASE_7_ALLERGIES' && (
+                    <Fase7_Alergias
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onStateChange={setFase7State}
+                      onPhaseComplete={(allergiesData, localMessages) => {
+                        setPatientData(prev => ({
+                          ...prev,
+                          history: {
+                            ...(prev.history || {}),
+                            allergies: allergiesData,
+                            allergies_verified: true
                           }
-                        }} />
-                    </div>
-                  ) : messages.length > 0 && messages[messages.length - 1].inputType === 'none' ? (
-                    // LOGIC RESTORATION: Bloqueo Visual de la barra de texto
-                    <div className="flex items-center justify-center p-2 text-slate-400 text-sm italic">
-                      Entrada bloqueada temporalmente.
-                    </div>
-                  ) :
-                    /* STANDARD INPUT PILL (TEXT/SELECT) */
-                    (
-                      <div className="relative flex items-center gap-2 bg-white border border-slate-200 rounded-full px-2 py-2 shadow-sm focus-within:ring-4 focus-within:ring-blue-50 focus-within:border-blue-400 transition-all w-full">
-                        {/* V8.0 Searchable Vertical Menu Conditional Render */}
-                        {messages.length > 0 &&
-                          messages[messages.length - 1].role === 'assistant' &&
-                          messages[messages.length - 1].options &&
-                          (messages[messages.length - 1].options.length > 3) && (
-                            <SearchableVerticalMenu
-                              options={messages[messages.length - 1].options}
-                              onSelect={(selectedValue) => handleOptionSelect(messages[messages.length - 1], selectedValue)}
+                        }));
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
+                        setInputHandler(null);
+                        triggerPhase7Summary({
+                          ...patientData,
+                          history: {
+                            ...(patientData.history || {}),
+                            allergies: allergiesData,
+                            allergies_verified: true
+                          }
+                        });
+                        setCurrentPhase('PHASE_7_SUMMARY_CONFIRM');
+                      }}
+                    />
+                  )}
+
+                  {(currentPhase === 'PHASE_7_HABITS' || currentPhase === 'PHASE_10_HABITS') && (
+                    <Fase7_Habitos
+                      user={user}
+                      appId={apiContext?.citaId}
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      patientProfile={patientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={(habitsData, localMessages) => {
+                        setPatientData(prev => ({ ...prev, habits: habitsData }));
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_11_LIFESTYLE');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_8_DIGESTIVE' && (
+                    <Fase8_SaludDigestiva
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={(digestiveData, localMessages) => {
+                        const updatedPatient = {
+                          ...patientData,
+                          history: {
+                            ...(patientData.history || {}),
+                            digestive_symptoms: digestiveData?.symptoms || [],
+                            digestive_frequency: digestiveData?.frequency || "Ninguna"
+                          },
+                          digestive_profile: digestiveData?.profile
+                        };
+                        setPatientData(updatedPatient);
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
+                        setInputHandler(null);
+                        triggerPhase8Summary(updatedPatient);
+                        setCurrentPhase('PHASE_8_SUMMARY_CONFIRM');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_9_PHYSIO' && (
+                    <Fase9_EstadoFisiologico
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={(physioData, localMessages) => {
+                        const finalPhysio = physioData?.physio ? physioData.physio : physioData;
+                        const updatedPatient = {
+                          ...patientData,
+                          physio: finalPhysio
+                        };
+                        setPatientData(updatedPatient);
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
+                        setInputHandler(null);
+                        triggerPhase9Summary(updatedPatient);
+                        setCurrentPhase('PHASE_9_SUMMARY_CONFIRM');
+                      }}
+                    />
+                  )}
+
+                  {(currentPhase === 'PHASE_5_LIFESTYLE' || currentPhase === 'PHASE_11_ACTIVITY' || currentPhase === 'PHASE_11_LIFESTYLE') && (
+                    <ErrorBoundary>
+                      <Fase5_EstiloVida
+                        user={user}
+                        appId={apiContext?.citaId}
+                        patientData={patientData}
+                        setPatientData={setPatientData}
+                        patientProfile={patientData}
+                        onStateChange={setFase5State}
+                        initialChatHistory={messages}
+                        messages={messagesList}
+                        setMessages={setMessages}
+                        registerInputHandler={setInputHandler}
+                        setIsGlobalTyping={() => {}}
+                        onPhaseComplete={(lifestyleData, localMessages) => {
+                          setPatientData(prev => ({ ...prev, lifeStyleInfo: lifestyleData }));
+                          if (localMessages && Array.isArray(localMessages)) {
+                            setMessages(localMessages);
+                          }
+                          setInputHandler(null);
+                          setCurrentPhase('PHASE_12_LOGISTICS');
+                        }}
+                      />
+                    </ErrorBoundary>
+                  )}
+
+                  {currentPhase === 'PHASE_12_LOGISTICS' && (
+                    <Fase12_Logistica
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={(logisticsData, localMessages) => {
+                        if (logisticsData && typeof logisticsData === 'object') {
+                          setPatientData(prev => ({ ...prev, logistics_profile: logisticsData }));
+                        }
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_13_PREFERENCES');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_13_PREFERENCES' && (
+                    <Fase13_PreferenciasAlimentarias
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={() => {
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_14_R24H');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_14_R24H' && (
+                    <Fase14_CrononutricionR24H
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={() => {
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_15_FFQ');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_15_FFQ' && (
+                    <Fase15_FrecuenciaConsumoFFQ
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={() => {
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_16_BIOMETRICS');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_16_BIOMETRICS' && (
+                    <Fase16_BiometriaGeneral
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={() => {
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_17_VITALS');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_17_VITALS' && (
+                    <Fase17_SignosVitales
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      onPhaseComplete={(nextPhase) => {
+                        setInputHandler(null);
+                        setCurrentPhase(nextPhase || 'PHASE_18_ELECTRET');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_18_ELECTRET' && (
+                    <Fase18_EscanerBioelectrico
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setIsGlobalTyping={() => {}}
+                      hardwareStatus={hardwareStatus}
+                      setHardwareStatus={setHardwareStatus}
+                      onPhaseComplete={() => {
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_19_DIAGNOSIS');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_19_DIAGNOSIS' && (
+                    <Fase19_DiagnosticoIntegral
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      onPhaseComplete={() => {
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_20_PORTAPAPELES');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_20_PORTAPAPELES' && (
+                    <Fase20_Portapapeles
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      onPhaseComplete={() => {
+                        setInputHandler(null);
+                        setCurrentPhase('PHASE_21_CALENDARIO');
+                      }}
+                    />
+                  )}
+
+                  {currentPhase === 'PHASE_21_CALENDARIO' && (
+                    <Fase21_Calendario
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      messages={messagesList}
+                      setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      onPhaseComplete={() => {
+                        setInputHandler(null);
+                        setInterviewStep('finished');
+                        setActiveTab('diagnosis');
+                        saveSessionProgress(21, 'finished', true);
+                      }}
+                    />
+                  )}
+
+                  <div 
+                    className="flex-1 h-full overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar z-10 relative"
+                    style={{ paddingBottom: isSpecificLogisticsQuestion ? '260px' : '2rem' }}
+                  >
+                    {messagesList.map((msg, index) => (
+                      <div
+                        key={index}
+                        className={`flex ${msg.role === "assistant" ? "justify-start" :
+                          "justify-end"
+                          } mb-6 items-start gap-3`}
+                      >
+                        {/* AVATAR DE TILO: Solo para Asistente */}
+                        {msg.role === "assistant" && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden"
+                          >
+                            <img
+                              src={tiloImg}
+                              alt="Tilo"
+                              className="w-10 h-10 object-contain" // Tilo ahora ocupa mejor su contenedor
                             />
+                          </motion.div>
+                        )}
+
+                        <div
+                          className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === "assistant"
+                            ? msg.isBio
+                              ? "bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium"
+                              : msg.isAcute
+                                ? "bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium"
+                                : msg.isCritical
+                                  ? "bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold"
+                                  : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
+                            : "bg-blue-600 text-white rounded-tr-none"
+                            }`}
+                        >
+                          {/* Envolvemos el Markdown en un div para los estilos de tipografía */}
+                          <div
+                            className={`prose prose-sm max-w-none ${msg.role === "assistant" ? "prose-slate" :
+                              "prose-invert"
+                              }`}
+                          >
+                            {msg.isAiAnalysisResult ? (
+                              <div className="flex flex-col gap-3">
+                                {/* Attributes List Container */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 w-full text-tilo-text-main">
+                                  <div className="px-4 py-2.5 bg-tilo-bg-base/40 backdrop-blur-sm border border-tilo-border rounded-xl text-sm font-semibold shadow-sm flex items-center gap-3">
+                                    <User className="w-5 h-5 text-tilo-primary flex-shrink-0" />
+                                    <div className="flex flex-col">
+                                      <span className="text-[10px] text-tilo-text-muted font-bold uppercase tracking-wider">Perfil</span>
+                                      <span className="text-tilo-text-main">{getDevelopmentStage(patientData?.identificacion?.edad)} ({patientData?.identificacion?.edad || 0} años)</span>
+                                    </div>
+                                  </div>
+                                  <div className="px-4 py-2.5 bg-tilo-bg-panel/80 backdrop-blur-sm border border-tilo-primary/20 rounded-xl text-sm font-semibold shadow-sm flex items-center gap-3">
+                                    <Target className="w-5 h-5 text-tilo-primary flex-shrink-0" />
+                                    <div className="flex flex-col">
+                                      <span className="text-[10px] text-tilo-primary/80 font-bold uppercase tracking-wider">Eje Clínico</span>
+                                      <span className="text-tilo-text-main">{routeToSpanish(msg.aiData?.primaryRoute || patientData.clinical_context?.goal || "Análisis Clínico")}</span>
+                                    </div>
+                                  </div>
+                                  <div className={`px-4 py-2.5 backdrop-blur-sm border rounded-xl text-sm font-semibold shadow-sm flex items-center gap-3 ${
+                                    msg.aiData?.redFlag ? 'bg-tilo-danger/10 border-tilo-danger/30 text-tilo-danger' : 
+                                    (msg.aiData?.risk_level === 'HIGH' ? 'bg-tilo-danger/5 border-tilo-danger/20 text-tilo-danger/90' : 'bg-tilo-success/10 border-tilo-success/30 text-tilo-success')
+                                  }`}>
+                                    <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                                    <div className="flex flex-col">
+                                      <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                                        msg.aiData?.redFlag ? 'text-tilo-danger' : 
+                                        (msg.aiData?.risk_level === 'HIGH' ? 'text-tilo-danger/80' : 'text-tilo-success')
+                                      }`}>Nivel de Riesgo</span>
+                                      <span className="text-tilo-text-main">{msg.aiData?.redFlag ? 'Crítico (Red Flag)' : riskToSpanish(msg.aiData?.risk_level || 'Base')}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Main Suspicion */}
+                                <div className="text-sm text-tilo-text-main prose prose-sm max-w-none">
+                                  <ReactMarkdown>{cleanBinaryGateMessage(msg.content)}</ReactMarkdown>
+                                </div>
+
+                                {/* Collapsible reasoning details */}
+                                {msg.aiData && msg.aiData.reasoning && (
+                                  <div className="mt-3 border-t border-tilo-border pt-3">
+                                    <details className="group cursor-pointer">
+                                      <summary className="text-xs font-bold text-tilo-text-muted hover:text-tilo-text-main transition-colors flex items-center gap-1 select-none">
+                                        <svg className="w-3.5 h-3.5 transform group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                        </svg>
+                                        Deducción Sugerida (Matriz IFM)
+                                      </summary>
+                                      <div className="mt-2 text-xs leading-relaxed pl-3 ml-1">
+                                        {renderClinicalCards(msg.aiData.reasoning)}
+                                      </div>
+                                    </details>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <ReactMarkdown>{cleanBinaryGateMessage(msg.content)}</ReactMarkdown>
+                            )}
+                          </div>
+
+                          {/* Inline VisualBodyMap if required */}
+                          {msg.inputType === 'body_map' && index === messagesList.length - 1 && (
+                            <div className="mt-4 bg-gray-50 border border-gray-200 p-2 sm:p-4 rounded-xl w-full max-w-md shadow-sm flex justify-center mx-auto">
+                              <VisualBodyMap
+                                gender={patientData?.identificacion?.sexo}
+                                onComplete={(payload) => {
+                                  if (inputHandler) {
+                                    let handlerFn = null;
+                                    if (typeof inputHandler === 'function') {
+                                      if (inputHandler.length === 0) {
+                                        const evaluated = inputHandler();
+                                        handlerFn = typeof evaluated === 'function' ? evaluated : inputHandler;
+                                      } else {
+                                        handlerFn = inputHandler;
+                                      }
+                                    }
+                                    if (typeof handlerFn === 'function') {
+                                      handlerFn(payload, 'button');
+                                    }
+                                  }
+                                }}
+                              />
+                            </div>
                           )}
 
-                        {/* V8.2 TILO SMART SELECT (CURP STATE) */}
-                        {interviewStep === 'intro_curp_state' || (messages.length > 0 && (messages[messages.length - 1].inputType === 'StateSelector' || messages[messages.length - 1].content.includes('Estado de la República'))) ? (
-                          <div className="w-full relative px-2">
-                            <SearchableVerticalMenu
-                              options={Object.keys(ESTADO_MAP).filter(k => k !== 'EXTRANJERO').sort().map(estado => ({ label: formatText(estado), value: ESTADO_MAP[estado] })).concat([{ label: "Nacido en el Extranjero", value: "NE" }])}
-                              onSelect={(val) => {
-                                let label = val === 'NE' ? "Nacido en el Extranjero" : "Estado";
-                                if (val !== 'NE') {
-                                  const key = Object.keys(ESTADO_MAP).find(k => ESTADO_MAP[k] === val);
-                                  if (key) label = formatText(key);
-                                }
-                                setMessages(prev => [...prev, { role: "user", content: label }]);
-                                handleSend(val);
-                              }}
-                            />
-                          </div>
-                        ) : messages.length > 0 && messages[messages.length - 1].inputType === 'strict_select' ? (
-                          <div className="flex-1 px-3 py-2 text-slate-400 text-sm italic border-l border-slate-100 flex items-center">
-                            Por favor, seleccione una opción del menú superior.
-                          </div>
-                        ) : (
-                          <input
-                            type={messages.length > 0 && messages[messages.length - 1].inputType === 'tel' ? 'tel' : 'text'}
-                            value={input}
-                            onChange={(e) => {
-                              if (messages.length > 0 && messages[messages.length - 1].inputType === 'tel') {
-                                let val = e.target.value.replace(/\D/g, '');
-                                if (val.length > 10) val = val.slice(0, 10);
-                                if (val.length > 6) {
-                                  val = `(${val.slice(0,3)}) ${val.slice(3,6)}-${val.slice(6)}`;
-                                } else if (val.length > 3) {
-                                  val = `(${val.slice(0,3)}) ${val.slice(3)}`;
-                                } else if (val.length > 0) {
-                                  val = `(${val}`;
-                                }
-                                setInput(val);
-                              } else {
-                                setInput(e.target.value);
-                              }
-                            }}
-                            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                            placeholder="Escribe tu respuesta..."
-                            className="flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2"
-                          />
-                        )}
-                        {/* V8.2 END */}
+                          {/* V7.1 RENDERIZADO DE BOTONES (Chips Interactivos) */}
+                          {/* ADAPTIVE UI: Todos los botones se muestran. Si hay > 3, usar Select Dropdown */}
+                          {msg.options && (
+                            (msg.options.length > 3) ? null : (
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                {msg.options.map((opt, i) => {
+                                  const isLastMessage = index === messagesList.length - 1;
+                                  return (
+                                    <button
+                                      key={i}
+                                      disabled={!isLastMessage}
+                                      onClick={() => {
+                                        if (!isLastMessage) return;
+                                        handleOptionSelect(msg, opt.value);
+                                      }}
+                                      className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )
+                          )}
 
-                        {messages.length === 0 || messages[messages.length - 1].inputType !== 'strict_select' ? (
+                          {/* V2.6 INFERENCE ENGINE UI */}
+                          {msg.inputType === 'analyzing' && (
+                            <div className="flex flex-col items-center py-4 space-y-3 animate-pulse mt-4">
+                              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Sintetizando diagnóstico...</p>
+                            </div>
+                          )}
+
+
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  <div className="p-6 bg-white border-t border-slate-50 shrink-0">
+
+                    {/* V8.0 IDENTITY BIFURCATION UI */}
+                    {interviewStep === 'intro_curp' && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mb-3 flex justify-end"
+                      >
+                        <button
+                          onClick={() => {
+                            setPatientData(prev => ({
+                              ...prev,
+                              identificacion: { ...prev.identificacion, nationality_type: 'FOREIGN', curp: null, curpValidated: true }
+                            }));
+                            setMessages(prev => [...prev, { role: "assistant", content: `Entendido. Paciente ${patientData.identificacion.sexo === 'Femenino' ? 'Extranjera' : 'Extranjero'}.\n\nPor favor, ingrese su **Número de Pasaporte** o Documento Migratorio.` }]);
+                            setInterviewStep('intro_passport');
+                          }}
+                          className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors flex items-center gap-2"
+                        >
+                          {patientData.identificacion.sexo === 'Femenino' ? 'Soy Extranjera' : 'Soy Extranjero'} / No tengo CURP
+                        </button>
+                      </motion.div>
+                    )}
+
+                    {/* V9.6 VISUAL BODY MAP (PHASE 3A) - STANDALONE CONTAINER */}
+                    {interviewStep === 'clinica_body_map' ? (
+                      <div className="w-full flex justify-center p-2 mb-2">
+                        <VisualBodyMap
+                          gender={patientData.identificacion.sexo} // V10.3 FIX: PASS GENDER PROP
+                          onComplete={(payload) => {
+                            // V9.9 PAYLOAD DESTRUCTURING (ZONES + INTENSITY)
+                            const { zones, intensity } = payload;
+
+                            // V9.9 DATA MAPPING: GRANULAR MALE/FEMALE ZONES
+                            // V9.9 DATA MAPPING: GRANULAR MALE/FEMALE ZONES (V10 UPDATE)
+                            const tagMap = {
+                              // --- MALE ---
+                              'M_HEAD': 'HEADACHE_RISK', 'M_NECK': 'CERVICAL_RISK', 'M_SHOULDERS': 'JOINT_SHOULDER',
+                              'M_CHEST': 'CARDIO_RISK', 'M_STOMACH': 'GASTRIC_RISK', 'M_ABDOMEN_LOW': 'INTESTINAL_RISK',
+                              'M_LOWER_BACK': 'LUMBAR_RISK',
+                              'M_LUNGS_R': 'RESPIRATORY_RISK', 'M_LUNGS_L': 'RESPIRATORY_RISK', // New
+                              'M_KIDNEY_R': 'RENAL_RISK', 'M_KIDNEY_L': 'RENAL_RISK', // Split
+                              'M_ELBOW_R': 'JOINT_ELBOW', 'M_ELBOW_L': 'JOINT_ELBOW', // Split
+                              'M_WRIST_R': 'JOINT_WRIST', 'M_WRIST_L': 'JOINT_WRIST', // Split
+                              'M_HAND_R': 'JOINT_WRIST', 'M_HAND_L': 'JOINT_WRIST', // Split
+                              'M_KNEE_R': 'JOINT_KNEE', 'M_KNEE_L': 'JOINT_KNEE', // Split
+                              'M_LEG_R': 'CIRCULATION_RISK', 'M_LEG_L': 'CIRCULATION_RISK', // Split
+                              'M_ANKLE_R': 'JOINT_ANKLE', 'M_ANKLE_L': 'JOINT_ANKLE', // Split
+                              'M_FOOT_R': 'JOINT_FOOT', 'M_FOOT_L': 'JOINT_FOOT', // Split
+
+                              // --- FEMALE ---
+                              'F_HEAD': 'HEADACHE_RISK', 'F_NECK': 'CERVICAL_RISK', 'F_UPPER_BACK': 'POSTURAL_RISK',
+                              'F_STOMACH_UP': 'GASTRIC_RISK', 'F_STOMACH_LOW': 'INTESTINAL_RISK',
+                              'F_HIPS': 'JOINT_HIP', 'F_LOWER_BACK': 'LUMBAR_RISK',
+                              'F_LUNG_R': 'RESPIRATORY_RISK', 'F_LUNG_L': 'RESPIRATORY_RISK', // New
+                              'F_BREAST_R': 'BREAST_RISK', 'F_BREAST_L': 'BREAST_RISK', // New
+                              'F_OVARY_R': 'GYNECO_RISK', 'F_OVARY_L': 'GYNECO_RISK', // New
+                              'F_KIDNEY_R': 'RENAL_RISK', 'F_KIDNEY_L': 'RENAL_RISK', // Split
+                              'F_HAND_R': 'JOINT_WRIST', 'F_HAND_L': 'JOINT_WRIST', // Split
+                              'F_KNEE_R': 'JOINT_KNEE', 'F_KNEE_L': 'JOINT_KNEE', // Split
+                              'F_LEG_R': 'CIRCULATION_RISK', 'F_LEG_L': 'CIRCULATION_RISK', // Split
+                              'F_FOOT_R': 'JOINT_FOOT', 'F_FOOT_L': 'JOINT_FOOT' // Split
+                            };
+
+                            // VISUAL LABELS (SPANISH)
+                            const zoneLabels = {
+                              'M_HEAD': 'Cabeza', 
+                              'F_HEAD': 'Cabeza',
+                              'M_NECK': 'Cuello', 
+                              'F_NECK': 'Cuello',
+                              'M_SHOULDERS': 'Hombros',
+                              'F_UPPER_BACK': 'Espalda Alta',
+                              'M_CHEST': 'Pecho',
+                              'M_LUNGS_R': 'Pulmón Derecho', 
+                              'M_LUNGS_L': 'Pulmón Izquierdo',
+                              'F_LUNG_R': 'Pulmón Derecho', 
+                              'F_LUNG_L': 'Pulmón Izquierdo',
+                              'F_BREAST_R': 'Seno Derecho', 
+                              'F_BREAST_L': 'Seno Izquierdo',
+                              'M_STOMACH': 'Boca del Estómago', 
+                              'F_STOMACH_UP': 'Boca del Estómago',
+                              'M_ABDOMEN_LOW': 'Abdomen Bajo', 
+                              'F_STOMACH_LOW': 'Vientre Bajo',
+                              'F_OVARY_R': 'Ovario Derecho', 
+                              'F_OVARY_L': 'Ovario Izquierdo',
+                              'M_LOWER_BACK': 'Espalda Baja', 
+                              'F_LOWER_BACK': 'Cintura / Lumbares',
+                              'F_HIPS': 'Caderas',
+                              'M_KIDNEY_R': 'Riñón Derecho', 
+                              'M_KIDNEY_L': 'Riñón Izquierdo',
+                              'F_KIDNEY_R': 'Riñón Derecho', 
+                              'F_KIDNEY_L': 'Riñón Izquierdo',
+                              'M_ELBOW_R': 'Codo Derecho', 
+                              'M_ELBOW_L': 'Codo Izquierdo',
+                              'M_WRIST_R': 'Muñeca Derecha', 
+                              'M_WRIST_L': 'Muñeca Izquierda',
+                              'M_HAND_R': 'Mano Derecha', 
+                              'M_HAND_L': 'Mano Izquierda',
+                              'F_HAND_R': 'Mano Derecha', 
+                              'F_HAND_L': 'Mano Izquierda',
+                              'M_KNEE_R': 'Rodilla Derecha', 
+                              'M_KNEE_L': 'Rodilla Izquierda',
+                              'F_KNEE_R': 'Rodilla Derecha', 
+                              'F_KNEE_L': 'Rodilla Izquierda',
+                              'M_LEG_R': 'Pierna Derecha', 
+                              'M_LEG_L': 'Pierna Izquierda',
+                              'F_LEG_R': 'Pierna Derecha', 
+                              'F_LEG_L': 'Pierna Izquierda',
+                              'M_ANKLE_R': 'Tobillo Derecho', 
+                              'M_ANKLE_L': 'Tobillo Izquierdo',
+                              'M_FOOT_R': 'Pie Derecho', 
+                              'M_FOOT_L': 'Pie Izquierdo',
+                              'F_FOOT_R': 'Pie Derecho', 
+                              'F_FOOT_L': 'Pie Izquierdo'
+                            };
+
+
+                            const newTags = zones.map(z => tagMap[z] || 'PAIN_GENERAL');
+
+                            // SAFETY TRIGGER (RED FLAG)
+                            let isRedFlag = false;
+                            if (intensity >= 8 && (newTags.includes('CARDIO_RISK') || newTags.includes('GASTRIC_RISK') || newTags.includes('HEADACHE_RISK'))) {
+                              isRedFlag = true;
+                              newTags.push('red_flag_symptom');
+                            }
+
+                            setPatientData(prev => ({
+                              ...prev,
+                              clinical_context: {
+                                ...prev.clinical_context,
+                                intensity: intensity, // Store Intensity
+                                pain_zones: zones,    // V10.1: PERSIST ZONES FOR DASHBOARD
+                                ai_analysis: {
+                                  ...prev.clinical_context.ai_analysis,
+                                  detected_tags: [...prev.clinical_context.ai_analysis.detected_tags, ...newTags]
+                                }
+                              }
+                            }));
+
+                            // Generate summary using Spanish labels
+                            const summary = zones.length > 0 ? zones.map(z => zoneLabels[z] || z).join(', ') : "Ninguna";
+                            setMessages(prev => [...prev, { role: "user", content: `Zonas: ${summary} | Intensidad: ${intensity}/10` }]);
+
+                            // CONDITIONAL ROUTING BASED ON RISK
+                            if (isRedFlag) {
+                              setMessages(prev => [...prev, { role: "assistant", content: "⚠️ **ALERTA DE SEGURIDAD**: He detectado un nivel de dolor severo en una zona sensible. \n\n¿Desea que activemos el protocolo de emergencia o contactemos a su familiar registrado?" }]);
+                              // Here we could route to emergency, but for now we follow standard flow with alert
+                              handleSend('BODY_MAP_COMPLETE');
+                            } else {
+                              handleSend('BODY_MAP_COMPLETE');
+                            }
+                          }} />
+                      </div>
+                    ) : messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'none' ? (
+                      // LOGIC RESTORATION: Bloqueo Visual de la barra de texto
+                      <div className="flex items-center justify-center p-2 text-slate-400 text-sm italic">
+                        Entrada bloqueada temporalmente.
+                      </div>
+                    ) : messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'time_picker' ? (
+                      <div className="flex items-center justify-between gap-4 p-2 w-full bg-slate-50 border border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Seleccionar Hora:</span>
+                        <input
+                          type="time"
+                          className="bg-white border border-slate-200 rounded-lg px-3 py-1 text-sm outline-none text-slate-800 focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                          defaultValue="08:00"
+                          id="tilo-time-picker-input"
+                        />
+                        <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={() => {
-                              // ADAPTIVE UI FIX: Display LABEL, Send VALUE
-                              if (messages.length > 0 && messages[messages.length - 1].options) {
-                                const currentOpts = messages[messages.length - 1].options;
-                                const selected = currentOpts.find(o => o.value === input);
-                                if (selected) {
-                                  setMessages(prev => [...prev, { role: "user", content: selected.label }]);
-                                  handleSend(input);
+                              const val = document.getElementById('tilo-time-picker-input')?.value;
+                              if (val) {
+                                const [h, m] = val.split(':');
+                                const hourNum = parseInt(h, 10);
+                                const ampm = hourNum >= 12 ? 'pm' : 'am';
+                                const displayHour = hourNum % 12 || 12;
+                                const formattedTime = `${displayHour}:${m} ${ampm}`;
+                                handleSend(formattedTime);
+                              }
+                            }}
+                            className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors shadow-sm"
+                          >
+                            Confirmar Hora
+                          </button>
+                          {messagesList[messagesList.length - 1].content.includes('siguiente hora') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleSend('Fin');
+                              }}
+                              className="bg-slate-500 hover:bg-slate-600 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors shadow-sm"
+                            >
+                              Terminar Día (Fin)
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) :
+                      /* STANDARD INPUT PILL (TEXT/SELECT) */
+                      (
+                        <div className="relative flex items-center gap-2 bg-white border border-slate-200 rounded-full px-2 py-2 shadow-sm focus-within:ring-4 focus-within:ring-blue-50 focus-within:border-blue-400 transition-all w-full">
+                          {/* V8.0 Searchable Vertical Menu Conditional Render */}
+                          {isIdentityConfirmed && messagesList.length > 0 &&
+                            messagesList[messagesList.length - 1].role === 'assistant' &&
+                            messagesList[messagesList.length - 1].options &&
+                            (messagesList[messagesList.length - 1].options.length > 3) && (
+                              <SearchableVerticalMenu
+                                options={messagesList[messagesList.length - 1].options}
+                                onSelect={(selectedValue) => handleOptionSelect(messagesList[messagesList.length - 1], selectedValue)}
+                              />
+                            )}
+
+                          {/* V8.2 TILO SMART SELECT (CURP STATE) */}
+                          {interviewStep === 'intro_curp_state' || (messagesList.length > 0 && (messagesList[messagesList.length - 1].inputType === 'StateSelector' || messagesList[messagesList.length - 1].content.includes('Estado de la República'))) ? (
+                            <div className="w-full relative px-2">
+                              <SearchableVerticalMenu
+                                options={Object.keys(ESTADO_MAP).filter(k => k !== 'EXTRANJERO').sort().map(estado => ({ label: formatText(estado), value: ESTADO_MAP[estado] })).concat([{ label: "Nacido en el Extranjero", value: "NE" }])}
+                                onSelect={(val) => {
+                                  let label = val === 'NE' ? "Nacido en el Extranjero" : "Estado";
+                                  if (val !== 'NE') {
+                                    const key = Object.keys(ESTADO_MAP).find(k => ESTADO_MAP[k] === val);
+                                    if (key) label = formatText(key);
+                                  }
+                                  setMessages(prev => [...prev, { role: "user", content: label }]);
+                                  handleSend(val);
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              {messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'respiratory_timer' && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (timerState === 'IDLE') {
+                                      setTimerState('RUNNING');
+                                    }
+                                  }}
+                                  disabled={timerState !== 'IDLE'}
+                                  className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-all duration-300 leading-none ml-2 flex items-center gap-1 shrink-0 ${
+                                    timerState === 'RUNNING' ? 'bg-rose-100 text-rose-700 border-rose-200 animate-pulse' :
+                                    timerState === 'FINISHED' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                                    'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'
+                                  }`}
+                                >
+                                  {timerState === 'RUNNING' && `⏱️ ${timeLeft}s`}
+                                  {timerState === 'FINISHED' && `🔔 TIEMPO`}
+                                  {timerState === 'IDLE' && `⏱️ Iniciar 30s`}
+                                </button>
+                              )}
+                              <input
+                                type={
+                                  messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'tel' ? 'tel' :
+                                  messagesList.length > 0 && (messagesList[messagesList.length - 1].inputType === 'number' || messagesList[messagesList.length - 1].inputType === 'respiratory_timer') ? 'number' : 'text'
+                                }
+                                value={input}
+                                disabled={isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options}
+                                onChange={(e) => {
+                                  if (messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'tel') {
+                                    let val = e.target.value.replace(/\D/g, '');
+                                    if (val.length > 10) val = val.slice(0, 10);
+                                    if (val.length > 6) {
+                                      val = `(${val.slice(0,3)}) ${val.slice(3,6)}-${val.slice(6)}`;
+                                    } else if (val.length > 3) {
+                                      val = `(${val.slice(0,3)}) ${val.slice(3)}`;
+                                    } else if (val.length > 0) {
+                                      val = `(${val}`;
+                                    }
+                                    setInput(val);
+                                  } else if (messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'bp') {
+                                    let val = e.target.value.replace(/[^\d/]/g, '');
+                                    if (val.includes('/')) {
+                                      const parts = val.split('/');
+                                      const sys = parts[0].slice(0, 3);
+                                      const dia = parts[1].slice(0, 3);
+                                      val = `${sys}/${dia}`;
+                                    } else {
+                                      if (val.length > 3) {
+                                        val = `${val.slice(0, 3)}/${val.slice(3, 6)}`;
+                                      }
+                                    }
+                                    setInput(val);
+                                  } else {
+                                    setInput(e.target.value);
+                                  }
+                                }}
+                                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                                placeholder={
+                                  isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options ? "Entrada bloqueada temporalmente." :
+                                  messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'bp' ? "Ej. 120/80" :
+                                  "Escribe tu respuesta..."
+                                }
+                                className={`flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2 ${isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options ? "cursor-not-allowed opacity-50" : ""}`}
+                              />
+                            </>
+                          )}
+                          {/* V8.2 END */}
+
+                          {messagesList.length === 0 || !isIdentityConfirmed || (messagesList[messagesList.length - 1].inputType !== 'strict_select' && !(messagesList[messagesList.length - 1].role === 'assistant' && messagesList[messagesList.length - 1].options)) ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // ADAPTIVE UI FIX: Display LABEL, Send VALUE
+                                if (messagesList.length > 0 && messagesList[messagesList.length - 1].options) {
+                                  const currentOpts = messagesList[messagesList.length - 1].options;
+                                  const selected = currentOpts.find(o => o.value === input);
+                                  if (selected) {
+                                    setMessages(prev => [...prev, { role: "user", content: selected.label }]);
+                                    handleSend(input);
+                                  } else {
+                                    handleSend();
+                                  }
                                 } else {
                                   handleSend();
                                 }
-                              } else {
-                                handleSend();
-                              }
-                            }}
-                            className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0"
-                          >
-                            <Send className="w-5 h-5" />
-                          </button>
-                        ) : null}
+                              }}
+                              className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0"
+                            >
+                              <Send className="w-5 h-5" />
+                            </button>
+                          ) : null}
                       </div>
                     )}
-                </div>
-              </>)}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* PANEL DERECHO (50%) - DASHBOARD RESTAURADO (ACORDEONES) */}
@@ -5289,6 +6165,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     fase4State={fase4State}
                     fase5State={fase5State}
                     fase6State={fase6State}
+                    fase7State={fase7State}
+                    fase8State={fase8State}
+                    fase9State={fase9State}
                   />
                 </div>
             )}

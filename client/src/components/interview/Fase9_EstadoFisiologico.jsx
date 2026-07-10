@@ -1,49 +1,152 @@
 import React, { useState, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import tiloImg from "../../assets/tilo.png";
-import { Send } from 'lucide-react';
-import usePatientLinguistics from '../../hooks/usePatientLinguistics';
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
-export default function Fase9_EstadoFisiologico({ initialChatHistory, patientData, setPatientData, onPhaseComplete }) {
+export default function Fase9_EstadoFisiologico({ patientData, setPatientData, onPhaseComplete, registerInputHandler, messages, setMessages, setIsGlobalTyping }) {
     const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
 
-    const [messages, setMessages] = useState(() => {
-        if (initialChatHistory && initialChatHistory.length > 0) {
-            return initialChatHistory;
-        }
-        // Este componente solo se monta si la paciente es mujer, 
-        // y el mensaje inicial ya debió ser insertado por la transición previa
-        return [];
-    });
-
-    const [inputValue, setInputValue] = useState("");
     const [step, setStep] = useState('preg_gate');
-    const [currentOptions, setCurrentOptions] = useState([
-        { label: "❌ No", value: "No" },
-        { label: "✅ Sí", value: "Sí" }
-    ]);
+    const hasGreeted = useRef(false);
 
-    const messagesEndRef = useRef(null);
-
+    // Inicialización - Mitigación de doble render en StrictMode e integración de pre-llenado de Fase 3
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+        if (hasGreeted.current) return;
 
-    const handleSend = () => {
-        if (!inputValue.trim() && currentOptions.length === 0) return;
+        const isPregnancyRoute = 
+            patientData.clinical_context?.goal === 'GOAL_PREGNANCY' || 
+            patientData.clinical_context?.primary_motive === 'Embarazo y Lactancia';
 
-        const userInput = inputValue.trim();
-        setMessages(prev => [...prev, { sender: 'user', text: userInput }]);
-        setInputValue("");
-        processStep(userInput);
-    };
+        const symptomsText = (patientData.clinical_context?.secondary_symptoms || "").toLowerCase();
 
-    const handleOptionSelect = (optionValue) => {
-        setMessages(prev => [...prev, { sender: 'user', text: optionValue }]);
-        processStep(optionValue);
-    };
+        // 1. Rigor Clínico: Retraso/Amenorrea no es embarazo confirmado. Requiere confirmación médica.
+        const isDelayDeclared = isPregnancyRoute && (
+            symptomsText.includes('retraso') || 
+            symptomsText.includes('amenorrea')
+        );
 
-    const processStep = (input) => {
+        // 2. Embarazo declarado explícitamente (se asume confirmado)
+        const isPregnantDeclared = isPregnancyRoute && !isDelayDeclared && (
+            symptomsText.includes('embaraz') || 
+            symptomsText.includes('gesta') || 
+            symptomsText.includes('semana')
+        );
+
+        // 3. Lactancia declarada explícitamente
+        const isLactatingDeclared = isPregnancyRoute && (
+            symptomsText.includes('lacta') || 
+            symptomsText.includes('pecho') || 
+            symptomsText.includes('bebe') || 
+            symptomsText.includes('bébé')
+        );
+
+        // Si se solicita ignorar el pre-llenado de la Fase 3 (flujo de corrección de datos), se fuerza el flujo base.
+        const shouldIgnorePrefill = patientData.physio?.ignorePhase3PreFill === true;
+
+        if (!shouldIgnorePrefill && isPregnantDeclared) {
+            hasGreeted.current = true;
+            setPatientData(prev => ({
+                ...prev,
+                physio: { ignorePhase3PreFill: false, is_pregnant: true }
+            }));
+
+            const welcomeMsg = isMinor
+                ? `He registrado y sellado el perfil de salud gastrointestinal de **${pName}** de manera exitosa.\n\nEl sistema ha detectado y pre-confirmado el estado de gestación activa de **${pName}** a partir de los datos consolidados en el motivo de consulta. Para ajustar con precisión los requerimientos energéticos y sincronizar el expediente clínico de la menor, indique: ¿Cuántas semanas de gestación tiene **${pName}** actualmente?`
+                : `He registrado y sellado su perfil de salud gastrointestinal de manera exitosa.\n\nEl sistema ha detectado y pre-confirmado su estado de gestación activa a partir de los datos consolidados en su motivo de consulta. Para ajustar con precisión sus requerimientos energéticos y sincronizar su expediente clínico, indique: ¿Cuántas semanas de gestación tiene actualmente?`;
+
+            setMessages(prev => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content: welcomeMsg,
+                    inputType: 'number'
+                }
+            ]);
+            setStep('preg_weeks');
+        } else if (!shouldIgnorePrefill && isDelayDeclared) {
+            hasGreeted.current = true;
+            // No confirmamos embarazo aún; vamos a la compuerta de confirmación
+            const welcomeMsg = isMinor
+                ? `He registrado y sellado el perfil de salud gastrointestinal de **${pName}** de manera exitosa.\n\nHe tomado nota del retraso en el ciclo menstrual de **${pName}** reportado en el motivo de consulta principal. Para asegurar el rigor clínico y legal de su expediente bajo la **NOM-004**, por favor declare: ¿cuenta **${pName}** actualmente con confirmación médica o prueba positiva de embarazo?`
+                : `He registrado y sellado su perfil de salud gastrointestinal de manera exitosa.\n\nHe tomado nota del retraso en su ciclo menstrual reportado en su motivo de consulta principal. Para asegurar el rigor clínico y legal de su expediente bajo la **NOM-004**, por favor declare: ¿cuenta actualmente con confirmación médica o prueba positiva de embarazo?`;
+
+            setMessages(prev => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content: welcomeMsg,
+                    options: [
+                        { label: "✅ Sí", value: "Sí" },
+                        { label: "❌ No", value: "No" }
+                    ]
+                }
+            ]);
+            setStep('confirm_preg_gate');
+        } else if (!shouldIgnorePrefill && isLactatingDeclared) {
+            hasGreeted.current = true;
+            setPatientData(prev => ({
+                ...prev,
+                physio: { ignorePhase3PreFill: false, is_pregnant: false, is_lactating: true }
+            }));
+
+            const welcomeMsg = isMinor
+                ? `He registrado y sellado el perfil de salud gastrointestinal de **${pName}** de manera exitosa.\n\nEl sistema ha detectado y pre-confirmado la etapa de lactancia activa de **${pName}** a partir de los datos consolidados en el motivo de consulta. Para calibrar con precisión la matriz de nutrientes y requerimientos de energía de la menor, por favor indique: ¿es lactancia materna exclusiva o mixta para **${pName}**?`
+                : `He registrado y sellado su perfil de salud gastrointestinal de manera exitosa.\n\nEl sistema ha detectado y pre-confirmado su etapa de lactancia activa a partir de los datos consolidados en su motivo de consulta. Para calibrar con precisión su matriz de nutrientes y requerimientos de energía, por favor indique: ¿es lactancia materna exclusiva o mixta?`;
+
+            setMessages(prev => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content: welcomeMsg,
+                    options: [
+                        { label: "Exclusiva", value: "Exclusiva" },
+                        { label: "Mixta", value: "Mixta" }
+                    ]
+                }
+            ]);
+            setStep('lact_type');
+        } else {
+            // Flujo estándar conversacional
+            const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("embarazada actualmente"));
+            if (!alreadyGreeted) {
+                hasGreeted.current = true;
+                const initialMsg = isMinor
+                    ? `He registrado y sellado el perfil de salud gastrointestinal de **${pName}** de manera exitosa.\n\nPara ajustar los requerimientos de energía: ¿se encuentra **${pName}** embarazada actualmente?`
+                    : `He registrado y sellado su perfil de salud gastrointestinal de manera exitosa.\n\nPara ajustar sus requerimientos de energía: ¿se encuentra embarazada actualmente?`;
+
+                setMessages(prev => [
+                    ...prev,
+                    {
+                        role: 'assistant',
+                        content: initialMsg,
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" },
+                        ]
+                    }
+                ]);
+            }
+        }
+    }, [messages, isMinor, pName, setMessages, patientData, setPatientData]);
+
+    // Middleware de enrutamiento: callback constructor para corregir la ejecución prematura en App.jsx
+    useEffect(() => {
+        if (registerInputHandler) {
+            registerInputHandler(() => processStep);
+        }
+        return () => {
+            if (registerInputHandler) registerInputHandler(null);
+        };
+    }, [step, registerInputHandler]);
+
+    async function processStep(input, label = null) {
+        if (label !== 'button') {
+            const isGeneric = label === 'text' || label === 'select' || label === 'number' || label === 'tel';
+            const userText = (label && !isGeneric) ? label : input;
+            setMessages(prev => [...prev, { role: 'user', content: userText }]);
+        }
+        
+        setIsGlobalTyping(true);
+        await new Promise(resolve => setTimeout(resolve, 800));
+
         switch (step) {
             case 'preg_gate': {
                 if (input === "Sí") {
@@ -52,27 +155,81 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                         physio: { ...(prev.physio || {}), is_pregnant: true }
                     }));
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: isMinor ? `¿Cuántas semanas de gestación tiene ${pName}?` : "¿Cuántas semanas de gestación tiene?"
+                        role: 'assistant',
+                        content: isMinor 
+                            ? `Anotado. Se inicia el registro de gestación activa para **${pName}**.\n\n¿Cuántas semanas de gestación tiene **${pName}**?` 
+                            : "Anotado. Se inicia el registro de gestación activa en su expediente.\n\n¿Cuántas semanas de gestación tiene?",
+                        inputType: 'number'
                     }]);
                     setStep('preg_weeks');
-                    setCurrentOptions([]);
                 } else if (input === "No") {
                     setPatientData(prev => ({
                         ...prev,
                         physio: { ...(prev.physio || {}), is_pregnant: false }
                     }));
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: isMinor ? `¿Actualmente se encuentra ${pName} en periodo de lactancia?` : "¿Actualmente se encuentra en periodo de lactancia?"
+                        role: 'assistant',
+                        content: isMinor 
+                            ? `Se descarta gestación activa de **${pName}** para este protocolo.\n\n¿Actualmente se encuentra **${pName}** en periodo de lactancia?` 
+                            : "Se descarta gestación activa para este protocolo.\n\n¿Actualmente se encuentra en periodo de lactancia?",
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" },
+                        ]
                     }]);
                     setStep('lact_gate');
-                    setCurrentOptions([
-                        { label: "❌ No", value: "No" },
-                        { label: "✅ Sí", value: "Sí" }
-                    ]);
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { 
+                        role: 'assistant', 
+                        content: isMinor 
+                            ? "Declaración de estado requerida.\n\nPor favor seleccione Sí o No." 
+                            : "Declaración de estado requerida.\n\nPor favor seleccione Sí o No.", 
+                        options: [{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }] 
+                    }]);
+                }
+                break;
+            }
+            case 'confirm_preg_gate': {
+                if (input === "Sí") {
+                    setPatientData(prev => ({
+                        ...prev,
+                        physio: { ...(prev.physio || {}), is_pregnant: true }
+                    }));
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: isMinor
+                            ? `Confirmación registrada para el expediente clínico de **${pName}**.\n\nPara ajustar sus requerimientos, ¿cuántas semanas de gestación tiene **${pName}**?`
+                            : "Confirmación de gestación activa registrada para su expediente clínico.\n\nPara ajustar con precisión sus requerimientos energéticos, indique: ¿Cuántas semanas de gestación tiene?",
+                        inputType: 'number'
+                    }]);
+                    setStep('preg_weeks');
+                } else if (input === "No") {
+                    setPatientData(prev => ({
+                        ...prev,
+                        physio: { ...(prev.physio || {}), is_pregnant: false }
+                    }));
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: isMinor
+                            ? `Se descarta gestación activa de **${pName}** de acuerdo con el reporte.\n\nPara calibrar sus requerimientos: ¿Actualmente se encuentra **${pName}** en periodo de lactancia?`
+                            : "Se descarta gestación activa de acuerdo con su declaración.\n\nPara calibrar sus requerimientos de energía: ¿Actualmente se encuentra en periodo de lactancia?",
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" },
+                        ]
+                    }]);
+                    setStep('lact_gate');
+                } else {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: isMinor
+                            ? `Por favor declare el estado de confirmación de **${pName}**.\n\n¿Cuenta con confirmación médica o prueba positiva?`
+                            : "Por favor declare el estado de confirmación.\n\n¿Cuenta con confirmación médica o prueba positiva?",
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" }
+                        ]
+                    }]);
                 }
                 break;
             }
@@ -80,8 +237,11 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                 const weeks = parseInt(input, 10);
                 if (isNaN(weeks) || weeks < 1 || weeks > 42) {
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: isMinor ? "Por favor, ingresa un número válido de semanas (1-42)." : "Por favor, ingrese un número válido de semanas (1-42)."
+                        role: 'assistant',
+                        content: isMinor 
+                            ? "Valor fuera de rango clínico (1-42 semanas).\n\nPor favor, ingresa un número válido de semanas de gestación:" 
+                            : "Valor fuera de rango clínico (1-42 semanas).\n\nPor favor, ingrese un número válido de semanas de gestación:",
+                        inputType: 'number'
                     }]);
                 } else {
                     setPatientData(prev => ({
@@ -89,14 +249,16 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                         physio: { ...(prev.physio || {}), preg_weeks: weeks }
                     }));
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: isMinor ? `¿Actualmente se encuentra ${pName} en periodo de lactancia (además de estar embarazada)?` : "¿Actualmente se encuentra en periodo de lactancia (además de estar embarazada)?"
+                        role: 'assistant',
+                        content: isMinor 
+                            ? `Semanas de gestación registradas correctamente para **${pName}**.\n\n¿Actualmente se encuentra **${pName}** en periodo de lactancia (además de estar embarazada)?` 
+                            : "Semanas de gestación registradas correctamente en su expediente.\n\n¿Actualmente se encuentra en periodo de lactancia (además de estar embarazada)?",
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" },
+                        ]
                     }]);
                     setStep('lact_gate');
-                    setCurrentOptions([
-                        { label: "❌ No", value: "No" },
-                        { label: "✅ Sí", value: "Sí" }
-                    ]);
                 }
                 break;
             }
@@ -107,166 +269,233 @@ export default function Fase9_EstadoFisiologico({ initialChatHistory, patientDat
                         physio: { ...(prev.physio || {}), is_lactating: true }
                     }));
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: "¿Es lactancia materna exclusiva o mixta?"
+                        role: 'assistant',
+                        content: isMinor
+                            ? `Registro de lactancia activa iniciado para **${pName}**.\n\n¿Es lactancia materna exclusiva o mixta para el bebé de **${pName}**?`
+                            : "Registro de lactancia activa iniciado en su expediente.\n\n¿Es lactancia materna exclusiva o mixta?",
+                        options: [
+                            { label: "Exclusiva", value: "Exclusiva" },
+                            { label: "Mixta", value: "Mixta" }
+                        ]
                     }]);
                     setStep('lact_type');
-                    setCurrentOptions([
-                        { label: "Exclusiva", value: "Exclusiva" },
-                        { label: "Mixta", value: "Mixta" }
-                    ]);
                 } else if (input === "No") {
-                    setPatientData(prev => ({
-                        ...prev,
-                        physio: { ...(prev.physio || {}), is_lactating: false }
-                    }));
-                    finishPhase();
+                    const updated = {
+                        ...patientData,
+                        physio: { ...(patientData.physio || {}), is_lactating: false }
+                    };
+                    setPatientData(updated);
+                    const isPregnant = updated.physio?.is_pregnant === true;
+                    if (isPregnant) {
+                        finishPhase(updated);
+                    } else {
+                        askMenstrualCycle();
+                    }
                 } else {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No." }]);
+                    setMessages(prev => [...prev, { 
+                        role: 'assistant', 
+                        content: isMinor 
+                            ? "Selección requerida.\n\nPor favor indica si está lactando o no." 
+                            : "Selección requerida.\n\nPor favor indique si se encuentra lactando o no.", 
+                        options: [{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }] 
+                    }]);
                 }
                 break;
             }
             case 'lact_type': {
                 if (input !== "Exclusiva" && input !== "Mixta") {
-                    setMessages(prev => [...prev, { sender: 'tilo', text: isMinor ? "Selecciona Exclusiva o Mixta." : "Seleccione Exclusiva o Mixta." }]);
+                    setMessages(prev => [...prev, { 
+                        role: 'assistant', 
+                        content: isMinor 
+                            ? "Opción no reconocida.\n\nPor favor selecciona Exclusiva o Mixta." 
+                            : "Opción no reconocida.\n\nPor favor seleccione Exclusiva o Mixta.", 
+                        options: [{ label: "Exclusiva", value: "Exclusiva" }, { label: "Mixta", value: "Mixta" }] 
+                    }]);
                     return;
                 }
+
                 setPatientData(prev => ({
                     ...prev,
                     physio: { ...(prev.physio || {}), lactation_type: input }
                 }));
                 setMessages(prev => [...prev, {
-                    sender: 'tilo',
-                    text: isMinor ? `¿Qué edad tiene el bebé de ${pName} (en meses)?` : "¿Qué edad tiene su bebé (en meses)?"
+                    role: 'assistant',
+                    content: isMinor 
+                        ? `Modalidad de lactancia registrada con éxito para **${pName}**.\n\n¿Qué edad tiene el bebé de **${pName}** (en meses)?` 
+                        : "Modalidad de lactancia registrada con éxito en su expediente.\n\n¿Qué edad tiene su bebé (en meses)?",
+                    inputType: 'number'
                 }]);
                 setStep('baby_age');
-                setCurrentOptions([]);
                 break;
             }
             case 'baby_age': {
                 const months = parseInt(input, 10);
                 if (isNaN(months) || months < 0 || months > 48) {
                     setMessages(prev => [...prev, {
-                        sender: 'tilo',
-                        text: isMinor ? "Por favor, ingresa un número válido de meses (0-48)." : "Por favor, ingrese un número válido de meses (0-48)."
+                        role: 'assistant',
+                        content: isMinor 
+                            ? "Edad fuera de rango de lactancia (0-48 meses).\n\nPor favor, ingresa una edad de meses válida para el bebé:" 
+                            : "Edad fuera de rango de lactancia (0-48 meses).\n\nPor favor, ingrese una edad de meses válida para su bebé:",
+                        inputType: 'number'
                     }]);
                 } else {
+                    const updated = {
+                        ...patientData,
+                        physio: { ...(patientData.physio || {}), baby_age_months: months }
+                    };
+                    setPatientData(updated);
+                    const isPregnant = updated.physio?.is_pregnant === true;
+                    if (isPregnant) {
+                        finishPhase(updated);
+                    } else {
+                        askMenstrualCycle();
+                    }
+                }
+                break;
+            }
+            case 'menstrual_status_gate': {
+                const statusMap = {
+                    'Regular': 'Regular',
+                    'Irregular': 'Irregular',
+                    'Amenorrea': 'Amenorrea / Sin Ciclo',
+                    'Menopausia': 'Menopausia / Climaterio'
+                };
+                
+                const resolvedStatus = statusMap[input] || input;
+
+                if (input === "Regular" || input === "Irregular") {
                     setPatientData(prev => ({
                         ...prev,
-                        physio: { ...(prev.physio || {}), baby_age_months: months }
+                        physio: { 
+                            ...(prev.physio || {}), 
+                            menstrual_status: resolvedStatus
+                        }
                     }));
-                    finishPhase();
+                    
+                    const daysMsg = isMinor
+                        ? `Para saber en qué fase metabólica se encuentra hoy **${pName}**, ¿hace cuántos días comenzó su último sangrado menstrual? (Escriba el número de días).`
+                        : "Para saber en qué fase metabólica se encuentra hoy, ¿hace cuántos días comenzó su último sangrado menstrual? (Escriba el número de días).";
+
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: daysMsg,
+                        inputType: 'number'
+                    }]);
+                    setStep('menstrual_days_gate');
+                } else if (input === "Amenorrea" || input === "Menopausia") {
+                    const updated = {
+                        ...patientData,
+                        physio: { 
+                            ...(patientData.physio || {}), 
+                            menstrual_status: resolvedStatus,
+                            last_menstruation_period: resolvedStatus
+                        }
+                    };
+                    setPatientData(updated);
+                    finishPhase(updated);
+                } else {
+                    setMessages(prev => [...prev, { 
+                        role: 'assistant', 
+                        content: isMinor 
+                            ? "Estatus no reconocido.\n\nPor favor seleccione una de las opciones:" 
+                            : "Estatus no reconocido.\n\nPor favor seleccione una de las opciones:", 
+                        options: [
+                            { label: "Regular", value: "Regular" },
+                            { label: "Irregular", value: "Irregular" },
+                            { label: "Amenorrea / Sin Ciclo", value: "Amenorrea" },
+                            { label: "Menopausia / Climaterio", value: "Menopausia" }
+                        ] 
+                    }]);
+                }
+                break;
+            }
+            case 'menstrual_days_gate': {
+                let days = NaN;
+                const cleanedInput = input.toLowerCase().trim();
+                
+                // Mapeos textuales comunes
+                if (cleanedInput.includes("una semana") || cleanedInput.includes("1 semana") || cleanedInput === "hace una semana" || cleanedInput === "hace 1 semana") {
+                    days = 7;
+                } else if (cleanedInput.includes("dos semanas") || cleanedInput.includes("2 semanas") || cleanedInput.includes("quincena") || cleanedInput === "hace dos semanas" || cleanedInput === "hace 2 semanas") {
+                    days = 14;
+                } else if (cleanedInput.includes("tres semanas") || cleanedInput.includes("3 semanas") || cleanedInput === "hace tres semanas" || cleanedInput === "hace 3 semanas") {
+                    days = 21;
+                } else if (cleanedInput.includes("un mes") || cleanedInput.includes("1 mes") || cleanedInput === "hace un mes" || cleanedInput === "hace 1 mes") {
+                    days = 30;
+                } else {
+                    // Extracción con regex
+                    const match = cleanedInput.match(/\d+/);
+                    if (match) {
+                        days = parseInt(match[0], 10);
+                        if (cleanedInput.includes('semana') || cleanedInput.includes('sem')) {
+                            days = days * 7;
+                        } else if (cleanedInput.includes('mes')) {
+                            days = days * 30;
+                        }
+                    }
+                }
+
+                if (isNaN(days) || days < 0 || days > 365) {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: isMinor 
+                            ? "Por favor, ingresa un número de días válido (0-365) o una frase descriptiva (ej. 'hace 2 semanas'):" 
+                            : "Por favor, ingrese un número de días válido (0-365) o una frase descriptiva (ej. 'hace 2 semanas'):",
+                        inputType: 'number'
+                    }]);
+                } else {
+                    const currentStatus = patientData.physio?.menstrual_status || "Regular";
+                    const periodString = `${currentStatus} (Hace ${days} ${days === 1 ? 'día' : 'días'})`;
+                    
+                    const updated = {
+                        ...patientData,
+                        physio: { 
+                            ...(patientData.physio || {}), 
+                            menstrual_days: days,
+                            last_menstruation_period: periodString
+                        }
+                    };
+                    setPatientData(updated);
+                    finishPhase(updated);
                 }
                 break;
             }
             default:
                 break;
         }
+        setIsGlobalTyping(false);
     };
 
-    const finishPhase = () => {
-        const nextMsg = isMinor
-            ? `Registrado.\n\nPasemos al Estilo de Vida.\n\n¿Fuma ${pName} tabaco o utiliza vapeadores?`
-            : "Registrado.\n\nPasemos a su Estilo de Vida.\n\n¿Fuma tabaco o utiliza vapeadores?";
+    const askMenstrualCycle = () => {
+        const cycleMsg = isMinor
+            ? `Para adaptar la nutrición de **${pName}** a su cronobiología reproductiva, ¿cómo describiría el estatus general de su ciclo menstrual?`
+            : "Para adaptar su nutrición a su cronobiología reproductiva, ¿cómo describiría el estatus general de su ciclo menstrual?";
 
-        const finalMessages = messages.map(msg => ({
-            role: msg.sender === 'user' ? 'user' : 'assistant',
-            content: msg.text
-        }));
-
-        finalMessages.push({
-            role: 'assistant',
-            content: nextMsg
-        });
-
-        onPhaseComplete(finalMessages, 'PHASE_10_SMOKE_GATE');
+        setMessages(prev => [
+            ...prev,
+            {
+                role: 'assistant',
+                content: cycleMsg,
+                options: [
+                    { label: "Regular", value: "Regular" },
+                    { label: "Irregular", value: "Irregular" },
+                    { label: "Amenorrea / Sin Ciclo", value: "Amenorrea" },
+                    { label: "Menopausia / Climaterio", value: "Menopausia" }
+                ],
+                inputType: 'select'
+            }
+        ]);
+        setStep('menstrual_status_gate');
     };
 
-    return (
-        <div className="flex-col flex h-full bg-slate-50 relative">
-            <div className="bg-white px-6 py-4 border-b border-slate-200 shrink-0 flex items-center justify-between z-10">
-                <div>
-                    <h2 className="text-lg font-bold text-slate-800">Estado Fisiológico</h2>
-                    <p className="text-sm text-slate-500">Embarazo y Lactancia</p>
-                </div>
-                <div className="px-3 py-1 bg-amber-50 text-amber-700 rounded-full font-bold text-xs border border-amber-200">
-                    Fase 9
-                </div>
-            </div>
+    const finishPhase = (customData = null) => {
+        if (onPhaseComplete) {
+            const dataToPass = customData 
+                ? (customData.physio || customData) 
+                : (patientData?.physio || patientData);
+            onPhaseComplete(dataToPass);
+        }
+    };
 
-            <div className="flex-1 h-full overflow-y-auto p-8 space-y-6 custom-scrollbar relative z-10">
-                {messages.map((msg, index) => (
-                    <div
-                        key={index}
-                        className={`flex ${msg.sender === "tilo" || msg.role === "assistant" ? "justify-start" : "justify-end"} mb-6 items-start gap-3`}
-                    >
-                        {(msg.sender === "tilo" || msg.role === "assistant") && (
-                            <div className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden">
-                                <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
-                            </div>
-                        )}
-
-                        <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${(msg.sender === "tilo" || msg.role === 'assistant')
-                                ? msg.isBio
-                                    ? 'bg-purple-50 border-l-4 border-purple-500 text-purple-900 rounded-tl-none font-medium'
-                                    : msg.isAcute
-                                        ? 'bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded-tl-none font-medium'
-                                        : msg.isCritical
-                                            ? 'bg-red-50 border-l-4 border-red-500 text-red-900 rounded-tl-none font-bold'
-                                            : 'bg-white border text-slate-700 rounded-tl-none border-slate-100'
-                                : 'bg-indigo-600 text-white rounded-tr-none'
-                                }`}>
-                            <div className={`prose prose-sm max-w-none ${(msg.sender === "tilo" || msg.role === "assistant") ? "prose-slate" : "prose-invert"}`}>
-                                <ReactMarkdown>{msg.text || msg.content}</ReactMarkdown>
-                            </div>
-
-                            {(msg.sender === 'tilo' || msg.role === "assistant") && index === messages.length - 1 && currentOptions.length > 0 && (
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                    {currentOptions.map((opt, i) => (
-                                        <button
-                                            key={i}
-                                            onClick={() => handleOptionSelect(opt.value)}
-                                            className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ))}
-                <div ref={messagesEndRef} />
-            </div>
-
-            <div className="p-6 bg-white border-t border-slate-50 shrink-0">
-                <div className="relative flex items-center gap-2 bg-white border border-slate-200 rounded-full px-2 py-2 shadow-sm focus-within:ring-4 focus-within:ring-blue-50 focus-within:border-blue-400 transition-all w-full">
-                    {currentOptions.length > 0 ? (
-                        <div className="flex-1 px-3 py-2 text-slate-400 text-sm italic border-l border-slate-100 flex items-center">
-                            {isMinor ? "Por favor, selecciona una opción superior." : "Por favor, seleccione una opción superior."}
-                        </div>
-                    ) : (
-                        <input
-                            type="text"
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                            placeholder={isMinor ? "Escribe aquí..." : "Escriba aquí..."}
-                            className="flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2"
-                        />
-                    )}
-
-                    {currentOptions.length === 0 && (
-                        <button
-  onClick={handleSend}
-  disabled={!inputValue.trim()}
-  className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
->
-  <Send className="w-5 h-5" />
-</button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
+    return null; // Headless
 }

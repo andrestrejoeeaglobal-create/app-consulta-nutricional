@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import tiloImg from "../assets/tilo.png";
-import { formatText, getGenderedTerm, fuzzyMatch, calculateCurp, cleanServerInfo, buildPediatricContext, inferGenderFromName } from "../utils/utils";
+import { formatText, getGenderedTerm, fuzzyMatch, calculateCurp, cleanServerInfo, buildPediatricContext, inferGenderFromName, formatPhoneNumber, toTitleCase } from "../utils/utils";
 import useCitationValidation from './useCitationValidation';
 
 // --- INITIAL STATES (EXTRACTED FOR RESET CAPABILITY) ---
@@ -9,7 +9,7 @@ const INITIAL_ACTIVE_TAB = 'profile';
 const INITIAL_MESSAGES = [
     {
         role: "assistant",
-        content: "Hola, soy el Ecosistema de Transformación Inteligente y Logro Optimizado (**T.I.L.O.**), el **Asistente Nutricional** de Equipo en Acción. He inicializado mis protocolos de seguridad para garantizar la protección absoluta de su información clínica y validar la vigencia de su consulta.\n\nPara blindar su sesión e iniciar el proceso, por favor **proporcione su número de cita** (recuerde que esta es personal e intransferible):",
+        content: "Hola, soy el Ecosistema de Transformación Inteligente y Logro Optimizado (T.I.L.O.), el **Copiloto Clínico y Metabólico** de Equipo en Acción. He inicializado mis protocolos de seguridad para garantizar la protección absoluta de su información clínica y validar la vigencia de su consulta.\n\n---\n\nPara blindar su sesión e iniciar el proceso, por favor **proporcione su número de cita** (recuerde que esta es personal e intransferible):",
         avatar: tiloImg,
         inputType: 'number' // Explicit declaration of expected input type
     },
@@ -27,9 +27,13 @@ const INITIAL_PATIENT_DATA = {
         age: 0,
         sex: "",
         occupation: "",
+        ocupacion_descriptor: "", // V15.8 NEAT-005
+        factor_pal: null,          // V15.8 NEAT-005
         phone: "",
         emergencyContact: { name: "", kin: "", phone: "" },
         curp: "",
+        nationality_type: "MX",
+        passport_id: "",
         religion: "",
         marital_status: "",
         address: { zip_code: "", colony: "", street: "" }
@@ -42,7 +46,11 @@ const INITIAL_PATIENT_DATA = {
         fechanac: "",
         sexo: "",
         ocupacion: "",
+        ocupacion_descriptor: "", // V15.8 NEAT-005
+        factor_pal: null,          // V15.8 NEAT-005
         curp: "",
+        nationality_type: "MX",
+        passport_id: "",
         telefono: "",
         religion: ""
     },
@@ -64,6 +72,7 @@ const INITIAL_PATIENT_DATA = {
         personal_raw_text: "",
         personal_checklist_verified: false,
         personal_structured: [],
+        surgical: [],
         medications: [],
         allergies: {
             food: [],
@@ -85,9 +94,9 @@ const INITIAL_PATIENT_DATA = {
     },
     // Fases 10, 11
     habits: {
-        smoking: { is_smoker: false, details: "" },
-        alcohol: { is_drinker: false, log: [], total_kcal_per_occasion: 0 },
-        drugs: { has_usage: false, log: [] },
+        smoking: { is_smoker: null, type: null, quantity_text: "", risk_level: null },
+        alcohol: { is_drinker: null, preferred_drink: null, frequency_days: null, units_per_session: null, calculated_weekly_calories: null },
+        drugs: { has_usage: null, substance_name: "", frequency: "" },
         sleep: { hours: null, quality: "" },
         stress: ""
     },
@@ -185,11 +194,19 @@ export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = 
 
         const data = await response.json();
         
+        // Sanitizar contra fuga de variables internas (Data Leak Fallback)
+        if (data.reasoning) {
+            data.reasoning = data.reasoning.replace(/\*?\*?(freeText|telemetry|bodyMapZones)\*?\*?\s*:\s*/gi, '');
+        }
+        
         let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
         
-        // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo
+        // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo o vulnerabilidad conductual
         if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
         else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
+        else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
+            if (alertLevel === "NONE") alertLevel = "WARNING";
+        }
 
         return {
             category: data.category || "CLINICAL",
@@ -200,12 +217,16 @@ export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = 
             primaryRoute: data.primaryRoute,
             secondaryRoute: data.secondaryRoute,
             reasoning: data.reasoning,
-            patientMessage: data.patientMessage
+            patientMessage: data.patientMessage,
+            redFlag: data.redFlag || false,
+            risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
+            detected_tags: data.detected_tags || []
         };
 
     } catch (error) {
         console.error("Neural Cortex Analysis Error:", error);
         return {
+            error: true,
             category: "CLINICAL",
             alert: "NONE",
             suspicion: "Inferencia Semántica",
@@ -214,7 +235,10 @@ export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = 
             primaryRoute: "GOAL_EDUCATION",
             secondaryRoute: null,
             reasoning: "Fallback preventivo por falla en Neural Cortex",
-            patientMessage: "Entendido. He analizado la información y he trazado una ruta clínica de evaluación para continuar."
+            patientMessage: "Entendido. He analizado la información y he trazado una ruta clínica de evaluación para continuar.",
+            redFlag: false,
+            risk_level: "LOW",
+            detected_tags: []
         };
     }
 };
@@ -229,20 +253,145 @@ export const useCortex = () => {
                 const parsed = JSON.parse(item);
                 if (key === 'patientData' && parsed[key] !== undefined) {
                     const savedData = parsed[key];
-                    // Deep merge for critical top-level structures to prevent undefined crashes
-                    return {
-                        ...initialValue,
-                        ...savedData,
-                        identificacion: { ...initialValue.identificacion, ...(savedData.identificacion || {}) },
-                        profile: { ...initialValue.profile, ...(savedData.profile || {}) },
-                        domicilio: { ...initialValue.domicilio, ...(savedData.domicilio || {}) },
-                        evaluacionDietetica: { ...initialValue.evaluacionDietetica, ...(savedData.evaluacionDietetica || {}) },
-                        history: { ...initialValue.history, ...(savedData.history || {}) },
-                        habits: { ...initialValue.habits, ...(savedData.habits || {}) },
-                        nutrition: { ...initialValue.nutrition, ...(savedData.nutrition || {}) },
-                        vitals: { ...initialValue.vitals, ...(savedData.vitals || {}) },
-                        clinical_context: { ...initialValue.clinical_context, ...(savedData.clinical_context || {}) }
-                    };
+                    if (savedData && typeof savedData === 'object') {
+                        // Self-healing: if curp starts with EXT-, enforce FOREIGN nationality type
+                        if (savedData.profile) {
+                            if (savedData.profile.curp && savedData.profile.curp.startsWith('EXT-')) {
+                                savedData.profile.nationality_type = 'FOREIGN';
+                                if (!savedData.profile.passport_id) {
+                                    savedData.profile.passport_id = savedData.profile.curp.replace('EXT-', '');
+                                }
+                            }
+
+                            // V18.0: Self-healing for missing baby_age_months when age is 0
+                            if (savedData.profile.age === 0 && savedData.profile.birthdate && (savedData.profile.baby_age_months === null || savedData.profile.baby_age_months === undefined)) {
+                                const pParts = savedData.profile.birthdate.split('/');
+                                if (pParts.length === 3) {
+                                    const bDate = new Date(parseInt(pParts[2], 10), parseInt(pParts[1], 10) - 1, parseInt(pParts[0], 10));
+                                    const today = new Date();
+                                    let yDiff = today.getFullYear() - bDate.getFullYear();
+                                    let mDiff = today.getMonth() - bDate.getMonth();
+                                    if (today.getDate() < bDate.getDate()) {
+                                        mDiff--;
+                                    }
+                                    if (mDiff < 0) {
+                                        yDiff--;
+                                        mDiff += 12;
+                                    }
+                                    savedData.profile.baby_age_months = (yDiff * 12) + mDiff;
+                                }
+                            }
+                        }
+                        if (savedData.identificacion) {
+                            if (savedData.identificacion.curp && savedData.identificacion.curp.startsWith('EXT-')) {
+                                savedData.identificacion.nationality_type = 'FOREIGN';
+                                if (!savedData.identificacion.passport_id) {
+                                    savedData.identificacion.passport_id = savedData.identificacion.curp.replace('EXT-', '');
+                                }
+                            }
+
+                            // V18.0: Self-healing for missing baby_age_months when edad is 0
+                            if (savedData.identificacion.edad === 0 && (savedData.identificacion.fechanac || (savedData.profile && savedData.profile.birthdate)) && (savedData.identificacion.baby_age_months === null || savedData.identificacion.baby_age_months === undefined)) {
+                                const dateStr = savedData.identificacion.fechanac || savedData.profile.birthdate;
+                                const pParts = dateStr.split('/');
+                                if (pParts.length === 3) {
+                                    const bDate = new Date(parseInt(pParts[2], 10), parseInt(pParts[1], 10) - 1, parseInt(pParts[0], 10));
+                                    const today = new Date();
+                                    let yDiff = today.getFullYear() - bDate.getFullYear();
+                                    let mDiff = today.getMonth() - bDate.getMonth();
+                                    if (today.getDate() < bDate.getDate()) {
+                                        mDiff--;
+                                    }
+                                    if (mDiff < 0) {
+                                        yDiff--;
+                                        mDiff += 12;
+                                    }
+                                    savedData.identificacion.baby_age_months = (yDiff * 12) + mDiff;
+                                }
+                            }
+                        }
+
+                        // Deep merge for critical top-level structures to prevent undefined crashes
+                        return {
+                            ...initialValue,
+                            ...savedData,
+                            identificacion: { ...initialValue.identificacion, ...(savedData.identificacion || {}) },
+                            profile: { ...initialValue.profile, ...(savedData.profile || {}) },
+                            domicilio: { ...initialValue.domicilio, ...(savedData.domicilio || {}) },
+                            evaluacionDietetica: { ...initialValue.evaluacionDietetica, ...(savedData.evaluacionDietetica || {}) },
+                            history: { ...initialValue.history, ...(savedData.history || {}) },
+                            habits: { ...initialValue.habits, ...(savedData.habits || {}) },
+                            nutrition: { ...initialValue.nutrition, ...(savedData.nutrition || {}) },
+                            vitals: { ...initialValue.vitals, ...(savedData.vitals || {}) },
+                            clinical_context: { ...initialValue.clinical_context, ...(savedData.clinical_context || {}) }
+                        };
+                    }
+                }
+                if (key === 'messages') {
+                    let savedMessages = parsed[key];
+                    if (Array.isArray(savedMessages)) {
+                        if (savedMessages.length > 0) {
+                            // SANITIZACIÓN AUTO-CURATIVA: Eliminar mensajes duplicados consecutivos del asistente
+                            const uniqueMessages = [];
+                            for (let i = 0; i < savedMessages.length; i++) {
+                                if (i > 0 && 
+                                    savedMessages[i] && 
+                                    savedMessages[i].role === 'assistant' && 
+                                    savedMessages[i-1] && 
+                                    savedMessages[i-1].role === 'assistant' && 
+                                    savedMessages[i].content === savedMessages[i-1].content) {
+                                    console.log("✂️ Auto-healing duplicate assistant message removed:", savedMessages[i].content);
+                                    continue;
+                                }
+                                uniqueMessages.push(savedMessages[i]);
+                            }
+                            savedMessages = uniqueMessages;
+
+                            if (savedMessages[0] && savedMessages[0].role === 'assistant' && savedMessages[0].content && savedMessages[0].content.includes("Ecosistema de Transformación Inteligente y Logro Optimizado")) {
+                                savedMessages[0].content = INITIAL_MESSAGES[0].content;
+                            }
+                            savedMessages.forEach(msg => {
+                                if (msg && msg.content) {
+                                    if (msg.content.includes("¿Es usted el paciente titular mencionado arriba?")) {
+                                        msg.inputType = 'strict_select';
+                                    }
+                                    if (msg.content.includes("corresponde exactamente a su **Nombre de Pila completo**") || msg.content.includes("su **Apellido Paterno** correcto?")) {
+                                        msg.inputType = 'strict_select';
+                                    }
+                                    if (msg.content.includes("¿Cuál es su **sexo biológico**?") || msg.content.includes("sexo biológico** de")) {
+                                        msg.inputType = 'strict_select';
+                                    }
+                                    if (msg.content.includes("profesa alguna religión con restricciones dietéticas") || msg.content.includes("¿Qué **Religión** profesa")) {
+                                        msg.inputType = 'strict_select';
+                                    }
+                                    if (msg.content.includes("¿Podría describir brevemente cualquier otro síntoma o detalle importante que no aparezca en el mapa?") || msg.content.includes("¿Presenta algún otro síntoma, molestia o detalle importante que debamos registrar?")) {
+                                        const hasAlert = msg.content.includes("⚠️ **ALERTA DE SEGURIDAD**") || msg.content.includes("⚠️ **ALERTA DE SEGURIDAD**");
+                                        msg.content = hasAlert
+                                            ? "⚠️ **ALERTA DE SEGURIDAD**: He detectado un nivel de dolor severo en una zona sensible.\n\n---\n\n¿Presenta algún otro síntoma, molestia o detalle importante que debamos registrar?"
+                                            : "Entendido.\n\n---\n\n¿Presenta algún otro síntoma, molestia o detalle importante que debamos registrar?";
+                                        msg.inputType = 'strict_select';
+                                        msg.options = [
+                                            { label: '✅ Sí, agregar detalle', value: 'ADD_DETAIL_YES' },
+                                            { label: '❌ No, continuar', value: 'ADD_DETAIL_NO' }
+                                        ];
+                                    }
+                                    if (msg.role === 'assistant' && (
+                                        msg.content.includes("número de teléfono") ||
+                                        msg.content.includes("teléfono celular") ||
+                                        msg.content.includes("Teléfono Correcto") ||
+                                        msg.content.includes("Fallo de Formato Telefónico") ||
+                                        msg.content.includes("Redundancia de Contacto Detectada") ||
+                                        msg.content.includes("Contacto Inválido") ||
+                                        msg.content.includes("El número debe tener exactamente 10 dígitos")
+                                    )) {
+                                        msg.inputType = 'tel';
+                                    }
+                                }
+                            });
+                        }
+                        return savedMessages;
+                    }
+                    return initialValue;
                 }
                 return parsed[key] !== undefined ? parsed[key] : initialValue;
             }
@@ -253,19 +402,19 @@ export const useCortex = () => {
     };
 
     // 1. ESTADO DE FASE (Maquina de Estados)
-    const [currentPhase, setCurrentPhase] = useState(() => getSavedState('currentPhase', INITIAL_CURRENT_PHASE));
+    const [currentPhase, setCurrentPhase] = useState(() => getSavedState('currentPhase', INITIAL_CURRENT_PHASE) || INITIAL_CURRENT_PHASE);
 
     // 2. ESTADO DE NAVEGACIÓN (Dashboard)
-    const [activeTab, setActiveTab] = useState(() => getSavedState('activeTab', INITIAL_ACTIVE_TAB));
+    const [activeTab, setActiveTab] = useState(() => getSavedState('activeTab', INITIAL_ACTIVE_TAB) || INITIAL_ACTIVE_TAB);
 
     // 3. ESTADO DEL CHAT
-    const [messages, setMessages] = useState(() => getSavedState('messages', INITIAL_MESSAGES));
+    const [messages, setMessages] = useState(() => getSavedState('messages', INITIAL_MESSAGES) || INITIAL_MESSAGES);
 
     // 4. ESTADO GLOBAL DEL PACIENTE (Data Lake)
-    const [patientData, setPatientData] = useState(() => getSavedState('patientData', INITIAL_PATIENT_DATA));
+    const [patientData, setPatientData] = useState(() => getSavedState('patientData', INITIAL_PATIENT_DATA) || INITIAL_PATIENT_DATA);
 
     // ESTADO TEMPORAL: Guardar payload del API
-    const [apiContext, setApiContext] = useState(() => getSavedState('apiContext', {}));
+    const [apiContext, setApiContext] = useState(() => getSavedState('apiContext', {}) || {});
 
     // --- NEW: PHASE 3 NATIVE STATE ---
     const [fase3State, setFase3State] = useState(() => getSavedState('fase3State', {
@@ -302,9 +451,68 @@ export const useCortex = () => {
         }
     }, [currentPhase, activeTab, messages, patientData, apiContext, authAttempts, fase3State]);
 
+    // Auto-focus tabs based on phase transitions (Interface Event Dispatcher)
+    useEffect(() => {
+        if (!currentPhase) return;
+        const phase = currentPhase.toUpperCase();
+        
+        if (phase.startsWith('PHASE_0_') || phase.startsWith('PHASE_1_') || phase.startsWith('PHASE_2_') || phase === 'PHASE_1_SUMMARY_CONFIRM' || phase === 'PHASE_2_SUMMARY_CONFIRM') {
+            setActiveTab('profile');
+        } else if (
+            phase.startsWith('PHASE_3_') || phase === 'PHASE_3_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_4_') || phase === 'PHASE_4_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_5_') || phase === 'PHASE_5_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_6_') || phase === 'PHASE_6_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_7_') || phase === 'PHASE_7_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_8_') || phase === 'PHASE_8_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_9_') || phase === 'PHASE_9_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_10_') || phase === 'PHASE_10_SUMMARY_CONFIRM'
+        ) {
+            setActiveTab('clinical_history');
+        } else if (
+            phase.startsWith('PHASE_11_') || phase === 'PHASE_11_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_12_') || phase === 'PHASE_12_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_13_') || phase === 'PHASE_13_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_14_') || phase === 'PHASE_14_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_15_') || phase === 'PHASE_15_SUMMARY_CONFIRM'
+        ) {
+            setActiveTab('lifestyle');
+        } else if (
+            phase.startsWith('PHASE_16_') || phase === 'PHASE_16_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_17_') || phase === 'PHASE_17_SUMMARY_CONFIRM'
+        ) {
+            setActiveTab('vitals');
+        } else if (
+            phase.startsWith('PHASE_18_') || phase === 'PHASE_18_SUMMARY_CONFIRM'
+        ) {
+            setActiveTab('lab');
+        } else if (
+            phase.startsWith('PHASE_19_') || phase === 'PHASE_19_SUMMARY_CONFIRM' ||
+            phase.startsWith('PHASE_20_') || phase === 'PHASE_20_SUMMARY_CONFIRM'
+        ) {
+            setActiveTab('diagnosis');
+        } else if (
+            phase.startsWith('PHASE_21_') || phase === 'PHASE_21_SUMMARY_CONFIRM'
+        ) {
+            setActiveTab('schedule');
+        }
+    }, [currentPhase]);
+
     // --- SESSION RESET FUNCTION ---
-    const clearSession = () => {
+    const clearSession = async (citationId = null) => {
         try {
+            const activeCitation = citationId || apiContext?.citaId || apiContext?.idCita || patientData?.identificacion?.idCita || patientData?.identificacion?.citaId;
+            if (activeCitation) {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                try {
+                    await fetch(`${apiUrl}/api/citations/${activeCitation}/progress`, {
+                        method: 'DELETE'
+                    });
+                    console.log(`🗑️ Database session cleared for citation ${activeCitation}`);
+                } catch (apiErr) {
+                    console.warn("Could not delete persistent session on backend:", apiErr.message);
+                }
+            }
             window.localStorage.removeItem('tilo_session_data');
             setCurrentPhase(INITIAL_CURRENT_PHASE);
             setActiveTab(INITIAL_ACTIVE_TAB);
@@ -318,6 +526,7 @@ export const useCortex = () => {
         }
     };
 
+
     // --- MOTOR CORTEX: PROCESAMIENTO DE RESPUESTAS FASE 3 ---
     const analyzeWithNeuralCortex = async (text) => {
         try {
@@ -325,6 +534,7 @@ export const useCortex = () => {
             
             // Construir telemetría para el LLM
             const telemetry = {
+                firstName: patientData.profile.first_name || '',
                 age: patientData.profile.age,
                 sex: patientData.profile.sex,
                 location: `${patientData.profile.address?.municipality || ''}, ${patientData.profile.address?.state || ''}`,
@@ -353,9 +563,12 @@ export const useCortex = () => {
             
             let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
             
-            // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo
+            // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo o vulnerabilidad conductual
             if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
             else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
+            else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
+                if (alertLevel === "NONE") alertLevel = "WARNING";
+            }
 
             return {
                 category: data.category || "CLINICAL",
@@ -366,13 +579,17 @@ export const useCortex = () => {
                 primaryRoute: data.primaryRoute,
                 secondaryRoute: data.secondaryRoute,
                 reasoning: data.reasoning,
-                patientMessage: data.patientMessage
+                patientMessage: data.patientMessage,
+                redFlag: data.redFlag || false,
+                risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
+                detected_tags: data.detected_tags || []
             };
 
         } catch (error) {
             console.error("🔥 Error en Neural Cortex:", error);
             // Fallback robusto en caso de error de red
             return {
+                error: true,
                 category: "CLINICAL",
                 alert: "NONE",
                 suspicion: "Ruta 0 - Control Clínico General",
@@ -381,7 +598,10 @@ export const useCortex = () => {
                 primaryRoute: "Ruta 0 - Control Clínico General",
                 secondaryRoute: null,
                 reasoning: "Error de conexión con el motor de IA. Se ha asignado la ruta clínica por defecto.",
-                patientMessage: "Entendido. He analizado la información y he trazado una ruta de evaluación general para continuar."
+                patientMessage: "Entendido. He analizado la información y he trazado una ruta de evaluación general para continuar.",
+                redFlag: false,
+                risk_level: "LOW",
+                detected_tags: []
             };
         }
     };
@@ -395,29 +615,40 @@ export const useCortex = () => {
         const sex = p.sex || id.sexo || "";
         const dob = p.birthdate || id.fechanac || `${p.dobDay || ''}/${p.dobMonth || ''}/${p.dobYear || ''}`;
         const rel = p.religion || id.religion || "";
+        const occRaw = p.occupation || id.ocupacion || "";
+        const occMapping = {
+            'HOME_PARENTS': 'En casa (Cuidado materno/paterno)',
+            'HOME_CAREGIVER': 'En casa (Familiar o Niñera)',
+            'DAYCARE': 'Guardería / Estancia infantil',
+            'KINDER': 'Kínder / Preescolar'
+        };
+        const occ = typeof occRaw === 'string' ? (occMapping[occRaw.toUpperCase()] || occRaw) : occRaw;
 
         const ptCtx = p.pediatric_profile || id.pediatric_profile;
         const showMarital = !(ptCtx && ptCtx.ui_controls && ptCtx.ui_controls.show_marital_status === false);
         const marital = p.marital_status || id.estadoCivil || "";
+        const occupationLabel = ptCtx?.ui_controls?.occupation_label || 'Ocupación';
 
         const summary = `Mapeo demográfico y sociocultural completado.\n\nPara dar cumplimiento a la NOM-004 y sellar formalmente este bloque del expediente clínico, por favor verifique la exactitud de los datos registrados:\n\n` +
             `- 👤 **Nombre:** ${name}\n` +
-            `- 📞 **Teléfono:** ${tel}\n` +
-            `- 🆔 **CURP:** ${curp}\n` +
-            `- ⚥ **Sexo:** ${sex}\n` +
             `- 📅 **Fecha Nacimiento:** ${dob}\n` +
-            `- 🙏 **Religión:** ${rel}\n` +
+            `- ⚥ **Sexo:** ${sex}\n` +
+            `- 💼 **${occupationLabel}:** ${toTitleCase(occ)}\n` +
+            `- 🆔 **CURP:** ${curp}\n` +
+            `- 📞 **Teléfono:** ${formatPhoneNumber(tel)}\n` +
+            `- 🙏 **Religión:** ${toTitleCase(rel)}\n` +
             (showMarital ? `- 💍 **Estado Civil:** ${marital}\n\n` : '\n') +
             `¿Es correcta esta información?`;
 
         setMessages(prev => {
-            const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.content === summary) return prev;
-            return [...prev, {
+            const safePrev = prev || [];
+            const lastMsg = safePrev[safePrev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return safePrev;
+            return [...safePrev, {
                 role: 'assistant',
                 content: summary,
                 avatar: tiloImg,
-                inputType: 'buttons',
+                inputType: 'strict_select',
                 options: [
                     { label: '✅ Sí, es correcta', value: 'yes' },
                     { label: '❌ No, quiero corregir algo', value: 'no' }
@@ -432,17 +663,18 @@ export const useCortex = () => {
         const summary = `Red de apoyo primario registrada en sistema.\n\nComo protocolo de seguridad clínica, le solicito que verifique la exactitud de los datos de contacto de emergencia:\n\n` +
             `- 👤 **Nombre:** ${e.name || e.nombre || ''}\n` +
             `- 🤝 **Parentesco:** ${e.kin || e.parentesco || ''}\n` +
-            `- 📞 **Teléfono:** ${e.phone || e.telefono || ''}\n\n` +
+            `- 📞 **Teléfono:** ${formatPhoneNumber(e.phone || e.telefono || '')}\n\n` +
             `¿Es correcta esta información?`;
 
         setMessages(prev => {
-            const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.content === summary) return prev;
-            return [...prev, {
+            const safePrev = prev || [];
+            const lastMsg = safePrev[safePrev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return safePrev;
+            return [...safePrev, {
                 role: 'assistant',
                 content: summary,
                 avatar: tiloImg,
-                inputType: 'buttons',
+                inputType: 'strict_select',
                 options: [
                     { label: '✅ Sí, es correcta', value: 'yes' },
                     { label: '❌ No, quiero corregir algo', value: 'no' }
@@ -479,14 +711,15 @@ export const useCortex = () => {
         const reasoning = updatedFase3State?.gem_reasoning || updatedFase3State?.patient_quote || updatedFase3State?.specific_ailment || 'No especificado';
 
         const summary = `Perfecto. Hemos terminado la fase de Motivo de Consulta. Verifique que este resumen sea correcto:\n\n` +
-            `🎯 **Objetivo Principal:** ${primaryRoute}\n` +
-            `🗣️ **Motivo reportado:** ${reasoning}\n\n` +
+            `- 🎯 **Objetivo Principal:** ${primaryRoute}\n` +
+            `- 🗣️ **Motivo reportado:** ${reasoning}\n\n` +
             `¿Es correcta esta información?`;
 
         setMessages(prev => {
-            const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.content === summary) return prev;
-            return [...prev, {
+            const safePrev = prev || [];
+            const lastMsg = safePrev[safePrev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return safePrev;
+            return [...safePrev, {
                 role: 'assistant',
                 content: summary,
                 avatar: tiloImg,
@@ -507,11 +740,11 @@ export const useCortex = () => {
         let heredoStr = conditions.length > 0 ? conditions.join(', ') : "Ninguna reportada";
 
         const summary = `Perfecto. Hemos terminado la fase de Antecedentes Heredofamiliares. Verifique que este resumen sea correcto:\n\n` +
-            `🧬 **A. Heredofamiliares:** ${heredoStr}\n\n` +
+            `- 🧬 **A. Heredofamiliares:** ${heredoStr}\n\n` +
             `¿Es correcta esta información?`;
 
         setMessages(prev => {
-            const baseMsgs = overrideMessages || prev;
+            const baseMsgs = overrideMessages || prev || [];
             const lastMsg = baseMsgs[baseMsgs.length - 1];
             if (lastMsg && lastMsg.content === summary) return baseMsgs;
             return [...baseMsgs, {
@@ -530,14 +763,15 @@ export const useCortex = () => {
 
     const triggerPhase5Summary = () => {
         const summary = `Perfecto. Hemos terminado la fase de Estilo de Vida y Personales. Verifique que este resumen sea correcto:\n\n` +
-            `🩺 **A. Personales:** Guardados en expediente.\n` +
-            `🏃‍♂️ **Estilo de Vida:** Registrado exitosamente.\n\n` +
+            `- 🩺 **A. Personales:** Guardados en expediente.\n` +
+            `- 🏃‍♂️ **Estilo de Vida:** Registrado exitosamente.\n\n` +
             `¿Es correcta esta información?`;
 
         setMessages(prev => {
-            const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.content === summary) return prev;
-            return [...prev, {
+            const safePrev = prev || [];
+            const lastMsg = safePrev[safePrev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return safePrev;
+            return [...safePrev, {
                 role: 'assistant',
                 content: summary,
                 avatar: tiloImg,
@@ -551,19 +785,45 @@ export const useCortex = () => {
         setCurrentPhase('PHASE_5_SUMMARY_CONFIRM');
     };
 
-    const triggerPhase6Summary = () => {
-        const summary = `Perfecto. Hemos terminado la fase de Farmacología. Verifique que este resumen sea correcto:\n\n` +
-            `💊 **Farmacología:** Suplementos y medicamentos registrados.\n\n` +
-            `¿Es correcta esta información?`;
+    const triggerPhase6Summary = (updatedPatientData) => {
+        const pData = updatedPatientData || patientData || {};
+        const medications = pData.history?.medications || [];
+        const supplements = pData.history?.supplements || [];
+
+        const medsLines = medications.length > 0
+            ? medications.map(m => {
+                const name = (m.name || '').trim();
+                const dose = (m.dose_frequency || '').trim();
+                const duration = (m.duration || '').trim();
+                const parenContent = [dose, duration].filter(Boolean).join(' - ');
+                return `- 💊 **Medicamento:** ${name}${parenContent ? ` (${parenContent})` : ''}`;
+            }).join('\n')
+            : "- 💊 **Medicamentos:** Ninguno declarado";
+
+        const suppsLines = supplements.length > 0
+            ? supplements.map(s => {
+                const name = (s.name || '').trim();
+                const freq = (s.frequency || '').trim();
+                const duration = (s.duration || '').trim();
+                const parenContent = [freq, duration].filter(Boolean).join(' - ');
+                return `- 🌿 **Suplemento:** ${name}${parenContent ? ` (${parenContent})` : ''}`;
+            }).join('\n')
+            : "- 🌿 **Suplementos:** Ninguno declarado";
+
+        const summary = `Para dar estricto cumplimiento legal a la **NOM-004** y sellar formalmente este bloque de su expediente clínico, se ha estructurado la síntesis de su farmacología y suplementación:\n\n` +
+            `${medsLines}\n` +
+            `${suppsLines}\n\n` +
+            `Por favor, verifique si este resumen de su consumo activo es correcto. ¿Es correcta esta información?`;
 
         setMessages(prev => {
-            const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.content === summary) return prev;
-            return [...prev, {
+            const safePrev = prev || [];
+            const lastMsg = safePrev[safePrev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return safePrev;
+            return [...safePrev, {
                 role: 'assistant',
                 content: summary,
                 avatar: tiloImg,
-                inputType: 'buttons',
+                inputType: 'strict_select',
                 options: [
                     { label: '✅ Sí, es correcta', value: 'yes' },
                     { label: '❌ No, quiero corregir algo', value: 'no' }
@@ -573,15 +833,121 @@ export const useCortex = () => {
         setCurrentPhase('PHASE_6_SUMMARY_CONFIRM');
     };
 
-    const triggerPhase7Summary = () => {
-        const summary = `Perfecto. Hemos terminado la fase de Hábitos y Estilo de Vida. Verifique que este resumen sea correcto:\n\n` +
-            `🚭 **Hábitos:** Tabaquismo, Alcohol, Sueño, etc.\n\n` +
-            `¿Es correcta esta información?`;
+    const triggerPhase7Summary = (updatedPatientData) => {
+        const food = updatedPatientData?.history?.allergies?.food || [];
+        const drug = updatedPatientData?.history?.allergies?.drug || [];
+
+        const foodStr = food.length > 0
+            ? food.map(a => `- 🦐 **Alimentarias:** ${(a.agent || '').trim()} (${(a.reaction || '').trim()})`).join('\n')
+            : "- 🦐 **Alimentarias:** Ninguna declarada";
+
+        const drugStr = drug.length > 0
+            ? drug.map(a => `- 💊 **Farmacológicas:** ${(a.agent || '').trim()} (${(a.reaction || '').trim()})`).join('\n')
+            : "- 💊 **Farmacológicas:** Ninguna declarada";
+
+        const summary = `He consolidado sus vulnerabilidades inmunológicas en nuestro núcleo de datos. Para dar estricto cumplimiento legal a la **NOM-004** y sellar formalmente este bloque, se ha estructurado la síntesis de sus alergias:\n\n` +
+            `${foodStr}\n` +
+            `${drugStr}\n\n` +
+            `Por favor, verifique este reporte clínico de sensibilidades activas. ¿Es correcta y verídica toda esta información?`;
 
         setMessages(prev => {
-            const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.content === summary) return prev;
-            return [...prev, {
+            const safePrev = prev || [];
+            const lastMsg = safePrev[safePrev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return safePrev;
+            return [...safePrev, {
+                role: 'assistant',
+                content: summary,
+                avatar: tiloImg,
+                inputType: 'strict_select',
+                options: [
+                    { label: '✅ Sí, es correcta', value: 'yes' },
+                    { label: '❌ No, quiero corregir algo', value: 'no' }
+                ]
+            }];
+        });
+        setCurrentPhase('PHASE_7_SUMMARY_CONFIRM');
+    };
+
+    const triggerPhase8Summary = (updatedPatientData) => {
+        const symptoms = updatedPatientData?.history?.digestive_symptoms || [];
+        const freq = updatedPatientData?.history?.digestive_frequency || "Ninguna";
+
+        const ptCtx = updatedPatientData?.profile?.pediatric_profile;
+        const patientAge = updatedPatientData?.profile?.age !== undefined ? Number(updatedPatientData.profile.age) : (updatedPatientData?.identificacion?.edad !== undefined ? Number(updatedPatientData.identificacion.edad) : 30);
+        const isMinor = (ptCtx && ptCtx.is_minor) || patientAge < 18;
+        const pName = updatedPatientData?.profile?.first_name || updatedPatientData?.profile?.name || updatedPatientData?.identificacion?.nombre || "el menor";
+        const cleanName = pName !== "NOM" ? pName.split(' ')[0] : "el menor";
+
+        let symptomsStr = "";
+        if (symptoms.length > 0) {
+            symptomsStr = `- 🦠 **Síntomas Digestivos:** ${symptoms.join(', ')}\n- ⏱️ **Frecuencia:** ${freq}`;
+        } else {
+            symptomsStr = `- 🦠 **Síntomas Digestivos:** Ninguno (Sin molestias digestivas en los últimos 30 días)`;
+        }
+
+        const summary = isMinor
+            ? `He consolidado el perfil de la salud digestiva de **${cleanName}** en nuestro núcleo de datos. Para sellar formalmente este bloque, se ha estructurado la síntesis de la evaluación:\n\n` +
+              `${symptomsStr}\n\n` +
+              `Por favor, verifique este reporte. ¿Es correcta y verídica toda esta información?`
+            : `He consolidado el perfil de su salud digestiva en nuestro núcleo de datos. Para sellar formalmente este bloque, se ha estructurado la síntesis de su evaluación:\n\n` +
+              `${symptomsStr}\n\n` +
+              `Por favor, verifique este reporte. ¿Es correcta y verídica toda esta información?`;
+
+        setMessages(prev => {
+            const safePrev = prev || [];
+            const lastMsg = safePrev[safePrev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return safePrev;
+            return [...safePrev, {
+                role: 'assistant',
+                content: summary,
+                avatar: tiloImg,
+                inputType: 'strict_select',
+                options: [
+                    { label: '✅ Sí, es correcta', value: 'yes' },
+                    { label: '❌ No, quiero corregir algo', value: 'no' }
+                ]
+            }];
+        });
+        setCurrentPhase('PHASE_8_SUMMARY_CONFIRM');
+    };
+
+    const triggerPhase9Summary = (updatedPatientData) => {
+        const isPreg = updatedPatientData?.physio?.is_pregnant === true;
+        const pregWeeks = updatedPatientData?.physio?.preg_weeks || 0;
+        const isLact = updatedPatientData?.physio?.is_lactating === true;
+        const lactType = updatedPatientData?.physio?.lactation_type || "N/A";
+        const babyMonths = updatedPatientData?.physio?.baby_age_months || 0;
+        const lastPeriod = updatedPatientData?.physio?.last_menstruation_period;
+
+        const ptCtx = updatedPatientData?.profile?.pediatric_profile;
+        const patientAge = updatedPatientData?.profile?.age !== undefined ? Number(updatedPatientData.profile.age) : (updatedPatientData?.identificacion?.edad !== undefined ? Number(updatedPatientData.identificacion.edad) : 30);
+        const isMinor = (ptCtx && ptCtx.is_minor) || patientAge < 18;
+        const pName = updatedPatientData?.profile?.first_name || updatedPatientData?.profile?.name || updatedPatientData?.identificacion?.nombre || "el menor";
+        const cleanName = pName !== "NOM" ? pName.split(' ')[0] : "el menor";
+
+        let pregStr = isPreg ? `🤰 **Embarazo:** Sí (${pregWeeks} semanas)` : `🤰 **Embarazo:** No`;
+        let lactStr = isLact ? `🍼 **Lactancia:** Sí (${lactType}, Bebé de ${babyMonths} meses)` : `🍼 **Lactancia:** No`;
+        let periodStr = !isPreg ? `\n- 🩸 **Menstruación:** ${lastPeriod || 'No especificado'}` : '';
+
+        const physioStr = `- ${pregStr}\n- ${lactStr}${periodStr}`;
+
+        const summary = isMinor
+            ? `He consolidado el perfil del estado fisiológico de **${cleanName}** en nuestro expediente digital. Para dar cumplimiento a los lineamientos de la **NOM-004**, se estructuran sus detalles biológicos:\n\n` +
+              `---\n` +
+              `${physioStr}\n` +
+              `---\n\n` +
+              `Por favor, verifique si este reporte de estado fisiológico es correcto. ¿Es correcta y verídica toda esta información?`
+            : `He registrado la valoración de estado fisiológico y gestacional en su expediente clínico digital. Para dar cumplimiento a los lineamientos de la **NOM-004**, se estructuran sus detalles biológicos:\n\n` +
+              `---\n` +
+              `${physioStr}\n` +
+              `---\n\n` +
+              `Por favor, verifique si este reporte de estado fisiológico es correcto. ¿Es correcta y verídica toda esta información?`;
+
+        setMessages(prev => {
+            const safePrev = prev || [];
+            const lastMsg = safePrev[safePrev.length - 1];
+            if (lastMsg && lastMsg.content === summary) return safePrev;
+            return [...safePrev, {
                 role: 'assistant',
                 content: summary,
                 avatar: tiloImg,
@@ -592,7 +958,7 @@ export const useCortex = () => {
                 ]
             }];
         });
-        setCurrentPhase('PHASE_7_SUMMARY_CONFIRM');
+        setCurrentPhase('PHASE_9_SUMMARY_CONFIRM');
     };
 
     /**
@@ -628,7 +994,7 @@ export const useCortex = () => {
                     if (/^\d+$/.test(text)) {
                         const apiResponse = await validateCitation(text);
                         if (!apiResponse) {
-                            setMessages(prev => [...prev, { role: "assistant", content: "⛔ **Fallo de Sincronización.**\n\nNo fue posible establecer conexión con la Red Institucional. Por favor, verifique su acceso e intente nuevamente." }]);
+                            setMessages(prev => [...prev, { role: "assistant", content: "⛔ **Fallo de Sincronización.**\n\n---\n\nNo fue posible establecer conexión con la Red Institucional. Por favor, verifique su acceso e intente nuevamente." }]);
                             return;
                         }
 
@@ -670,9 +1036,9 @@ export const useCortex = () => {
 
                             setMessages(prev => [...prev, {
                                 role: 'assistant',
-                                content: `Validación de Credencial Exitosa.\n\n👤 **Titular:** ${titularName}\n📍 **Sede:** ${formattedInfo.sede}\n📅 **Agenda:** ${formattedInfo.display}\n\nPara iniciar la recolección clínica bajo los estándares de confidencialidad y seguridad:\n**¿Es usted el paciente titular mencionado arriba?**`,
+                                content: `Validación de Credencial Exitosa.\n\n---\n\n👤 **Titular:** ${titularName}\n📍 **Sede:** ${formattedInfo.sede}\n📅 **Agenda:** ${formattedInfo.display}\n\nPara iniciar la recolección clínica bajo los estándares de confidencialidad y seguridad:\n**¿Es usted el paciente titular mencionado arriba?**`,
                                 avatar: tiloImg,
-                                inputType: 'buttons',
+                                inputType: 'strict_select',
                                 options: [
                                     { label: '✅ SÍ, SOY YO', value: 'yes' },
                                     { label: '❌ NO, ES UN ERROR', value: 'no' }
@@ -686,7 +1052,7 @@ export const useCortex = () => {
                             if (newAttempts >= 3) {
                                 setMessages(prev => [...prev, {
                                     role: 'assistant',
-                                    content: "⛔ **Cierre de Sesión Normativo.**\n\nSe ha superado el número máximo de intentos permitidos. Para proteger la integridad de los datos de la red de pacientes, el acceso ha sido suspendido temporalmente.\n\nPor favor, acuda a recepción para validar su identidad presencialmente.",
+                                    content: "⛔ **Cierre de Sesión Normativo.**\n\n---\n\nSe ha superado el número máximo de intentos permitidos. Para proteger la integridad de los datos de la red de pacientes, el acceso ha sido suspendido temporalmente.\n\nPor favor, acuda a recepción para validar su identidad presencialmente.",
                                     avatar: tiloImg,
                                     inputType: 'none' // Bloquea el input
                                 }]);
@@ -712,14 +1078,14 @@ export const useCortex = () => {
 
                                 setMessages(prev => [...prev, {
                                     role: 'assistant',
-                                    content: `⛔ **Protección contra Duplicidad de Expediente.**\n\nEl sistema indica que este folio ya fue procesado y cerrado previamente por el titular **${titularName}**.\n\nLe quedan **${3 - newAttempts} intento(s)**. Por favor, asegúrese de ingresar un folio de cita vigente:`,
+                                    content: `⛔ **Protección contra Duplicidad de Expediente.**\n\n---\n\nEl sistema indica que este folio ya fue procesado y cerrado previamente por el titular **${titularName}**.\n\nLe quedan **${3 - newAttempts} intento(s)**. Por favor, asegúrese de ingresar un folio de cita vigente:`,
                                     avatar: tiloImg,
                                     inputType: 'number'
                                 }]);
                             } else {
                                 setMessages(prev => [...prev, {
                                     role: 'assistant',
-                                    content: `⛔ **Credencial Clínica No Reconocida.**\n\nEl folio ingresado no se encuentra activo en nuestros registros o no está programado para el día de hoy.\n\nLe quedan **${3 - newAttempts} intento(s)**. Por favor, verifique el número e intente nuevamente:`,
+                                    content: `⛔ **Credencial Clínica No Reconocida.**\n\n---\n\nEl folio ingresado no se encuentra activo en nuestros registros o no está programado para el día de hoy.\n\nLe quedan **${3 - newAttempts} intento(s)**. Por favor, verifique el número e intente nuevamente:`,
                                     avatar: tiloImg,
                                     inputType: 'number'
                                 }]);
@@ -728,7 +1094,7 @@ export const useCortex = () => {
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Para iniciar la integración clínica, es mandatorio autenticar su sesión.\n\nPor favor, introduzca un **Número de Cita** válido (formato numérico) para conectar con la Red Institucional:",
+                            content: "Para iniciar la integración clínica, es mandatorio autenticar su sesión.\n\n---\n\nPor favor, introduzca un **Número de Cita** válido (formato numérico) para conectar con la Red Institucional:",
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);
@@ -740,7 +1106,7 @@ export const useCortex = () => {
                         const firstName = apiContext?.extractedFirst || apiContext?.rawName?.split(' ')[0] || "Paciente";
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Identidad del titular confirmada y vinculada con éxito a nuestra red institucional. Este proceso activa formalmente los protocolos de protección de su información clínica bajo los estándares de la **NOM-004**.\n\n**${formatText(firstName)}**, para habilitar la estructura de su expediente digital y blindar el tratamiento de sus **Datos Personales Sensibles**, por favor **lea** y **acepte** nuestro **Aviso de Privacidad** institucional:`,
+                            content: `Identidad del titular confirmada y vinculada con éxito a nuestra red institucional. Este proceso activa formalmente los protocolos de protección de su información clínica bajo los estándares de la **NOM-004**.\n\n---\n\n**${formatText(firstName)}**, para habilitar la estructura de su expediente digital y blindar el tratamiento de sus **Datos Personales Sensibles**, por favor **lea** y **acepte** nuestro **Aviso de Privacidad** institucional:`,
                             avatar: tiloImg,
                             inputType: 'none' // Espera al modal de privacidad
                         }]);
@@ -750,7 +1116,7 @@ export const useCortex = () => {
                         setApiContext({});
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Entendido. Desvinculando el registro precargado para garantizar la seguridad de identidad del titular oficial.\n\nPor favor, introduzca nuevamente su **Número de Cita** correcto:",
+                            content: "Entendido. Desvinculando el registro precargado para garantizar la seguridad de identidad del titular oficial.\n\n---\n\nPor favor, introduzca nuevamente su **Número de Cita** correcto:",
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);
@@ -794,9 +1160,9 @@ export const useCortex = () => {
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `La integridad de su expediente clínico bajo la NOM-004 depende de la precisión ortográfica de sus datos. Le recordamos que su cita es personal e intransferible, por lo que este proceso es exclusivo para el pulido de su identidad registrada.\n\nPor favor, valide si **${formatText(safeFirstName)}** corresponde exactamente a su **Nombre de Pila completo** (verifique acentos, espacios o nombres omitidos en caso de ser compuesto):`,
+                        content: `La integridad de su expediente clínico bajo la NOM-004 depende de la precisión ortográfica de sus datos. Le recordamos que su cita es personal e intransferible, por lo que este proceso es exclusivo para el pulido de su identidad registrada.\n\n---\n\nPor favor, valide si **${formatText(safeFirstName)}** corresponde exactamente a su **Nombre de Pila completo** (verifique acentos, espacios o nombres omitidos en caso de ser compuesto):`,
                         avatar: tiloImg,
-                        inputType: 'buttons',
+                        inputType: 'strict_select',
                         options: [
                             { label: '✅ SÍ, ES CORRECTO', value: 'yes' },
                             { label: '⌨️ EDITAR ORTOGRAFÍA', value: 'no' }
@@ -820,9 +1186,9 @@ export const useCortex = () => {
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `🗣️ **Modo de precisión ortográfica activado.** Para garantizar la coherencia biográfica de su expediente clínico bajo la **NOM-004**, es vital que su primer apellido coincida exactamente con su documentación oficial.\n\n**${cleanFirstName}**, ¿es **${apiContext.extractedPat}** su **Apellido Paterno** correcto?`,
+                            content: `🗣️ **Modo de precisión ortográfica activado.** Para garantizar la coherencia biográfica de su expediente clínico bajo la **NOM-004**, es vital que su primer apellido coincida exactamente con su documentación oficial.\n\n---\n\n**${cleanFirstName}**, ¿es **${apiContext.extractedPat}** su **Apellido Paterno** correcto?`,
                             avatar: tiloImg,
-                            inputType: 'buttons',
+                            inputType: 'strict_select',
                             options: [
                                 { label: '✅ SÍ, ES CORRECTO', value: 'yes' },
                                 { label: '⌨️ EDITAR ORTOGRAFÍA', value: 'no' }
@@ -848,7 +1214,7 @@ export const useCortex = () => {
                     if (!isMatch) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "⛔ **Bloqueo de Integridad Biométrica.**\nLa divergencia entre el nombre ingresado y el registro primario excede el umbral normativo. Para garantizar la trazabilidad de su expediente, por favor escriba su **Nombre(s) de Pila** exactamente como figura en su identificación oficial:",
+                            content: "⛔ **Bloqueo de Integridad Biométrica.**\nLa divergencia entre el nombre ingresado y el registro primario excede el umbral normativo.\n\n---\n\nPara garantizar la trazabilidad de su expediente, por favor escriba su **Nombre(s) de Pila** exactamente como figura en su identificación oficial:",
                             avatar: tiloImg,
                             inputType: 'text'
                         }]);
@@ -864,7 +1230,7 @@ export const useCortex = () => {
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `🗣️ **Modo de precisión ortográfica activado.** Para garantizar la coherencia biográfica de su expediente clínico bajo la **NOM-004**, es vital que su primer apellido coincida exactamente con su documentación oficial.\n\n**${parsedName}**, ¿es **${apiContext.extractedPat}** su **Apellido Paterno** correcto?`,
+                        content: `🗣️ **Modo de precisión ortográfica activado.** Para garantizar la coherencia biográfica de su expediente clínico bajo la **NOM-004**, es vital que su primer apellido coincida exactamente con su documentación oficial.\n\n---\n\n**${parsedName}**, ¿es **${apiContext.extractedPat}** su **Apellido Paterno** correcto?`,
                         avatar: tiloImg,
                         inputType: 'strict_select',
                         options: [
@@ -894,7 +1260,7 @@ export const useCortex = () => {
                         // RECHAZO DE TEXTO LIBRE
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "⛔ **Interacción Restringida.**\nPor protocolos de integridad de la NOM-004, este campo requiere una validación exacta. Por favor, utilice las opciones táctiles presentadas para confirmar la procedencia de su apellido.",
+                            content: "⛔ **Interacción Restringida.**\nPor protocolos de integridad de la NOM-004, este campo requiere una validación exacta.\n\n---\n\nPor favor, utilice las opciones táctiles presentadas para confirmar la procedencia de su apellido.",
                             avatar: tiloImg,
                             inputType: 'strict_select',
                             options: [
@@ -917,7 +1283,7 @@ export const useCortex = () => {
                     if (hasValidMatSurname) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `El protocolo requiere validar la estructura completa de su nombre. Si usted cuenta con un segundo apellido en sus documentos oficiales, debemos registrarlo.\n\n¿Es **${matSurname}** su **Apellido Materno** correcto?`,
+                            content: `El protocolo requiere validar la estructura completa de su nombre. Si usted cuenta con un segundo apellido en sus documentos oficiales, debemos registrarlo.\n\n---\n\n¿Es **${matSurname}** su **Apellido Materno** correcto?`,
                             avatar: tiloImg,
                             inputType: 'strict_select',
                             options: [
@@ -930,7 +1296,7 @@ export const useCortex = () => {
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `El protocolo requiere validar la estructura completa de su nombre. El sistema no me muestra un segundo apellido en su registro inicial.\n\nSi usted cuenta con un **Apellido Materno** oficial, por favor escríbalo a continuación:`,
+                            content: `El protocolo requiere validar la estructura completa de su nombre. El sistema no me muestra un segundo apellido en su registro inicial.\n\n---\n\nSi usted cuenta con un **Apellido Materno** oficial, por favor escríbalo a continuación:`,
                             avatar: tiloImg,
                             inputType: 'text',
                             options: [
@@ -950,7 +1316,7 @@ export const useCortex = () => {
                     if (!isMatch) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "⛔ **Bloqueo de Identidad Oficial.**\nLa modificación de raíz de la titularidad vulnera los protocolos de seguridad. Este canal está habilitado exclusivamente para la corrección ortográfica de sus apellidos.\n\nPor rigor clínico, escriba nuevamente su **Apellido Paterno** respetando la concordancia fonética del registro base:",
+                            content: "⛔ **Bloqueo de Identidad Oficial.**\nLa modificación de raíz de la titularidad vulnera los protocolos de seguridad. Este canal está habilitado exclusivamente para la corrección ortográfica de sus apellidos.\n\n---\n\nPor rigor clínico, escriba nuevamente su **Apellido Paterno** respetando la concordancia fonética del registro base:",
                             avatar: tiloImg,
                             inputType: 'text'
                         }]);
@@ -969,7 +1335,7 @@ export const useCortex = () => {
                     if (hasValidMatSurname) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `El protocolo requiere validar la estructura completa de su nombre. Si usted cuenta con un segundo apellido en sus documentos oficiales, debemos registrarlo.\n\n¿Es **${matSurname}** su **Apellido Materno** correcto?`,
+                            content: `El protocolo requiere validar la estructura completa de su nombre. Si usted cuenta con un segundo apellido en sus documentos oficiales, debemos registrarlo.\n\n---\n\n¿Es **${matSurname}** su **Apellido Materno** correcto?`,
                             avatar: tiloImg,
                             inputType: 'strict_select',
                             options: [
@@ -982,7 +1348,7 @@ export const useCortex = () => {
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `El protocolo requiere validar la estructura completa de su nombre. El sistema no me muestra un segundo apellido en su registro inicial.\n\nSi usted cuenta con un **Apellido Materno** oficial, por favor escríbalo a continuación:`,
+                            content: `El protocolo requiere validar la estructura completa de su nombre. El sistema no me muestra un segundo apellido en su registro inicial.\n\n---\n\nSi usted cuenta con un **Apellido Materno** oficial, por favor escríbalo a continuación:`,
                             avatar: tiloImg,
                             inputType: 'text',
                             options: [
@@ -1014,7 +1380,7 @@ export const useCortex = () => {
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `✅ **Perfil biográfico estructurado y blindado** con éxito (Sin Apellido Materno). Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
+                            content: `✅ **Perfil biográfico estructurado y blindado** con éxito (Sin Apellido Materno). Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n---\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);
@@ -1037,7 +1403,7 @@ export const useCortex = () => {
                         // RECHAZO DE TEXTO LIBRE
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "⛔ **Interacción Restringida.**\nPor protocolos de integridad de la NOM-004, este campo requiere una validación exacta. Por favor, utilice las opciones táctiles presentadas para confirmar la procedencia de su apellido materno.",
+                            content: "⛔ **Interacción Restringida.**\nPor protocolos de integridad de la NOM-004, este campo requiere una validación exacta.\n\n---\n\nPor favor, utilice las opciones táctiles presentadas para confirmar la procedencia de su apellido materno.",
                             avatar: tiloImg,
                             inputType: 'strict_select',
                             options: [
@@ -1064,7 +1430,7 @@ export const useCortex = () => {
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `✅ **Perfil biográfico estructurado y blindado** con éxito. Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
+                        content: `✅ **Perfil biográfico estructurado y blindado** con éxito. Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n---\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
                         avatar: tiloImg,
                         inputType: 'number'
                     }]);
@@ -1090,7 +1456,7 @@ export const useCortex = () => {
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `✅ **Perfil biográfico estructurado y blindado** con éxito (Sin Apellido Materno). Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
+                            content: `✅ **Perfil biográfico estructurado y blindado** con éxito (Sin Apellido Materno). Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n---\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);
@@ -1117,7 +1483,7 @@ export const useCortex = () => {
                     // C. Siguiente pregunta de Tilo (Q4)
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `✅ **Perfil biográfico estructurado y blindado** con éxito. Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
+                        content: `✅ **Perfil biográfico estructurado y blindado** con éxito. Una vez fijada su identidad, el siguiente protocolo es la calibración de su **cronología biológica**, dato indispensable para el cálculo preciso de sus indicadores metabólicos y rangos de referencia clínica.\n\n---\n\n**${patientData.profile.first_name || 'Paciente'}**, por favor indique únicamente el **DÍA** de su nacimiento (utilice el formato numérico, por ejemplo: 12):`,
                         avatar: tiloImg,
                         inputType: 'number'
                     }]);
@@ -1130,7 +1496,7 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_DOB_DAY': {
                     const day = parseInt(text, 10);
                     if (isNaN(day) || day < 1 || day > 31) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Dato de Precisión Biológica Requerido.**\nEl valor ingresado no corresponde a un día de calendario válido. Por favor ingrese el **DÍA** numérico exacto de su nacimiento (ej. 12):", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Dato de Precisión Biológica Requerido.**\nEl valor ingresado no corresponde a un día de calendario válido.\n\n---\n\nPor favor ingrese el **DÍA** numérico exacto de su nacimiento (ej. 12):", avatar: tiloImg }]);
                         return;
                     }
                     setPatientData(prev => ({
@@ -1139,7 +1505,7 @@ export const useCortex = () => {
                     }));
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: "✅ **Dato fijado.**\n\nPara continuar con su cronología biológica, por favor indique el **MES** de su nacimiento (ej. Mayo):",
+                        content: "✅ **Dato fijado.**\n\n---\n\nPara continuar con su cronología biológica, por favor indique el **MES** de su nacimiento (ej. Mayo):",
                         avatar: tiloImg,
                         inputType: 'text'
                     }]);
@@ -1165,7 +1531,7 @@ export const useCortex = () => {
                     };
                     const monthCode = months[rawMonth];
                     if (!monthCode) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Dato de Precisión Biológica Requerido.**\nEl sistema no logró clasificar la entrada. Por favor, escriba el nombre completo del **MES** (ej: Enero) o su designación numérica exacta:", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Dato de Precisión Biológica Requerido.**\nEl sistema no logró clasificar la entrada.\n\n---\n\nPor favor, escriba el nombre completo del **MES** (ej: Enero) o su designación numérica exacta:", avatar: tiloImg }]);
                         return;
                     }
                     setPatientData(prev => ({
@@ -1174,7 +1540,7 @@ export const useCortex = () => {
                     }));
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: "✅ **Dato fijado.**\n\nPara finalizar la calibración de su edad metabólica, por favor indique su **AÑO** de nacimiento a 4 dígitos (ej. 1990):",
+                        content: "✅ **Dato fijado.**\n\n---\n\nPara finalizar la calibración de su edad metabólica, por favor indique su **AÑO** de nacimiento a 4 dígitos (ej. 1990):",
                         avatar: tiloImg,
                         inputType: 'number'
                     }]);
@@ -1186,7 +1552,7 @@ export const useCortex = () => {
                     const year = parseInt(text, 10);
                     const currentYear = new Date().getFullYear();
                     if (isNaN(year) || year < 1920 || year > currentYear) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Dato de Precisión Biológica Requerido.**\nEl año ingresado presenta un desfase cronológico incongruente. Por favor, indique su **AÑO** real de nacimiento a 4 dígitos (ej. 1990):", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Dato de Precisión Biológica Requerido.**\nEl año ingresado presenta un desfase cronológico incongruente.\n\n---\n\nPor favor, indique su **AÑO** real de nacimiento a 4 dígitos (ej. 1990):", avatar: tiloImg }]);
                         return;
                     }
 
@@ -1197,7 +1563,7 @@ export const useCortex = () => {
 
                     const checkDate = new Date(year, m - 1, d);
                     if (checkDate.getFullYear() !== year || checkDate.getMonth() !== (m - 1) || checkDate.getDate() !== d) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Discrepancia de Calendario Detectada.**\nLa fecha biológica ingresada es matemáticamente inexistente. El protocolo de cronología se ha reiniciado por motivos de integridad de expediente.\n\nPor favor, indique nuevamente el **DÍA** numérico de su nacimiento:", avatar: tiloImg, inputType: 'number' }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Discrepancia de Calendario Detectada.**\nLa fecha biológica ingresada es matemáticamente inexistente. El protocolo de cronología se ha reiniciado por motivos de integridad de expediente.\n\n---\n\nPor favor, indique nuevamente el **DÍA** numérico de su nacimiento:", avatar: tiloImg, inputType: 'number' }]);
                         setCurrentPhase('PHASE_1_PROFILE_DOB_DAY');
                         return;
                     }
@@ -1212,6 +1578,21 @@ export const useCortex = () => {
 
                     // Compute pediatric context
                     const pediatricContext = buildPediatricContext(fullDate);
+
+                    // V18.0: Calculate baby_age_months for dashboard rendering
+                    let baby_age_months = null;
+                    if (age === 0) {
+                        let yearsDiff = today.getFullYear() - checkDate.getFullYear();
+                        let monthsDiff = today.getMonth() - checkDate.getMonth();
+                        if (today.getDate() < checkDate.getDate()) {
+                            monthsDiff--;
+                        }
+                        if (monthsDiff < 0) {
+                            yearsDiff--;
+                            monthsDiff += 12;
+                        }
+                        baby_age_months = (yearsDiff * 12) + monthsDiff;
+                    }
 
                     // --- TONE OF VOICE ENGINE ---
                     // Asignación de Personalidad Dinámica al Motor (Cortex)
@@ -1239,14 +1620,23 @@ export const useCortex = () => {
                             ...prev.profile,
                             birthdate: fullDate,
                             age: age,
+                            baby_age_months: baby_age_months,
                             pediatric_profile: pediatricContext
                         };
                         delete newProfile.dobDay;
                         delete newProfile.dobMonth;
 
+                        const newIdentificacion = {
+                            ...prev.identificacion,
+                            fechanac: fullDate,
+                            edad: age,
+                            baby_age_months: baby_age_months
+                        };
+
                         return {
                             ...prev,
                             profile: newProfile,
+                            identificacion: newIdentificacion,
                             session_context: {
                                 calculated_age: age,
                                 interaction_mode: interaction_mode,
@@ -1267,6 +1657,7 @@ export const useCortex = () => {
                         role: 'assistant',
                         content: sexMsg,
                         avatar: tiloImg,
+                        inputType: 'strict_select',
                         options: [
                             { label: "Masculino", value: "Masculino" },
                             { label: "Femenino", value: "Femenino" }
@@ -1282,57 +1673,277 @@ export const useCortex = () => {
                     if (['hombre', 'masculino', 'm', 'el paciente', 'varon'].includes(sex.toLowerCase())) sex = "Masculino";
 
                     if (sex === "Masculino" || sex === "Femenino") {
+                        const isFemale = sex === "Femenino";
                         setPatientData(prev => ({
                             ...prev,
-                            profile: { ...prev.profile, sex: sex }
+                            profile: { ...prev.profile, sex: sex },
+                            identificacion: { ...prev.identificacion, sexo: sex } // Sincronización Legacy
                         }));
 
-                        const ptCtx = patientData.profile.pediatric_profile;
-                        let occupationPrompt = `Identidad biológica confirmada.\n\nPara perfilar el impacto metabólico de sus actividades diarias en el expediente (NOM-004): ¿Cuál es su **ocupación principal** actual?`; // Default ADULT
+                        const age = patientData.profile?.age || 0;
+                        const pName = patientData.profile?.first_name || apiContext?.extractedFirst || "el paciente";
+                        
+                        let occupationPrompt = "";
+                        let options = null;
 
-                        if (ptCtx && ptCtx.is_minor) {
-                            const pName = patientData.profile.first_name || "el menor";
-                            if (ptCtx.category === 'ADOLESCENTE') {
-                                occupationPrompt = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa adolescente, el sistema ha bloqueado automáticamente la recolección de estado civil para proteger tu expediente.\n\nPara tu registro oficial y cálculo de requerimientos cognitivos: ¿En qué semestre de secundaria o preparatoria te encuentras?`;
-                            } else if (ptCtx.category === 'ESCOLAR') {
-                                occupationPrompt = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa pediátrica, el sistema ha bloqueado automáticamente la recolección de estado civil y actividad laboral para proteger su expediente.\n\nPara mapear correctamente su gasto energético escolar: ¿En qué grado cursa **${pName}** actualmente?`;
-                            } else if (ptCtx.category === 'PREESCOLAR' || ptCtx.category === 'LACTANTE') {
-                                occupationPrompt = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa pediátrica, el sistema ha bloqueado automáticamente la recolección de estado civil y actividad laboral para proteger su expediente.\n\nPara mapear correctamente su gasto energético y exposición ambiental diaria: ¿**${pName}** asiste a guardería o kínder actualmente?`;
-                            }
-                        } else if (ptCtx && ptCtx.category === 'GERIATRICO') {
-                            occupationPrompt = `Identidad biológica confirmada.\n\nPara perfilar el gasto energético base en su expediente clínico: ¿Se encuentra actualmente **jubilado(a)**, **pensionado(a)** o mantiene alguna **ocupación activa**?`;
+                        if (age >= 0 && age <= 4) {
+                            // Cohorte 1: Lactantes y Primera Infancia (0 a 4 años)
+                            occupationPrompt = `Para calibrar el requerimiento calórico de crecimiento de **${pName}**, indique el entorno principal de cuidado del menor:`;
+                            options = [
+                                { label: "🏠 Cuidados en Casa", value: "casa" },
+                                { label: "🏫 Guardería / Estancia Infantil", value: "guarderia" }
+                            ];
+                        } else if (age >= 5 && age <= 11) {
+                            // Cohorte 2: Edad Escolar (5 a 11 años)
+                            occupationPrompt = `Para registrar el contexto escolar y evaluar la demanda cognitiva de **${pName}**, por favor confirme su ocupación:`;
+                            options = [
+                                { label: "📚 Estudiante (Preescolar / Primaria)", value: "estudiante" }
+                            ];
+                        } else if (age >= 12 && age <= 17) {
+                            // Cohorte 3: Adolescencia (12 a 17 años)
+                            occupationPrompt = `Para registrar el contexto académico y estimar la demanda cognitiva diaria de **${pName}**: ¿Cuál es su ocupación actual?`;
+                            options = [
+                                { label: "🏫 Estudiante (Secundaria / Bachillerato)", value: "estudiante" },
+                                { label: "💼 Trabajo Temprano / Oficio", value: "trabajo_temprano" }
+                            ];
+                        } else if (age >= 18 && age <= 64) {
+                            // Cohorte 4: Edad Productiva (18 a 64 años)
+                            occupationPrompt = `✅ **Identidad biológica** estructurada con éxito. Para perfilar el gasto energético base en su expediente clínico: ¿Cuál de las siguientes opciones describe mejor la biomecánica de su actividad diaria principal?`;
+                            options = [
+                                { label: "💻 Trabajo de Oficina / Escritorio", value: "oficina" },
+                                { label: "🎓 Estudiante Universitario / Académico", value: "universitario" },
+                                { label: "🚶 Trabajo de Pie / Mostrador / Docencia", value: "de_pie" },
+                                { label: "🏠 Trabajo en Hogar / Cuidados", value: "hogar" },
+                                { label: "🏗️ Trabajo Físico Pesado / Carga", value: "carga" }
+                            ];
+                        } else {
+                            // Cohorte 5: Geriatría (65+ años)
+                            occupationPrompt = `Identidad biológica confirmada.\n\nPara perfilar el gasto energético base en su expediente clínico: ¿Se encuentra actualmente **${isFemale ? 'jubilada' : 'jubilado'}**, **${isFemale ? 'pensionada' : 'pensionado'}** o mantiene alguna **ocupación activa**?`;
+                            options = [
+                                { label: "🌴 Jubilado / Pensionado", value: "jubilado" },
+                                { label: "💼 Aún laborando", value: "activo" }
+                            ];
                         }
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
                             content: occupationPrompt,
                             avatar: tiloImg,
-                            inputType: 'text'
+                            inputType: options ? 'buttons' : 'text',
+                            options: options || undefined
                         }]);
                         setCurrentPhase('PHASE_1_PROFILE_JOB');
                     } else {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Fallo de Integridad.**\n\nEl dato proporcionado no es reconocido por el sistema. Por favor, seleccione una opción válida del menú para continuar con el protocolo.", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Fallo de Integridad.**\n\n---\n\nEl dato proporcionado no es reconocido por el sistema. Por favor, seleccione una opción válida del menú para continuar con el protocolo.", avatar: tiloImg }]);
                     }
                     break;
                 }
 
                 case 'PHASE_1_PROFILE_JOB': {
-                    const job = formatText(text);
+                    const age = patientData.profile?.age || 0;
+                    const pName = patientData.profile?.first_name || apiContext?.extractedFirst || "el paciente";
+                    const selection = text.toLowerCase().trim();
+                    
+                    let needsDrilldown = false;
+                    let nextPrompt = "";
+                    let nextOptions = null;
+                    
+                    if (age >= 0 && age <= 4) {
+                        needsDrilldown = true;
+                        setApiContext(prev => ({ ...prev, tempJobPrimary: selection }));
+                        nextPrompt = `¿Cómo describiría el nivel de actividad motriz de **${pName}** actualmente?`;
+                        nextOptions = [
+                            { label: "🚼 Etapa de Cuna / Gateo", value: "cuna" },
+                            { label: "🏃‍♂️ Caminador / Muy Activo", value: "caminador" }
+                        ];
+                    } else if (age >= 5 && age <= 11) {
+                        needsDrilldown = true;
+                        setApiContext(prev => ({ ...prev, tempJobPrimary: "estudiante" }));
+                        nextPrompt = `Fuera del horario escolar, ¿cuál es el nivel de actividad física de **${pName}**?`;
+                        nextOptions = [
+                            { label: "⚽ Deporte formal / Juego activo diario", value: "deporte" },
+                            { label: "🎮 Mayormente sedentario / Pantallas", value: "sedentario" }
+                        ];
+                    } else if (age >= 12 && age <= 17) {
+                        if (selection === 'estudiante') {
+                            needsDrilldown = true;
+                            setApiContext(prev => ({ ...prev, tempJobPrimary: "estudiante" }));
+                            nextPrompt = `¿Realiza **${pName}** alguna disciplina deportiva regular?`;
+                            nextOptions = [
+                                { label: "🏅 Atleta / Deporte Competitivo", value: "atleta" },
+                                { label: "🏃 Actividad Recreativa (1-3 días)", value: "recreativo" },
+                                { label: "🪑 Nivel Sedentario", value: "sedentario" }
+                            ];
+                        } else {
+                            // Trabajo temprano / Oficio
+                            const desc = "Trabajo Temprano / Oficio";
+                            const pal = 1.37;
+                            setPatientData(prev => ({
+                                ...prev,
+                                profile: { ...prev.profile, occupation: desc, ocupacion_descriptor: desc, factor_pal: pal },
+                                identificacion: { ...prev.identificacion, ocupacion: desc, ocupacion_descriptor: desc, factor_pal: pal }
+                            }));
+                        }
+                    } else if (age >= 18 && age <= 64) {
+                        // Edad Productiva (18 a 64 años) - Guardado directo sin drill-down
+                        let desc = "Oficina (Sedentario)";
+                        let pal = 1.20;
+                        if (selection === 'universitario') {
+                            desc = "Estudiante Universitario (Sedentario)";
+                            pal = 1.20;
+                        } else if (selection === 'de_pie') {
+                            desc = "De Pie (Ligeramente Activo)";
+                            pal = 1.37;
+                        } else if (selection === 'hogar') {
+                            desc = "Hogar (Moderadamente Activo)";
+                            pal = 1.55;
+                        } else if (selection === 'carga') {
+                            desc = "Físico Pesado (Muy Activo)";
+                            pal = 1.72;
+                        }
+                        
+                        setPatientData(prev => ({
+                            ...prev,
+                            profile: { ...prev.profile, occupation: desc, ocupacion_descriptor: desc, factor_pal: pal },
+                            identificacion: { ...prev.identificacion, ocupacion: desc, ocupacion_descriptor: desc, factor_pal: pal }
+                        }));
+                    } else {
+                        // Geriátrico (65+)
+                        if (selection === 'jubilado') {
+                            needsDrilldown = true;
+                            setApiContext(prev => ({ ...prev, tempJobPrimary: "jubilado" }));
+                            nextPrompt = `Para estimar su requerimiento calórico actual, ¿cómo describiría su movilidad en un día normal?`;
+                            nextOptions = [
+                                { label: "🚶 Independiente y Activo (Camino/Hago quehacer)", value: "activo" },
+                                { label: "🪑 Mayormente Sedentario (Poco movimiento)", value: "sedentario" },
+                                { label: "🛏️ Movilidad Reducida / Asistida", value: "reducida" }
+                            ];
+                        } else {
+                            // Aún laborando
+                            const desc = "Aún laborando (Activo)";
+                            const pal = 1.37;
+                            setPatientData(prev => ({
+                                ...prev,
+                                profile: { ...prev.profile, occupation: desc, ocupacion_descriptor: desc, factor_pal: pal },
+                                identificacion: { ...prev.identificacion, ocupacion: desc, ocupacion_descriptor: desc, factor_pal: pal }
+                            }));
+                        }
+                    }
+ 
+                    if (needsDrilldown) {
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: nextPrompt,
+                            avatar: tiloImg,
+                            inputType: 'buttons',
+                            options: nextOptions
+                        }]);
+                        setCurrentPhase('PHASE_1_PROFILE_JOB_DRILLDOWN');
+                    } else {
+                        // Avanzar a CURP
+                        const isMinor = age < 18;
+                        const firstName = pName.split(' ')[0];
+                        let curpPromptMsg = "";
+                        if (isMinor) {
+                            curpPromptMsg = `Mapeo sociocultural completado y encriptado. Para proceder con la apertura oficial del expediente pediátrico conforme a la normativa vigente de salud.\n\nPor favor, introduzca la **Clave Única de Registro de Población (CURP)** de **${firstName}** (si no la tiene a la mano, puede seleccionarla abajo).`;
+                        } else {
+                            curpPromptMsg = `Mapeo sociocultural completado y encriptado. Para proceder con la apertura oficial del expediente clínico conforme a la normativa vigente de salud.\n\nPor favor, introduzca su **Clave Única de Registro de Población (CURP)** (si no la tiene a la mano, puede seleccionarla abajo).`;
+                        }
+ 
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: curpPromptMsg,
+                            avatar: tiloImg,
+                            inputType: 'buttons',
+                            options: [
+                                { label: "Manual (Tipear)", value: "Manual" },
+                                { label: "Búscala por mí (Asistencia)", value: "Buscala" },
+                                { label: "Soy Extranjero", value: "Extranjero" }
+                            ]
+                        }]);
+                        setCurrentPhase('PHASE_1_PROFILE_CURP_GATE');
+                    }
+                    break;
+                }
+
+                case 'PHASE_1_PROFILE_JOB_DRILLDOWN': {
+                    const age = patientData.profile?.age || 0;
+                    const pName = patientData.profile?.first_name || apiContext?.extractedFirst || "el paciente";
+                    const selection = text.toLowerCase().trim();
+                    const primary = apiContext.tempJobPrimary;
+                    
+                    let finalDesc = "";
+                    let finalPal = 1.20;
+                    
+                    if (age >= 0 && age <= 4) {
+                        // Cohorte 1: Lactantes
+                        const primText = primary === 'casa' ? "Cuidados en Casa" : "Guardería";
+                        if (selection === 'cuna') {
+                            finalDesc = `${primText} (Cuna / Gateo)`;
+                            finalPal = primary === 'casa' ? 1.00 : 1.10;
+                        } else {
+                            finalDesc = `${primText} (Caminador / Activo)`;
+                            finalPal = primary === 'casa' ? 1.20 : 1.25;
+                        }
+                    } else if (age >= 5 && age <= 11) {
+                        // Cohorte 2: Escolar
+                        if (selection === 'deporte') {
+                            finalDesc = "Estudiante (Escolar) - Deporte formal";
+                            finalPal = 1.55;
+                        } else {
+                            finalDesc = "Estudiante (Escolar) - Sedentario";
+                            finalPal = 1.20;
+                        }
+                    } else if (age >= 12 && age <= 17) {
+                        // Cohorte 3: Adolescente Estudiante
+                        if (selection === 'atleta') {
+                            finalDesc = "Estudiante (Secundaria) - Atleta Competitivo";
+                            finalPal = 1.72;
+                        } else if (selection === 'recreativo') {
+                            finalDesc = "Estudiante (Secundaria) - Recreativo";
+                            finalPal = 1.37;
+                        } else {
+                            finalDesc = "Estudiante (Secundaria) - Sedentario";
+                            finalPal = 1.20;
+                        }
+                    } else if (age >= 65) {
+                        // Cohorte 5: Geriátrico Jubilado
+                        if (selection === 'activo') {
+                            finalDesc = "Jubilado (Independiente y Activo)";
+                            finalPal = 1.37;
+                        } else if (selection === 'sedentario') {
+                            finalDesc = "Jubilado (Mayormente Sedentario)";
+                            finalPal = 1.20;
+                        } else {
+                            finalDesc = "Jubilado (Movilidad Reducida / Asistida)";
+                            finalPal = 1.00;
+                        }
+                    }
+                    
+                    // Guardar los datos calculados
                     setPatientData(prev => ({
                         ...prev,
-                        profile: { ...prev.profile, occupation: job }
+                        profile: { ...prev.profile, occupation: finalDesc, ocupacion_descriptor: finalDesc, factor_pal: finalPal },
+                        identificacion: { ...prev.identificacion, ocupacion: finalDesc, ocupacion_descriptor: finalDesc, factor_pal: finalPal }
                     }));
-                    const age = patientData.profile?.age || 0;
-                    const isMinor = age < 18;
-                    const firstName = (patientData.profile?.first_name || patientData.identificacion?.nombre || "el paciente").split(' ')[0];
                     
+                    // Limpiar el tempJobPrimary de la memoria del contexto
+                    setApiContext(prev => {
+                        const copy = { ...prev };
+                        delete copy.tempJobPrimary;
+                        return copy;
+                    });
+                    
+                    // Avanzar a CURP
+                    const isMinor = age < 18;
+                    const firstName = pName.split(' ')[0];
                     let curpPromptMsg = "";
                     if (isMinor) {
-                        curpPromptMsg = `Mapeo sociocultural completado y encriptado. Para proceder con la apertura oficial del expediente pediátrico conforme a la normativa vigente de salud.\n\nPor favor, introduzca la **Clave Única de Registro de Población (CURP)** de **${firstName}** (si no la tiene a la mano, puede seleccionarlo abajo).`;
+                        curpPromptMsg = `Mapeo sociocultural completado y encriptado. Para proceder con la apertura oficial del expediente pediátrico conforme a la normativa vigente de salud.\n\nPor favor, introduzca la **Clave Única de Registro de Población (CURP)** de **${firstName}** (si no la tiene a la mano, puede seleccionarla abajo).`;
                     } else {
-                        curpPromptMsg = `Mapeo sociocultural completado y encriptado. Para proceder con la apertura oficial del expediente clínico conforme a la normativa vigente de salud.\n\nPor favor, introduzca su **Clave Única de Registro de Población (CURP)** (si no la tiene a la mano, puede seleccionarlo abajo).`;
+                        curpPromptMsg = `Mapeo sociocultural completado y encriptado. Para proceder con la apertura oficial del expediente clínico conforme a la normativa vigente de salud.\n\nPor favor, introduzca su **Clave Única de Registro de Población (CURP)** (si no la tiene a la mano, puede seleccionarla abajo).`;
                     }
-
+                    
                     setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: curpPromptMsg,
@@ -1364,6 +1975,19 @@ export const useCortex = () => {
                         let msg = "";
                         if (isMinor) msg = `Protocolo de extranjería activado. Para asegurar la identificación legal internacional del paciente pediátrico en el sistema de salud.\n\nPor favor, introduzca el **ID de Pasaporte** o **Documento Oficial** del país de origen de **${firstName}**:`;
                         else msg = `Protocolo de extranjería activado. Para asegurar su identificación legal internacional en el sistema de salud.\n\nPor favor, introduzca su **ID de Pasaporte** o **Documento Oficial** de su país de origen:`;
+                        
+                        setPatientData(prev => ({
+                            ...prev,
+                            profile: {
+                                ...prev.profile,
+                                nationality_type: 'FOREIGN'
+                            },
+                            identificacion: {
+                                ...prev.identificacion,
+                                nationality_type: 'FOREIGN'
+                            }
+                        }));
+
                         setMessages(prev => [...prev, { role: 'assistant', content: msg, avatar: tiloImg, inputType: 'text' }]);
                         setCurrentPhase('PHASE_1_PROFILE_ID_EXTRANJERO');
                     } else if (text === 'Buscala') {
@@ -1388,7 +2012,7 @@ export const useCortex = () => {
                             setMessages(prev => [...prev, { role: 'assistant', content: phoneMsg, avatar: tiloImg, inputType: 'tel' }]);
                             setCurrentPhase('PHASE_1_PROFILE_PHONE');
                         } else {
-                            setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Fallo de Formato.**\n\nEl dato no cumple con la estructura requerida. Por favor, elija una opción válida o verifique la captura.", avatar: tiloImg }]);
+                            setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Fallo de Formato.**\n\n---\n\nEl dato no cumple con la estructura requerida. Por favor, elija una opción válida o verifique la captura.", avatar: tiloImg }]);
                         }
                     }
                     break;
@@ -1479,7 +2103,7 @@ export const useCortex = () => {
                     const curpRegex = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]{2}$/;
 
                     if (!curpRegex.test(curpInput)) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Inconsistencia de Formato Legal.**\n\nLa CURP introducida no cumple con la validación de 18 caracteres alfanuméricos establecida por RENAPO.\n\nPor favor, verifique el dato e intente capturarlo nuevamente:" }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Inconsistencia de Formato Legal.**\n\n---\n\nLa CURP introducida no cumple con la validación de 18 caracteres alfanuméricos establecida por RENAPO.\n\nPor favor, verifique el dato e intente capturarlo nuevamente:" }]);
                         return;
                     }
 
@@ -1495,7 +2119,7 @@ export const useCortex = () => {
                         const inputDateAndSex = curpInput.substring(4, 11);
 
                         if (expectedDateAndSex !== inputDateAndSex) {
-                            setMessages((prev) => [...prev, { role: "assistant", content: `⛔ **Fallo de Integridad Biométrica.**\n\nLa fecha de nacimiento o sexo detectados en la CURP introducida no coinciden con los datos biológicos registrados al inicio del protocolo.\n\nPara mantener la legalidad del expediente, verifique el dato e intente nuevamente:` }]);
+                            setMessages((prev) => [...prev, { role: "assistant", content: `⛔ **Fallo de Integridad Biométrica.**\n\n---\n\nLa fecha de nacimiento o sexo detectados en la CURP introducida no coinciden con los datos biológicos registrados al inicio del protocolo.\n\nPara mantener la legalidad del expediente, verifique el dato e intente nuevamente:` }]);
                             return;
                         }
                     }
@@ -1525,13 +2149,26 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_ID_EXTRANJERO': {
                     const idInput = text.trim().toUpperCase();
                     if (idInput.length < 5) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Fallo de Validación Internacional.**\n\nEl ID o Pasaporte debe tener al menos 5 caracteres para ser aceptado como identificador legal válido.\n\nPor favor, verifique el documento e intente nuevamente:", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Fallo de Validación Internacional.**\n\n---\n\nEl ID o Pasaporte debe tener al menos 5 caracteres para ser aceptado como identificador legal válido.\n\nPor favor, verifique el documento e intente nuevamente:", avatar: tiloImg }]);
                         return;
                     }
 
                     setPatientData(prev => ({
                         ...prev,
-                        profile: { ...prev.profile, curp: `EXT-${idInput}` }
+                        profile: {
+                            ...prev.profile,
+                            nationality_type: 'FOREIGN',
+                            passport_id: idInput,
+                            curp: `EXT-${idInput}`,
+                            curpValidated: true
+                        },
+                        identificacion: {
+                            ...prev.identificacion,
+                            nationality_type: 'FOREIGN',
+                            passport_id: idInput,
+                            curp: `EXT-${idInput}`,
+                            curpValidated: true
+                        }
                     }));
 
 
@@ -1556,7 +2193,7 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_PHONE': {
                     const phoneRegex = /^[0-9]{10}$/;
                     if (!phoneRegex.test(text.replace(/\D/g, ''))) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Formato de Contacto Inválido.**\n\nEl sistema requiere exactamente 10 dígitos numéricos para establecer la vía de comunicación oficial.\n\nPor favor, verifique el número e intente nuevamente.", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⛔ **Formato de Contacto Inválido.**\n\n---\n\nEl sistema requiere exactamente 10 dígitos numéricos para establecer la vía de comunicación oficial.\n\nPor favor, verifique el número e intente nuevamente.", avatar: tiloImg, inputType: 'tel' }]);
                         return;
                     }
                     setPatientData(prev => ({
@@ -1575,7 +2212,7 @@ export const useCortex = () => {
                         role: 'assistant',
                         content: msgContent,
                         avatar: tiloImg,
-                        inputType: 'buttons',
+                        inputType: 'strict_select',
                         options: [
                             { label: "✅ Sí", value: "SI" },
                             { label: "❌ No / Ninguna", value: "NO_NINGUNA" }
@@ -1695,7 +2332,7 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_ZIPCODE': {
                     const zipInput = text.trim();
                     if (!/^\d{5}$/.test(zipInput)) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "Anomalía de formato detectada.\n\nEl código debe contener exactamente 5 dígitos numéricos.\n\nPor favor, **verifique e ingrese** el Código Postal nuevamente:", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "Anomalía de formato detectada.\n\n---\n\nEl código debe contener exactamente 5 dígitos numéricos.\n\nPor favor, **verifique e ingrese** el Código Postal nuevamente:", avatar: tiloImg }]);
                         return;
                     }
 
@@ -1733,7 +2370,7 @@ export const useCortex = () => {
                                 const withoutThinking = prev.slice(0, prev.length - 1);
                                 return [...withoutThinking, {
                                     role: 'assistant',
-                                    content: `Mapeo geográfico exitoso (${data.municipio}, ${data.estado}).\n\nPor favor, **seleccione** la colonia correspondiente para el registro oficial:`,
+                                    content: `Mapeo geográfico exitoso (${data.municipio}, ${data.estado}).\n\n---\n\nPor favor, **seleccione** la colonia correspondiente para el registro oficial:`,
                                     inputType: 'strict_select',
                                     options: data.colonias.map(c => ({ label: c, value: c }))
                                 }];
@@ -1798,8 +2435,8 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_COLONY': {
                     setPatientData(prev => ({
                         ...prev,
-                        profile: { ...prev.profile, address: { ...prev.profile.address, colony: formatText(text) } },
-                        domicilio: { ...prev.domicilio, colonia: formatText(text) }
+                        profile: { ...prev.profile, address: { ...prev.profile.address, colony: toTitleCase(text) } },
+                        domicilio: { ...prev.domicilio, colonia: toTitleCase(text) }
                     }));
 
                     setMessages(prev => [...prev, {
@@ -1814,14 +2451,14 @@ export const useCortex = () => {
                 }
 
                 case 'PHASE_1_PROFILE_STREET': {
-                    const cleanStreet = formatText(text);
+                    const cleanStreet = toTitleCase(text);
 
                     // Validación explícita de Calle y Número 
                     // Permite letras, números y espacios (e.g. "morelos 13")
                     if (!/^[a-zA-ZñÑáéíóúÁÉÍÓÚ0-9\s#\-.,]+$/.test(cleanStreet) || cleanStreet.length < 3) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Anomalía de formato detectada.\n\nLa dirección debe contener al menos 3 caracteres (ej. Morelos 13).\n\nPor favor, **verifique e ingrese** la Calle y Número nuevamente:`,
+                            content: `Anomalía de formato detectada.\n\n---\n\nLa dirección debe contener al menos 3 caracteres (ej. Morelos 13).\n\nPor favor, **verifique e ingrese** la Calle y Número nuevamente:`,
                             avatar: tiloImg
                         }]);
                         return; // No avanza si falla la validación
@@ -1840,7 +2477,19 @@ export const useCortex = () => {
                                     return reject(new Error("Google Maps API no disponible."));
                                 }
                                 const geocoder = new window.google.maps.Geocoder();
-                                geocoder.geocode({ address }, (results, status) => {
+                                const request = { address };
+                                const cp = patientData.domicilio?.cp;
+                                if (cp) {
+                                    request.componentRestrictions = {
+                                        country: 'MX',
+                                        postalCode: cp
+                                    };
+                                } else {
+                                    request.componentRestrictions = {
+                                        country: 'MX'
+                                    };
+                                }
+                                geocoder.geocode(request, (results, status) => {
                                     if (status === 'OK' && results && results.length > 0) {
                                         resolve(results);
                                     } else {
@@ -1864,7 +2513,7 @@ export const useCortex = () => {
                         const lat = results[0].geometry.location.lat();
                         const lng = results[0].geometry.location.lng();
                         const coords = { lat, lng };
-                        const formattedAddress = results[0].formatted_address;
+                        const formattedAddress = results[0].formatted_address.replace('Mexico', 'México');
 
                         setPatientData(prev => ({
                             ...prev,
@@ -1892,11 +2541,13 @@ export const useCortex = () => {
                         const tutorName = ptCtx?.tutor_first_name ? ptCtx.tutor_first_name : 'Tutor';
                         const addressedName = ptCtx?.is_minor ? tutorName : patientFirstName;
                         
+                        const patientAddressStr = `${cleanStreet}, Col. ${patientData.domicilio?.colonia || ''}, ${patientData.domicilio?.municipio || ''}, ${patientData.domicilio?.estado || ''}, CP: ${patientData.domicilio?.cp || ''}`;
+
                         setMessages(prev => {
                             const withoutThinking = prev.slice(0, prev.length - 1);
                             return [...withoutThinking, {
                                 role: 'assistant',
-                                content: `Ubicación cartográfica sincronizada. **${addressedName}**, he vinculado las coordenadas de su residencia al análisis de determinantes ambientales para ${ptCtx?.is_minor ? 'el expediente pediátrico' : 'su expediente clínico'}.\n\nPara cumplir con la verificación geográfica de la **NOM-004**, revise el Domicilio Geográfico proyectado en el panel lateral por el sistema cartográfico:\n\n📍 **${formattedAddress || "No disponible"}**\n\n¿Confirma que la ubicación marcada y los datos extraídos son correctos?`,
+                                content: `Ubicación cartográfica sincronizada. **${addressedName}**, he vinculado las coordenadas de su residencia al análisis de determinantes ambientales para ${ptCtx?.is_minor ? 'el expediente pediátrico' : 'su expediente clínico'}.\n\n---\n\nPara cumplir con la verificación geográfica de la **NOM-004**, revise el Domicilio Geográfico proyectado en el panel lateral por el sistema cartográfico:\n\n📍 **${patientAddressStr}**\n\n¿Confirma que la ubicación marcada y los datos extraídos son correctos?`,
                                 avatar: tiloImg,
                                 inputType: 'strict_select',
                                 options: [
@@ -1922,7 +2573,7 @@ export const useCortex = () => {
                             const withoutThinking = prev.slice(0, prev.length - 1);
                             return [...withoutThinking, {
                                 role: 'assistant',
-                                content: "Sincronización cartográfica automática interrumpida. La resolución de coordenadas no ha alcanzado el margen de precisión clínica requerida.\n\nPara garantizar la exactitud de su expediente bajo la **NOM-004**, por favor **valide manualmente la ubicación** arrastrando el marcador en el mapa o corrigiendo los datos del panel lateral.\n\n¿Confirma que ha completado la validación manual o prefiere reiniciar la captura de la calle?",
+                                content: "Sincronización cartográfica automática interrumpida. La resolución de coordenadas no ha alcanzado el margen de precisión clínica requerida.\n\n---\n\nPara garantizar la exactitud de su expediente bajo la **NOM-004**, por favor **valide manualmente la ubicación** arrastrando el marcador en el mapa o corrigiendo los datos del panel lateral.\n\n¿Confirma que ha completado la validación manual o prefiere reiniciar la captura de la calle?",
                                 avatar: tiloImg,
                                 inputType: 'strict_select',
                                 options: [
@@ -1951,7 +2602,7 @@ export const useCortex = () => {
                         }));
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Entendido **${addressedName}**. Reiniciando la captura cartográfica para garantizar precisión legal. Por favor, ingrese su **Código Postal** nuevamente:`,
+                            content: `Entendido, **${addressedName}**.\n\n---\n\nReiniciando la captura cartográfica para garantizar precisión legal. Por favor, ingrese su **Código Postal** nuevamente:`,
                             avatar: tiloImg,
                             inputType: 'number'
                         }]);
@@ -1964,8 +2615,8 @@ export const useCortex = () => {
                     const isMinor = ptCtx?.is_minor;
                     const pName = patientData.profile.first_name || 'el paciente';
                     const msgContent = isMinor
-                        ? `Director, para cumplir con los lineamientos de seguridad de la NOM-004, es obligatorio designar un tutor o contacto de emergencia legal para **${pName}**.\n\nPor favor, indique el **Nombre Completo** de esta persona:`
-                        : `Director, para cumplir con los lineamientos de seguridad de la NOM-004, es obligatorio registrar un contacto de emergencia.\n\nPor favor, indique el **Nombre Completo** de su contacto responsable:`;
+                        ? `Las coordenadas del domicilio de **${pName}** han sido verificadas y selladas en el expediente.\n\n---\n\nComo tutor responsable, para cumplir con los lineamientos de seguridad de la NOM-004, es obligatorio designar un tutor o contacto de emergencia legal para **${pName}**.\n\nPor favor, indique el **Nombre Completo** de esta persona:`
+                        : `Las coordenadas de su Domicilio Geográfico han sido verificadas y selladas en su expediente.\n\n---\n\n**${addressedName}**, para cumplir con los lineamientos de seguridad de la NOM-004, es obligatorio registrar un contacto de emergencia.\n\nPor favor, indique el **Nombre Completo** de su contacto responsable:`;
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -1997,11 +2648,12 @@ export const useCortex = () => {
                         const p = patientData.profile || patientData.identificacion || {};
                         const ptCtx = p.pediatric_profile;
                         const showMarital = !(ptCtx && ptCtx.ui_controls && ptCtx.ui_controls.show_marital_status === false);
+                        const occupationLabel = ptCtx?.ui_controls?.occupation_label || 'Ocupación';
 
-                        const options = [
-                                { label: 'Teléfono', value: 'PHONE' },
-                                { label: 'Religión', value: 'RELIGION' }
-                        ];
+                        const options = [];
+                        options.push({ label: occupationLabel, value: 'OCCUPATION' });
+                        options.push({ label: 'Teléfono', value: 'PHONE' });
+                        options.push({ label: 'Religión', value: 'RELIGION' });
                         
                         if (showMarital) {
                             options.push({ label: 'Estado Civil', value: 'MARITAL' });
@@ -2033,10 +2685,47 @@ export const useCortex = () => {
                         clearSession();
                         setMessages([{
                             role: 'assistant',
-                            content: "⚠️ **Protocolo de Invalidación Activado**\n\nDirector, si la identidad base (Nombre, CURP, Sexo o Fecha de Nacimiento) es incorrecta en esta etapa, el expediente pierde validez legal. Se ha forzado el cierre del folio para protección de la NOM-004. Por favor, reinicie la toma de datos.",
+                            content: "⚠️ **Protocolo de Invalidación Activado**\n\nPara garantizar la integridad y validez legal de su expediente clínico bajo la NOM-004, cualquier inconsistencia en sus datos de identidad base requiere reiniciar el proceso.\n\n---\n\nSe ha forzado el cierre de la sesión de captura de forma preventiva. Por favor, inicie nuevamente para registrar sus datos oficiales correctos.",
                             avatar: tiloImg
                         }]);
                         break;
+                    } else if (text === 'OCCUPATION') {
+                        const ptCtx = patientData.profile?.pediatric_profile;
+                        const isMinor = ptCtx?.is_minor;
+                        const pName = patientData.profile?.first_name || 'el menor';
+                        const label = ptCtx?.ui_controls?.occupation_label || 'Ocupación';
+                        const age = patientData.profile?.age || 0;
+                        
+                        let msg = "";
+                        let options = null;
+                        if (isMinor) {
+                            if (ptCtx.category === 'ADOLESCENTE') {
+                                msg = `Por favor, indique en qué grado o semestre de secundaria o preparatoria se encuentra **${pName}**:`;
+                            } else if (ptCtx.category === 'ESCOLAR') {
+                                msg = `Por favor, indique en qué grado cursa **${pName}** actualmente:`;
+                            } else {
+                                msg = `Por favor, indique si **${pName}** asiste a guardería o kínder actualmente:`;
+                                options = [
+                                    { label: "En casa (Cuidado materno/paterno)", value: "HOME_PARENTS" },
+                                    { label: "En casa (Familiar o Niñera)", value: "HOME_CAREGIVER" },
+                                    { label: "Guardería / Estancia infantil", value: "DAYCARE" }
+                                ];
+                                if (age >= 3) {
+                                    options.push({ label: "Kínder / Preescolar", value: "KINDER" });
+                                }
+                            }
+                        } else {
+                            msg = `Por favor, indique su **${label}** principal actual:`;
+                        }
+                        
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: msg,
+                            avatar: tiloImg,
+                            inputType: 'text',
+                            options: options || undefined
+                        }]);
+                        setCurrentPhase('PHASE_1_CORRECT_OCCUPATION');
                     } else if (text === 'PHONE') {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
@@ -2091,7 +2780,7 @@ export const useCortex = () => {
                     const phoneRegex = /^[0-9]{10}$/;
                     const cleanPhone = text.replace(/\D/g, '');
                     if (!phoneRegex.test(cleanPhone)) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "El número debe tener exactamente 10 dígitos. Por favor intente nuevamente.", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "El número debe tener exactamente 10 dígitos. Por favor intente nuevamente.", avatar: tiloImg, inputType: 'tel' }]);
                         return;
                     }
                     const newData = {
@@ -2147,8 +2836,20 @@ export const useCortex = () => {
                     const mar = text;
                     const newData = {
                         ...patientData,
-                        profile: { ...patientData.profile, civil_status: mar },
+                        profile: { ...patientData.profile, civil_status: mar, marital_status: mar },
                         identificacion: { ...patientData.identificacion, estadoCivil: mar }
+                    };
+                    setPatientData(newData);
+                    triggerPhase1Summary(newData);
+                    break;
+                }
+
+                case 'PHASE_1_CORRECT_OCCUPATION': {
+                    const job = formatText(text);
+                    const newData = {
+                        ...patientData,
+                        profile: { ...patientData.profile, occupation: job },
+                        identificacion: { ...patientData.identificacion, ocupacion: job }
                     };
                     setPatientData(newData);
                     triggerPhase1Summary(newData);
@@ -2184,24 +2885,35 @@ export const useCortex = () => {
                     if (age < 12) {
                         msgContent = `Entendido. Para establecer el vínculo legal en el expediente, ¿qué parentesco tiene **${eName}** con **${patientFirstName}**?`;
                     } else if (age >= 12 && age < 18) {
-                        msgContent = `Entendido **${patientFirstName}**. Para establecer el vínculo legal, ¿qué parentesco tiene **${eName}** contigo?`;
+                        msgContent = `Entendido, **${patientFirstName}**. Para establecer el vínculo legal, ¿qué parentesco tiene **${eName}** con usted?`;
                     } else {
-                        msgContent = `Entendido **${patientFirstName}**. Para establecer el vínculo en su expediente, ¿qué parentesco tiene **${eName}** con usted?`;
+                        msgContent = `Entendido, **${patientFirstName}**. Para establecer el vínculo en su expediente, ¿qué parentesco tiene **${eName}** con usted?`;
                     }
 
-                    // Dinámica de Botones (Cruce de Edad + Género)
+                    // Dinámica de Botones (Cruce de Edad + Género + Estado Civil)
+                    const maritalStatus = (patientData.profile?.marital_status || patientData.identificacion?.estadoCivil || "").toLowerCase();
+                    const isSingle = maritalStatus.includes('solter') || maritalStatus === '';
+                    
                     let kinshipOptions = [];
                     if (inferredGender === 'FEMALE') {
                         if (age < 12 || (age >= 12 && age < 18)) {
                             kinshipOptions = ['Madre', 'Abuela', 'Tía', 'Hermana Mayor', 'Otra Familiar'];
                         } else {
-                            kinshipOptions = ['Esposa / Pareja', 'Madre', 'Hija', 'Hermana', 'Amiga', 'Otra Familiar'];
+                            if (isSingle) {
+                                kinshipOptions = ['Madre', 'Hermana', 'Amiga', 'Hija', 'Otra Familiar'];
+                            } else {
+                                kinshipOptions = ['Cónyuge', 'Madre', 'Hermana', 'Amiga', 'Hija', 'Otra Familiar'];
+                            }
                         }
                     } else {
                         if (age < 12 || (age >= 12 && age < 18)) {
                             kinshipOptions = ['Padre', 'Abuelo', 'Tío', 'Hermano Mayor', 'Otro Familiar'];
                         } else {
-                            kinshipOptions = ['Esposo / Pareja', 'Padre', 'Hijo', 'Hermano', 'Amigo', 'Otro Familiar'];
+                            if (isSingle) {
+                                kinshipOptions = ['Padre', 'Hermano', 'Amigo', 'Hijo', 'Otro Familiar'];
+                            } else {
+                                kinshipOptions = ['Cónyuge', 'Padre', 'Hermano', 'Amigo', 'Hijo', 'Otro Familiar'];
+                            }
                         }
                     }
 
@@ -2263,7 +2975,7 @@ export const useCortex = () => {
                     const cleanPhone = text.replace(/\D/g, '');
 
                     if (!phoneRegex.test(cleanPhone)) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ **Fallo de Formato Telefónico**\n\nEl sistema requiere exactamente 10 dígitos numéricos sin espacios ni guiones para validar el contacto de emergencia. Por favor, intente nuevamente:", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ **Fallo de Formato Telefónico**\n\n---\n\nEl sistema requiere exactamente 10 dígitos numéricos sin espacios ni guiones para validar el contacto de emergencia. Por favor, intente nuevamente:", avatar: tiloImg, inputType: 'tel' }]);
                         return;
                     }
 
@@ -2272,7 +2984,7 @@ export const useCortex = () => {
                     const curPtCtx = patientData.profile.pediatric_profile;
                     if (cleanPhone === patientData.profile.phone) {
                         if (!curPtCtx || !curPtCtx.is_minor) {
-                            setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ **Redundancia de Contacto Detectada**\n\nPor protocolos de seguridad (NOM-004), el número de emergencia no puede ser idéntico a su número personal. Por favor, proporcione un número alternativo válido:", avatar: tiloImg }]);
+                            setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ **Redundancia de Contacto Detectada**\n\n---\n\nPor protocolos de seguridad (NOM-004), el número de emergencia no puede ser idéntico a su número personal. Por favor, proporcione un número alternativo válido:", avatar: tiloImg, inputType: 'tel' }]);
                             return;
                         }
                     }
@@ -2386,7 +3098,7 @@ export const useCortex = () => {
                     const phoneRegex = /^[0-9]{10}$/;
                     const cleanPhone = text.replace(/\D/g, '');
                     if (!phoneRegex.test(cleanPhone)) {
-                        setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ **Fallo de Formato Telefónico**\n\nEl sistema requiere exactamente 10 dígitos numéricos para validar el contacto de emergencia. Por favor, intente nuevamente:", avatar: tiloImg }]);
+                        setMessages(prev => [...prev, { role: 'assistant', content: "⚠️ **Fallo de Formato Telefónico**\n\n---\n\nEl sistema requiere exactamente 10 dígitos numéricos para validar el contacto de emergencia. Por favor, intente nuevamente:", avatar: tiloImg, inputType: 'tel' }]);
                         return;
                     }
                     const newData = {
@@ -2577,7 +3289,7 @@ export const useCortex = () => {
                     if (text === 'SI_HEREDO') {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Entendido. Por favor, descríbame ¿qué familiares padecen qué enfermedades? (Ej: Mi madre tiene hipertensión y mi abuelo materno diabetes).",
+                            content: "Entendido.\n\n---\n\nPor favor, descríbame ¿qué familiares padecen qué enfermedades? (Ej: Mi madre tiene hipertensión y mi abuelo materno diabetes).",
                             avatar: tiloImg,
                             inputType: 'text'
                         }]);
@@ -2585,7 +3297,7 @@ export const useCortex = () => {
                     } else if (text === 'NO_HEREDO') {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Comprendo. Aún así, para cumplir con la normativa clínica obligatoria, verifiquemos esta lista rápida. ¿Algún familiar directo padece alguna de estas?",
+                            content: "Comprendo.\n\n---\n\nAún así, para cumplir con la normativa clínica obligatoria, verifiquemos esta lista rápida. ¿Algún familiar directo padece alguna de estas?",
                             avatar: tiloImg,
                             options: [
                                 { label: "Diabetes", value: "Diabetes" },
@@ -2850,6 +3562,27 @@ export const useCortex = () => {
                     if (text === 'yes') {
                         setCurrentPhase('PHASE_4_FAMILY_HISTORY');
                     } else if (text === 'no') {
+                        // Reset Motivo Consulta State
+                        setFase3State({
+                            patient_quote: "",
+                            specific_ailment: "",
+                            alert_level: "NONE",
+                            emotional_anchor: "",
+                            detective_radiography: { chronology: "", suspicion: "" },
+                            goal_standard: "",
+                            isGoal: false,
+                            isPregnant: false
+                        });
+
+                        // Slice messages starting from the first Motivo Consulta greeting
+                        setMessages(prev => {
+                            const idx = prev.findIndex(msg => msg.role === 'assistant' && (msg.content.includes('Para diseñar el plan clínico') || msg.content.includes('Para comenzar a diseñar')));
+                            if (idx !== -1) {
+                                return prev.slice(0, idx);
+                            }
+                            return prev;
+                        });
+
                         setCurrentPhase('PHASE_3_MOTIVO_CONSULTA');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
@@ -2859,8 +3592,23 @@ export const useCortex = () => {
 
                 case 'PHASE_4_SUMMARY_CONFIRM': {
                     if (text === 'yes') {
-                        setCurrentPhase('PHASE_5_LIFESTYLE');
+                        setCurrentPhase('PHASE_5_PERSONAL_START');
                     } else if (text === 'no') {
+                        // Reset AHF data in global data lake
+                        setPatientData(prev => ({
+                            ...prev,
+                            familyTree: { antecedentes: [], alert_detected: false }
+                        }));
+
+                        // Slice messages starting from the first AHF greeting
+                        setMessages(prev => {
+                            const idx = prev.findIndex(msg => msg.role === 'assistant' && (msg.content.includes("mapa de salud de") || msg.content.includes("mapa de salud")));
+                            if (idx !== -1) {
+                                return prev.slice(0, idx);
+                            }
+                            return prev;
+                        });
+
                         setCurrentPhase('PHASE_4_FAMILY_HISTORY');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
@@ -2872,7 +3620,27 @@ export const useCortex = () => {
                     if (text === 'yes') {
                         setCurrentPhase('PHASE_6_PHARMACOLOGY');
                     } else if (text === 'no') {
-                        setCurrentPhase('PHASE_5_LIFESTYLE');
+                        // Reset personal history data to prevent duplicates
+                        setPatientData(prev => ({
+                            ...prev,
+                            history: {
+                                ...(prev.history || {}),
+                                personal_structured: [],
+                                personal_raw_text: '',
+                                personal_checklist_verified: false
+                            }
+                        }));
+
+                        // Slice messages starting from the first Personal History greeting
+                        setMessages(prev => {
+                            const idx = prev.findIndex(msg => msg.role === 'assistant' && (msg.content.includes("expediente patológico") || msg.content.includes("perfil genómico")));
+                            if (idx !== -1) {
+                                return prev.slice(0, idx);
+                            }
+                            return prev;
+                        });
+
+                        setCurrentPhase('PHASE_5_PERSONAL_START');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
                     }
@@ -2881,8 +3649,27 @@ export const useCortex = () => {
 
                 case 'PHASE_6_SUMMARY_CONFIRM': {
                     if (text === 'yes') {
-                        setCurrentPhase('PHASE_7_HABITS');
+                        setCurrentPhase('PHASE_7_ALLERGIES');
                     } else if (text === 'no') {
+                        // Reset dynamic data arrays to prevent duplicate accumulated items
+                        setPatientData(prev => ({
+                            ...prev,
+                            history: {
+                                ...(prev.history || {}),
+                                medications: [],
+                                supplements: []
+                            }
+                        }));
+
+                        // Slice the messages list to remove everything starting from the first Pharmacology greeting to allow a clean restart
+                        setMessages(prev => {
+                            const idx = prev.findIndex(msg => msg.role === 'assistant' && msg.content.includes("Farmacología"));
+                            if (idx !== -1) {
+                                return prev.slice(0, idx);
+                            }
+                            return prev;
+                        });
+
                         setCurrentPhase('PHASE_6_PHARMACOLOGY');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
@@ -2892,9 +3679,109 @@ export const useCortex = () => {
 
                 case 'PHASE_7_SUMMARY_CONFIRM': {
                     if (text === 'yes') {
+                        setPatientData(prev => ({
+                            ...prev,
+                            history: {
+                                ...(prev.history || {}),
+                                allergies_verified: true
+                            }
+                        }));
                         setCurrentPhase('PHASE_8_DIGESTIVE');
                     } else if (text === 'no') {
-                        setCurrentPhase('PHASE_7_HABITS');
+                        // Reset allergies data in global data lake
+                        setPatientData(prev => ({
+                            ...prev,
+                            history: {
+                                ...(prev.history || {}),
+                                allergies: { food: [], drug: [] },
+                                allergies_verified: false
+                            }
+                        }));
+
+                        // Slice messages starting from the first Allergies greeting
+                        setMessages(prev => {
+                            const idx = prev.findIndex(msg => msg.role === 'assistant' && msg.content.includes("sensibilidades inmunológicas"));
+                            if (idx !== -1) {
+                                return prev.slice(0, idx);
+                            }
+                            return prev;
+                        });
+
+                        setCurrentPhase('PHASE_7_ALLERGIES');
+                    } else {
+                        setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
+                    }
+                    break;
+                }
+
+                case 'PHASE_8_SUMMARY_CONFIRM': {
+                    if (text === 'yes') {
+                        const patientAge = patientData?.profile?.age !== undefined ? Number(patientData.profile.age) : (patientData?.identificacion?.edad !== undefined ? Number(patientData.identificacion.edad) : 30);
+                        const patientSex = patientData?.profile?.sex || patientData?.profile?.gender || patientData?.identificacion?.sexo || 'M';
+                        const isFemale = patientSex.toUpperCase().startsWith('F');
+                        const isGeriatric = patientAge >= 65;
+
+                        if (patientAge < 12) {
+                            setCurrentPhase('PHASE_11_ACTIVITY');
+                        } else if (isFemale && !isGeriatric) {
+                            setCurrentPhase('PHASE_9_PHYSIO');
+                        } else {
+                            setCurrentPhase('PHASE_10_HABITS');
+                        }
+                    } else if (text === 'no') {
+                        // Reset digestive history data
+                        setPatientData(prev => ({
+                            ...prev,
+                            history: {
+                                ...(prev.history || {}),
+                                digestive_symptoms: [],
+                                digestive_frequency: "Ninguna"
+                            },
+                            digestive_profile: undefined
+                        }));
+
+                        // Slice the messages list to remove everything starting from the first Digestive greeting to allow a clean restart
+                        setMessages(prev => {
+                            const idx = prev.findIndex(msg => msg.role === 'assistant' && msg.content.includes("salud digestiva"));
+                            if (idx !== -1) {
+                                return prev.slice(0, idx);
+                            }
+                            return prev;
+                        });
+
+                        setCurrentPhase('PHASE_8_DIGESTIVE');
+                    } else {
+                        setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
+                    }
+                    break;
+                }
+
+                case 'PHASE_9_SUMMARY_CONFIRM': {
+                    if (text === 'yes') {
+                        setCurrentPhase('PHASE_10_HABITS');
+                    } else if (text === 'no') {
+                        // Reset physio history data with ignorePhase3PreFill flag
+                        setPatientData(prev => ({
+                            ...prev,
+                            physio: { ignorePhase3PreFill: true }
+                        }));
+
+                        // Slice the messages list to remove everything starting from the first Physio greeting to allow a clean restart
+                        setMessages(prev => {
+                            const idx = prev.findIndex(msg => msg.role === 'assistant' && (
+                                msg.content.includes("embarazada actualmente") || 
+                                msg.content.includes("etapa de gestación") || 
+                                msg.content.includes("etapa de lactancia") ||
+                                msg.content.includes("retraso en su ciclo") ||
+                                msg.content.includes("retraso en el ciclo")
+                            ));
+                            if (idx !== -1) {
+                                return prev.slice(0, idx);
+                            }
+                            return prev;
+                        });
+
+                        setCurrentPhase('PHASE_9_PHYSIO');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
                     }
@@ -2926,8 +3813,24 @@ export const useCortex = () => {
                 // ----------------------------------------------------------------------------------
                 // FASE 13: BIOMÉTRICOS Y SIGNOS VITALES (LEGACY FASE 6)
                 // ----------------------------------------------------------------------------------
-
-
+                case 'PHASE_13_BIO_START': {
+                    const cleaned = text.toLowerCase().trim();
+                    if (cleaned === 'listo' || cleaned === 'lista') {
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "Excelente. Se ha registrado su disposición.\n\n---\n\nHabilitando el acceso al Diagnóstico Integral y la toma de mediciones físicas.",
+                            avatar: tiloImg
+                        }]);
+                        setCurrentPhase('PHASE_13_COMPLETE_HANDOFF');
+                    } else {
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: `Por favor, escriba **'Listo'** o **'Lista'** una vez que se encuentre en posición en el área de medición para continuar.`,
+                            avatar: tiloImg
+                        }]);
+                    }
+                    break;
+                }
 
                 default:
                     setMessages(prev => [...prev, {
@@ -2960,7 +3863,9 @@ export const useCortex = () => {
         triggerPhase4Summary,
         triggerPhase5Summary,
         triggerPhase6Summary,
-        triggerPhase7Summary
+        triggerPhase7Summary,
+        triggerPhase8Summary,
+        triggerPhase9Summary
     };
 };
 

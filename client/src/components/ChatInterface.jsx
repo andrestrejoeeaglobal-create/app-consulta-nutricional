@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Paperclip, Mic, Send } from 'lucide-react';
 import SearchableVerticalMenu from './ui/SearchableVerticalMenu';
+import { applyPhoneMask } from '../utils/utils';
 
 const ChatInterface = ({
     messages = [],
@@ -68,6 +69,23 @@ const ChatInterface = ({
                                 : 'bg-white border border-slate-100 text-slate-700 rounded-2xl rounded-tl-none'
                                 }`}>
                                 {msg.content}
+                                {!isUser && index === messages.length - 1 && !isTyping && (msg.options || msg.quickReplies) && (msg.options || msg.quickReplies).length > 0 && (msg.options || msg.quickReplies).length <= 3 && (
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {(msg.options || msg.quickReplies).map((opt, oIdx) => {
+                                            const label = opt.label || opt;
+                                            const value = opt.value || opt;
+                                            return (
+                                                <button
+                                                    key={oIdx}
+                                                    onClick={(e) => { e.preventDefault(); handleQuickReply(value); }}
+                                                    className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-full text-xs hover:bg-slate-200 hover:text-slate-900 transition-colors shadow-sm border border-slate-200"
+                                                >
+                                                    {label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     );
@@ -100,34 +118,11 @@ const ChatInterface = ({
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
                 <div className="relative w-full max-w-3xl mx-auto flex flex-col items-center">
                     {/* Render Options according to Rule */}
-                    {optionsArray.length > 0 && (
-                        optionsArray.length > 3 ? (
-                            <SearchableVerticalMenu 
-                                options={optionsArray.map(opt => ({ label: opt.label || opt, value: opt.value || opt }))} 
-                                onSelect={handleQuickReply} 
-                            />
-                        ) : (
-                            <div className="flex flex-col gap-2 mb-3 w-full">
-                                {optionsArray.map((opt, i) => {
-                                    const label = opt.label || opt;
-                                    const value = opt.value || opt;
-                                    return (
-                                        <button
-                                            key={i}
-                                            onClick={() => handleQuickReply(value)}
-                                            className="w-full px-5 py-3 bg-white border-2 border-blue-100 text-slate-700 text-sm font-medium rounded-xl hover:border-blue-500 hover:bg-blue-50 hover:shadow-md transition-all flex items-center justify-between group"
-                                        >
-                                            <span>{label}</span>
-                                            <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                                </svg>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )
+                    {optionsArray.length > 3 && (
+                        <SearchableVerticalMenu 
+                            options={optionsArray.map(opt => ({ label: opt.label || opt, value: opt.value || opt }))} 
+                            onSelect={handleQuickReply} 
+                        />
                     )}
 
                     {inputAreaTopAddon && (
@@ -161,7 +156,13 @@ const ChatInterface = ({
                             <input
                                 type={currentInputType === 'date' ? 'text' : currentInputType}
                                 value={input}
-                                onChange={(e) => setInput(e.target.value)}
+                                onChange={(e) => {
+                                    if (currentInputType === 'tel') {
+                                        setInput(applyPhoneMask(e.target.value));
+                                    } else {
+                                        setInput(e.target.value);
+                                    }
+                                }}
                                 onKeyDown={handleKeyDown}
                                 placeholder={currentInputType === 'date' ? "DD/MM/AAAA" : "Escribe un mensaje al Asistente..."}
                                 className={`flex-1 bg-transparent border-none focus:ring-0 text-slate-700 placeholder-slate-400 text-sm outline-none px-2 h-10 ${currentInputType === 'date' ? 'font-mono text-[#1C75BC] tracking-widest' : ''}`}

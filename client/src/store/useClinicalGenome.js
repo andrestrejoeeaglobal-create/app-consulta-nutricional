@@ -24,7 +24,11 @@ export const useClinicalGenome = create((set, get) => ({
     vitalSigns: {
         bloodPressure: { systolic: null, diastolic: null },
         heartRate: null,
+        respiratoryRate: null,
+        temperature: null,
+        spo2: null,
         glucose: null,
+        glucoseContext: null,
     },
     allergies: {
         food: [],
@@ -64,6 +68,11 @@ export const useClinicalGenome = create((set, get) => ({
     // Actualización del Perfil Sociocultural
     updateSocioculturalProfile: (updates) => set((state) => ({
         socioculturalProfile: { ...state.socioculturalProfile, ...updates }
+    })),
+
+    // Actualización Parcial de Signos Vitales
+    updateVitalSigns: (updates) => set((state) => ({
+        vitalSigns: { ...state.vitalSigns, ...updates }
     })),
 
     // Actualización de Ejes (La IA llama esto en el fondo)

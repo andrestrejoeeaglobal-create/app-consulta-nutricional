@@ -19,7 +19,18 @@ export const cleanServerInfo = (rawString) => {
 
         if (parts.length < 2) return { ...fallback, display: rawString, raw: rawString };
 
-        const location = parts[0].trim();
+        let location = parts[0].trim();
+        const locationLower = location.toLowerCase();
+        if (locationLower.includes('equipo en accion queretaro') || 
+            locationLower.includes('equipo en accion querétaro') || 
+            locationLower.includes('equipo en acción queretaro') || 
+            locationLower.includes('equipo en acción querétaro')) {
+            location = 'Equipo en Acción Querétaro';
+        } else {
+            location = location
+                .replace(/accion/gi, 'Acción')
+                .replace(/queretaro/gi, 'Querétaro');
+        }
         // Take the last part as date, filtering out empty strings first just in case
         const validParts = parts.map(p => p.trim()).filter(p => p.length > 0);
         const datePartRaw = validParts[validParts.length - 1]; // "May 31 2023 12:00AM" or just "May 31 2023"
@@ -74,6 +85,39 @@ export const formatText = (text) => {
         .split(" ")
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(" ");
+};
+
+/**
+ * Formatea texto a Title Case inteligente, ignorando conectores/preposiciones del español
+ * @param {string} text 
+ * @returns {string}
+ */
+export const toTitleCase = (text) => {
+    if (!text || typeof text !== 'string') return text;
+    const ignoreWords = ['de', 'del', 'el', 'la', 'y', 'en', 'con', 'o', 'un', 'una', 'los', 'las'];
+    return text
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .map((word, index) => {
+            if (index > 0 && ignoreWords.includes(word)) {
+                return word;
+            }
+            return word.charAt(0).toUpperCase() + word.slice(1);
+        })
+        .join(" ");
+};
+
+/**
+ * Formatea texto a Sentence Case (Solo primera letra mayúscula, resto intacto)
+ * @param {string} text 
+ * @returns {string}
+ */
+export const toSentenceCase = (text) => {
+    if (!text || typeof text !== 'string') return text;
+    const trimmed = text.trim();
+    if (trimmed.length === 0) return trimmed;
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 };
 
 /**
@@ -524,22 +568,82 @@ export const getGenderedTerm = (term, sex) => {
     return dic[term.toLowerCase()] || term;
 };
 
+export const applyPhoneMask = (value) => {
+    if (!value) return '';
+    let val = String(value).replace(/\D/g, '');
+    if (val.length > 10) val = val.slice(0, 10);
+    let formatted = val;
+    if (val.length > 6) {
+        formatted = `(${val.slice(0, 3)}) ${val.slice(3, 6)}-${val.slice(6)}`;
+    } else if (val.length > 3) {
+        formatted = `(${val.slice(0, 3)}) ${val.slice(3)}`;
+    } else if (val.length > 0) {
+        formatted = `(${val}`;
+    }
+    return formatted;
+};
+
 /**
  * Aplica máscara de formato telefónico estándar (XXX) XXX-XXXX
  * @param {string} phone 
  * @returns {string} Teléfono formateado
  */
 export const formatPhoneNumber = (phone) => {
-    if (!phone) return '';
-    // Limpiamos todo lo que no sea número
-    const cleaned = ('' + phone).replace(/\D/g, '');
+    return applyPhoneMask(phone) || phone;
+};
+
+const CLINICAL_GOALS_MAP = {
+    "GOAL_ADDICTIONS": "Adicciones y Sustancias",
+    "GOAL_GERIATRICS": "Adulto Mayor (Geriatría)",
+    "GOAL_ALLERGIES": "Alergias Graves (Protocolo Anafilaxia)",
+    "GOAL_WEIGHT_LOSS": "Bajar de Peso / Sobrepeso",
+    "GOAL_BARIATRIC": "Bariátrica / Quirúrgico",
+    "GOAL_MENOPAUSE": "Climaterio y Menopausia",
+    "GOAL_CLINICAL": "Control Clínico (Patologías Crónicas)",
+    "GOAL_PALLIATIVE": "Cuidados Paliativos",
+    "GOAL_DISABILITY": "Discapacidad y Rehabilitación",
+    "GOAL_PREGNANCY": "Embarazo y Lactancia",
+    "GOAL_MUSCLE": "Ganar Músculo / Deporte (Rendimiento)",
+    "GOAL_ONCOLOGY": "Oncología Nutricional",
+    "GOAL_PEDIATRICS": "Pediatría (Crecimiento)",
+    "GOAL_LONGEVITY": "Prevención y Longevidad",
+    "GOAL_MENTAL_HEALTH": "Salud Mental / TCA",
+    "GOAL_RENAL": "Salud Renal (Nefropatía)",
+    "GOAL_IMMUNE": "VIH e Inmunodeficiencias"
+};
+
+/**
+ * Limpia las etiquetas XML <binary_gate_execution> y metadatos de auditoría para su renderizado en la UI.
+ * @param {string} text
+ * @returns {string} Texto limpio
+ */
+export const cleanBinaryGateMessage = (text) => {
+    if (typeof text !== 'string') return text;
     
-    // Si tiene 10 dígitos, aplicamos máscara (XXX) XXX-XXXX
-    if (cleaned.length === 10) {
-        return `(${cleaned.substring(0, 3)}) ${cleaned.substring(3, 6)}-${cleaned.substring(6, 10)}`;
-    }
+    let cleaned = text;
     
-    // Si no tiene 10 dígitos, retornamos el string original para no romper formatos internacionales o extraños
-    return phone;
+    // Eliminar etiquetas de ejecución de compuerta binaria
+    cleaned = cleaned.replace(/<\/?binary_gate_execution[^>]*>/gi, '');
+    
+    // Eliminar comentarios meta HTML o etiquetas de metadatos xml
+    cleaned = cleaned.replace(/<!--[\s\S]*?-->/gi, '');
+    cleaned = cleaned.replace(/<\/?meta[^>]*>/gi, '');
+    
+    // Eliminar prefijos P1: y P2: (con o sin negrita/asteriscos) al principio de las líneas
+    cleaned = cleaned.replace(/^\s*\**P1:\**\s*/gim, '');
+    cleaned = cleaned.replace(/^\s*\**P2:\**\s*/gim, '');
+
+    // Traducir tags de guardería/cuidado infantil históricos en el chat
+    cleaned = cleaned.replace(/\b(HOME_PARENTS|Home_parents)\b/g, 'En casa (Cuidado materno/paterno)');
+    cleaned = cleaned.replace(/\b(HOME_CAREGIVER|Home_caregiver)\b/g, 'En casa (Familiar o Niñera)');
+    cleaned = cleaned.replace(/\b(DAYCARE|Daycare)\b/g, 'Guardería / Estancia infantil');
+    cleaned = cleaned.replace(/\b(KINDER|Kinder)\b/g, 'Kínder / Preescolar');
+    
+    // Traducir identificadores de ruta clínica/metas del motor Cortex
+    Object.keys(CLINICAL_GOALS_MAP).forEach(key => {
+        cleaned = cleaned.replace(new RegExp(key, 'g'), CLINICAL_GOALS_MAP[key]);
+    });
+    
+    return cleaned.trim();
 };
 

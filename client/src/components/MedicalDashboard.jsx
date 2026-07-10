@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import Accordion from './Accordion';
 import { useClinicalGenome } from '../store/useClinicalGenome';
 import { User, Activity, FlaskConical, FileText, Utensils, Calendar, MapPin, HeartPulse, Check, Edit2, ChevronDown, AlertTriangle, AlertCircle, Dna, Stethoscope, Salad, Search, Save, Scissors, Shield, Clipboard as PrescriptionBoard, Lock, Unlock, Clock, Heart, XCircle } from 'lucide-react';
@@ -12,11 +12,9 @@ import { TabNutrition } from './DashboardTabs/TabNutrition';
 import { TabVitals } from './DashboardTabs/TabVitals';
 import { TabLogistics } from './DashboardTabs/TabLogistics';
 import { TabBiochemicals } from './DashboardTabs/TabBiochemicals';
-import { TabNotes } from './DashboardTabs/TabNotes';
-import { TabIntervention } from './DashboardTabs/TabIntervention';
 import TabDiagnosis from './DashboardTabs/TabDiagnosis';
 import { TabCalendar } from './DashboardTabs/TabCalendar';
-import { formatPhoneNumber } from '../utils/utils';
+import { formatPhoneNumber, toTitleCase } from '../utils/utils';
 
 // SUB-COMPONENTE PARA CAMPOS (NOM-004)
 const NomField = ({ label, name, value, onChange, placeholder, isEditing, activeField, width = "col-span-1", isLongText = false }) => (
@@ -24,10 +22,10 @@ const NomField = ({ label, name, value, onChange, placeholder, isEditing, active
         className={`flex flex-col gap-1 ${width}`}
         layout
     >
-        <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+        <label className="text-[10px] uppercase font-bold text-tilo-text-muted tracking-wider">
             {label}
         </label>
-        <div className={`relative transition-all duration-300 ${isEditing ? 'ring-2 ring-blue-400 rounded-lg' : ''} ${(activeField === name && !isEditing) ? 'ring-2 ring-blue-400 bg-blue-50 rounded-lg shadow-sm scale-[1.02]' : ''}`}>
+        <div className={`relative transition-all duration-300 ${isEditing ? 'ring-2 ring-tilo-primary/40 rounded-lg' : ''} ${(activeField === name && !isEditing) ? 'ring-2 ring-tilo-primary/20 bg-tilo-bg-base/60 rounded-lg shadow-sm scale-[1.02]' : ''}`}>
             {isEditing ? (
                 isLongText ? (
                     <textarea
@@ -36,7 +34,7 @@ const NomField = ({ label, name, value, onChange, placeholder, isEditing, active
                         onChange={onChange}
                         placeholder={placeholder}
                         rows={3}
-                        className="w-full bg-white border border-blue-300 rounded-lg p-2 text-sm text-slate-700 font-medium focus:outline-none resize-none"
+                        className="w-full bg-white border border-tilo-primary/30 rounded-lg p-2 text-sm text-tilo-text-main font-medium focus:outline-none resize-none focus:border-tilo-primary"
                     />
                 ) : (
                     <input
@@ -45,12 +43,12 @@ const NomField = ({ label, name, value, onChange, placeholder, isEditing, active
                         value={value || ''}
                         onChange={onChange}
                         placeholder={placeholder}
-                        className="w-full bg-white border border-blue-300 rounded-lg p-2 text-sm text-slate-700 font-medium focus:outline-none"
+                        className="w-full bg-white border border-tilo-primary/30 rounded-lg p-2 text-sm text-tilo-text-main font-medium focus:outline-none focus:border-tilo-primary"
                     />
                 )
             ) : (
-                <div className={`rounded-lg p-2 text-sm text-slate-700 font-medium min-h-[38px] flex items-center transition-colors ${activeField === name ? 'bg-blue-50 text-blue-800' : 'bg-slate-50 border border-slate-200'} ${isLongText ? 'items-start whitespace-pre-wrap' : ''}`}>
-                    {value || <span className="text-slate-300 italic font-normal">{placeholder}</span>}
+                <div className={`rounded-lg p-2 text-sm text-tilo-text-main font-medium min-h-[38px] flex items-center transition-colors ${activeField === name ? 'bg-tilo-bg-base/80 text-tilo-primary' : 'bg-tilo-bg-base/40 border border-tilo-border'} ${isLongText ? 'items-start whitespace-pre-wrap' : ''}`}>
+                    {value || <span className="text-tilo-text-muted/65 italic font-normal">{placeholder}</span>}
                 </div>
             )}
         </div>
@@ -59,12 +57,12 @@ const NomField = ({ label, name, value, onChange, placeholder, isEditing, active
 
 // COMPONENTE INFOROW (Simple)
 const InfoRow = ({ label, value, icon }) => (
-    <div className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
+    <div className="flex justify-between items-center py-2 border-b border-tilo-border last:border-0">
         <div className="flex items-center gap-2">
             <span className="text-base">{icon}</span>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+            <span className="text-[10px] font-bold text-tilo-text-muted uppercase tracking-wider">{label}</span>
         </div>
-        <span className="text-sm font-bold text-slate-700 text-right">{value}</span>
+        <span className="text-sm font-bold text-tilo-text-main text-right">{value}</span>
     </div>
 );
 
@@ -130,13 +128,17 @@ const TAG_CONFIG = {
 
 export const MedicalDashboard = ({
     patientData, currentStep, // <--- Renamed from activeSection
-    activeTab,   // <--- New controlled props
+    activeTab, onTabChange,  // <--- New controlled props
     isEditing, onEditToggle, setPatientData,
     onTriggerEdit, // V3.5
     fase3State, // Prop del estado interactivo de la Fase 3
     fase4State,
     fase5State,
-    fase6State
+    fase6State,
+    fase7State,
+    fase8State,
+    fase9State,
+    apiContext
 }) => {
     // --- CONEXIÓN AL GENOMA (Stack Sagrado V1.0) ---
     const pendingAlerts = useClinicalGenome(state => state.pendingAlerts);
@@ -153,6 +155,7 @@ export const MedicalDashboard = ({
         parentClinical: false,
         childAhf: false,
         childApp: false,
+        childSurgical: false,
         childFarma: false,
         childAllergies: false,
         childDigestive: false,
@@ -160,8 +163,25 @@ export const MedicalDashboard = ({
         childHabits: false, // Added for Phase 7 (Habits)
 
         parentLifestyle: false,
+        childActivity: false,
 
-        diet: false
+        parentNutrition: false,
+        childPreferences: false,
+        childChrononutrition: false,
+        childLogistics: false,
+
+        diet: false,
+
+        parentDiagnosis: false,
+        childDiagnosisAbcd: false,
+        childGoldArchitecture: false,
+        childNotes: false,
+        childInterventionPlan: false,
+
+        parentCalendar: false,
+        childMetabolicClock: false,
+        childExecutionLogistics: false,
+        childEvolutionRoute: false
     });
     const toggleSection = (section) => {
         setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -195,20 +215,59 @@ export const MedicalDashboard = ({
         console.log(`[Dashboard] Syncing to step: ${step}`);
 
         // Define step groups for accordions
-        const stepsClinical = [
-            'ph2_', 'ph3_', 'ahf_', 'app_', 'meds_', 'supp_', 'digestive_', 'allergies_',
-            'ipas_', 'clinica_', 'intro_triage', 'intro_triage_surgery', 'clinica_body_map', 'clinica_intensity',
-            'habit', 'substance_', 'phase_4_', 'phase_6_', 'phase_7_', 'phase_8_', 'phase_9_'
+        const stepsProfile = [
+            'phase_0_', 'phase_1_', 'phase_2_', 'ph1_', 'ph2_', 'intro_', 'appointment', 'identidad', 
+            'address_', 'domicilio', 'zipcode', 'colony', 'street', 'state_manual', 'municipality_manual', 'map_validation',
+            'emergency_', 'seguridad'
         ];
-        const stepsLifestyle = ['lifestyle_', 'activity_', 'sleep_', 'stress_', 'logistics_'];
-        const stepsDiet = ['diet_', 'r24h_', 'ffq_', 'food_'];
-        const stepsVitals = ['vitals', 'antropometria', 'imc', 'bio_'];
+        const stepsClinical = [
+            'phase_3_', 'phase_4_', 'phase_5_', 'phase_6_', 'phase_7_', 'phase_8_', 'phase_9_', 'phase_10_', 'ph3_', 'ph4_', 'ph5_', 'ph6_', 'ph7_', 'ph8_', 'ph9_', 'ph10_',
+            'ahf_', 'app_', 'meds_', 'supp_', 'digestive_', 'allergies_', 'ipas_', 'clinica_', 'intro_triage', 'intro_triage_surgery', 'clinica_body_map', 'clinica_intensity',
+            'habit', 'substance_'
+        ];
+        const stepsLifestyle = ['phase_11_', 'phase_12_', 'ph11_', 'ph12_', 'lifestyle_', 'activity_', 'sleep_', 'stress_', 'logistics_'];
+        const stepsDiet = ['phase_13_', 'phase_14_', 'phase_15_', 'ph13_', 'ph14_', 'ph15_', 'diet_', 'r24h', 'ffq', 'food_'];
+        const stepsVitals = ['phase_16_', 'phase_17_', 'ph16_', 'ph17_', 'vitals', 'antropometria', 'imc'];
+        const stepsLab = ['phase_18_', 'ph18_', 'bio_'];
+        const stepsDiagnosis = ['phase_19_', 'phase_20_', 'ph19_', 'ph20_', 'diagnosis', 'portapapeles', 'notes', 'nota', 'intervention', 'intervencion', 'prescrip'];
+        const stepsCalendar = ['phase_21_', 'ph21_', 'calendar', 'calendario'];
 
         const isStepIn = (group) => group.some(s => step.startsWith(s) || step.includes(s));
 
         let targetParent = null;
         let targetChild = null;
         let targetCardId = null;
+
+        // --- TAB SYNCHRONIZATION ---
+        if (isStepIn(stepsProfile)) {
+            if (activeTab !== 'profile' && onTabChange) {
+                onTabChange('profile');
+            }
+        } else if (isStepIn(stepsClinical)) {
+            if (activeTab !== 'clinical_history' && onTabChange) {
+                onTabChange('clinical_history');
+            }
+        } else if (isStepIn(stepsLifestyle) || isStepIn(stepsDiet)) {
+            if (activeTab !== 'lifestyle' && onTabChange) {
+                onTabChange('lifestyle');
+            }
+        } else if (isStepIn(stepsVitals)) {
+            if (activeTab !== 'vitals' && onTabChange) {
+                onTabChange('vitals');
+            }
+        } else if (isStepIn(stepsLab)) {
+            if (activeTab !== 'lab' && onTabChange) {
+                onTabChange('lab');
+            }
+        } else if (isStepIn(stepsDiagnosis)) {
+            if (activeTab !== 'diagnosis' && onTabChange) {
+                onTabChange('diagnosis');
+            }
+        } else if (isStepIn(stepsCalendar)) {
+            if (activeTab !== 'schedule' && onTabChange) {
+                onTabChange('schedule');
+            }
+        }
 
         // --- MAPPING LOGIC ---
         // 1. PERFIL DEL PACIENTE
@@ -244,31 +303,84 @@ export const MedicalDashboard = ({
         else if (isStepIn(stepsClinical)) {
             targetParent = 'parentClinical';
             if (step.includes('ahf_') || step.includes('family') || step.includes('phase_4_') || step.includes('ph4_')) { targetChild = 'childAhf'; targetCardId = 'card-ahf'; }
-            else if (step.includes('app_') || step.includes('patho')) { targetChild = 'childApp'; targetCardId = 'card-app'; }
-            else if (step.includes('meds_') || step.includes('supp_') || step.includes('phase_6_')) { targetChild = 'childFarma'; targetCardId = 'card-meds'; }
-            else if (step.includes('allergies_')) { targetChild = 'childAllergies'; targetCardId = 'card-allergy'; }
-            else if (step.includes('digestive_') || step.includes('digestive') || step.includes('phase_8_')) { targetChild = 'childDigestive'; targetCardId = 'card-digestive'; }
-            else if (step.includes('physio_') || step.includes('menstrual_') || step.includes('preg_') || step.includes('phase_9_')) {
+            else if (step.includes('app_') || step.includes('patho') || step.includes('phase_5_') || step.includes('ph5_')) {
+                if (fase5State && String(fase5State).startsWith('quirurgicos')) {
+                    targetChild = 'childSurgical';
+                    targetCardId = 'card-surgical';
+                } else {
+                    targetChild = 'childApp';
+                    targetCardId = 'card-app';
+                }
+            }
+            else if (step.includes('meds_') || step.includes('supp_') || step.includes('phase_6_') || step.includes('ph6_')) { targetChild = 'childFarma'; targetCardId = 'card-meds'; }
+            else if (step.includes('allergies') || step.includes('phase_7_') || step.includes('ph7_')) { targetChild = 'childAllergies'; targetCardId = 'card-allergy'; }
+            else if (step.includes('digestive_') || step.includes('digestive') || step.includes('phase_8_') || step.includes('ph8_')) { targetChild = 'childDigestive'; targetCardId = 'card-digestive'; }
+            else if (step.includes('physio_') || step.includes('menstrual_') || step.includes('preg_') || step.includes('phase_9_') || step.includes('ph9_')) {
                 targetChild = 'childPhysio'; targetCardId = 'card-physio';
             }
-            else if (step.includes('habit') || step.includes('activity_') || step.includes('sleep_') || step.includes('substance_') || step.includes('phase_7_')) {
+            else if (step.includes('habit') || step.includes('activity_') || step.includes('sleep_') || step.includes('substance_') || step.includes('phase_10_') || step.includes('ph10_')) {
                 targetChild = 'childHabits'; targetCardId = 'card-habit';
             }
             else { targetChild = 'childAhf'; targetCardId = 'card-ahf'; } // Fallback for general clinical
         }
         // 3. ESTILO DE VIDA Y ENTORNO
-        else if (isStepIn(stepsLifestyle) || step.includes('phase_5_')) {
+        else if (isStepIn(stepsLifestyle)) {
             targetParent = 'parentLifestyle';
-            targetChild = null; // No child accordion in TabLogistics
+            targetChild = 'childActivity';
             targetCardId = 'card-lifestyle';
         }
         // 4. DIETA
         else if (isStepIn(stepsDiet)) {
-            targetCardId = step.includes('r24h_') ? 'card-r24h' : (step.includes('ffq_') ? 'card-ffq' : 'card-prefs');
+            targetParent = 'parentNutrition';
+            if (step.includes('r24h') || step.includes('crononutricion') || step.includes('phase_14_') || step.includes('ph14_')) {
+                targetChild = 'childChrononutrition';
+                targetCardId = 'card-chrononutrition';
+            } else if (step.includes('logistics') || step.includes('phase_12') || step.includes('ph12')) {
+                targetChild = 'childLogistics';
+                targetCardId = 'card-logistics';
+            } else {
+                targetChild = 'childPreferences';
+                targetCardId = 'card-preferences';
+            }
         }
         // 5. VITALES
         else if (isStepIn(stepsVitals)) {
-            targetCardId = 'card-j';
+            targetCardId = step.includes('vitals') || step.includes('phase_17_') || step.includes('ph17_') ? 'card-vitals' : 'card-j';
+        }
+        // 6. LABS
+        else if (isStepIn(stepsLab)) {
+            targetCardId = 'card-lab';
+        }
+        // 7. DIAGNOSIS
+        else if (isStepIn(stepsDiagnosis)) {
+            targetParent = 'parentDiagnosis';
+            if (step.includes('notes') || step.includes('nota')) {
+                targetChild = 'childNotes';
+                targetCardId = 'card-notes';
+            } else if (step.includes('intervention') || step.includes('intervencion') || step.includes('prescrip')) {
+                targetChild = 'childInterventionPlan';
+                targetCardId = 'card-intervention';
+            } else if (step.includes('suplement') || step.includes('oro') || step.includes('33') || step.includes('34')) {
+                targetChild = 'childGoldArchitecture';
+                targetCardId = 'card-gold-architecture';
+            } else {
+                targetChild = 'childDiagnosisAbcd';
+                targetCardId = 'card-diagnosis';
+            }
+        }
+        // 8. CALENDAR
+        else if (isStepIn(stepsCalendar)) {
+            targetParent = 'parentCalendar';
+            if (step.includes('logistica') || step.includes('cook') || step.includes('venue')) {
+                targetChild = 'childExecutionLogistics';
+                targetCardId = 'card-logistics';
+            } else if (step.includes('ruta') || step.includes('sprint') || step.includes('dias')) {
+                targetChild = 'childEvolutionRoute';
+                targetCardId = 'card-evolution';
+            } else {
+                targetChild = 'childMetabolicClock';
+                targetCardId = 'card-metabolic-clock';
+            }
         }
 
         // --- EXECUTION ---
@@ -283,8 +395,11 @@ export const MedicalDashboard = ({
                         diet: prev.diet,
                         // Reseteamos todo a false primero
                         parentProfile: false, childIdentity: false, childAddress: false, childSecurity: false, childMotive: false,
-                        parentClinical: false, childAhf: false, childApp: false, childFarma: false, childAllergies: false, childDigestive: false, childPhysio: false, childHabits: false,
-                        parentLifestyle: false,
+                        parentClinical: false, childAhf: false, childApp: false, childSurgical: false, childFarma: false, childAllergies: false, childDigestive: false, childPhysio: false, childHabits: false,
+                        parentLifestyle: false, childActivity: false,
+                        parentNutrition: false, childPreferences: false, childChrononutrition: false, childLogistics: false,
+                        parentDiagnosis: false, childDiagnosisAbcd: false, childGoldArchitecture: false, childNotes: false, childInterventionPlan: false,
+                        parentCalendar: false, childMetabolicClock: false, childExecutionLogistics: false, childEvolutionRoute: false,
                         // Abrimos los que corresponden
                         [targetParent]: true,
                         ...(targetChild ? { [targetChild]: true } : {}),
@@ -315,7 +430,8 @@ export const MedicalDashboard = ({
             }, 300);
         }
 
-    }, [currentStep]); // Removed activeField to prevent jumpiness when typing
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentStep]); // Only trigger sync on chatbot step change, allowing manual tab navigation
 
     // Función para GUARDAR y VALIDAR 
 
@@ -405,9 +521,11 @@ export const MedicalDashboard = ({
         return s.charAt(0).toUpperCase() + s.slice(1);
     };
 
-    const renderEditableField = (label, key, placeholder = '--', group = null, isLongText = false, customClass = '') => {
+    const renderEditableField = (label, key, placeholder = '--', group = null, isLongText = false, customClass = '', overrideValue = undefined) => {
         let val;
-        if (group) {
+        if (overrideValue !== undefined) {
+            val = overrideValue;
+        } else if (group) {
             val = patientData[group]?.[key];
         } else {
             val = patientData[key];
@@ -431,6 +549,17 @@ export const MedicalDashboard = ({
         } else if (typeof val === 'object' && val !== null) {
             // V6.2: Object Support (Alcohol/FFQ)
             displayValRaw = val.label || val.summary || val.text || JSON.stringify(val);
+        } else if (key === 'occupation' && typeof val === 'string') {
+            const mapping = {
+                'HOME_PARENTS': 'En casa (Cuidado materno/paterno)',
+                'HOME_CAREGIVER': 'En casa (Familiar o Niñera)',
+                'DAYCARE': 'Guardería / Estancia infantil',
+                'KINDER': 'Kínder / Preescolar'
+            };
+            displayValRaw = mapping[val.toUpperCase()] || val;
+            displayValRaw = toTitleCase(displayValRaw);
+        } else if (key === 'religion' && typeof val === 'string') {
+            displayValRaw = toTitleCase(val);
         } else if (typeof val === 'string') {
             displayValRaw = capitalizeFirst(val);
         }
@@ -455,7 +584,7 @@ export const MedicalDashboard = ({
         const activeField = isEditing;
 
         // V15.6 GLOW EFFECT ENCAPSULATION
-        const GlowDisplay = ({ val, isNeg, cClass }) => {
+        const GlowDisplay = ({ val, isNeg, cClass, placeholder }) => {
             const [glow, setGlow] = useState(false);
             const prevVal = useRef(val);
 
@@ -472,13 +601,13 @@ export const MedicalDashboard = ({
             }, [val]);
 
             return (
-                <div className={`p-3 rounded-xl border min-h-[50px] flex ${cClass ? 'items-start' : 'items-center'} transition-all duration-700 transform ${glow ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200 shadow-md scale-[1.02] text-blue-800' : `bg-slate-50 border-slate-200 ${cClass ? cClass : 'text-slate-700 font-medium'}`}`}>
+                <div className={`p-3 rounded-xl border min-h-[50px] flex ${cClass ? 'items-start' : 'items-center'} transition-all duration-700 transform ${glow ? 'bg-tilo-primary/10 border-tilo-primary ring-2 ring-tilo-primary/25 shadow-md scale-[1.02] text-tilo-primary' : `bg-tilo-bg-base/40 border-tilo-border ${cClass ? cClass : 'text-tilo-text-main font-medium'}`}`}>
                     {val ? (
-                        <span className={`w-full transition-colors duration-500 ${isNeg ? "text-slate-400 italic" : ""}`}>
+                        <span className={`w-full transition-colors duration-500 ${isNeg ? "text-tilo-text-muted italic font-medium" : ""}`}>
                             {val}
                         </span>
                     ) : (
-                        <span className="text-slate-300 font-light select-none">---</span>
+                        <span className="text-tilo-text-muted/40 font-light select-none">{placeholder || '---'}</span>
                     )}
                 </div>
             );
@@ -486,7 +615,7 @@ export const MedicalDashboard = ({
 
         return (
             <div className={`flex flex-col gap-1 ${isLongText ? 'col-span-full' : ''}`}>
-                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex justify-between">
+                <label className="text-[10px] uppercase font-bold text-tilo-text-muted tracking-wider flex justify-between">
                     {label}
 
                     {/* {group && <span className="text-[8px] text-slate-300">{group}.{key}</span>} Debug Hidden */}
@@ -509,30 +638,32 @@ export const MedicalDashboard = ({
                             }
                         }}
                         placeholder={placeholder}
-                        className={`p-2 rounded-lg bg-white border border-blue-200 text-slate-700 text-sm focus:ring-2 focus:ring-blue-100 outline-none transition-all ${customClass}`}
+                        className={`p-2 rounded-lg bg-tilo-bg-panel border border-tilo-primary/30 text-tilo-text-main text-sm focus:ring-2 focus:ring-tilo-primary/20 outline-none transition-all ${customClass}`}
                     />
                 ) : (
-                    <GlowDisplay val={displayVal} isNeg={isNegation} cClass={customClass} />
+                    <GlowDisplay val={displayVal} isNeg={isNegation} cClass={customClass} placeholder={placeholder} />
                 )}
             </div>
         );
     };
 
     // Helper para Header de Tarjeta con Botón Editar (V4.2 Polish)
-    const CardHeader = ({ icon, title, colorClass = "text-slate-500", onEdit }) => {
+    const CardHeader = ({ icon, title, colorClass = "text-tilo-text-muted", onEdit, showEdit = true }) => {
         const Icon = icon;
         return (
-            <div className="flex justify-between items-center mb-4 border-b border-slate-50 pb-2">
+            <div className="flex justify-between items-center mb-4 border-b border-tilo-border/60 pb-2">
                 <h3 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 font-prototype ${colorClass}`}>
                     <Icon className="w-4 h-4" /> {title}
                 </h3>
-                <button
-                    onClick={onEdit || onEditToggle}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200 font-sansation"
-                    title="Editar Sección"
-                >
-                    <Edit2 className="w-3 h-3" /> EDITAR
-                </button>
+                {showEdit && (
+                    <button
+                        onClick={onEdit || onEditToggle}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all bg-tilo-bg-base text-tilo-text-muted hover:bg-tilo-bg-base/80 border border-tilo-border font-sansation cursor-pointer"
+                        title="Editar Sección"
+                    >
+                        <Edit2 className="w-3 h-3" /> EDITAR
+                    </button>
+                )}
             </div>
         );
     };
@@ -622,38 +753,46 @@ export const MedicalDashboard = ({
             <div className="max-w-5xl mx-auto pb-20">
                 {/* VISTAS ACTIVAS */}
                 {activeTab === 'profile' && (
-                    <div className="space-y-6">
-                        <TabIdentity
-                            patientData={patientData}
-                            setPatientData={setPatientData}
-                            isEditing={isEditing}
-                            onTriggerEdit={onTriggerEdit}
-                            renderEditableField={renderEditableField}
-                            CardHeader={CardHeader}
-                            Accordion={Accordion}
-                            openSections={openSections}
-                            toggleSection={toggleSection}
-                        />
-                        <TabClinicalHistory
-                            patientData={patientData}
-                            setPatientData={setPatientData}
-                            isEditing={isEditing}
-                            onTriggerEdit={onTriggerEdit}
-                            renderEditableField={renderEditableField}
-                            CardHeader={CardHeader}
-                            Accordion={Accordion}
-                            openSections={openSections}
-                            toggleSection={toggleSection}
-                            TAG_CONFIG={TAG_CONFIG}
-                            fase3State={fase3State}
-                            fase4State={fase4State}
-                            fase5State={fase5State}
-                            fase6State={fase6State}
-                            pendingAlerts={pendingAlerts}
-                            metabolicAxis={metabolicAxis}
-                            currentStep={currentStep}
-                        />
+                    <TabIdentity
+                        patientData={patientData}
+                        setPatientData={setPatientData}
+                        isEditing={isEditing}
+                        onTriggerEdit={onTriggerEdit}
+                        renderEditableField={renderEditableField}
+                        CardHeader={CardHeader}
+                        Accordion={Accordion}
+                        openSections={openSections}
+                        toggleSection={toggleSection}
+                    />
+                )}
 
+                {activeTab === 'clinical_history' && (
+                    <TabClinicalHistory
+                        patientData={patientData}
+                        setPatientData={setPatientData}
+                        isEditing={isEditing}
+                        onTriggerEdit={onTriggerEdit}
+                        renderEditableField={renderEditableField}
+                        CardHeader={CardHeader}
+                        Accordion={Accordion}
+                        openSections={openSections}
+                        toggleSection={toggleSection}
+                        TAG_CONFIG={TAG_CONFIG}
+                        fase3State={fase3State}
+                        fase4State={fase4State}
+                        fase5State={fase5State}
+                        fase6State={fase6State}
+                        fase7State={fase7State}
+                        fase8State={fase8State}
+                        fase9State={fase9State}
+                        pendingAlerts={pendingAlerts}
+                        metabolicAxis={metabolicAxis}
+                        currentStep={currentStep}
+                    />
+                )}
+
+                {activeTab === 'lifestyle' && (
+                    <div className="space-y-6">
                         <TabLogistics
                             patientData={patientData}
                             isEditing={isEditing}
@@ -664,20 +803,17 @@ export const MedicalDashboard = ({
                             openSections={openSections}
                             toggleSection={toggleSection}
                         />
+                        <TabNutrition
+                            patientData={patientData}
+                            isEditing={isEditing}
+                            onTriggerEdit={onTriggerEdit}
+                            renderEditableField={renderEditableField}
+                            CardHeader={CardHeader}
+                            Accordion={Accordion}
+                            openSections={openSections}
+                            toggleSection={toggleSection}
+                        />
                     </div>
-                )}
-
-                {activeTab === 'diet' && (
-                    <TabNutrition
-                        patientData={patientData}
-                        isEditing={isEditing}
-                        onTriggerEdit={onTriggerEdit}
-                        renderEditableField={renderEditableField}
-                        CardHeader={CardHeader}
-                        Accordion={Accordion}
-                        openSections={openSections}
-                        toggleSection={toggleSection}
-                    />
                 )}
 
                 {activeTab === 'vitals' && (
@@ -695,27 +831,22 @@ export const MedicalDashboard = ({
                         displayData={displayData}
                         handleFileUpload={handleFileUpload}
                         setSelectedFileToView={setSelectedFileToView}
-                    />
-                )}
-
-                {activeTab === 'notes' && (
-                    <TabNotes
-                        patientData={patientData}
-                        isEditing={isEditing}
-                    />
-                )}
-
-                {activeTab === 'intervention' && (
-                    <TabIntervention
-                        patientData={patientData}
-                        isEditing={isEditing}
+                        selectedFileToView={selectedFileToView}
+                        processedDocs={processedDocs}
+                        analyzeStatus={analyzeStatus}
                     />
                 )}
 
                 {activeTab === 'diagnosis' && (
                     <TabDiagnosis
                         patientData={patientData}
+                        setPatientData={setPatientData}
+                        isEditing={isEditing}
+                        onTabChange={onTabChange}
                         CardHeader={CardHeader}
+                        Accordion={Accordion}
+                        openSections={openSections}
+                        toggleSection={toggleSection}
                     />
                 )}
 
@@ -723,6 +854,11 @@ export const MedicalDashboard = ({
                 {activeTab === 'schedule' && (
                     <TabCalendar
                         patientData={patientData}
+                        setPatientData={setPatientData}
+                        apiContext={apiContext}
+                        Accordion={Accordion}
+                        openSections={openSections}
+                        toggleSection={toggleSection}
                     />
                 )}
             </div>

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Andrés Trejo Maldonado | CEO & Healthtech 2030</title>
+    <!-- Tailwind CSS Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        clinical: {
+                            pure: 'var(--bg-pure)',         /* 60% Fondo quirúrgico */
+                            surface: 'var(--bg-surface)',   /* Fondo secundario */
+                            elevated: 'var(--bg-elevated)', /* Fondos de tarjetas */
+                            primary: 'var(--color-primary)',/* 30% Estructural (Azul Corporativo Oficial) */
+                            secondary: 'var(--color-secondary)', /* Azul profundo para textos y contrastes */
+                            muted: 'var(--color-muted)',    /* Texto atenuado */
+                            border: 'var(--color-border)',  /* Bordes ultrafinos */
+                        },
+                        ignicion: 'var(--color-ignicion)',  /* 10% Acento - Rojo Pasión / Ignición Mitocondrial */
+                        tisular: 'var(--color-tisular)',    /* 10% Acento - Verde Vida / Ingeniería Tisular */
+                    },
+                    fontFamily: {
+                        // Cumplimiento tipográfico: Neo-Grotesca matemática (Inter)
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'SF Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        /* --- VARIABLES CSS DINÁMICAS (Luz y Modo Oscuro Ergonómico) --- */
+        :root {
+            color-scheme: light;
+            --bg-pure: #FAFAFA;            /* Blanco Quirúrgico - Estéril */
+            --bg-surface: #F4F5F6;
+            --bg-elevated: #FFFFFF;
+            --color-primary: #1C75BC;      /* Azul Corporativo Oficial - Estructural */
+            --color-secondary: #0B2545;    /* Contraste clínico profundo */
+            --color-muted: #64748B;
+            --color-ignicion: #E30613;     /* Rojo Oficial 33Plus */
+            --color-tisular: #3AAA35;      /* Verde Oficial 34Plus */
+            --color-border: rgba(28, 117, 188, 0.08);
+            
+            --text-primary: #0B2545;
+            --text-secondary: #64748B;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                color-scheme: dark;
+                --bg-pure: #121212;        /* Gris Profundo - Evita la halación */
+                --bg-surface: #1E1E1E;     /* Tarjeta Nivel 1 */
+                --bg-elevated: #252525;    /* Tarjeta Nivel 2 / Elevación Z */
+                --color-primary: #5C9CD8;  /* Azul Corporativo Desaturado */
+                --color-secondary: rgba(255, 255, 255, 0.87);
+                --color-muted: rgba(255, 255, 255, 0.60);
+                --color-ignicion: #F85A5A; /* Rojo Coral Desaturado */
+                --color-tisular: #76D773;  /* Verde Menta Desaturado */
+                --color-border: rgba(255, 255, 255, 0.1);
+                
+                --text-primary: rgba(255, 255, 255, 0.87);   /* 87% Opacidad */
+                --text-secondary: rgba(255, 255, 255, 0.60); /* 60% Opacidad */
+            }
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg-pure);
+            color: var(--text-primary);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--color-border);
+        }
+        @media (prefers-color-scheme: dark) {
+            .glass-card {
+                background: rgba(30, 30, 30, 0.65);
+            }
+        }
+
+        .safety-pulse::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: var(--color-tisular);
+            opacity: 0.4;
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.610, 0.355, 1) infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.5; }
+            50% { transform: scale(1.4); opacity: 0; }
+            100% { transform: scale(0.95); opacity: 0; }
+        }
+
+        /* --- CUMPLIMIENTO PREFERS-REDUCED-MOTION --- */
+        @media (prefers-reduced-motion: reduce) {
+            .safety-pulse::after {
+                animation: none;
+                opacity: 0.25;
+            }
+            .animate-blob, .animate-ping {
+                animation: none !important;
+            }
+            html {
+                scroll-behavior: auto !important;
+            }
+            .transition-all, .transition {
+                transition: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased text-clinical-secondary bg-clinical-pure">
+
+    <!-- Navegación Sticky (Glassmorphism de Alta Gama) -->
+    <nav class="fixed w-full z-50 glass-card shadow-sm transition-all duration-300" id="navbar">
+        <div class="max-w-7xl mx-auto px-6 sm:px-8">
+            <div class="flex justify-between h-20 items-center">
+                <div class="flex-shrink-0 flex items-center space-x-3">
+                    <span class="font-bold text-xl tracking-wider text-clinical-primary">ATM.</span>
+                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-clinical-surface text-clinical-primary border border-clinical-border">PORTAL BIO-DIGITAL</span>
+                </div>
+                <div class="hidden md:flex space-x-8 items-center">
+                    <a href="#inicio" class="text-xs font-semibold tracking-wider uppercase text-clinical-muted hover:text-clinical-primary transition">Visión 2030</a>
+                    <a href="#tilo" class="text-xs font-semibold tracking-wider uppercase text-clinical-muted hover:text-clinical-primary transition">Plataforma T.I.L.O.</a>
+                    <a href="#innovacion" class="text-xs font-semibold tracking-wider uppercase text-clinical-muted hover:text-clinical-primary transition">I+D Nutricional</a>
+                    <a href="#herami" class="text-xs font-semibold tracking-wider uppercase text-clinical-muted hover:text-clinical-primary transition">Granja El Herami</a>
+                    <a href="#masterlog" class="px-5 py-2 text-xs font-bold tracking-wider uppercase text-white bg-clinical-primary rounded-full hover:bg-clinical-primary/95 transition shadow-sm border border-clinical-primary">Master Log</a>
+                </div>
+                <!-- Mobile menu button -->
+                <div class="md:hidden flex items-center">
+                    <button class="text-clinical-primary hover:text-clinical-secondary focus:outline-none" aria-label="Abrir menú de navegación">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- INICIO (Hero Section - Zen del Espacio en Blanco) -->
+    <section id="inicio" class="relative pt-32 pb-20 lg:pt-44 lg:pb-28 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-6 sm:px-8 relative z-10">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-16 items-center">
+                <!-- Columna Izquierda: Copy Directo y Científico -->
+                <div class="lg:col-span-7">
+                    <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-clinical-surface text-clinical-primary text-[10px] font-bold tracking-widest uppercase mb-6 border border-clinical-border">
+                        <span class="w-1.5 h-1.5 rounded-full bg-tisular"></span>
+                        <span>CEO • Equipo en Acción</span>
+                    </div>
+                    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.1] mb-6 text-clinical-secondary">
+                        Modelo de Liderazgo <span class="text-clinical-primary">Healthtech 2030</span>
+                    </h1>
+                    <p class="text-base text-clinical-muted mb-8 leading-relaxed max-w-xl font-light">
+                        Orquestando sistemas biológicos mediante inteligencia artificial descentralizada, biotelemetría en tiempo real y nutrición clínica personalizada para optimizar el healthspan humano.
+                    </p>
+                    <div class="flex flex-wrap gap-4">
+                        <a href="#tilo" class="px-6 py-3 bg-clinical-primary text-white text-xs font-bold tracking-wider uppercase rounded-lg hover:bg-clinical-primary/95 transition shadow-sm">Conocer Ecosistema T.I.L.O.</a>
+                        <a href="#masterlog" class="px-6 py-3 bg-clinical-elevated text-clinical-primary text-xs font-bold tracking-wider uppercase rounded-lg shadow-sm border border-clinical-border hover:bg-clinical-surface transition">El Legado</a>
+                    </div>
+                </div>
+
+                <!-- Columna Derecha: Tarjeta de Biotelemetría Avanzada (Data Viz Real) -->
+                <div class="lg:col-span-5 relative">
+                    <!-- Foto de Andrés Trejo enmarcada clínicamente -->
+                    <div class="aspect-[4/5] bg-clinical-surface rounded-2xl overflow-hidden shadow-sm relative border border-clinical-border group">
+                        <img src="https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Andrés Trejo CEO" class="absolute inset-0 w-full h-full object-cover grayscale opacity-90 mix-blend-multiply transition duration-500 group-hover:scale-105">
+                        <div class="absolute inset-0 bg-gradient-to-t from-clinical-secondary/45 to-transparent"></div>
+                        <span class="absolute bottom-4 left-4 z-10 text-[10px] tracking-widest font-mono text-white/90 bg-clinical-primary/80 px-3 py-1 rounded-full backdrop-blur-md">ANDRÉS TREJO | BIO-ARQUITECTO</span>
+                    </div>
+                    
+                    <!-- Widget de Telemetría Flotante (HRV en vivo con Doble Codificación) -->
+                    <div class="absolute -bottom-6 -left-6 glass-card p-5 rounded-xl shadow-lg max-w-[240px] flex flex-col space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[9px] font-mono text-clinical-muted uppercase tracking-wider">Telemetría HRV</span>
+                            <span class="relative flex h-2 w-2 items-center justify-center safety-pulse" title="Estado de telemetría activo">
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-tisular"></span>
+                            </span>
+                        </div>
+                        <div class="flex items-baseline space-x-2">
+                            <span class="text-3xl font-extrabold tracking-tight text-clinical-primary font-mono">78</span>
+                            <span class="text-xs text-clinical-muted font-mono" aria-label="Miliseisgundos, estado óptimo">ms [Óptimo]</span>
+                        </div>
+                        <!-- SVG de Ondas Sinusoidales HRV realistas -->
+                        <svg class="w-full h-8 text-tisular" viewBox="0 0 100 30" fill="none" aria-hidden="true">
+                            <path d="M0 15h15l3-8 4 18 3-13 4 5 3-2 15 0 2-12 3 24 2-16 2 4 15 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <div class="text-[9px] text-clinical-muted leading-tight font-mono flex items-center">
+                            <i class="fas fa-heart-pulse text-tisular mr-1" aria-hidden="true"></i> Adaptabilidad simpática regulada.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PLATAFORMA T.I.L.O. (Bento Grid con Datos Clínicos y Accesibilidad) -->
+    <section id="tilo" class="py-24 bg-clinical-elevated border-y border-clinical-border transition-colors">
+        <div class="max-w-7xl mx-auto px-6 sm:px-8">
+            <div class="text-center max-w-2xl mx-auto mb-16">
+                <h2 class="text-3xl font-bold tracking-tight text-clinical-primary mb-4">Ecosistema Córtex T.I.L.O.</h2>
+                <p class="text-clinical-muted text-base font-light">Estructura paramétrica que vincula la telemática del paciente con la logística de grado farmacéutico de Toluca y el Herami.</p>
+            </div>
+            
+            <!-- Bento Grid asimétrico de 3 columnas -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                <!-- Caja Bento 1: Córtex Analítico IA -->
+                <div class="p-8 rounded-2xl bg-clinical-pure border border-clinical-border hover:border-clinical-primary transition duration-300 flex flex-col justify-between">
+                    <div>
+                        <div class="w-10 h-10 rounded-lg bg-clinical-surface flex items-center justify-center text-clinical-primary mb-6 border border-clinical-border">
+                            <i class="fas fa-brain" aria-hidden="true"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-clinical-secondary mb-3">Córtex Analítico IA</h3>
+                        <p class="text-clinical-muted text-sm leading-relaxed font-light">
+                            Algoritmos de inferencia local (Gemma 4/31B) que analizan el solapamiento metabólico en tiempo real sobre los 4 dominios clínicos.
+                        </p>
+                    </div>
+                    <div class="mt-8 pt-4 border-t border-clinical-border/60 flex justify-between items-center text-[10px] font-mono text-clinical-muted">
+                        <span class="flex items-center"><i class="fas fa-circle text-tisular mr-1.5" aria-hidden="true"></i> ESTADO: ACTIVO</span>
+                        <span>LATENCIA: 12ms</span>
+                    </div>
+                </div>
+
+                <!-- Caja Bento 2: Data Viz (Anillo Circadiano SVG con Textura y Leyenda WCAG) -->
+                <div class="p-8 rounded-2xl bg-clinical-pure border border-clinical-border hover:border-clinical-primary transition duration-300 flex flex-col justify-between">
+                    <div>
+                        <div class="w-10 h-10 rounded-lg bg-clinical-surface flex items-center justify-center text-clinical-primary mb-6 border border-clinical-border">
+                            <i class="fas fa-history" aria-hidden="true"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-clinical-secondary mb-3">Sincronización Circadiana</h3>
+                        <p class="text-clinical-muted text-sm leading-relaxed font-light mb-4">
+                            Biotelemetría crono-adaptativa basada en las fases hormonales del sujeto para modular ventanas nutricionales.
+                        </p>
+                        
+                        <!-- SVG del Reloj Circadiano con Doble Codificación (Línea de Ignición discontinua) -->
+                        <div class="flex flex-col items-center py-2">
+                            <svg class="w-28 h-28 transform -rotate-90" viewBox="0 0 36 36" aria-label="Reloj circadiano de 24 horas">
+                                <!-- Fondo circular -->
+                                <path class="text-clinical-surface" stroke-width="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                <!-- Ventana de Ayuno (Fase Tisular - Verde Sólido) -->
+                                <path class="text-tisular" stroke-dasharray="45, 100" stroke-width="3" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831" />
+                                <!-- Ventana de Ignición (Rojo Discontinuo - Doble Codificación) -->
+                                <path class="text-ignicion" stroke-dasharray="6, 2" stroke-dashoffset="-45" stroke-width="3" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831" />
+                            </svg>
+                            
+                            <!-- Leyendas de accesibilidad para daltonismo -->
+                            <div class="flex flex-col space-y-1 mt-4 text-[9px] font-mono text-clinical-muted w-full">
+                                <div class="flex items-center justify-between">
+                                    <span class="flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-tisular mr-1.5"></span>🌱 Ventana Tisular (Ayuno)</span>
+                                    <span>16H</span>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-ignicion mr-1.5 border border-dashed border-white"></span>⚡ Ventana Ignición (Alimentación)</span>
+                                    <span>8H</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pt-4 border-t border-clinical-border/60 flex justify-between items-center text-[10px] font-mono text-clinical-muted">
+                        <span>CICLO MAESTRO</span>
+                        <span>24H</span>
+                    </div>
+                </div>
+
+                <!-- Caja Bento 3: Seguridad y SafetyEngine -->
+                <div class="p-8 rounded-2xl bg-clinical-pure border border-clinical-border hover:border-clinical-primary transition duration-300 flex flex-col justify-between">
+                    <div>
+                        <div class="w-10 h-10 rounded-lg bg-clinical-surface flex items-center justify-center text-tisular mb-6 border border-clinical-border relative">
+                            <i class="fas fa-shield-alt" aria-hidden="true"></i>
+                            <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-tisular opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-tisular"></span>
+                            </span>
+                        </div>
+                        <h3 class="text-lg font-bold text-clinical-secondary mb-3">Infraestructura Segura</h3>
+                        <p class="text-clinical-muted text-sm leading-relaxed font-light">
+                            Cifrado de datos personales sensibles (LFPDPPP). Interfaces adaptadas a las directrices de la NOM-004 del expediente clínico.
+                        </p>
+                    </div>
+                    <div class="mt-8 pt-4 border-t border-clinical-border/60 flex items-center justify-between text-[10px] font-mono text-tisular">
+                        <span class="flex items-center"><i class="fas fa-lock mr-1.5" aria-hidden="true"></i> SAFETYENGINE ACTIVO</span>
+                        <span class="text-clinical-muted">NOM-004 OK</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- INNOVACIÓN Y BIOTECNOLOGÍA (Fórmulas Clínicas 33Plus & 34Plus) -->
+    <section id="innovacion" class="py-24 bg-clinical-secondary text-white transition-colors">
+        <div class="max-w-7xl mx-auto px-6 sm:px-8">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-16 items-center">
+                <!-- Columna Izquierda: Tarjetas de Fórmulas -->
+                <div class="lg:col-span-6 space-y-6">
+                    <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition duration-300">
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="text-tisular font-mono font-bold text-sm tracking-widest flex items-center">
+                                <i class="fas fa-seedling mr-2" aria-hidden="true"></i> 34PLUS® • BIENESTAR
+                            </h4>
+                            <span class="text-[9px] font-mono bg-tisular/20 text-tisular px-2.5 py-0.5 rounded border border-tisular/30">REGENERACIÓN</span>
+                        </div>
+                        <p class="text-sm text-slate-300 font-light leading-relaxed">
+                            Diseñada para mitigar la fatiga del sistema nervioso central y modular el cortisol metabólico. Contiene L-Teanina y Coenzima Q10.
+                        </p>
+                    </div>
+                    
+                    <div class="p-6 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition duration-300">
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="text-ignicion font-mono font-bold text-sm tracking-widest flex items-center">
+                                <i class="fas fa-bolt mr-2" aria-hidden="true"></i> 33PLUS® • IGNICIÓN
+                            </h4>
+                            <span class="text-[9px] font-mono bg-ignicion/20 text-ignicion px-2.5 py-0.5 rounded border border-ignicion/30">IGNICIÓN CELULAR</span>
+                        </div>
+                        <p class="text-sm text-slate-300 font-light leading-relaxed">
+                            Coadyuva en la estimulación de la flexibilidad metabólica, optimizando el rendimiento mitocondrial mediante extractos puros.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Columna Derecha: Explicación Científica -->
+                <div class="lg:col-span-6">
+                    <span class="text-xs font-mono tracking-widest text-slate-400 uppercase mb-4 block">I+D de Nutrición Celular</span>
+                    <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-6">Ingeniería Nutricional de Precisión</h2>
+                    <p class="text-slate-300 text-base font-light mb-8 leading-relaxed">
+                        El desarrollo de activos en el ecosistema **Sinergix** exige un rigor molecular absoluto. El SafetyEngine UX traduce cada claim médico en lenguaje de estructura y función fisiológica de acuerdo a la regulación sanitaria de COFEPRIS.
+                    </p>
+                    <ul class="space-y-4 text-sm text-slate-300 font-light">
+                        <li class="flex items-center"><i class="fas fa-circle-check text-tisular mr-3" aria-hidden="true"></i> Trazabilidad de activos biológicos</li>
+                        <li class="flex items-center"><i class="fas fa-circle-check text-tisular mr-3" aria-hidden="true"></i> Fórmulas clínicas validadas por el Cortex Médico</li>
+                        <li class="flex items-center"><i class="fas fa-circle-check text-tisular mr-3" aria-hidden="true"></i> Cumplimiento estricto con la NOM-043 y COFEPRIS</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- GRANJA EL HERAMI (Estética Agro-Digital de Alta Tecnología) -->
+    <section id="herami" class="py-24 relative overflow-hidden bg-clinical-pure border-b border-clinical-border transition-colors">
+        <!-- Decoración abstracta de fondo -->
+        <div class="absolute -right-24 -top-24 w-96 h-96 rounded-full bg-tisular/5 blur-3xl pointer-events-none"></div>
+        
+        <div class="max-w-7xl mx-auto px-6 sm:px-8 relative z-10">
+            <div class="text-center max-w-2xl mx-auto mb-16">
+                <span class="text-tisular font-mono font-bold tracking-widest text-xs uppercase mb-3 block">Soberanía de Materia Prima</span>
+                <h2 class="text-3xl font-extrabold tracking-tight text-clinical-secondary">Granja El Herami</h2>
+                <p class="text-clinical-muted text-base font-light mt-3">
+                    Cultivos de alta precisión en Tasquillo, Hidalgo, operando bajo agricultura BEAM y micro-sensores climáticos de suelo.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <!-- Tarjeta Agro 1 -->
+                <div class="bg-clinical-elevated p-8 rounded-2xl border border-clinical-border shadow-sm flex flex-col justify-between hover:border-clinical-primary transition">
+                    <div>
+                        <i class="fas fa-leaf text-2xl text-tisular mb-6" aria-hidden="true"></i>
+                        <h4 class="font-bold text-base text-clinical-secondary mb-2">Permacultura de Precisión</h4>
+                        <p class="text-sm text-clinical-muted font-light leading-relaxed">
+                            Manejo advanced de policultivos con control biológico e integración de camas de Hügelkultur.
+                        </p>
+                    </div>
+                    <span class="text-[10px] font-mono text-tisular mt-6 block">SISTEMA CULTIVO BEAM</span>
+                </div>
+                <!-- Tarjeta Agro 2 -->
+                <div class="bg-clinical-elevated p-8 rounded-2xl border border-clinical-border shadow-sm flex flex-col justify-between hover:border-clinical-primary transition">
+                    <div>
+                        <i class="fas fa-tint text-2xl text-tisular mb-6" aria-hidden="true"></i>
+                        <h4 class="font-bold text-base text-clinical-secondary mb-2">Recuperación Hídrica</h4>
+                        <p class="text-sm text-clinical-muted font-light leading-relaxed">
+                            Optimización por goteo solar y control de humedad de suelo automatizado para maximizar el metabolito secundario.
+                        </p>
+                    </div>
+                    <span class="text-[10px] font-mono text-tisular mt-6 block">MICRO-SENSORES DE SUELO</span>
+                </div>
+                <!-- Tarjeta Agro 3 -->
+                <div class="bg-clinical-elevated p-8 rounded-2xl border border-clinical-border shadow-sm flex flex-col justify-between hover:border-clinical-primary transition">
+                    <div>
+                        <i class="fas fa-microscope text-2xl text-tisular mb-6" aria-hidden="true"></i>
+                        <h4 class="font-bold text-base text-clinical-secondary mb-2">Pureza de Activos</h4>
+                        <p class="text-sm text-clinical-muted font-light leading-relaxed">
+                            Auditoría de principios activos en el laboratorio de Proyecto Gem antes del proceso de deshidratado y molienda.
+                        </p>
+                    </div>
+                    <span class="text-[10px] font-mono text-tisular mt-6 block">BLOCKCHAIN-TO-CELL OK</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- MASTER LOG: EL LEGADO (UX Writing de Crecimiento y Grit) -->
+    <section id="masterlog" class="py-24 bg-clinical-elevated transition-colors">
+        <div class="max-w-7xl mx-auto px-6 sm:px-8">
+            <div class="text-center mb-16">
+                <span class="text-clinical-primary font-mono font-bold tracking-widest text-xs uppercase block mb-3">Línea de Vida y Continuidad</span>
+                <h2 class="text-3xl font-extrabold tracking-tight text-clinical-secondary">El Legado Vivo</h2>
+                <p class="text-base text-clinical-muted font-light mt-3">De la Raíz Biológica a la Trascendencia Sistémica</p>
+            </div>
+
+            <div class="max-w-4xl mx-auto space-y-24">
+                
+                <!-- La Fusión de Dos Fuerzas -->
+                <div class="flex flex-col md:flex-row gap-12 items-center">
+                    <div class="w-48 h-48 rounded-full overflow-hidden shadow-sm border border-clinical-border flex-shrink-0 bg-clinical-pure flex items-center justify-center">
+                        <i class="fas fa-user-friends text-3xl text-clinical-primary" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-clinical-secondary mb-3">La Fusión de Dos Fuerzas</h3>
+                        <p class="text-clinical-muted font-light text-sm leading-relaxed mb-4 text-justify">
+                            La ética de trabajo de nuestra organización está grabada en la adaptabilidad y el rigor. Honramos el legado comunitario de <strong>Don Antonio Trejo Torres</strong> y la diplomacia estratégica de <strong>Anastacio Hernández Maldonado</strong> en el Valle del Mezquital.
+                        </p>
+                        <p class="text-clinical-muted font-light text-sm leading-relaxed text-justify">
+                            Su congruencia y transparencia definen los estándares éticos aplicados hoy en todos nuestros modelos operativos y de inferencia IA.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- El Pilar del Presente -->
+                <div class="flex flex-col md:flex-row-reverse gap-12 items-center">
+                    <div class="w-48 h-48 rounded-full overflow-hidden shadow-sm border border-clinical-border flex-shrink-0 bg-clinical-pure flex items-center justify-center">
+                        <i class="fas fa-heart text-3xl text-ignicion" aria-hidden="true"></i>
+                    </div>
+                    <div class="text-right">
+                        <h3 class="text-xl font-bold text-clinical-secondary mb-3">El Pilar del Presente</h3>
+                        <p class="text-clinical-muted font-light text-sm leading-relaxed mb-4 text-justify md:text-right">
+                            Toda transición estructural de largo alcance, como el plan Horizonte 2030, requiere un núcleo de estabilidad. Mi esposa <strong>Coco</strong> es el motor afectivo que aporta sentido humano al rigor del desarrollo científico.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- El Puente Hacia el Futuro -->
+                <div class="pt-8">
+                    <h3 class="text-xl font-bold text-center text-clinical-secondary mb-8">Continuidad Generacional y Expansión Operativa</h3>
+                    <p class="text-clinical-muted font-light text-sm leading-relaxed text-center max-w-2xl mx-auto mb-10">
+                        La evolución tecnológica del grupo se expande a través del talento de la siguiente generación, integrando procesos de cadena de suministro, auditoría y ciencia de datos.
+                    </p>
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <div class="aspect-square bg-clinical-pure rounded-xl flex flex-col items-center justify-center border border-clinical-border p-4 text-center">
+                            <span class="text-xs font-bold text-clinical-secondary">Fernando (Fer)</span>
+                            <span class="text-[9px] text-clinical-muted font-mono mt-1">CADENA DE VALOR</span>
+                        </div>
+                        <div class="aspect-square bg-clinical-pure rounded-xl flex flex-col items-center justify-center border border-clinical-border p-4 text-center">
+                            <span class="text-xs font-bold text-clinical-secondary">Andrea (Andy)</span>
+                            <span class="text-[9px] text-clinical-muted font-mono mt-1">AUDITORÍA Y RIGOR</span>
+                        </div>
+                        <div class="aspect-square bg-clinical-pure rounded-xl flex flex-col items-center justify-center border border-clinical-border p-4 text-center">
+                            <span class="text-xs font-bold text-clinical-secondary">Karol</span>
+                            <span class="text-[9px] text-clinical-muted font-mono mt-1">BI & DATA SCIENCE</span>
+                        </div>
+                        <div class="aspect-square bg-clinical-pure rounded-xl flex flex-col items-center justify-center border border-clinical-border p-4 text-center">
+                            <span class="text-xs font-bold text-clinical-secondary">Valeria (Vale)</span>
+                            <span class="text-[9px] text-clinical-muted font-mono mt-1">EXPANSIÓN GLOBAL</span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4 text-clinical-muted font-light text-sm leading-relaxed max-w-3xl mx-auto text-justify">
+                        <p>
+                            La integración operativa se consolida con <strong>Fer</strong> liderando el suministro de materias primas para Equipo en Acción; <strong>Andy</strong> y su esposo <strong>Carlos</strong> supervisando el control administrativo de auditoría; <strong>Karol</strong> estructurando la inteligencia de negocios del Córtex; y <strong>Vale</strong> proyectando el espíritu de adaptabilidad del grupo desde Atlanta.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- El Propósito (Bento Grid destacado para el Cierre de Oro) -->
+                <div class="bg-clinical-pure rounded-3xl p-8 md:p-12 border border-clinical-border text-center relative overflow-hidden mt-12">
+                    <div class="absolute top-0 left-0 w-1.5 h-full bg-tisular"></div>
+                    
+                    <span class="text-[10px] font-mono tracking-widest text-tisular uppercase mb-3 block">Propósito Central del Ecosistema</span>
+                    <h3 class="text-2xl font-bold text-clinical-secondary mb-6 flex items-center justify-center">
+                        <i class="fas fa-award text-tisular mr-2" aria-hidden="true"></i> La "Arquitectura de Oro"
+                    </h3>
+                    
+                    <p class="text-sm text-clinical-muted font-light leading-relaxed max-w-2xl mx-auto mb-6 text-justify sm:text-center">
+                        La convergencia de la inteligencia artificial, el modelado metabólico y la regeneración ambiental son herramientas orientadas a asegurar la salud y la longevidad de las próximas generaciones. El ecosistema **T.I.L.O.** tiene un propósito de legado en mis nietos: <strong>Emmanuel, Valentina y Gabriel</strong>.
+                    </p>
+                    <p class="text-xs text-clinical-primary font-mono uppercase tracking-wider">
+                        Diseñando el bienestar biológico e intelectual del mañana.
+                    </p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER (Clinical Minimalist) -->
+    <footer class="bg-clinical-secondary text-slate-400 py-12 border-t border-clinical-border/10 transition-colors">
+        <div class="max-w-7xl mx-auto px-6 sm:px-8 flex flex-col md:flex-row justify-between items-center space-y-6 md:space-y-0">
+            <div>
+                <span class="font-bold text-lg text-clinical-primary tracking-widest">ATM.</span>
+                <p class="text-xs mt-1 text-clinical-muted font-mono">Ecosistema Healthtech & Logro Optimizado 2030</p>
+            </div>
+            <div class="flex space-x-6 text-xs font-mono text-slate-500">
+                <span class="flex items-center"><i class="fas fa-shield-alt text-tisular mr-1.5" aria-hidden="true"></i> SAFETYENGINE SECURE</span>
+                <span>© 2026 EQUIPO EN ACCIÓN</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const navbar = document.getElementById('navbar');
+            
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 20) {
+                    navbar.classList.add('shadow-md', 'bg-clinical-elevated/95');
+                    navbar.classList.remove('glass-card');
+                } else {
+                    navbar.classList.remove('shadow-md', 'bg-clinical-elevated/95');
+                    navbar.classList.add('glass-card');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

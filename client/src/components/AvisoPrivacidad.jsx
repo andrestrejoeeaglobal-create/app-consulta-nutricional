@@ -4,17 +4,17 @@ import LogoEABlanco from '../assets/LogoEABlanco.svg';
 const AvisoPrivacidad = ({ onAccept, onClose }) => {
     return (
         <div className="w-full h-full bg-slate-50 p-6 flex flex-col overflow-hidden">
-            <div className="bg-white rounded-3xl shadow-xl w-full h-full flex flex-col overflow-hidden border border-slate-200 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="bg-white rounded-2xl shadow-2xl w-full h-full flex flex-col overflow-hidden border border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
                 {/* 1. ENCABEZADO FIJO (Actualizado) */}
-                <div className="flex items-center justify-between bg-blue-600 p-6 rounded-t-2xl relative overflow-hidden shrink-0">
+                <div className="flex items-center justify-between bg-[#FAFAFA] p-6 rounded-t-2xl border-b border-slate-200/60 relative overflow-hidden shrink-0">
 
                     {/* IZQUIERDA: Títulos */}
                     <div className="z-10 flex-1">
-                        <h2 className="text-2xl font-bold text-white leading-tight">
+                        <h2 className="text-2xl font-bold text-slate-800 leading-tight">
                             Aviso de Privacidad
                         </h2>
-                        <p className="text-sm font-medium text-blue-100 mt-1">
+                        <p className="text-sm font-medium text-slate-500 mt-1">
                             Cumplimiento Normativo NOM-004-SSA3-2012
                         </p>
                     </div>
@@ -23,7 +23,7 @@ const AvisoPrivacidad = ({ onAccept, onClose }) => {
                     <div className="flex items-center gap-3 z-10">
 
                         {/* LOGO EN TARJETA (Ahora siempre visible 'flex') */}
-                        <div className="flex items-center justify-center bg-white/10 border border-white/20 rounded-xl p-2 shadow-lg backdrop-blur-md h-12 w-auto">
+                        <div className="bg-[#1C75BC] p-2.5 rounded-xl shadow-sm flex items-center justify-center h-12 w-auto">
                             <img
                                 src={LogoEABlanco}
                                 alt="Equipo en Acción"
@@ -34,16 +34,13 @@ const AvisoPrivacidad = ({ onAccept, onClose }) => {
                         {/* BOTÓN CERRAR */}
                         <button
                             onClick={onClose}
-                            className="p-2 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors ml-2"
+                            className="p-2 text-slate-400 hover:text-slate-600 transition-colors ml-2 focus:outline-none"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
                     </div>
-
-                    {/* DECORACIÓN DE FONDO (Opcional) */}
-                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-blue-500 rounded-full blur-3xl opacity-50"></div>
                 </div>
 
                 {/* 2. CONTENIDO CON SCROLL HABILITADO */}
@@ -62,11 +59,11 @@ const AvisoPrivacidad = ({ onAccept, onClose }) => {
 
                         {/* SECCIÓN I: DATOS PERSONALES Y SENSIBLES */}
                         <div className="space-y-3">
-                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-blue-500 pl-2">I. DATOS PERSONALES Y DATOS SENSIBLES</h3>
+                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-[#1C75BC] pl-2">I. DATOS PERSONALES Y DATOS SENSIBLES</h3>
                             <p className="text-slate-600 text-sm leading-relaxed text-justify">
-                                Se hace de su conocimiento que, para cumplir con las finalidades previstas en este aviso, serán recabados y tratados datos personales generales y <span className="font-bold text-red-500">Datos Personales Sensibles</span>, incluyendo de manera enunciativa más no limitativa:
+                                Se hace de su conocimiento que, para cumplir con las finalidades previstas en este aviso, serán recabados y tratados datos personales generales y <span className="font-bold text-rose-600">Datos Personales Sensibles</span>, incluyendo de manera enunciativa más no limitativa:
                             </p>
-                            <ul className="list-disc list-inside text-slate-600 text-sm space-y-2 ml-2 bg-slate-100 p-4 rounded-xl border border-slate-200">
+                            <ul className="list-disc list-inside text-slate-600 text-sm space-y-2 ml-2 bg-slate-100 p-4 rounded-lg border border-slate-200">
                                 <li><span className="font-bold text-slate-700">Estado de Salud:</span> Antecedentes heredofamiliares, patológicos, diagnóstico clínico y nutricional, medidas antropométricas y resultados de estudios de laboratorio.</li>
                                 <li><span className="font-bold text-slate-700">Datos Biométricos y Fisonómicos:</span> Peso, talla, composición corporal.</li>
                                 <li><span className="font-bold text-slate-700">Ideología y Creencias:</span> Información sobre creencias religiosas (exclusivamente para la adecuación cultural de planes alimenticios y cumplimiento de la NOM-004).</li>
@@ -79,28 +76,28 @@ const AvisoPrivacidad = ({ onAccept, onClose }) => {
 
                         {/* SECCIÓN II: FINALIDADES */}
                         <div className="space-y-3">
-                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-blue-500 pl-2">II. FINALIDADES DEL TRATAMIENTO</h3>
+                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-[#1C75BC] pl-2">II. FINALIDADES DEL TRATAMIENTO</h3>
                             <p className="text-slate-600 text-sm leading-relaxed text-justify">
                                 Los datos personales que recabamos de usted serán utilizados para las siguientes finalidades primarias:
                             </p>
                             <div className="flex flex-wrap gap-2">
                                 {['Brindar atención nutricional y médica integral', 'Incorporación y actualización de su Expediente Clínico', 'Elaboración de planes de alimentación y prescripción de ejercicio', 'Identificación y seguridad del paciente'].map((item, idx) => (
-                                    <span key={idx} className="bg-blue-50 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-blue-100">{item}</span>
+                                    <span key={idx} className="bg-[#eef7ff] text-[#1c75bc] text-xs font-semibold px-2.5 py-0.5 rounded border border-[#d6ebff]">{item}</span>
                                 ))}
                             </div>
                         </div>
 
                         {/* SECCIÓN III: TRANSFERENCIA */}
                         <div className="space-y-3">
-                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-blue-500 pl-2">III. TRANSFERENCIA DE DATOS</h3>
-                            <p className="text-slate-600 text-sm leading-relaxed text-justify bg-yellow-50 p-3 rounded-lg border border-yellow-100">
+                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-[#1C75BC] pl-2">III. TRANSFERENCIA DE DATOS</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed text-justify bg-amber-50 p-3 rounded-lg border border-amber-200 text-amber-800">
                                 Sus datos personales pueden ser transferidos y tratados dentro del país por personas distintas a este responsable (profesionales de la salud, laboratorios, aseguradoras) exclusivamente para la atención médica integral. <span className="font-bold">Si usted no manifiesta su oposición, se entenderá que ha otorgado su consentimiento.</span>
                             </p>
                         </div>
 
                         {/* SECCIÓN IV: DERECHOS ARCO */}
                         <div className="space-y-3">
-                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-blue-500 pl-2">IV. MEDIOS PARA EJERCER DERECHOS ARCO</h3>
+                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-[#1C75BC] pl-2">IV. MEDIOS PARA EJERCER DERECHOS ARCO</h3>
                             <p className="text-slate-600 text-sm leading-relaxed text-justify">
                                 Usted tiene derecho a Acceder, Rectificar, Cancelar u Oponerse al tratamiento de sus datos. Para ejercer estos derechos, envíe un correo a: <a href="mailto:juridico@eeaglobal.net" className="text-blue-600 font-bold underline">juridico@eeaglobal.net</a>.
                             </p>
@@ -108,7 +105,7 @@ const AvisoPrivacidad = ({ onAccept, onClose }) => {
 
                         {/* SECCIÓN V: CAMBIOS */}
                         <div className="space-y-3 pb-4">
-                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-blue-500 pl-2">V. CAMBIOS AL AVISO DE PRIVACIDAD</h3>
+                            <h3 className="text-slate-800 text-sm font-bold border-l-4 border-[#1C75BC] pl-2">V. CAMBIOS AL AVISO DE PRIVACIDAD</h3>
                             <p className="text-slate-600 text-sm leading-relaxed text-justify">
                                 Nos comprometemos a mantenerlo informado sobre los cambios que pueda sufrir el presente aviso a través de nuestros canales oficiales.
                             </p>
@@ -121,10 +118,10 @@ const AvisoPrivacidad = ({ onAccept, onClose }) => {
                     <button
                         type="button"
                         onClick={onAccept}
-                        className="w-full bg-[#1a56ff] hover:bg-blue-700 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-3 group"
+                        className="w-full bg-[#1C75BC] hover:bg-[#155A92] text-white py-4 rounded-lg transition-all font-bold text-lg flex items-center justify-center gap-2 group shadow-md"
                     >
                         Acepto Aviso de Privacidad
-                        <span className="text-2xl group-hover:translate-x-1 transition-transform">➜</span>
+                        <span className="group-hover:translate-x-1 transition-transform">➜</span>
                     </button>
                 </div>
             </div>

@@ -15,6 +15,7 @@ app.use(express.json());
 // app.use('/api', require('./routes/authRoutes')); // Rutas de Autenticación Auditada (COMENTADO PARA USAR LOGICA DIRECTA)
 app.use('/api/agent', require('./agent')); // Agente Nutricional (Nueva Lógica)
 app.use('/api/cortex', require('./routes/cortexRoutes')); // Inteligencia Clínica GEM (Gemini)
+app.use('/api/bio/scan', require('./routes/bioRoutes')); // Bio-integración (Fase 18)
 
 
 // ==========================================
@@ -188,8 +189,27 @@ app.patch('/api/citations/:id/progress', (req, res) => {
 
         // Serialize snapshot if it's an object
         const snapshot = typeof patientData === 'object' ? JSON.stringify(patientData) : patientData;
+        const parsedData = typeof patientData === 'object' ? patientData : (patientData ? JSON.parse(patientData) : {});
 
         stmt.run(id, phase, block, snapshot, is_completed ? 1 : 0);
+
+        // Sincronizar ocupacion_descriptor y factor_pal con el registro de paciente activo
+        try {
+            const ocupacion = parsedData.profile?.ocupacion_descriptor || parsedData.identificacion?.ocupacion_descriptor || null;
+            const pal = parsedData.profile?.factor_pal || parsedData.identificacion?.factor_pal || null;
+            
+            if (ocupacion || pal) {
+                const stmtPat = db.prepare(`
+                    UPDATE patients 
+                    SET ocupacion_descriptor = ?, factor_pal = ?
+                    WHERE user_id = (SELECT MAX(user_id) FROM patients)
+                `);
+                stmtPat.run(ocupacion, pal);
+                console.log(`💾 DB Sync: Ocupación=${ocupacion}, PAL=${pal} actualizados en patients.`);
+            }
+        } catch (patErr) {
+            console.error("⚠️ DB Sync Warning:", patErr.message);
+        }
 
         console.log(`💾 Auto-Save Cita #${id}: [Phase ${phase}, Block ${block}]`);
         res.json({ success: true });
@@ -200,15 +220,38 @@ app.patch('/api/citations/:id/progress', (req, res) => {
     }
 });
 
+// ==========================================
+// 🗑️ DELETE PERSISTENCE ENDPOINT
+// ==========================================
+app.delete('/api/citations/:id/progress', (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: "Missing Citation ID" });
+
+    try {
+        const stmt = db.prepare('DELETE FROM session_persistence WHERE citation_id = ?');
+        stmt.run(id);
+        console.log(`🗑️ Deleted Session Persistence for Cita #${id}`);
+        res.json({ success: true, message: "Session progress deleted" });
+    } catch (err) {
+        console.error("🔥 Delete Session Progress Error:", err.message);
+        res.status(500).json({ success: false, message: "Persistence Error" });
+    }
+});
+
+
 // ==============================================================================
 // 🔐 RUTA DE LOGIN (BLINDADA V2)
 // ==============================================================================
 app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
+    let { username, password } = req.body;
+
+    // Sanitización silenciosa de credenciales (NOM-004)
+    if (username) username = username.trim().toLowerCase();
+    if (password) password = password.trim();
 
     // Log de auditoría interna (No muestra passwords)
-    console.log(`🔒 Login solicitado. Body:`, JSON.stringify(req.body));
-    console.log(`🔒 Usuario recibido: '${username}'`);
+    console.log(`🔒 Login solicitado con credenciales sanitizadas.`);
+    console.log(`🔒 Usuario recibido y normalizado: '${username}'`);
 
     // Verificación de configuración crítica
     if (!process.env.API_KEY || !process.env.EXTERNAL_API_URL) {

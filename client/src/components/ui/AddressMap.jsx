@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { GoogleMap, MarkerF } from '@react-google-maps/api';
 
 const mapContainerStyle = {
@@ -7,7 +7,58 @@ const mapContainerStyle = {
   borderRadius: '12px', // Estética orgánica
 };
 
-export const AddressMap = ({ coordinates }) => {
+export const AddressMap = ({ coordinates, domicilio, setPatientData }) => {
+  const [localCoords, setLocalCoords] = useState(coordinates);
+
+  // Sync with coordinates prop from parent
+  useEffect(() => {
+    if (coordinates) {
+      setLocalCoords(coordinates);
+    } else {
+      setLocalCoords(null);
+    }
+  }, [coordinates]);
+
+  // If coordinates are null, geocode the macro address (colonia, municipio, estado)
+  useEffect(() => {
+    if (!coordinates && domicilio) {
+      const { colonia, municipio, estado } = domicilio;
+      if (estado || municipio || colonia) {
+        const macroAddress = `${colonia || ''}, ${municipio || ''}, ${estado || ''}, México`;
+        
+        const doGeocode = () => {
+          if (window.google && window.google.maps && window.google.maps.Geocoder) {
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode(
+              { address: macroAddress, componentRestrictions: { country: 'MX' } },
+              (results, status) => {
+                if (status === 'OK' && results && results.length > 0) {
+                  const lat = results[0].geometry.location.lat();
+                  const lng = results[0].geometry.location.lng();
+                  setLocalCoords({ lat, lng });
+                } else {
+                  console.warn("Geocoding failed for macro address:", macroAddress, status);
+                }
+              }
+            );
+          }
+        };
+
+        if (window.google && window.google.maps) {
+          doGeocode();
+        } else {
+          const interval = setInterval(() => {
+            if (window.google && window.google.maps) {
+              clearInterval(interval);
+              doGeocode();
+            }
+          }, 500);
+          return () => clearInterval(interval);
+        }
+      }
+    }
+  }, [coordinates, domicilio]);
+
   // Metabolismo: Memorizamos las opciones para no estresar el CPU
   const options = useMemo(() => ({
     disableDefaultUI: true,
@@ -138,7 +189,24 @@ export const AddressMap = ({ coordinates }) => {
     ],
   }), []);
 
-  if (!coordinates) {
+  const onMarkerDragEnd = (e) => {
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    const newCoords = { lat, lng };
+    setLocalCoords(newCoords);
+    if (setPatientData) {
+      setPatientData(prev => ({
+        ...prev,
+        domicilio: {
+          ...prev.domicilio,
+          coordinates: newCoords,
+          addressStatus: 'VERIFIED'
+        }
+      }));
+    }
+  };
+
+  if (!localCoords) {
     return (
       <div className="w-full h-[250px] bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center">
         <p className="text-slate-400 text-sm font-medium uppercase tracking-widest text-center px-4">
@@ -148,17 +216,20 @@ export const AddressMap = ({ coordinates }) => {
     );
   }
 
+  const zoomLevel = coordinates ? 18 : 14;
+
   return (
     <div className="w-full rounded-xl overflow-hidden border border-emerald-100 shadow-sm relative">
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
-        zoom={18} // Precisión a nivel de edificio (Rooftop)
-        center={coordinates}
+        zoom={zoomLevel}
+        center={localCoords}
         options={options}
       >
-        {/* Marcador de Antigravity: Representa el punto de anclaje físico */}
         <MarkerF 
-          position={coordinates} 
+          position={localCoords} 
+          draggable={true}
+          onDragEnd={onMarkerDragEnd}
           animation={window.google.maps.Animation.DROP}
           icon={{
              path: window.google.maps.SymbolPath.CIRCLE,
@@ -171,9 +242,11 @@ export const AddressMap = ({ coordinates }) => {
         />
       </GoogleMap>
       <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-sm border border-emerald-100/50 flex flex-col items-end gap-0.5 pointer-events-none">
-        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Precisión Cartográfica</span>
+        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+          {coordinates ? "Precisión Cartográfica" : "Validación Manual (Arrastre)"}
+        </span>
         <span className="text-xs font-mono font-medium text-emerald-600 leading-none">
-          {coordinates.lat.toFixed(5)}, {coordinates.lng.toFixed(5)}
+          {localCoords.lat.toFixed(5)}, {localCoords.lng.toFixed(5)}
         </span>
       </div>
     </div>

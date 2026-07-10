@@ -246,13 +246,11 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                     {messages.map((msg, idx) => (
                         <div key={idx} className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-6 items-start gap-3 animate-fade-in-up`}>
                             {msg.role === "assistant" && (
-                                <motion.div
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden"
+                                <div
+                                    className="w-12 h-12 rounded-full bg-white flex-shrink-0 border shadow-sm flex items-center justify-center overflow-hidden animate-in zoom-in duration-300"
                                 >
                                     <img src={tiloImg} alt="Tilo" className="w-10 h-10 object-contain" />
-                                </motion.div>
+                                </div>
                             )}
                             <div className={`p-4 rounded-2xl max-w-[85%] shadow-sm ${msg.role === 'assistant'
                                 ? msg.isBio
@@ -267,34 +265,18 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
                                 <div className="w-full [&>p]:mb-2 [&>p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4">
                                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                                 </div>
-
-                                {msg.options && msg.role === 'assistant' && idx === messages.length - 1 && msg.options.length > 0 && (
-                                    <>
-                                        {msg.options.length > 3 ? (
-                                            <div className="mt-4 w-full relative h-12">
-                                                <SearchableVerticalMenu
-                                                    options={msg.options}
-                                                    onSelect={(val) => handleSend(val)}
-                                                />
-                                            </div>
-                                        ) : (
-                                            <div className="mt-4 flex flex-wrap gap-2">
-                                                {msg.options.map((opt, i) => (
-                                                    <button
-                                                        key={i}
-                                                        onClick={() => handleSend(opt.value)}
-                                                        className={`px-4 py-2 font-bold rounded-full text-xs shadow-sm border transition-colors ${
-                                                            opt.value === 'FINISH_PHASE'
-                                                                ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200'
-                                                                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                                                        }`}
-                                                    >
-                                                        {opt.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </>
+                                {msg.role === 'assistant' && idx === messages.length - 1 && msg.options && msg.options.length > 0 && msg.options.length <= 3 && !isAnalyzing && (
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {msg.options.map((opt, oIdx) => (
+                                            <button
+                                                key={oIdx}
+                                                onClick={() => handleSend(opt.value)}
+                                                className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -316,27 +298,38 @@ const Fase5_EstiloVida = ({ db, user, appId, patientProfile, patientData, onStat
             </div>
 
             {/* Input Form */}
-            <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-4 md:px-12 backdrop-blur-md bg-opacity-90">
-                <form
-                    onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }}
-                    className="max-w-2xl mx-auto flex gap-3 relative"
-                >
-                    <input
-                        type="text"
-                        value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
-                        placeholder="Escriba aquí..."
-                        className="flex-1 px-5 py-4 bg-gray-50 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1C75BC] focus:bg-white transition-all font-sansation text-slate-700 shadow-sm disabled:opacity-50 disabled:bg-gray-100"
-                        disabled={isInputDisabled}
-                    />
-                    <button
-                        type="submit"
-                        disabled={!inputValue.trim() || isInputDisabled}
-                        className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0"
+            <div className="p-6 bg-white border-t border-slate-100 relative z-[60] w-full shrink-0">
+                <div className="relative w-full max-w-2xl mx-auto flex flex-col items-center">
+                    {messages[messages.length - 1]?.options?.length > 3 && !isAnalyzing && (
+                        <SearchableVerticalMenu
+                            options={messages[messages.length - 1].options}
+                            onSelect={(val) => handleSend(val)}
+                        />
+                    )}
+                    
+
+
+                    <form
+                        onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }}
+                        className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner relative z-10"
                     >
-                        <Send className="w-5 h-5" />
-                    </button>
-                </form>
+                        <input
+                            type="text"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            placeholder="Escriba aquí..."
+                            className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none disabled:opacity-50"
+                            disabled={isInputDisabled}
+                        />
+                        <button
+                            type="submit"
+                            disabled={!inputValue.trim() || isInputDisabled}
+                            className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a] disabled:opacity-50 flex-shrink-0"
+                        >
+                            <Send size={18} />
+                        </button>
+                    </form>
+                </div>
                 <div className="text-center mt-3 text-xs text-gray-400 font-sansation flex items-center justify-center gap-2">
                     <i className="fi fi-rr-shield-check"></i>
                     Terminal A - Comunicación Clínica Encriptada Extremo a Extremo

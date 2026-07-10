@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { Send } from 'lucide-react';
-import { formatText } from '../../utils/utils';
+import { formatText, applyPhoneMask } from '../../utils/utils';
 import { calculateAge, classifyLifeStage, getBinaryGateLabels } from '../../utils/ageClassifier';
 import tiloImg from '../../assets/tilo.png';
 import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
@@ -30,17 +30,7 @@ export const Fase1_Identificacion = ({
     const [tempDob, setTempDob] = useState({ day: null, month: null, year: null });
 
     const handlePhoneChange = (e) => {
-        let val = e.target.value.replace(/\D/g, '');
-        if (val.length > 10) val = val.slice(0, 10);
-        let formatted = val;
-        if (val.length > 6) {
-            formatted = `(${val.slice(0, 3)}) ${val.slice(3, 6)}-${val.slice(6)}`;
-        } else if (val.length > 3) {
-            formatted = `(${val.slice(0, 3)}) ${val.slice(3)}`;
-        } else if (val.length > 0) {
-            formatted = `(${val}`;
-        }
-        setInputValue(formatted);
+        setInputValue(applyPhoneMask(e.target.value));
     };
 
     const handleSend = (text, directValue = null) => {
@@ -48,7 +38,7 @@ export const Fase1_Identificacion = ({
         if (!rawMsg.trim()) return;
 
         // Mostrar botones como mensaje de usuario si se usaron
-        const displayMsg = rawMsg;
+        const displayMsg = text;
         const newMessages = [...messages, { role: 'user', content: displayMsg }];
         setMessages(newMessages);
         setInputValue("");
@@ -139,10 +129,27 @@ export const Fase1_Identificacion = ({
                     });
                     updateSocioculturalProfile({ lifeStage });
 
+                    const pName = identityLock.patientInfo?.first_name || identityLock.patientInfo?.name || "Paciente";
                     if (age < 18) {
-                        responseMsg = `Perfil cronológico consolidado. El sistema ha detectado a un usuario en etapa de crecimiento activo y ha habilitado el **Protocolo Pediátrico de Nutrición Celular**.\n\nComo tutor responsable de la cuenta, iniciemos la evaluación biológica: ¿Cuál es el **sexo biológico** de **${pName}**?`;
+                        responseMsg = `Perfil cronológico consolidado.
+
+---
+
+El sistema ha detectado a un usuario en etapa de crecimiento activo y ha habilitado el **Protocolo Pediátrico de Nutrición Celular**.
+
+---
+
+Como tutor responsable de la cuenta, iniciemos la evaluación biológica: ¿Cuál es el **sexo biológico** de **${pName}**?`;
                     } else {
-                        responseMsg = `Perfil cronológico consolidado. El sistema ha calibrado su edad cronológica base en **${age} años**.\n\nPara configurar su arquitectura biológica con precisión, iniciemos la evaluación: ¿Cuál es su **sexo biológico**?`;
+                        responseMsg = `Perfil cronológico consolidado.
+
+---
+
+El sistema ha calibrado su edad cronológica base en **${age} años**.
+
+---
+
+Para configurar su arquitectura biológica con precisión, iniciemos la evaluación: ¿Cuál es su **sexo biológico**?`;
                     }
                     options = [
                         { label: "Femenino", value: "Femenino" },
@@ -167,15 +174,23 @@ export const Fase1_Identificacion = ({
                         updateIdentityLock({ patientInfo: { ...identityLock.patientInfo, sex } });
 
                         // BYPASS LOGIC (Lógica Kinética)
-                        const currentAge = identityLock.patientInfo?.age || 20; // fallback safety
+                        const currentAge = typeof identityLock.patientInfo?.age === 'number' ? identityLock.patientInfo.age : 20; // fallback safety
                         if (currentAge < 18) {
                             // Si es menor de 18, setear soltero y omitir estado civil
                             updateSocioculturalProfile({ civilStatus: "Soltero" });
-                            const pName = identityLock.patientInfo?.firstName || "el paciente";
+                            const pName = identityLock.patientInfo?.first_name || identityLock.patientInfo?.name || "el paciente";
                             if (currentAge < 12) {
-                                responseMsg = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa pediátrica, el sistema ha bloqueado automáticamente la recolección de estado civil y actividad laboral para proteger su expediente.\n\nPara mapear correctamente su gasto energético y exposición ambiental diaria: ¿**${pName}** asiste a guardería o kínder actualmente?`;
+                                responseMsg = `Para registrar la logística de alimentación y evaluar el nivel de exposición inmunológica\nen el expediente de **${pName}**:\n\n---\n\n¿Asiste **${pName}** a guardería o kínder actualmente?`;
+                                options = [
+                                    { label: "En casa (Cuidado materno/paterno)", value: "HOME_PARENTS" },
+                                    { label: "En casa (Familiar o Niñera)", value: "HOME_CAREGIVER" },
+                                    { label: "Guardería / Estancia infantil", value: "DAYCARE" }
+                                ];
+                                if (currentAge >= 3) {
+                                    options.push({ label: "Kínder / Preescolar", value: "KINDER" });
+                                }
                             } else {
-                                responseMsg = `Protocolo de omisión ejecutado. Al tratarse de un paciente en etapa adolescente, el sistema ha bloqueado automáticamente la recolección de estado civil para proteger tu expediente.\n\nPara tu registro oficial y cálculo de requerimientos cognitivos: ¿En qué semestre de secundaria o preparatoria te encuentras?`;
+                                responseMsg = `Para registrar el contexto académico\ny estimar la demanda cognitiva diaria de **${pName}**:\n\n---\n\n¿En qué grado o semestre de secundaria o preparatoria se encuentra **${pName}**?`;
                             }
                             nextStep = 'intro_job';
                         } else {
@@ -201,7 +216,7 @@ export const Fase1_Identificacion = ({
 
                 case 'intro_job':
                     updateSocioculturalProfile({ occupation: cleanText });
-                    responseMsg = "¿Profesa alguna **religión**? (Importante para determinaciones dietéticas como restricciones de carne/suplementos. Si no tiene, seleccione 'Ninguna')";
+                    responseMsg = "¿Profesa alguna **religión**? (Importante para determinaciones dietéticas como restricciones de carne/suplementos.\n\n---\n\nSi no tiene, seleccione 'Ninguna')";
                     options = [
                         { label: "Adventista del Séptimo Día", value: "Adventista" },
                         { label: "Budista / Hinduista", value: "Budista/Hinduista" },
@@ -222,18 +237,28 @@ export const Fase1_Identificacion = ({
                     
                     const pInfo = identityLock.patientInfo;
                     const socio = useClinicalGenome.getState().socioculturalProfile;
-                    const currentAge = pInfo.age || 20;
+                    const currentAge = typeof pInfo.age === 'number' ? pInfo.age : 20;
                     const currentSex = pInfo.sex || "Femenino";
                     
                     const { confirmLabel, rejectLabel } = getBinaryGateLabels(currentAge, currentSex);
                     
+                    const getOccupationLabel = (occ) => {
+                        const mapping = {
+                            'HOME_PARENTS': 'En casa (Cuidado materno/paterno)',
+                            'HOME_CAREGIVER': 'En casa (Familiar o Niñera)',
+                            'DAYCARE': 'Guardería / Estancia infantil',
+                            'KINDER': 'Kínder / Preescolar'
+                        };
+                        return typeof occ === 'string' ? (mapping[occ.toUpperCase()] || occ) : occ;
+                    };
+
                     responseMsg = `A continuación, le presento un resumen de los datos capturados:\n\n` +
-                                  `**Apellidos:** ${pInfo.apellidoPaterno} ${pInfo.apellidoMaterno}\n` +
-                                  `**Fecha de Nacimiento:** ${pInfo.dob_day}/${pInfo.dob_month}/${pInfo.dob_year} (${currentAge} años)\n` +
-                                  `**Sexo Biológico:** ${currentSex}\n` +
-                                  `**Estado Civil:** ${socio.civilStatus || 'No especificado'}\n` +
-                                  `**Ocupación:** ${socio.occupation || 'No especificada'}\n` +
-                                  `**Religión:** ${cleanText}\n\n` +
+                                  `- 👤 **Apellidos:** ${pInfo.apellidoPaterno} ${pInfo.apellidoMaterno}\n` +
+                                  `- 📅 **Fecha de Nacimiento:** ${pInfo.dob_day}/${pInfo.dob_month}/${pInfo.dob_year} (${currentAge} años)\n` +
+                                  `- 🧬 **Sexo Biológico:** ${currentSex}\n` +
+                                  `- 💍 **Estado Civil:** ${socio.civilStatus || 'No especificado'}\n` +
+                                  `- 💼 **Ocupación / Entorno:** ${getOccupationLabel(socio.occupation) || 'No especificada'}\n` +
+                                  `- 🙏 **Religión:** ${cleanText}\n\n` +
                                   `¿Son correctos estos datos?`;
                                   
                     options = [
@@ -272,7 +297,13 @@ export const Fase1_Identificacion = ({
         }, 800);
     };
 
-    useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+    useEffect(() => { 
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); 
+        const timer = setTimeout(() => {
+            chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [messages]);
 
     const isInputDisabled = isAnalyzing || step === 'completed';
 
@@ -288,15 +319,25 @@ export const Fase1_Identificacion = ({
                                 </div>
                                 <div className={`p-4 rounded-2xl text-sm shadow-sm leading-relaxed max-w-[80%] whitespace-pre-line ${msg.role === 'user' ? 'bg-[#1C75BC] text-white rounded-tr-none' : 'bg-white border border-slate-200 rounded-tl-none text-slate-700'}`}>
                                     {msg.content}
-                                    
-                                </div>
+                                    {msg.role === 'assistant' && idx === messages.length - 1 && messages[messages.length - 1].options?.length > 0 && messages[messages.length - 1].options?.length <= 3 && !isAnalyzing && step !== 'completed' && (
+                                        <div className="mt-4 flex flex-wrap gap-2">
+                                            {messages[messages.length - 1].options.map((opt, oIdx) => (
+                                                <button
+                                                    key={oIdx}
+                                                    onClick={() => handleSend(opt.label, opt.value)}
+                                                    className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-full text-xs hover:bg-slate-200 hover:text-slate-900 transition-colors shadow-sm border border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    disabled={isAnalyzing || step === 'completed'}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                             </div>
                         </div>
                     ))}
-                    {isAnalyzing && (
-                        <div className="flex gap-4 animate-pulse ml-11">
-                            <div className="bg-slate-100 border border-slate-200 w-20 h-8 rounded-2xl rounded-tl-none"></div>
-                        </div>
+                    {messages.length > 0 && messages[messages.length - 1].options?.length > 3 && !isAnalyzing && step !== 'completed' && (
+                        <div className="h-72 sm:h-80 w-full pointer-events-none" />
                     )}
                     <div ref={chatEndRef} />
                 </div>
@@ -311,37 +352,21 @@ export const Fase1_Identificacion = ({
                                     const opt = messages[messages.length - 1].options.find(o => o.value === val);
                                     handleSend(opt.label, opt.value);
                                 }}
+                                searchQuery={inputValue}
+                                setSearchQuery={setInputValue}
                             />
                         )}
                         
-                        {messages[messages.length - 1]?.options?.length > 0 && messages[messages.length - 1]?.options?.length <= 3 && !isAnalyzing && step !== 'completed' && (
-                            <div className="flex flex-col gap-2 mb-3 w-full">
-                                {messages[messages.length - 1].options.map((opt, oIdx) => (
-                                    <button
-                                        key={oIdx}
-                                        onClick={() => handleSend(opt.label, opt.value)}
-                                        className="w-full px-5 py-3 bg-white border-2 border-blue-100 text-slate-700 text-sm font-medium rounded-xl hover:border-blue-500 hover:bg-blue-50 hover:shadow-md transition-all flex items-center justify-between group"
-                                        disabled={isAnalyzing || step === 'completed'}
-                                    >
-                                        <span>{opt.label}</span>
-                                        <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors shrink-0 ml-3">
-                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                            </svg>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+
                         
                         <form onSubmit={(e) => { e.preventDefault(); handleSend(inputValue); }} className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-full border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner relative z-10">
                         <input
                             type={step.includes('phone') ? 'tel' : 'text'}
                             value={inputValue} onChange={step.includes('phone') ? handlePhoneChange : (e) => setInputValue(e.target.value)}
-                            placeholder={step.includes('phone') ? "(123) 456-7890" : "Escribe tu respuesta..."} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none"
+                            placeholder={isInputDisabled ? "Seleccione una opción arriba..." : (step.includes('phone') ? "(123) 456-7890" : "Escribe tu respuesta...")} className="flex-1 bg-transparent border-none focus:ring-0 px-6 text-sm py-2 outline-none disabled:opacity-50"
                             disabled={isInputDisabled}
                         />
-                        <button type="submit" disabled={isInputDisabled} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a]">
+                        <button type="submit" disabled={!inputValue.trim() || isInputDisabled} className="w-10 h-10 bg-[#1C75BC] text-white rounded-full flex items-center justify-center shadow-md active:scale-95 transition-transform hover:bg-[#155a8a] disabled:opacity-50 flex-shrink-0">
                             <Send size={18} />
                         </button>
                         </form>

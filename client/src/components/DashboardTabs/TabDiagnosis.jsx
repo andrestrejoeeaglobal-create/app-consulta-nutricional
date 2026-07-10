@@ -1,9 +1,94 @@
 import React, { useState } from 'react';
-import { Activity, ShieldAlert, CheckCircle, AlertTriangle, Stethoscope, Zap, HeartPulse, Lock } from 'lucide-react';
+import { Activity, ShieldAlert, AlertTriangle, Zap, HeartPulse, Lock } from 'lucide-react';
+import TabNotes from './TabNotes';
+import TabIntervention from './TabIntervention';
 
-export const TabDiagnosis = ({ patientData }) => {
+export const TabDiagnosis = ({
+    patientData,
+    setPatientData,
+    isEditing,
+    onTabChange,
+    Accordion,
+    openSections,
+    toggleSection
+}) => {
     // === SAFETY ENGINE (Medical Override) ===
-    const [overrideActive, setOverrideActive] = useState(false);
+    const [overrideActive, setOverrideActive] = useState(
+        patientData?.nutrition?.preferences?.safety_lock?.override_applied || false
+    );
+
+    const handleOverrideToggle = (active) => {
+        setOverrideActive(active);
+        if (setPatientData) {
+            setPatientData(prev => {
+                const nutrition = prev.nutrition || {};
+                const prefs = nutrition.preferences || {};
+                const safety = prefs.safety_lock || {};
+                return {
+                    ...prev,
+                    nutrition: {
+                        ...nutrition,
+                        preferences: {
+                            ...prefs,
+                            safety_lock: {
+                                ...safety,
+                                override_applied: active
+                            }
+                        }
+                    }
+                };
+            });
+        }
+    };
+
+    const is33Added = patientData?.advanced_supplementation?.some(s => s.name === '33 PLUS');
+    const is34Added = patientData?.advanced_supplementation?.some(s => s.name === '34 PLUS');
+
+    const handleToggle33 = () => {
+        if (!setPatientData) return;
+        setPatientData(prev => {
+            const list = prev.advanced_supplementation || [];
+            const exists = list.some(s => s.name === '33 PLUS');
+            const newList = exists
+                ? list.filter(s => s.name !== '33 PLUS')
+                : [...list, {
+                    id: '33plus',
+                    cortex: '33Plus (Neuro-cognitivo)',
+                    name: '33 PLUS',
+                    dosage: '1 toma al día',
+                    timing: 'Con el desayuno (09:00 AM)',
+                    rationale: 'Optimización de la cadena respiratoria celular, reducción de fatiga crónica y mejora en la sensibilidad a la insulina.',
+                    status: 'approved'
+                }];
+            return {
+                ...prev,
+                advanced_supplementation: newList
+            };
+        });
+    };
+
+    const handleToggle34 = () => {
+        if (!setPatientData) return;
+        setPatientData(prev => {
+            const list = prev.advanced_supplementation || [];
+            const exists = list.some(s => s.name === '34 PLUS');
+            const newList = exists
+                ? list.filter(s => s.name !== '34 PLUS')
+                : [...list, {
+                    id: '34plus',
+                    cortex: '34Plus (Metabólico)',
+                    name: '34 PLUS',
+                    dosage: '1 toma al día',
+                    timing: 'Con la cena (08:30 PM)',
+                    rationale: 'Regeneración de matriz extracelular, fortalecimiento articular y optimización de síntesis proteica post-ejercicio.',
+                    status: 'approved'
+                }];
+            return {
+                ...prev,
+                advanced_supplementation: newList
+            };
+        });
+    };
 
     // 1. Scan for Allergies
     const allergies = [...(patientData?.history?.allergies?.food || []), ...(patientData?.history?.allergies?.drug || [])];
@@ -18,200 +103,247 @@ export const TabDiagnosis = ({ patientData }) => {
 
     return (
         <div className="space-y-6 font-sans">
-            {/* --- HEADER --- */}
-            <div className="bg-gradient-to-r from-blue-700 to-indigo-800 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-                <div className="relative z-10 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                            <Stethoscope className="w-8 h-8 text-blue-200" />
-                            Diagnóstico Integral
-                        </h2>
-                        <p className="text-blue-100 mt-2 text-lg">Resumen Clínico y Arquitectura de Oro</p>
-                    </div>
-                </div>
-            </div>
+            {/* --- ACORDEÓN PADRE: DIAGNÓSTICO INTEGRAL --- */}
+            <Accordion
+                title="Diagnóstico Integral"
+                id="accordion-diagnosis-parent"
+                isOpen={openSections.parentDiagnosis}
+                onToggle={() => toggleSection('parentDiagnosis')}
+                variant="parent"
+            >
+                <div className="space-y-6">
+                    {/* --- SAFETY ENGINE BANNER --- */}
+                    {isRiskDetected && !overrideActive && (
+                        <div className="bg-tilo-danger/10 border-l-4 border-tilo-danger p-6 rounded-xl flex items-start gap-4 transition-all animate-in zoom-in-95 duration-300">
+                            <ShieldAlert className="w-8 h-8 text-tilo-danger flex-shrink-0" />
+                            <div className="flex-1">
+                                <h3 className="text-tilo-danger font-extrabold text-base uppercase tracking-wider">Alerta de Seguridad Clínica</h3>
+                                <p className="text-tilo-text-main text-xs mt-1 leading-relaxed">
+                                    El sistema ha detectado riesgos potenciales basados en el historial del paciente 
+                                    ({hasAllergies ? 'Alergias registradas' : ''}{hasAllergies && hasPhentermine ? ' y ' : ''}{hasPhentermine ? 'Fentermina detectada' : ''}).
+                                    La prescripción de suplementación avanzada está bloqueada por seguridad.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => handleOverrideToggle(true)}
+                                className="bg-tilo-danger text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-tilo-danger/80 transition-colors shadow-sm cursor-pointer whitespace-nowrap"
+                            >
+                                Autorización Clínica
+                            </button>
+                        </div>
+                    )}
 
-            {/* --- SAFETY ENGINE BANNER --- */}
-            {isRiskDetected && !overrideActive && (
-                <div
-                    className="bg-red-50 border-l-4 border-red-500 p-6 rounded-xl shadow-sm flex items-start gap-4 transition-all"
-                >
-                    <ShieldAlert className="w-8 h-8 text-red-500 flex-shrink-0" />
-                    <div className="flex-1">
-                        <h3 className="text-red-800 font-bold text-lg">ALERTA DE SEGURIDAD CLÍNICA</h3>
-                        <p className="text-red-700 text-sm mt-1">
-                            El sistema ha detectado riesgos potenciales basados en el historial del paciente
-                            ({hasAllergies ? 'Alergias registradas' : ''}{hasAllergies && hasPhentermine ? ' y ' : ''}{hasPhentermine ? 'Fentermina detectada' : ''}).
-                            La prescripción de suplementación avanzada está bloqueada por seguridad.
-                        </p>
-                    </div>
-                    <button
-                        onClick={() => setOverrideActive(true)}
-                        className="bg-red-100 text-red-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-200 transition-colors border border-red-200"
+                    {overrideActive && (
+                        <div className="bg-tilo-warning/10 border border-tilo-warning/30 p-4 rounded-xl flex items-center justify-between transition-all animate-in slide-in-from-top-4 duration-300">
+                            <div className="flex items-center gap-2 text-tilo-warning font-medium">
+                                <AlertTriangle className="w-5 h-5 text-tilo-warning" />
+                                <span className="text-tilo-text-main text-xs">Override Médico Activado. Riesgos asumidos por el especialista.</span>
+                            </div>
+                            <button
+                                onClick={() => handleOverrideToggle(false)}
+                                className="text-tilo-warning hover:text-tilo-warning/80 text-xs font-bold underline cursor-pointer"
+                            >
+                                Restaurar Seguridad
+                            </button>
+                        </div>
+                    )}
+
+                    {/* --- CHILD ACCORDION 1: RESUMEN CLÍNICO (ABCD) --- */}
+                    <Accordion
+                        title="Resumen Clínico (ABCD)"
+                        id="accordion-diagnosis-abcd"
+                        isOpen={openSections.childDiagnosisAbcd}
+                        onToggle={() => toggleSection('childDiagnosisAbcd')}
                     >
-                        Medical Override
-                    </button>
-                </div>
-            )}
+                        <div id="card-diagnosis" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {/* A: Antropometría */}
+                            <div className="bg-tilo-bg-base/40 p-5 rounded-2xl border border-tilo-border">
+                                <h3 className="text-tilo-text-muted text-[10px] font-extrabold uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-tilo-primary"></span>
+                                    A. Antropometría
+                                </h3>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center pb-2 border-b border-tilo-border/60">
+                                        <span className="text-xs font-medium text-tilo-text-muted">IMC</span>
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${patientData?.imcEstado === 'Normal' ? 'bg-tilo-success/10 text-tilo-success' : 'bg-tilo-danger/10 text-tilo-danger'}`}>
+                                            {patientData?.imc || '--'} ({patientData?.imcEstado || '--'})
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center pb-2 border-b border-tilo-border/60">
+                                        <span className="text-xs font-medium text-tilo-text-muted">Peso / Talla</span>
+                                        <span className="text-xs font-bold text-tilo-text-main">{patientData?.peso || '--'} kg / {patientData?.talla || '--'} m</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs font-medium text-tilo-text-muted">ICC</span>
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${patientData?.iccRiesgo === 'Sin Riesgo' ? 'bg-tilo-success/10 text-tilo-success' : 'bg-tilo-warning/10 text-tilo-warning'}`}>
+                                            {patientData?.icc || '--'} ({patientData?.iccRiesgo || '--'})
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
 
-            {overrideActive && (
-                <div
-                    className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center justify-between transition-all"
-                >
-                    <div className="flex items-center gap-2 text-amber-800 font-medium">
-                        <AlertTriangle className="w-5 h-5" />
-                        <span>Override Médico Activado. Riesgos asumidos por el especialista.</span>
-                    </div>
-                    <button
-                        onClick={() => setOverrideActive(false)}
-                        className="text-amber-600 hover:text-amber-800 text-sm font-bold underline"
+                            {/* B: Bioquímicos / Vitales */}
+                            <div className="bg-tilo-bg-base/40 p-5 rounded-2xl border border-tilo-border">
+                                <h3 className="text-tilo-text-muted text-[10px] font-extrabold uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-tilo-danger"></span>
+                                    B. Bioquímicos / Vitales
+                                </h3>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center pb-2 border-b border-tilo-border/60">
+                                        <span className="text-xs font-medium text-tilo-text-muted">Presión Arterial</span>
+                                        <span className="text-xs font-bold text-tilo-text-main">{patientData?.signosVitales?.ta || '--'} mmHg</span>
+                                    </div>
+                                    <div className="flex justify-between items-center pb-2 border-b border-tilo-border/60">
+                                        <span className="text-xs font-medium text-tilo-text-muted">Glucosa Ayuno</span>
+                                        <span className="text-xs font-bold text-tilo-text-main">{patientData?.signosVitales?.glucosa || '--'} mg/dL</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs font-medium text-tilo-text-muted">SpO2 / FC</span>
+                                        <span className="text-xs font-bold text-tilo-text-main">{patientData?.signosVitales?.spo2 || '--'}% / {patientData?.signosVitales?.fc || '--'} bpm</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* C: Clínica */}
+                            <div className="bg-tilo-bg-base/40 p-5 rounded-2xl border border-tilo-border">
+                                <h3 className="text-tilo-text-muted text-[10px] font-extrabold uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-tilo-warning"></span>
+                                    C. Clínica
+                                </h3>
+                                <div className="space-y-3">
+                                    <div className="flex flex-col pb-2 border-b border-tilo-border/60">
+                                        <span className="text-[10px] font-medium text-tilo-text-muted mb-1">Patologías (APP)</span>
+                                        <span className="text-xs font-bold text-tilo-text-main truncate" title={patientData?.clinica?.app_lista || 'Negados'}>
+                                            {patientData?.clinica?.app_lista || 'Negados'}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-medium text-tilo-text-muted mb-1">Alergias</span>
+                                        <span className={`text-xs font-bold truncate ${hasAllergies ? 'text-tilo-danger font-extrabold' : 'text-tilo-text-main'}`} title={hasAllergies ? allergies.map(a => a.agent).join(', ') : 'Negadas'}>
+                                            {hasAllergies ? allergies.map(a => a.agent).join(', ') : 'Negadas'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* D: Dietética */}
+                            <div className="bg-tilo-bg-base/40 p-5 rounded-2xl border border-tilo-border">
+                                <h3 className="text-tilo-text-muted text-[10px] font-extrabold uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-tilo-success"></span>
+                                    D. Dietética
+                                </h3>
+                                <div className="space-y-3">
+                                    <div className="flex flex-col pb-2 border-b border-tilo-border/60">
+                                        <span className="text-[10px] font-medium text-tilo-text-muted mb-1">Aversiones</span>
+                                        <span className="text-xs font-bold text-tilo-text-main truncate" title={patientData?.evaluacionDietetica?.preferencias?.aversiones || '--'}>
+                                            {patientData?.evaluacionDietetica?.preferencias?.aversiones || '--'}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-medium text-tilo-text-muted mb-1">Logística</span>
+                                        <span className="text-xs font-bold text-tilo-text-main truncate" title={patientData?.nutrition?.cook_type || '--'}>
+                                            {patientData?.nutrition?.cook_type || '--'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </Accordion>
+
+                    {/* --- CHILD ACCORDION 2: ARQUITECTURA DE ORO RECOMENDADA --- */}
+                    <Accordion
+                        title="Arquitectura de Oro Recomendada"
+                        id="accordion-gold-architecture"
+                        isOpen={openSections.childGoldArchitecture}
+                        onToggle={() => toggleSection('childGoldArchitecture')}
                     >
-                        Restaurar Bloqueos
-                    </button>
+                        <div id="card-gold-architecture" className="relative p-1">
+                            {/* Overlay Bloqueo (Solo visual) */}
+                            {isRiskDetected && !overrideActive && (
+                                <div className="absolute inset-0 bg-tilo-bg-base/60 backdrop-blur-sm z-20 flex items-center justify-center rounded-2xl">
+                                    <Lock className="w-12 h-12 text-tilo-text-muted opacity-50 animate-pulse" />
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                {/* 33 Plus */}
+                                <div className="flex flex-col items-center text-center p-6 bg-tilo-bg-base/40 rounded-2xl border border-tilo-border hover:shadow-md transition-shadow">
+                                    <div className="w-20 h-20 bg-tilo-primary/10 text-tilo-primary rounded-full flex items-center justify-center mb-4 shadow-inner">
+                                        <HeartPulse className="w-10 h-10 text-tilo-primary" />
+                                    </div>
+                                    <h4 className="text-2xl font-black text-tilo-text-main tracking-tight">33 PLUS</h4>
+                                    <p className="text-tilo-primary font-bold text-xs tracking-widest uppercase mt-1 mb-4">Ignición Mitocondrial</p>
+                                    <p className="text-tilo-text-muted text-xs leading-relaxed mb-6">
+                                        Optimización de la cadena respiratoria celular, reducción de fatiga crónica y mejora en la sensibilidad a la insulina.
+                                    </p>
+                                    <button
+                                        onClick={handleToggle33}
+                                        className={`mt-auto px-6 py-2.5 rounded-full text-xs font-bold transition-all w-full cursor-pointer shadow-sm ${
+                                            is33Added
+                                                ? 'bg-tilo-success hover:bg-tilo-success/80 text-white shadow-tilo-success/20'
+                                                : 'bg-tilo-primary hover:bg-tilo-primary/80 text-white shadow-tilo-primary/20'
+                                        }`}
+                                    >
+                                        {is33Added ? '✓ Agregado al Plan' : 'Agregar al Plan'}
+                                    </button>
+                                </div>
+
+                                {/* 34 Plus */}
+                                <div className="flex flex-col items-center text-center p-6 bg-tilo-bg-base/40 rounded-2xl border border-tilo-border hover:shadow-md transition-shadow">
+                                    <div className="w-20 h-20 bg-tilo-success/10 text-tilo-success rounded-full flex items-center justify-center mb-4 shadow-inner">
+                                        <Activity className="w-10 h-10 text-tilo-success" />
+                                    </div>
+                                    <h4 className="text-2xl font-black text-tilo-text-main tracking-tight">34 PLUS</h4>
+                                    <p className="text-tilo-success font-bold text-xs tracking-widest uppercase mt-1 mb-4">Ingeniería Tisular</p>
+                                    <p className="text-tilo-text-muted text-xs leading-relaxed mb-6">
+                                        Regeneración de matriz extracelular, fortalecimiento articular y optimización de síntesis proteica post-ejercicio.
+                                    </p>
+                                    <button
+                                        onClick={handleToggle34}
+                                        className={`mt-auto px-6 py-2.5 rounded-full text-xs font-bold transition-all w-full cursor-pointer shadow-sm ${
+                                            is34Added
+                                                ? 'bg-tilo-success hover:bg-tilo-success/80 text-white shadow-tilo-success/20'
+                                                : 'bg-tilo-primary hover:bg-tilo-primary/80 text-white shadow-tilo-primary/20'
+                                        }`}
+                                    >
+                                        {is34Added ? '✓ Agregado al Plan' : 'Agregar al Plan'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </Accordion>
+
+                    {/* --- CHILD ACCORDION 3: NOTAS DE EVOLUCIÓN (SOAP) --- */}
+                    <TabNotes
+                        patientData={patientData}
+                        setPatientData={setPatientData}
+                        isEditing={isEditing}
+                        Accordion={Accordion}
+                        openSections={openSections}
+                        toggleSection={toggleSection}
+                    />
+
+                    {/* --- CHILD ACCORDION 4: PLAN DE INTERVENCIÓN --- */}
+                    <TabIntervention
+                        patientData={patientData}
+                        setPatientData={setPatientData}
+                        isEditing={isEditing}
+                        Accordion={Accordion}
+                        openSections={openSections}
+                        toggleSection={toggleSection}
+                    />
                 </div>
-            )}
+            </Accordion>
 
-            {/* --- ABCD CLINICAL SUMMARY BLOCKS --- */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* A: Antropometría */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                    <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                        A. Antropometría
-                    </h3>
-                    <div className="space-y-3">
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                            <span className="text-sm font-medium text-slate-500">IMC</span>
-                            <span className={`text-sm font-bold px-2 py-0.5 rounded ${patientData?.imcEstado === 'Normal' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                                {patientData?.imc || '--'} ({patientData?.imcEstado || '--'})
-                            </span>
-                        </div>
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                            <span className="text-sm font-medium text-slate-500">Peso / Talla</span>
-                            <span className="text-sm font-bold text-slate-700">{patientData?.peso || '--'} kg / {patientData?.talla || '--'} m</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-slate-500">ICC</span>
-                            <span className={`text-sm font-bold px-2 py-0.5 rounded ${patientData?.iccRiesgo === 'Sin Riesgo' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}>
-                                {patientData?.icc || '--'} ({patientData?.iccRiesgo || '--'})
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* B: Bioquímica / Vitales */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                    <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-red-400"></span>
-                        B. Bioquímicos / Vitales
-                    </h3>
-                    <div className="space-y-3">
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                            <span className="text-sm font-medium text-slate-500">Presión Arterial</span>
-                            <span className="text-sm font-bold text-slate-700">{patientData?.signosVitales?.ta || '--'} mmHg</span>
-                        </div>
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                            <span className="text-sm font-medium text-slate-500">Glucosa Ayuno</span>
-                            <span className="text-sm font-bold text-slate-700">{patientData?.signosVitales?.glucosa || '--'} mg/dL</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-slate-500">SpO2 / FC</span>
-                            <span className="text-sm font-bold text-slate-700">{patientData?.signosVitales?.spo2 || '--'}% / {patientData?.signosVitales?.fc || '--'} bpm</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* C: Clínica */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                    <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                        C. Clínica
-                    </h3>
-                    <div className="space-y-3">
-                        <div className="flex flex-col pb-2 border-b border-slate-50">
-                            <span className="text-xs font-medium text-slate-500 mb-1">Patologías (APP)</span>
-                            <span className="text-sm font-bold text-slate-700 truncate">{patientData?.clinica?.app_lista || 'Negados'}</span>
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-xs font-medium text-slate-500 mb-1">Alergias</span>
-                            <span className={`text-sm font-bold truncate ${hasAllergies ? 'text-red-600' : 'text-slate-700'}`}>
-                                {hasAllergies ? allergies.map(a => a.agent).join(', ') : 'Negadas'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* D: Dietética */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                    <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                        D. Dietética
-                    </h3>
-                    <div className="space-y-3">
-                        <div className="flex flex-col pb-2 border-b border-slate-50">
-                            <span className="text-xs font-medium text-slate-500 mb-1">Aversiones</span>
-                            <span className="text-sm font-bold text-slate-700 truncate">{patientData?.evaluacionDietetica?.preferencias?.aversiones || '--'}</span>
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-xs font-medium text-slate-500 mb-1">Logística</span>
-                            <span className="text-sm font-bold text-slate-700 truncate">{patientData?.nutrition?.cook_type || '--'}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* --- ARQUITECTURA DE ORO (HERO CARD) --- */}
-            <div className={`mt-8 bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-200 transition-all duration-500 relative ${isRiskDetected && !overrideActive ? 'grayscale opacity-60 pointer-events-none' : ''}`}>
-
-                {/* Overlay Bloqueo (Solo visual para ilustrar que los botones internos estarían inactivos) */}
-                {isRiskDetected && !overrideActive && (
-                    <div className="absolute inset-0 bg-slate-100/50 backdrop-blur-sm z-20 flex items-center justify-center">
-                        <Lock className="w-12 h-12 text-slate-400 opacity-50" />
-                    </div>
-                )}
-
-                <div className="bg-amber-50 border-b border-amber-100 p-6 flex justify-between items-center">
-                    <div>
-                        <h3 className="text-amber-800 font-bold text-xl flex items-center gap-2">
-                            <Zap className="w-6 h-6 text-amber-500" />
-                            Arquitectura de Oro Recomendada
-                        </h3>
-                        <p className="text-amber-700 text-sm mt-1 opacity-80">Suplementación de alto impacto sugerida por Bio-Arquitecto</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 p-8 gap-8">
-                    {/* 33 Plus */}
-                    <div className="flex flex-col items-center text-center p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:shadow-md transition-shadow">
-                        <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4 shadow-inner">
-                            <HeartPulse className="w-10 h-10" />
-                        </div>
-                        <h4 className="text-2xl font-black text-slate-800 tracking-tight">33 PLUS</h4>
-                        <p className="text-blue-600 font-bold text-sm tracking-widest uppercase mt-1 mb-4">Ignición Mitocondrial</p>
-                        <p className="text-slate-500 text-sm leading-relaxed mb-6">
-                            Optimización de la cadena respiratoria celular, reducción de fatiga crónica y mejora en la sensibilidad a la insulina.
-                        </p>
-                        <button className="mt-auto px-6 py-2 bg-slate-800 text-white rounded-full text-sm font-bold hover:bg-slate-900 transition-colors w-full">
-                            Agregar al Plan
-                        </button>
-                    </div>
-
-                    {/* 34 Plus */}
-                    <div className="flex flex-col items-center text-center p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:shadow-md transition-shadow">
-                        <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4 shadow-inner">
-                            <Activity className="w-10 h-10" />
-                        </div>
-                        <h4 className="text-2xl font-black text-slate-800 tracking-tight">34 PLUS</h4>
-                        <p className="text-emerald-600 font-bold text-sm tracking-widest uppercase mt-1 mb-4">Ingeniería Tisular</p>
-                        <p className="text-slate-500 text-sm leading-relaxed mb-6">
-                            Regeneración de matriz extracelular, fortalecimiento articular y optimización de síntesis proteica post-ejercicio.
-                        </p>
-                        <button className="mt-auto px-6 py-2 bg-slate-800 text-white rounded-full text-sm font-bold hover:bg-slate-900 transition-colors w-full">
-                            Agregar al Plan
-                        </button>
-                    </div>
-                </div>
+            {/* BOTÓN DE AVANCE (Calendario) */}
+            <div className="flex justify-end pt-4 border-t border-tilo-border mt-8">
+                <button
+                    onClick={() => onTabChange && onTabChange('schedule')}
+                    className="flex justify-center items-center gap-2 px-8 py-4 bg-tilo-primary hover:bg-tilo-primary/80 text-white rounded-2xl font-black tracking-wide text-xs transition-all duration-300 w-full sm:w-auto shadow-lg shadow-tilo-primary/10 hover:shadow-tilo-primary/30 hover:-translate-y-0.5 cursor-pointer"
+                >
+                    <span>Continuar a Calendario & Sprint</span>
+                    <span className="text-lg">➔</span>
+                </button>
             </div>
         </div>
     );
