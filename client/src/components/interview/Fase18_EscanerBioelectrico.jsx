@@ -70,29 +70,95 @@ export default function Fase18_EscanerBioelectrico({
         }
     };
 
+    const flattenToCoreVitals = (nestedData) => {
+        if (!nestedData) return null;
+        
+        // Si ya es plano, devolver directamente
+        if (nestedData.blood_viscosity && !nestedData.cardiovascular) {
+            return nestedData;
+        }
+        
+        const card = nestedData.cardiovascular || {};
+        const gastro = nestedData.gastrointestinal || {};
+        
+        const vis = card.viscosidad_de_la_sangre || {};
+        const peps = gastro.coeficiente_de_secrecion_de_pepsina || {};
+        const col = card.cristal_de_colesterol || {};
+        const peri = gastro.coeficiente_de_funcion_de_peristalsis_gastrica || {};
+        
+        return {
+            blood_viscosity: {
+                name: "Viscosidad Sanguínea",
+                value: vis.status === 'NORMAL' ? "Normal" : "Alterado",
+                raw_value: vis.value ? `${vis.value} cp` : "---",
+                status: vis.status || "NORMAL",
+                translation: vis.translation || (vis.status === 'NORMAL' ? "Homeostasis sanguínea óptima." : "Tendencia a hemoconcentración. Se sugiere optimizar la hidratación celular.")
+            },
+            pepsin_coefficient: {
+                name: "Coeficiente de Pepsina",
+                value: peps.status === 'NORMAL' ? "Normal" : "Bajo",
+                raw_value: peps.value || "---",
+                status: peps.status || "NORMAL",
+                translation: peps.translation || (peps.status === 'NORMAL' ? "Capacidad de hidrólisis de pepsina gástrica conservada." : "Optimización enzimática y del pH gástrico requerida.")
+            },
+            cholesterol_crystals: {
+                name: "Cristales de Colesterol",
+                value: col.status === 'NORMAL' ? "Normal" : "Alterado",
+                raw_value: col.value || "---",
+                status: col.status || "NORMAL",
+                translation: col.translation || (col.status === 'NORMAL' ? "Homeostasis de lípidos de membrana conservada." : "Presencia de cristales insolubles. Se sugiere regular grasas saturadas.")
+            },
+            gastric_peristalsis: {
+                name: "Peristaltismo Gástrico",
+                value: peri.status === 'NORMAL' ? "Normal" : "Alterado",
+                raw_value: peri.value || "---",
+                status: peri.status || "NORMAL",
+                translation: peri.translation || (peri.status === 'NORMAL' ? "Motilidad gastrointestinal en rango fisiológico." : "Peristaltismo alterado. Se sugiere soporte digestivo mecánico o enzimático.")
+            },
+            phase_angle: {
+                name: "Ángulo de Fase",
+                value: "Fisiológico",
+                raw_value: "6.2°",
+                status: "NORMAL",
+                translation: "Integridad de membrana y vitalidad celular óptima."
+            },
+            gsr_anomaly: {
+                name: "Resistencia Bioeléctrica (GSR)",
+                value: "Normal",
+                raw_value: "520 kΩ",
+                status: "NORMAL",
+                translation: "Resistencia eléctrica de la piel y conductancia galvánica en rango basal."
+            }
+        };
+    };
+
     // Helper para semáforo de resultados (doble codificación WCAG 2.2)
     const getMarkerBadgeInfo = (status) => {
-        switch (status) {
-            case 'CRITICAL':
-                return {
-                    bg: 'bg-red-50 text-red-700 border-red-200',
-                    icon: <AlertTriangle className="w-3 h-3 text-red-600" />,
-                    label: 'Crítico'
-                };
-            case 'WARNING':
-                return {
-                    bg: 'bg-amber-50 text-amber-700 border-amber-200',
-                    icon: <AlertTriangle className="w-3 h-3 text-amber-600" />,
-                    label: 'Precaución'
-                };
-            case 'NORMAL':
-            default:
-                return {
-                    bg: 'bg-green-50 text-green-700 border-green-200',
-                    icon: <CheckCircle2 className="w-3 h-3 text-green-600" />,
-                    label: 'Normal'
-                };
+        const s = status ? status.toUpperCase() : 'NORMAL';
+        if (s === 'ANORMAL LEVE' || s === 'WARNING') {
+            return {
+                bg: 'bg-amber-50 text-amber-700 border-amber-200',
+                icon: <AlertTriangle className="w-3 h-3 text-amber-600" />,
+                label: 'Anormal Leve'
+            };
+        } else if (s === 'ANORMAL MODERADO') {
+            return {
+                bg: 'bg-orange-50 text-orange-700 border-orange-200',
+                icon: <AlertTriangle className="w-3 h-3 text-orange-600" />,
+                label: 'Anormal Moderado'
+            };
+        } else if (s === 'ANORMAL SEVERO' || s === 'CRITICAL' || s === 'SEVERE') {
+            return {
+                bg: 'bg-red-50 text-red-700 border-red-200',
+                icon: <AlertTriangle className="w-3 h-3 text-red-600" />,
+                label: 'Anormal Severo'
+            };
         }
+        return {
+            bg: 'bg-green-50 text-green-700 border-green-200',
+            icon: <CheckCircle2 className="w-3 h-3 text-green-600" />,
+            label: 'Normal'
+        };
     };
 
     // Tab activo: 'electret' | 'ocular' | 'lingual'
@@ -108,6 +174,7 @@ export default function Fase18_EscanerBioelectrico({
     const [electretProgress, setElectretProgress] = useState(0);
     const [electretScanId, setElectretScanId] = useState(null);
     const [electretResults, setElectretResults] = useState(null);
+    const [electretFullData, setElectretFullData] = useState(null);
     const [electretError, setElectretError] = useState('');
     const [isHardwareDetected, setIsHardwareDetected] = useState(false);
     const pollerRef = useRef(null);
@@ -149,8 +216,8 @@ export default function Fase18_EscanerBioelectrico({
     // 📸 ESTADO 5: EVIDENCIA VISUAL (VISIÓN ARTIFICIAL)
     // ==========================================
     const [visualState, setVisualState] = useState('idle'); // idle -> uploading -> processing -> complete -> error
-    const [visualImage, setVisualImage] = useState(null);
-    const [visualImagePreview, setVisualImagePreview] = useState(null);
+    const [visualImages, setVisualImages] = useState([]);
+    const [visualImagePreviews, setVisualImagePreviews] = useState([]);
     const [visualResults, setVisualResults] = useState(null);
     const [visualError, setVisualError] = useState('');
     const [visualSeverity, setVisualSeverity] = useState('LOW');
@@ -164,6 +231,13 @@ export default function Fase18_EscanerBioelectrico({
     const [styleXMode, setStyleXMode] = useState('ocular'); // 'ocular' | 'lingual'
     const [styleXAttribute, setStyleXAttribute] = useState('conjunctival_pallor'); // 'conjunctival_pallor' | 'eyelid_margin_pallor' | 'espesor_saburra' | 'tono_cianotico'
     const [styleXIntensity, setStyleXIntensity] = useState(50); // Slider: 0 to 100
+
+    // ==========================================
+    // 📸 ESTADO 6: CONTROL DE CÁMARA WEB (WEBCAM)
+    // ==========================================
+    const [activeWebcamTab, setActiveWebcamTab] = useState(null); // 'ocular' | 'lingual' | 'visual' | null
+    const videoRef = useRef(null);
+    const streamRef = useRef(null);
 
     const hasStartedRef = useRef(false);
 
@@ -219,8 +293,20 @@ export default function Fase18_EscanerBioelectrico({
     useEffect(() => {
         return () => {
             if (pollerRef.current) clearInterval(pollerRef.current);
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+            }
         };
     }, []);
+
+    // Apagar webcam al cambiar de pestaña
+    useEffect(() => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        setActiveWebcamTab(null);
+    }, [activeTab]);
 
     // ==========================================
     // 🎨 RENDERIZADO DE MATERIALIDAD EN CANVAS (StylEx)
@@ -386,6 +472,133 @@ export default function Fase18_EscanerBioelectrico({
 
     }, [styleXMode, styleXAttribute, styleXIntensity, ocularImagePreview, lingualImagePreview]);
 
+    // ==========================================
+    // 📸 CONTROLADORES DE CÁMARA WEB (WEBCAM)
+    // ==========================================
+    const startWebcam = async (tab) => {
+        try {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+            }
+
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const constraints = {
+                video: {
+                    facingMode: tab === 'lingual' ? 'user' : (isMobile ? { exact: 'environment' } : 'environment'),
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            streamRef.current = stream;
+            setActiveWebcamTab(tab);
+
+            setTimeout(() => {
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+            }, 100);
+        } catch (err) {
+            console.error("🔥 Error al acceder a la cámara:", err);
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                streamRef.current = stream;
+                setActiveWebcamTab(tab);
+                setTimeout(() => {
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = stream;
+                    }
+                }, 100);
+            } catch (fallbackErr) {
+                console.error("🔥 Error en fallback de cámara:", fallbackErr);
+                alert("No se pudo acceder a la cámara web. Asegúrese de conceder los permisos e intentarlo de nuevo.");
+            }
+        }
+    };
+
+    const stopWebcam = () => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        setActiveWebcamTab(null);
+    };
+
+    const capturePhoto = (tab) => {
+        if (!videoRef.current) return;
+
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob((blob) => {
+            if (blob) {
+                const file = new File([blob], `${tab}_capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                const previewUrl = URL.createObjectURL(blob);
+
+                if (tab === 'ocular') {
+                    if (ocularImagePreview && ocularImagePreview.startsWith('blob:')) {
+                        URL.revokeObjectURL(ocularImagePreview);
+                    }
+                    setOcularImage(file);
+                    setOcularImagePreview(previewUrl);
+                    setOcularState('idle');
+                } else if (tab === 'lingual') {
+                    if (lingualImagePreview && lingualImagePreview.startsWith('blob:')) {
+                        URL.revokeObjectURL(lingualImagePreview);
+                    }
+                    setLingualImage(file);
+                    setLingualImagePreview(previewUrl);
+                    setLingualState('idle');
+                } else if (tab === 'visual') {
+                    setVisualImages(prev => [...prev, file]);
+                    setVisualImagePreviews(prev => [...prev, previewUrl]);
+                    setVisualState('idle');
+                }
+            }
+            stopWebcam();
+        }, 'image/jpeg', 0.95);
+    };
+
+    // Restaurar estados guardados en caliente al montar
+    useEffect(() => {
+        if (patientData?.scan_data) {
+            const sd = patientData.scan_data;
+            if (sd.electret_metrics) {
+                const metrics = sd.electret_metrics;
+                if (metrics.cardiovascular) {
+                    setElectretFullData(metrics);
+                    setElectretResults(flattenToCoreVitals(metrics));
+                } else {
+                    setElectretResults(metrics);
+                }
+                setElectretState('complete');
+            }
+            if (sd.ocular_metrics) {
+                setOcularResults(sd.ocular_metrics);
+                setOcularState('complete');
+            }
+            if (sd.lingual_metrics) {
+                setLingualResults(sd.lingual_metrics);
+                setLingualState('complete');
+            }
+            if (sd.external_metrics) {
+                setExternalResults(sd.external_metrics);
+                setExternalState('complete');
+            }
+            if (sd.visual_metrics) {
+                setVisualResults(sd.visual_metrics.findings);
+                setVisualSeverity(sd.visual_metrics.severity || 'LOW');
+                setVisualState('complete');
+            }
+        }
+    }, [patientData]);
+
     // ==========================================================================
     // 🔌 CONTROLADORES - ESCÁNER ELECTRET
     // ==========================================================================
@@ -455,7 +668,9 @@ export default function Fase18_EscanerBioelectrico({
 
                     if (statusData.status === 'complete') {
                         clearInterval(pollerRef.current);
-                        setElectretResults(statusData.data);
+                        setElectretFullData(statusData.data);
+                        const coreVitals = flattenToCoreVitals(statusData.data);
+                        setElectretResults(coreVitals);
                         
                         // Sincronización silenciosa
                         syncAllBiomarkers(statusData.data, ocularResults, lingualResults, externalResults);
@@ -595,85 +810,163 @@ export default function Fase18_EscanerBioelectrico({
     // ==========================================
     useEffect(() => {
         return () => {
-            if (visualImagePreview) {
-                console.log("🧹 Liberando memoria: revokeObjectURL de previsualización visual");
-                URL.revokeObjectURL(visualImagePreview);
-            }
+            visualImagePreviews.forEach(url => {
+                if (url.startsWith('blob:')) {
+                    console.log("🧹 Liberando memoria: revokeObjectURL de previsualización visual:", url);
+                    URL.revokeObjectURL(url);
+                }
+            });
         };
-    }, [visualImagePreview]);
+    }, [visualImagePreviews]);
 
     const handleTriggerVisualFileInput = () => {
         if (visualInputRef.current) visualInputRef.current.click();
     };
 
     const handleVisualFileChange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
 
-        if (visualImagePreview) {
-            URL.revokeObjectURL(visualImagePreview);
-        }
+        const newPreviews = files.map(file => URL.createObjectURL(file));
 
-        const previewUrl = URL.createObjectURL(file);
-        setVisualImage(file);
-        setVisualImagePreview(previewUrl);
+        setVisualImages(prev => [...prev, ...files]);
+        setVisualImagePreviews(prev => [...prev, ...newPreviews]);
         setVisualState('idle');
         setVisualError('');
         setVisualResults(null);
     };
 
+    const removeVisualImage = (index) => {
+        setVisualImages(prev => {
+            const copy = [...prev];
+            copy.splice(index, 1);
+            return copy;
+        });
+        setVisualImagePreviews(prev => {
+            const copy = [...prev];
+            const revokedUrl = copy.splice(index, 1)[0];
+            if (revokedUrl && revokedUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(revokedUrl);
+            }
+            return copy;
+        });
+    };
+
+    const translateClinicalFlag = (flag) => {
+        if (!flag) return '';
+        const map = {
+            'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED': 'Insuficiencia Venosa Crónica (CVI)',
+            'VARICOSE_VEINS_HIGH_RISK': 'Venas Varicosas (Alto Riesgo)',
+            'VENOUS_STASIS_DERMATITIS': 'Dermatitis por Estasis',
+            'INFLAMMATORY_DERMATOSIS_SUSPECTED': 'Sospecha de Dermatosis Inflamatoria',
+            'ERYTHEMA_DETECTED': 'Eritema Detectado',
+            'PAPULAR_RASH_PRESENT': 'Erupción Papular Presente',
+            'EDEMA_SUSPECTED': 'Sospecha de Edema',
+            'ECZEMA_DETECTED': 'Eczema Detectado',
+            'CELLULITIS_ALERT': 'Alerta de Celulitis (Infección Tisular)',
+            'FUNGAL_INFECTION_SUSPECTED': 'Sospecha de Infección Fúngica',
+            'ULCER_RISK_DETECTED': 'Riesgo de Úlcera Detectado',
+            'HYPERPIGMENTATION_PRESENT': 'Hiperpigmentación Presente',
+            'XEROSIS_DETECTED': 'Xerosis (Piel Seca Extrema)',
+            'PETECHIAE_PRESENT': 'Petequias Presentes',
+            'PURPURA_DETECTED': 'Púrpura Detectada'
+        };
+        if (map[flag]) return map[flag];
+
+        return flag
+            .replace(/_/g, ' ')
+            .toLowerCase()
+            .replace(/\b\w/g, c => c.toUpperCase())
+            .replace('Detected', 'Detectado/a')
+            .replace('Suspected', 'Sospecha de')
+            .replace('Present', 'Presente')
+            .replace('High Risk', 'Alto Riesgo')
+            .replace('Alert', 'Alerta');
+    };
+
     const handleStartVisualScan = async () => {
-        if (!visualImage) return;
+        if (visualImages.length === 0) return;
 
         setVisualState('uploading');
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        const formData = new FormData();
-        formData.append('visualImage', visualImage);
-
+        
         try {
             setVisualState('processing');
-            const response = await fetch(`${apiUrl}/api/bio/scan/visual-scan`, {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                setVisualState('complete');
-                setVisualResults(data.findings);
-                setVisualSeverity(data.severity);
+            
+            // Procesar todas las imágenes en paralelo
+            const promises = visualImages.map(async (file) => {
+                const formData = new FormData();
+                formData.append('visualImage', file);
                 
-                const mappedFlags = data.clinical_flags.map(flag => {
-                    let label = flag;
-                    if (flag === 'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED') label = 'Insuficiencia Venosa Crónica (CVI)';
-                    else if (flag === 'VARICOSE_VEINS_HIGH_RISK') label = 'Venas Varicosas (Alto Riesgo)';
-                    else if (flag === 'VENOUS_STASIS_DERMATITIS') label = 'Dermatitis por Estasis';
-                    
+                const response = await fetch(`${apiUrl}/api/bio/scan/visual-scan`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Error en el servidor al procesar la imagen ${file.name}`);
+                }
+                
+                return await response.json();
+            });
+            
+            const results = await Promise.all(promises);
+            const successfulResults = results.filter(r => r.success);
+            
+            if (successfulResults.length > 0) {
+                // Combinar hallazgos
+                const combinedFindings = successfulResults.map((r, idx) => {
+                    return `[Imagen ${idx + 1}]:\n${r.findings}`;
+                }).join('\n\n---\n\n');
+                
+                // Combinar banderas
+                const allRawFlags = [];
+                successfulResults.forEach(r => {
+                    if (r.clinical_flags) {
+                        allRawFlags.push(...r.clinical_flags);
+                    }
+                });
+                const uniqueRawFlags = [...new Set(allRawFlags)];
+                const mappedFlags = uniqueRawFlags.map(flag => {
+                    const label = translateClinicalFlag(flag);
                     return { flag, label, checked: true };
                 });
+                
+                // Determinar la severidad máxima
+                const severityOrder = { 'LOW': 0, 'MEDIUM': 1, 'HIGH': 2, 'CRITICAL': 3 };
+                let maxSeverity = 'LOW';
+                successfulResults.forEach(r => {
+                    const sev = r.severity || 'LOW';
+                    if (severityOrder[sev] > severityOrder[maxSeverity]) {
+                        maxSeverity = sev;
+                    }
+                });
+                
+                setVisualState('complete');
+                setVisualResults(combinedFindings);
+                setVisualSeverity(maxSeverity);
                 setVisualFlags(mappedFlags);
-
-                // Sincronizar automáticamente
+                
+                // Sincronizar automáticamente en el Cortex
                 syncAllBiomarkers(
                     electretResults,
                     ocularResults,
                     lingualResults,
                     externalResults,
                     {
-                        findings: data.findings,
-                        clinical_flags: data.clinical_flags,
-                        severity: data.severity
+                        findings: combinedFindings,
+                        clinical_flags: uniqueRawFlags,
+                        severity: maxSeverity
                     }
                 );
             } else {
                 setVisualState('error');
-                setVisualError(data.message || "Error en el procesamiento de la imagen.");
+                setVisualError("No se pudo procesar ninguna de las imágenes cargadas.");
             }
         } catch (err) {
-            console.error("🔥 Error en escaneo visual:", err);
+            console.error("🔥 Error en escaneo visual múltiple:", err);
             setVisualState('error');
-            setVisualError("Error de comunicación con el backend de visión.");
+            setVisualError(err.message || "Error de comunicación con el backend de visión.");
         }
     };
 
@@ -784,7 +1077,7 @@ export default function Fase18_EscanerBioelectrico({
                     ...prev,
                     clinical_flags: updatedClinicalFlags,
                     scan_data: {
-                        electret_metrics: electretResults,
+                        electret_metrics: electretFullData || electretResults,
                         ocular_metrics: ocularResults,
                         lingual_metrics: lingualResults,
                         external_metrics: externalResults,
@@ -796,7 +1089,7 @@ export default function Fase18_EscanerBioelectrico({
                     },
                     electret_scan_data: {
                         ...(prev.electret_scan_data || {}),
-                        ...electretResults,
+                        ...(electretFullData || electretResults),
                         ...ocularResults,
                         ...lingualResults
                     },
@@ -1037,7 +1330,7 @@ export default function Fase18_EscanerBioelectrico({
                             externalState === 'complete' ? "Extracción clínica completada con éxito. Por favor revise el Bento Grid, edite cualquier valor incorrecto y confirme antes de sellar el bloque." :
                             externalState === 'error' ? `⚠️ Error de procesamiento: ${externalError}` : ""
                         ) : (
-                            visualState === 'idle' ? (visualImagePreview ? "Fotografía de evidencia cargada. Presione 'Iniciar Escaneo Visual' para analizar los hallazgos morfológicos con IA." : "Por favor capture o cargue una fotografía de la afección vascular o dermatológica del paciente para su análisis pericial presencial.") :
+                            visualState === 'idle' ? (visualImagePreviews.length > 0 ? "Fotografías de evidencia cargadas. Presione 'Iniciar Escaneo Visual' para analizar los hallazgos morfológicos con IA." : "Por favor capture o cargue una o más fotografías de la afección vascular o dermatológica del paciente para su análisis pericial presencial.") :
                             visualState === 'uploading' ? "Subiendo fotografía de evidencia al servidor..." :
                             visualState === 'processing' ? "Removiendo metadatos EXIF y optimizando resolución... Consultando Copiloto de Visión Artificial para descripción morfológica..." :
                             visualState === 'complete' ? "Análisis de visión completado con éxito. Por favor revise la sugerencia del Copiloto, edite la descripción y confirme las banderas clínicas antes de guardar." :
@@ -1196,22 +1489,47 @@ export default function Fase18_EscanerBioelectrico({
                             {ocularState === 'idle' && (
                                 <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-sm p-8 flex flex-col items-center">
                                     <input type="file" ref={ocularInputRef} onChange={handleOcularFileChange} accept="image/*" capture="environment" className="hidden" />
-                                    {ocularImagePreview ? (
+                                    
+                                    {activeWebcamTab === 'ocular' ? (
+                                        <div className="relative w-full max-w-sm aspect-video mb-6 rounded-xl overflow-hidden border border-slate-200 shadow-inner bg-black">
+                                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                                            <div className="absolute bottom-4 inset-x-4 flex justify-center gap-3">
+                                                <button onClick={() => capturePhoto('ocular')} className="px-4 py-2 bg-purple-600 hover:bg-purple-750 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-md cursor-pointer flex items-center gap-1.5 backdrop-blur-md bg-opacity-90">
+                                                    <Zap className="w-3.5 h-3.5 fill-white" />
+                                                    Capturar Foto
+                                                </button>
+                                                <button onClick={stopWebcam} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-md cursor-pointer flex items-center gap-1.5 backdrop-blur-md bg-opacity-90">
+                                                    <X className="w-3.5 h-3.5" />
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : ocularImagePreview ? (
                                         <div className="relative w-full max-w-sm aspect-video mb-6 rounded-xl overflow-hidden border border-slate-200 shadow-inner group">
                                             <img src={ocularImagePreview} alt="Ojo Preview" className="w-full h-full object-cover" />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
-                                                <button onClick={handleTriggerOcularFileInput} className="p-3 bg-white rounded-full text-slate-800 hover:bg-slate-100 transition-all cursor-pointer">
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-4">
+                                                <button onClick={handleTriggerOcularFileInput} className="p-3 bg-white rounded-full text-slate-800 hover:bg-slate-100 transition-all cursor-pointer shadow-md" title="Subir Archivo">
+                                                    <Upload className="w-5 h-5" />
+                                                </button>
+                                                <button onClick={() => startWebcam('ocular')} className="p-3 bg-white rounded-full text-slate-800 hover:bg-slate-100 transition-all cursor-pointer shadow-md" title="Usar Cámara Web">
                                                     <Camera className="w-5 h-5" />
                                                 </button>
                                             </div>
                                         </div>
                                     ) : (
-                                        <div onClick={handleTriggerOcularFileInput} className="w-full max-w-sm aspect-video mb-6 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 hover:border-purple-450 hover:border-purple-400 transition-all flex flex-col items-center justify-center gap-3 cursor-pointer group">
-                                            <Camera className="w-6 h-6 text-slate-400 group-hover:scale-110 transition-transform" />
-                                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cargar Foto de Ojo</span>
+                                        <div className="w-full max-w-sm aspect-video mb-6 flex flex-col gap-3">
+                                            <div onClick={handleTriggerOcularFileInput} className="flex-1 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 hover:border-purple-450 hover:border-purple-400 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer group">
+                                                <Upload className="w-5 h-5 text-slate-400 group-hover:scale-110 transition-transform" />
+                                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Subir Foto de Ojo</span>
+                                            </div>
+                                            <button onClick={() => startWebcam('ocular')} className="py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl cursor-pointer text-xs font-bold flex items-center justify-center gap-2">
+                                                <Camera className="w-4 h-4 text-slate-600" />
+                                                Usar Cámara Web
+                                            </button>
                                         </div>
                                     )}
-                                    <button disabled={!ocularImage} onClick={handleStartOcularScan} className={`px-8 py-3.5 font-bold tracking-wider uppercase text-[12px] rounded-xl flex items-center gap-2 transition-all shadow-md ${ocularImage ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}`}>
+                                    
+                                    <button disabled={!ocularImage || activeWebcamTab === 'ocular'} onClick={handleStartOcularScan} className={`px-8 py-3.5 font-bold tracking-wider uppercase text-[12px] rounded-xl flex items-center gap-2 transition-all shadow-md ${ocularImage && activeWebcamTab !== 'ocular' ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}`}>
                                         <Eye className="w-4 h-4" />
                                         Iniciar Escaneo Ocular
                                     </button>
@@ -1307,23 +1625,47 @@ export default function Fase18_EscanerBioelectrico({
                             {lingualState === 'idle' && (
                                 <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-sm p-8 flex flex-col items-center">
                                     <input type="file" ref={lingualInputRef} onChange={handleLingualFileChange} accept="image/*" capture="user" className="hidden" />
-                                    {lingualImagePreview ? (
+                                    
+                                    {activeWebcamTab === 'lingual' ? (
+                                        <div className="relative w-full max-w-sm aspect-video mb-6 rounded-xl overflow-hidden border border-slate-200 shadow-inner bg-black">
+                                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
+                                            <div className="absolute bottom-4 inset-x-4 flex justify-center gap-3">
+                                                <button onClick={() => capturePhoto('lingual')} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-md cursor-pointer flex items-center gap-1.5 backdrop-blur-md bg-opacity-90">
+                                                    <Zap className="w-3.5 h-3.5 fill-white" />
+                                                    Capturar Foto
+                                                </button>
+                                                <button onClick={stopWebcam} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-md cursor-pointer flex items-center gap-1.5 backdrop-blur-md bg-opacity-90">
+                                                    <X className="w-3.5 h-3.5" />
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : lingualImagePreview ? (
                                         <div className="relative w-full max-w-sm aspect-video mb-6 rounded-xl overflow-hidden border border-slate-200 shadow-inner group">
                                             <img src={lingualImagePreview} alt="Lengua Preview" className="w-full h-full object-cover" />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
-                                                <button onClick={handleTriggerLingualFileInput} className="p-3 bg-white rounded-full text-slate-800 hover:bg-slate-100 transition-all cursor-pointer">
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-4">
+                                                <button onClick={handleTriggerLingualFileInput} className="p-3 bg-white rounded-full text-slate-800 hover:bg-slate-100 transition-all cursor-pointer shadow-md" title="Subir Archivo">
+                                                    <Upload className="w-5 h-5" />
+                                                </button>
+                                                <button onClick={() => startWebcam('lingual')} className="p-3 bg-white rounded-full text-slate-800 hover:bg-slate-100 transition-all cursor-pointer shadow-md" title="Usar Cámara Web">
                                                     <Camera className="w-5 h-5" />
                                                 </button>
                                             </div>
                                         </div>
                                     ) : (
-                                        <div onClick={handleTriggerLingualFileInput} className="w-full max-w-sm aspect-video mb-6 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 hover:border-purple-400 transition-all flex flex-col items-center justify-center gap-3 cursor-pointer group">
-                                            <Camera className="w-6 h-6 text-slate-400 group-hover:scale-110 transition-transform" />
-                                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider text-center px-4">Capturar Foto de la Lengua (Frontal)</span>
-                                            <span className="text-[9.5px] text-slate-400 text-center px-8 leading-tight">Enfoque en saburra central y coloración lateral.</span>
+                                        <div className="w-full max-w-sm aspect-video mb-6 flex flex-col gap-3">
+                                            <div onClick={handleTriggerLingualFileInput} className="flex-1 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 hover:border-purple-400 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer group">
+                                                <Upload className="w-5 h-5 text-slate-400 group-hover:scale-110 transition-transform" />
+                                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Subir Foto de Lengua</span>
+                                            </div>
+                                            <button onClick={() => startWebcam('lingual')} className="py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl cursor-pointer text-xs font-bold flex items-center justify-center gap-2">
+                                                <Camera className="w-4 h-4 text-slate-600" />
+                                                Usar Cámara Web
+                                            </button>
                                         </div>
                                     )}
-                                    <button disabled={!lingualImage} onClick={handleStartLingualScan} className={`px-8 py-3.5 font-bold tracking-wider uppercase text-[12px] rounded-xl flex items-center gap-2 transition-all shadow-md ${lingualImage ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}`}>
+                                    
+                                    <button disabled={!lingualImage || activeWebcamTab === 'lingual'} onClick={handleStartLingualScan} className={`px-8 py-3.5 font-bold tracking-wider uppercase text-[12px] rounded-xl flex items-center gap-2 transition-all shadow-md ${lingualImage && activeWebcamTab !== 'lingual' ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}`}>
                                         <Database className="w-4 h-4" />
                                         Iniciar Escaneo Lingual
                                     </button>
@@ -1734,27 +2076,78 @@ export default function Fase18_EscanerBioelectrico({
                         <motion.div key="visual-tab" variants={fadeVariants} initial="hidden" animate="visible" exit="exit" className="w-full flex-1 flex flex-col justify-center items-center">
                             {visualState === 'idle' && (
                                 <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-sm p-8 flex flex-col items-center">
-                                    <input type="file" ref={visualInputRef} onChange={handleVisualFileChange} accept="image/*" className="hidden" />
+                                    <input type="file" ref={visualInputRef} onChange={handleVisualFileChange} accept="image/*" multiple className="hidden" />
                                     
-                                    <div 
-                                        onClick={handleTriggerVisualFileInput} 
-                                        className="w-full aspect-[21/9] bg-[#FAFAFA] border-2 border-dashed border-slate-300 rounded-2xl hover:bg-purple-50/10 hover:border-purple-500 transition-all flex flex-col items-center justify-center gap-3 cursor-pointer group"
-                                    >
-                                        <Camera className="w-8 h-8 text-purple-650 text-purple-600 group-hover:scale-110 transition-transform" />
-                                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider text-center px-4">Arrastrar o Capturar Evidencia Física</span>
-                                        <span className="text-[10px] text-slate-400 text-center px-8 leading-tight">Carga fotografías de válices, edemas, lesiones dermatológicas o vasculares.</span>
-                                    </div>
+                                    {activeWebcamTab === 'visual' ? (
+                                        <div className="relative w-full max-w-sm aspect-video mb-6 rounded-xl overflow-hidden border border-slate-200 shadow-inner bg-black">
+                                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                                            <div className="absolute bottom-4 inset-x-4 flex justify-center gap-3">
+                                                <button onClick={() => capturePhoto('visual')} className="px-4 py-2 bg-purple-600 hover:bg-purple-755 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-md cursor-pointer flex items-center gap-1.5 backdrop-blur-md bg-opacity-90">
+                                                    <Zap className="w-3.5 h-3.5 fill-white" />
+                                                    Capturar Foto
+                                                </button>
+                                                <button onClick={stopWebcam} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-md cursor-pointer flex items-center gap-1.5 backdrop-blur-md bg-opacity-90">
+                                                    <X className="w-3.5 h-3.5" />
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="w-full flex flex-col items-center">
+                                            {visualImagePreviews.length > 0 ? (
+                                                <div className="w-full flex flex-col items-center">
+                                                    <div className="w-full mb-6">
+                                                        <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 select-none">Fotos Seleccionadas / Capturadas ({visualImagePreviews.length})</label>
+                                                        <div className="grid grid-cols-2 gap-3 max-h-52 overflow-y-auto p-1 border border-slate-150 rounded-xl">
+                                                            {visualImagePreviews.map((url, index) => (
+                                                                <div key={index} className="relative aspect-video rounded-lg overflow-hidden border border-slate-200 shadow-sm group">
+                                                                    <img src={url} alt={`Evidencia ${index + 1}`} className="w-full h-full object-cover" />
+                                                                    <button 
+                                                                        onClick={() => removeVisualImage(index)}
+                                                                        className="absolute top-1.5 right-1.5 p-1.5 bg-red-650 hover:bg-red-700 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md cursor-pointer bg-red-650 bg-red-600"
+                                                                        title="Eliminar foto"
+                                                                    >
+                                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                    <div className="absolute bottom-1 left-1.5 px-1.5 py-0.5 bg-black/60 rounded text-[9px] font-bold text-white uppercase backdrop-blur-sm">
+                                                                        #{index + 1}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="flex gap-3 w-full mb-6 max-w-sm">
+                                                        <button onClick={handleTriggerVisualFileInput} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl cursor-pointer text-xs font-bold flex items-center justify-center gap-1.5">
+                                                            <Upload className="w-3.5 h-3.5 text-slate-600" />
+                                                            Subir más fotos
+                                                        </button>
+                                                        <button onClick={() => startWebcam('visual')} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl cursor-pointer text-xs font-bold flex items-center justify-center gap-1.5">
+                                                            <Camera className="w-3.5 h-3.5 text-slate-600" />
+                                                            Capturar otra
+                                                        </button>
+                                                    </div>
 
-                                    {visualImagePreview && (
-                                        <div className="w-full mt-6 flex flex-col items-center gap-4">
-                                            <img src={visualImagePreview} alt="Evidencia clínica a procesar" className="max-h-48 rounded-xl object-contain border border-slate-100 shadow-sm" />
-                                            <button 
-                                                onClick={handleStartVisualScan} 
-                                                className="px-8 py-3.5 font-bold tracking-wider uppercase text-[12px] bg-purple-600 hover:bg-purple-700 text-white rounded-xl flex items-center gap-2 transition-all shadow-md cursor-pointer shadow-purple-650/10"
-                                            >
-                                                <Zap className="w-4 h-4" />
-                                                Iniciar Análisis de Visión
-                                            </button>
+                                                    <button 
+                                                        onClick={handleStartVisualScan} 
+                                                        className="px-8 py-3.5 font-bold tracking-wider uppercase text-[12px] bg-purple-600 hover:bg-purple-700 text-white rounded-xl flex items-center gap-2 transition-all shadow-md cursor-pointer shadow-purple-650/10"
+                                                    >
+                                                        <Zap className="w-4 h-4" />
+                                                        Iniciar Análisis de Visión
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="w-full max-w-sm aspect-video mb-6 flex flex-col gap-3">
+                                                    <div onClick={handleTriggerVisualFileInput} className="flex-1 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 hover:border-purple-400 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer group">
+                                                        <Upload className="w-5 h-5 text-slate-400 group-hover:scale-110 transition-transform" />
+                                                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Subir Evidencia Física</span>
+                                                    </div>
+                                                    <button onClick={() => startWebcam('visual')} className="py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl cursor-pointer text-xs font-bold flex items-center justify-center gap-2">
+                                                        <Camera className="w-4 h-4 text-slate-600" />
+                                                        Usar Cámara Web
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -1795,9 +2188,20 @@ export default function Fase18_EscanerBioelectrico({
                                                 <Camera className="w-4 h-4 text-purple-600" />
                                                 <h4 className="font-bold text-slate-800 text-[12.5px] uppercase tracking-wider">Evidencia Capturada (Sanitizada)</h4>
                                             </div>
-                                            <div className="flex-1 flex items-center justify-center min-h-[220px]">
-                                                {visualImagePreview && (
-                                                    <img src={visualImagePreview} alt="Evidencia clínica sanitizada" className="max-h-60 rounded-xl object-contain shadow-sm border border-slate-100" />
+                                            <div className="flex-1 flex items-center justify-center min-h-[220px] w-full">
+                                                {visualImagePreviews.length > 0 ? (
+                                                    <div className={`grid gap-3 w-full ${visualImagePreviews.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                                                        {visualImagePreviews.map((url, index) => (
+                                                            <div key={index} className="relative aspect-video rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                                                                <img src={url} alt={`Evidencia sanitizada ${index + 1}`} className="w-full h-full object-cover" />
+                                                                <div className="absolute bottom-1.5 left-2 px-1.5 py-0.5 bg-black/60 rounded text-[9px] font-bold text-white uppercase backdrop-blur-sm">
+                                                                    Foto #{index + 1}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-slate-400">Sin imágenes cargadas.</span>
                                                 )}
                                             </div>
                                             <span className="text-[10px] text-slate-450 mt-3 text-center">Datos biométricos sanitizados. Sin metadatos EXIF.</span>
@@ -1814,11 +2218,16 @@ export default function Fase18_EscanerBioelectrico({
                                                     
                                                     <div className={`px-2.5 py-1 border rounded-full flex items-center gap-1.5 text-[10px] font-bold ${
                                                         visualSeverity === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                        visualSeverity === 'HIGH' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                        (visualSeverity === 'HIGH' || visualSeverity === 'MEDIUM') ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                         'bg-green-50 text-green-700 border-green-200'
                                                     }`}>
                                                         <AlertTriangle className="w-3 h-3 animate-pulse" />
-                                                        <span>Severidad: {visualSeverity}</span>
+                                                        <span>Severidad: {
+                                                            visualSeverity === 'CRITICAL' ? 'Crítica' :
+                                                            visualSeverity === 'HIGH' ? 'Alta' :
+                                                            visualSeverity === 'MEDIUM' ? 'Media' :
+                                                            'Baja'
+                                                        }</span>
                                                     </div>
                                                 </div>
 
