@@ -1278,23 +1278,7 @@ export default function Fase18_EscanerBioelectrico({
     return (
         <div className="flex-1 flex flex-col min-h-0 bg-[#FAFAFA] overflow-y-auto custom-scrollbar relative p-8">
             
-            {/* Banner de Priorización Adaptativa por Ruta Clínica */}
-            <div className="mb-6 p-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex items-start gap-4 select-none">
-                <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center flex-shrink-0 text-purple-600 border border-purple-100">
-                    <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                    <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-slate-800 text-[13px] uppercase tracking-wider">{routeInfo.title}</h4>
-                        <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-100 uppercase tracking-widest">
-                            {routeInfo.badge}
-                        </span>
-                    </div>
-                    <p className="text-[12px] text-slate-500 mt-1 leading-relaxed">
-                        {routeInfo.desc}
-                    </p>
-                </div>
-            </div>
+
 
             {/* Bocadillo de Chatbot Tilo Superior */}
             <div className="mb-8 flex gap-4 items-start select-none">
