@@ -16,7 +16,15 @@ export default function Fase13_PreferenciasAlimentarias({
     setIsGlobalTyping
 }) {
     const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
-    const [internalStep, setInternalStep] = useState('AVERSIONS_GATE');
+    const [internalStep, setInternalStep] = useState(() => {
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("preferencias y aversiones alimentarias"));
+        const p = patientData?.nutrition?.preferences;
+        const hasPrefs = p && (p.excluded_ingredients?.length > 0 || p.favorite_foods?.length > 0);
+        if (hasSummary || hasPrefs) {
+            return 'correct_menu';
+        }
+        return 'AVERSIONS_GATE';
+    });
     
     const isTcaRoute = patientData?.clinical_context?.goal === 'GOAL_MENTAL_HEALTH' || 
                        patientData?.clinical_context?.ai_analysis?.primaryRoute === 'GOAL_MENTAL_HEALTH';
@@ -32,6 +40,21 @@ export default function Fase13_PreferenciasAlimentarias({
     useEffect(() => {
         if (hasGreeted.current) return;
 
+        if (internalStep === 'correct_menu') {
+            hasGreeted.current = true;
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de preferencias y aversiones alimentarias?",
+                options: [
+                    { label: "✏️ Modificar alimentos favoritos", value: "MODIFY_FAVORITES" },
+                    { label: "✏️ Modificar aversiones / exclusiones", value: "MODIFY_AVERSIONS" },
+                    { label: "🔄 Limpiar preferencias", value: "CLEAR_ALL" },
+                    { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                ]
+            }]);
+            return;
+        }
+
         const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.toLowerCase().includes("preferencias alimentarias"));
         if (!alreadyGreeted) {
             hasGreeted.current = true;
@@ -44,17 +67,8 @@ export default function Fase13_PreferenciasAlimentarias({
                 content: initialMsg
             }]);
         }
-    }, [messages, isMinor, pName, setMessages]);
+    }, [messages, isMinor, pName, setMessages, internalStep]);
 
-    // Middleware de enrutamiento: callback constructor para corregir la ejecución prematura en App.jsx
-    useEffect(() => {
-        if (registerInputHandler) {
-            registerInputHandler(() => processStep);
-        }
-        return () => {
-            if (registerInputHandler) registerInputHandler(null);
-        };
-    }, [internalStep, preferences, registerInputHandler]);
 
     // Sincronización en tiempo real de preferencias con el expediente global y dashboard (TabNutrition)
     useEffect(() => {
@@ -112,8 +126,14 @@ export default function Fase13_PreferenciasAlimentarias({
     }, [preferences, setPatientData]);
 
     const processStep = async (input, label = null) => {
+        let userText = input;
+        if (input === "MODIFY_FAVORITES") userText = "✏️ Modificar alimentos favoritos";
+        if (input === "MODIFY_AVERSIONS") userText = "✏️ Modificar aversiones / exclusiones";
+        if (input === "CLEAR_ALL") userText = "🔄 Limpiar preferencias";
+        if (input === "FINISH") userText = "❌ Cancelar (Volver al resumen)";
+
         if (label !== 'button') {
-            setMessages(prev => [...prev, { role: 'user', content: input }]);
+            setMessages(prev => [...prev, { role: 'user', content: userText }]);
         }
         
         const userMsg = input;
@@ -125,7 +145,30 @@ export default function Fase13_PreferenciasAlimentarias({
             setMessages(prev => [...prev, { role: 'assistant', content: msg, options }]);
         };
 
-        if (internalStep === 'AVERSIONS_GATE') {
+        if (internalStep === 'correct_menu') {
+            if (input === "MODIFY_FAVORITES") {
+                const favoritesMsg = isMinor 
+                    ? `¿Cuáles son los alimentos favoritos o preferidos de **${pName}**?` 
+                    : "¿Cuáles son sus alimentos favoritos o preferidos?";
+                addBotMsg(favoritesMsg);
+                setInternalStep('FAVORITES_GATE');
+            } else if (input === "MODIFY_AVERSIONS") {
+                const aversionsMsg = isMinor
+                    ? `¿Cuáles son los alimentos que **NO** le gustan a **${pName}** (aversiones)?`
+                    : "¿Cuáles son los alimentos que **NO** le gustan (aversiones)?";
+                addBotMsg(aversionsMsg);
+                setInternalStep('AVERSIONS_GATE');
+            } else if (input === "CLEAR_ALL") {
+                setPreferences({ aversiones: "", favoritos: "" });
+                const initialMsg = isMinor
+                    ? `Preferencias reiniciadas.\n\n¿Cuáles son los alimentos que **NO** le gustan a **${pName}** (aversiones)? Si no tiene, por favor indique 'Ninguno'.`
+                    : "Preferencias reiniciadas.\n\n¿Cuáles son los alimentos que **NO** le gustan (aversiones)? Si no tiene, por favor indique 'Ninguno'.";
+                addBotMsg(initialMsg);
+                setInternalStep('AVERSIONS_GATE');
+            } else if (input === "FINISH") {
+                onPhaseComplete(preferences, messages);
+            }
+        } else if (internalStep === 'AVERSIONS_GATE') {
             const isBool = strictBooleanValidator(userMsg);
             if (isBool === false) {
                 const favoritesMsg = isMinor 
@@ -248,6 +291,23 @@ export default function Fase13_PreferenciasAlimentarias({
 
         setIsGlobalTyping(false);
     };
+
+    // Middleware de enrutamiento: callback constructor para corregir la ejecución prematura en App.jsx
+    const processStepRef = useRef(processStep);
+    useEffect(() => {
+        processStepRef.current = processStep;
+    });
+
+    useEffect(() => {
+        if (registerInputHandler) {
+            registerInputHandler(() => (text, label) => processStepRef.current(text, label));
+        }
+        return () => {
+            if (registerInputHandler) {
+                registerInputHandler(null);
+            }
+        };
+    }, [registerInputHandler]);
 
     const showSummary = (finalPrefs) => {
         const cleanAversions = (isTcaRoute && containsTrigger(finalPrefs.aversiones)) 

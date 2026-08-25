@@ -334,3 +334,44 @@ body {
 strong, b, .prose strong {
   font-weight: 700 !important;
 }
+
+/* --- PRINT RULES (FASE 20 RECALIBRATION) --- */
+@media print {
+  /* 1. Ocultar chat, navegación, encabezados y botones */
+  #chat-panel,
+  .chat-panel-container,
+  nav,
+  header,
+  .action-hub-container,
+  .no-print,
+  button {
+    display: none !important;
+  }
+
+  /* 2. Expandir el Dashboard al 100% de la página */
+  #dashboard-panel,
+  .dashboard-panel-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* 3. Estilos limpios para el Bento Grid sin sombras ni desbordamientos */
+  .bento-card {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  /* 4. Configuración de página */
+  @page {
+    size: letter portrait;
+    margin: 1.5cm;
+  }
+}

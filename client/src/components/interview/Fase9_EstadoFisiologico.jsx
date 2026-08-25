@@ -2,14 +2,40 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
 export default function Fase9_EstadoFisiologico({ patientData, setPatientData, onPhaseComplete, registerInputHandler, messages, setMessages, setIsGlobalTyping }) {
-    const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
+    const { patientName: pName, isMinor, isLactante, isPediatrico } = usePatientLinguistics(patientData);
 
-    const [step, setStep] = useState('preg_gate');
+    const [step, setStep] = useState(() => {
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("detalles biológicos"));
+        const p = patientData.physio;
+        const hasPhysio = p && (p.is_completed === true || p.user_declared === true || p.menstrual_status || p.is_pregnant === true || p.is_lactating === true || p.gestation_weeks > 0);
+        if (hasSummary || hasPhysio) {
+            return 'correct_menu';
+        }
+        return 'preg_gate';
+    });
     const hasGreeted = useRef(false);
 
-    // Inicialización - Mitigación de doble render en StrictMode e integración de pre-llenado de Fase 3
     useEffect(() => {
         if (hasGreeted.current) return;
+
+        if (step === 'correct_menu') {
+            hasGreeted.current = true;
+            setMessages(prev => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de estado fisiológico y reproductivo?",
+                    options: [
+                        { label: "✏️ Modificar estado de embarazo", value: "MODIFY_PREGNANCY" },
+                        { label: "✏️ Modificar estado de lactancia", value: "MODIFY_LACTATION" },
+                        { label: "✏️ Modificar ciclo menstrual", value: "MODIFY_MENSTRUAL" },
+                        { label: "🔄 Limpiar estado fisiológico", value: "CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                    ]
+                }
+            ]);
+            return;
+        }
 
         const isPregnancyRoute = 
             patientData.clinical_context?.goal === 'GOAL_PREGNANCY' || 
@@ -17,20 +43,17 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
 
         const symptomsText = (patientData.clinical_context?.secondary_symptoms || "").toLowerCase();
 
-        // 1. Rigor Clínico: Retraso/Amenorrea no es embarazo confirmado. Requiere confirmación médica.
         const isDelayDeclared = isPregnancyRoute && (
             symptomsText.includes('retraso') || 
             symptomsText.includes('amenorrea')
         );
 
-        // 2. Embarazo declarado explícitamente (se asume confirmado)
         const isPregnantDeclared = isPregnancyRoute && !isDelayDeclared && (
             symptomsText.includes('embaraz') || 
             symptomsText.includes('gesta') || 
             symptomsText.includes('semana')
         );
 
-        // 3. Lactancia declarada explícitamente
         const isLactatingDeclared = isPregnancyRoute && (
             symptomsText.includes('lacta') || 
             symptomsText.includes('pecho') || 
@@ -38,7 +61,6 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
             symptomsText.includes('bébé')
         );
 
-        // Si se solicita ignorar el pre-llenado de la Fase 3 (flujo de corrección de datos), se fuerza el flujo base.
         const shouldIgnorePrefill = patientData.physio?.ignorePhase3PreFill === true;
 
         if (!shouldIgnorePrefill && isPregnantDeclared) {
@@ -63,7 +85,6 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
             setStep('preg_weeks');
         } else if (!shouldIgnorePrefill && isDelayDeclared) {
             hasGreeted.current = true;
-            // No confirmamos embarazo aún; vamos a la compuerta de confirmación
             const welcomeMsg = isMinor
                 ? `He registrado y sellado el perfil de salud gastrointestinal de **${pName}** de manera exitosa.\n\nHe tomado nota del retraso en el ciclo menstrual de **${pName}** reportado en el motivo de consulta principal. Para asegurar el rigor clínico y legal de su expediente bajo la **NOM-004**, por favor declare: ¿cuenta **${pName}** actualmente con confirmación médica o prueba positiva de embarazo?`
                 : `He registrado y sellado su perfil de salud gastrointestinal de manera exitosa.\n\nHe tomado nota del retraso en su ciclo menstrual reportado en su motivo de consulta principal. Para asegurar el rigor clínico y legal de su expediente bajo la **NOM-004**, por favor declare: ¿cuenta actualmente con confirmación médica o prueba positiva de embarazo?`;
@@ -103,29 +124,61 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                 }
             ]);
             setStep('lact_type');
-        } else {
-            // Flujo estándar conversacional
-            const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("embarazada actualmente"));
-            if (!alreadyGreeted) {
-                hasGreeted.current = true;
-                const initialMsg = isMinor
-                    ? `He registrado y sellado el perfil de salud gastrointestinal de **${pName}** de manera exitosa.\n\nPara ajustar los requerimientos de energía: ¿se encuentra **${pName}** embarazada actualmente?`
-                    : `He registrado y sellado su perfil de salud gastrointestinal de manera exitosa.\n\nPara ajustar sus requerimientos de energía: ¿se encuentra embarazada actualmente?`;
+        } else if (isPediatrico) {
+            hasGreeted.current = true;
+            const pediatricPhysio = { is_completed: true, user_declared: false, is_pregnant: false, is_lactating: false, note: "Pediátrico en etapa de desarrollo" };
+            setPatientData(prev => ({
+                ...prev,
+                physio: pediatricPhysio
+            }));
 
-                setMessages(prev => [
-                    ...prev,
-                    {
-                        role: 'assistant',
-                        content: initialMsg,
-                        options: [
-                            { label: "✅ Sí", value: "Sí" },
-                            { label: "❌ No", value: "No" },
-                        ]
-                    }
-                ]);
+            if (isLactante) {
+                // Inyectar Pregunta Pediátrica ATM 4 (Mediadores de Desarrollo & Ablactación BLW)
+                const atm4Msg = {
+                    role: 'assistant',
+                    content: `Para evaluar los **Mediadores de Desarrollo de ${pName}** (su bebé - ATM 4): ¿Cómo se lleva a cabo la ablactación o introducción de alimentos sólidos?`,
+                    options: [
+                        { label: "🍼 Lactancia / Fórmula Exclusiva (Sin sólidos)", value: "WEANING_NOT_STARTED" },
+                        { label: "🥣 Papillas y Purés tradicionales", value: "WEANING_PAPILLAS" },
+                        { label: "🥦 Baby-Led Weaning (BLW / Sólidos autorregulados)", value: "WEANING_BLW" },
+                        { label: "⚠️ Rechazo a texturas / Dificultad en deglución", value: "WEANING_SENSITIVE" }
+                    ]
+                };
+                setMessages(prev => [...prev, atm4Msg]);
+                setStep('PEDIATRIC_ATM_4');
+            } else {
+                const pediatricMsg = {
+                    role: 'assistant',
+                    content: `✅ Estado fisiológico y desarrollo pediátrico de **${pName}** registrado y sellado con éxito.`
+                };
+                setMessages(prev => [...prev, pediatricMsg]);
+                setTimeout(() => {
+                    onPhaseComplete?.(pediatricPhysio, messages);
+                }, 800);
             }
+            return;
         }
-    }, [messages, isMinor, pName, setMessages, patientData, setPatientData]);
+
+        const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("embarazada actualmente"));
+        if (!alreadyGreeted) {
+            hasGreeted.current = true;
+            const initialMsg = isMinor
+                ? `He registrado y sellado el perfil de salud gastrointestinal de **${pName}** de manera exitosa.\n\nPara ajustar los requerimientos de energía: ¿se encuentra **${pName}** embarazada actualmente?`
+                : `He registrado y sellado su perfil de salud gastrointestinal de manera exitosa.\n\nPara ajustar sus requerimientos de energía: ¿se encuentra embarazada actualmente?`;
+
+            setMessages(prev => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content: initialMsg,
+                    options: [
+                        { label: "✅ Sí", value: "Sí" },
+                        { label: "❌ No", value: "No" },
+                    ]
+                }
+            ]);
+        }
+    }, [messages, isMinor, pName, setMessages, patientData, setPatientData, step]);
 
     // Middleware de enrutamiento: callback constructor para corregir la ejecución prematura en App.jsx
     useEffect(() => {
@@ -138,9 +191,15 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
     }, [step, registerInputHandler]);
 
     async function processStep(input, label = null) {
+        let userText = (label && label !== 'text' && label !== 'select' && label !== 'number' && label !== 'tel' && label !== 'button') ? label : input;
+        
+        if (input === "MODIFY_PREGNANCY") userText = "✏️ Modificar estado de embarazo";
+        if (input === "MODIFY_LACTATION") userText = "✏️ Modificar estado de lactancia";
+        if (input === "MODIFY_MENSTRUAL") userText = "✏️ Modificar ciclo menstrual";
+        if (input === "CLEAR_ALL") userText = "🔄 Limpiar estado fisiológico";
+        if (input === "FINISH") userText = "❌ Cancelar (Volver al resumen)";
+
         if (label !== 'button') {
-            const isGeneric = label === 'text' || label === 'select' || label === 'number' || label === 'tel';
-            const userText = (label && !isGeneric) ? label : input;
             setMessages(prev => [...prev, { role: 'user', content: userText }]);
         }
         
@@ -148,6 +207,88 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
         await new Promise(resolve => setTimeout(resolve, 800));
 
         switch (step) {
+            case 'PEDIATRIC_ATM_4': {
+                const atm4Map = {
+                    WEANING_NOT_STARTED: "Lactancia / Fórmula Exclusiva (Sin sólidos)",
+                    WEANING_PAPILLAS: "Papillas y Purés tradicionales",
+                    WEANING_BLW: "Baby-Led Weaning (BLW / Sólidos autorregulados)",
+                    WEANING_SENSITIVE: "Rechazo a texturas / Dificultad en deglución"
+                };
+                const weaningLabel = atm4Map[input] || userText;
+                const updatedPhysio = {
+                    is_completed: true,
+                    user_declared: true,
+                    is_pregnant: false,
+                    is_lactating: false,
+                    pediatric_weaning: weaningLabel
+                };
+
+                setPatientData(prev => ({
+                    ...prev,
+                    physio: updatedPhysio,
+                    pediatric_atm: { ...(prev.pediatric_atm || {}), weaning: weaningLabel }
+                }));
+
+                const finishMsg = {
+                    role: 'assistant',
+                    content: `✅ Mediadores de desarrollo y ablactación de **${pName}** (${weaningLabel}) registrados y sellados con éxito en el expediente.`
+                };
+                setMessages(prev => [...prev, finishMsg]);
+
+                setTimeout(() => {
+                    onPhaseComplete?.(updatedPhysio, messages);
+                }, 800);
+                setIsGlobalTyping(false);
+                break;
+            }
+            case 'correct_menu': {
+                if (input === "MODIFY_PREGNANCY") {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: isMinor
+                            ? `Para ajustar los requerimientos de energía: ¿se encuentra **${pName}** embarazada actualmente?`
+                            : "Para ajustar sus requerimientos de energía: ¿se encuentra embarazada actualmente?",
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" },
+                        ]
+                    }]);
+                    setStep('preg_gate');
+                } else if (input === "MODIFY_LACTATION") {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: isMinor
+                            ? `¿Actualmente se encuentra **${pName}** en periodo de lactancia?`
+                            : "¿Actualmente se encuentra en periodo de lactancia?",
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" },
+                        ]
+                    }]);
+                    setStep('lact_gate');
+                } else if (input === "MODIFY_MENSTRUAL") {
+                    askMenstrualCycle();
+                } else if (input === "CLEAR_ALL") {
+                    setPatientData(prev => ({
+                        ...prev,
+                        physio: { ignorePhase3PreFill: true }
+                    }));
+                    setStep('preg_gate');
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: isMinor
+                            ? `Historial de estado fisiológico reiniciado.\n\nPara ajustar los requerimientos de energía: ¿se encuentra **${pName}** embarazada actualmente?`
+                            : "Historial de estado fisiológico reiniciado.\n\nPara ajustar sus requerimientos de energía: ¿se encuentra embarazada actualmente?",
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" },
+                        ]
+                    }]);
+                } else if (input === "FINISH") {
+                    finishPhase(patientData);
+                }
+                break;
+            }
             case 'preg_gate': {
                 if (input === "Sí") {
                     setPatientData(prev => ({
@@ -493,7 +634,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
             const dataToPass = customData 
                 ? (customData.physio || customData) 
                 : (patientData?.physio || patientData);
-            onPhaseComplete(dataToPass);
+            onPhaseComplete({ ...dataToPass, is_completed: true });
         }
     };
 

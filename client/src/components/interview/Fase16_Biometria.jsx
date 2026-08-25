@@ -89,7 +89,7 @@ export const Fase16_Biometria = ({
                             clinical_flags: [...(prev.clinical_flags || []), ...calcState.flags]
                         }));
                     }
-                    if (onPhaseComplete) onPhaseComplete(newMessages, 'PHASE_17_VITALS_START');
+                    if (onPhaseComplete) onPhaseComplete(newMessages, 'PHASE_17_VITALS');
                     if(setGlobalIsAnalyzing) setGlobalIsAnalyzing(false);
                     setIsAnalyzing(false);
                     return;

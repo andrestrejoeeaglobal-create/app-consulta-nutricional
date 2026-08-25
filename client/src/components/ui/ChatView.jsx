@@ -183,13 +183,13 @@ const ChatView = ({
                                                         </div>
                                                         <div className={`px-4 py-2.5 backdrop-blur-sm border rounded-xl text-sm font-semibold shadow-sm flex items-center gap-3 ${
                                                             msg.aiData?.redFlag ? 'bg-red-50/90 border-red-200 text-red-700' : 
-                                                            (msg.aiData?.risk_level === 'HIGH' ? 'bg-amber-50/90 border-amber-200 text-amber-700' : 'bg-emerald-50/90 border-emerald-200 text-emerald-700')
+                                                            (msg.aiData?.risk_level === 'HIGH' || msg.aiData?.risk_level === 'MEDIUM' ? 'bg-amber-50/90 border-amber-200 text-amber-700' : 'bg-emerald-50/90 border-emerald-200 text-emerald-700')
                                                         }`}>
                                                             <span className="text-xl">⚠️</span> 
                                                             <div className="flex flex-col">
                                                                 <span className={`text-[10px] font-bold uppercase tracking-wider ${
                                                                     msg.aiData?.redFlag ? 'text-red-400' : 
-                                                                    (msg.aiData?.risk_level === 'HIGH' ? 'text-amber-400' : 'text-emerald-500')
+                                                                    (msg.aiData?.risk_level === 'HIGH' || msg.aiData?.risk_level === 'MEDIUM' ? 'text-amber-500' : 'text-emerald-500')
                                                                 }`}>Nivel de Riesgo</span>
                                                                 <span>{msg.aiData?.redFlag ? 'Crítico (Red Flag)' : riskToSpanish(msg.aiData?.risk_level || 'Base')}</span>
                                                             </div>

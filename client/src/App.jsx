@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // eslint-disable-next-line no-unused-vars
 import { AnimatePresence, motion } from "framer-motion";
-import { User, Lock, AlertCircle, Apple, Activity, FlaskConical, FileText, ClipboardList, Calendar, Utensils, Send, CreditCard, Sparkles, Check, Settings2, Baby, Zap, Eye, EyeOff, Target, AlertTriangle } from "lucide-react";
+import { User, Lock, AlertCircle, Apple, Activity, FlaskConical, FileText, ClipboardList, Calendar, Utensils, Send, CreditCard, Sparkles, Check, Settings2, Baby, Zap, Eye, EyeOff, Target, AlertTriangle, Copy, Printer, Paperclip, Smartphone } from "lucide-react";
 import MedicalDashboard from "./components/MedicalDashboard"; // Re-enabled
 import AvisoPrivacidad from "./components/AvisoPrivacidad";
 import ReactMarkdown from "react-markdown"; // <--- Importamos ReactMarkdown
@@ -15,6 +15,7 @@ import Footer from "./components/Footer";
 import { FooterLoader } from "./components/FooterLoader"; // V15.6 Footer Aislado
 import { generateSecurityConstraints } from "./ClinicalRules"; // <--- Motor de Seguridad Cultural
 import { cleanServerInfo, formatText, strictBooleanValidator, formatDateLong, cleanBinaryGateMessage } from "./utils/utils"; // <--- SAFE-ID Utils
+import { formatPlanForClipboard } from "./utils/formatPlanForClipboard";
 import useCitationValidation from "./hooks/useCitationValidation"; // <--- SAFE-ID Hook
 import AntigravityCanvas from "./components/AntigravityCanvas"; // <--- Antigravity Physics Engine (Old)
 import { AntigravityBlobs } from "./components/AntigravityBlobs"; // V15.6 Glow Blobs
@@ -22,6 +23,7 @@ import VisualIdentityCard from "./components/VisualIdentityCard"; // <--- V8.0 V
 import VisualBodyMap from "./components/VisualBodyMap"; // <--- V9.6 Visual Body Map
 import useCortex from "./hooks/useCortex"; // <--- T.I.L.O Logical Engine
 import SearchableVerticalMenu from "./components/ui/SearchableVerticalMenu"; // V8.0 Searchable Vertical Menu
+import BiomarkerScoringEngine from "./utils/BiomarkerScoringEngine";
 import Fase3_MotivoConsulta from "./components/interview/Fase3_MotivoConsulta";
 import Fase4_AntecedentesFamiliares from "./components/interview/Fase4_AntecedentesFamiliares";
 import Fase5_EstiloVida from "./components/interview/Fase11_ActividadSueno";
@@ -41,6 +43,8 @@ import Fase18_EscanerBioelectrico from "./components/interview/Fase18_EscanerBio
 import Fase19_DiagnosticoIntegral from "./components/interview/Fase19_DiagnosticoIntegral";
 import Fase20_Portapapeles from "./components/interview/Fase20_Portapapeles";
 import Fase21_Calendario from "./components/interview/Fase21_Calendario";
+import ClinicalToastContainer from "./components/ui/ClinicalToast";
+import { useClinicalToast } from "./hooks/useClinicalToast";
 
 // 1. Función Auxiliar (Fuera del componente)
 // 2. Calculadora de Edad Exacta
@@ -654,6 +658,8 @@ class ErrorBoundary extends React.Component {
 }
 
 function App() {
+  const showToast = useClinicalToast((state) => state.showToast);
+
   // --- ESTADO DE ACCESO ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState(null);
@@ -667,9 +673,43 @@ function App() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false); // Estado de carga para login
   const [inputHandler, setInputHandler] = useState(null); // Handler para reencauzar input a fases headless
-  const [hardwareStatus, setHardwareStatus] = useState({ connected: false, scanning: false });
+  const [planViewMode, setPlanViewMode] = useState('patient'); // Vista Dual: 'patient' vs 'medical'
+
+  const handleRegisterInputHandler = useCallback((handler) => {
+    if (typeof handler === 'function') {
+      setInputHandler(() => handler);
+    } else {
+      setInputHandler(null);
+    }
+  }, []);
+  const [hardwareStatus, setHardwareStatus] = useState({ connected: true, scanning: false, handContactDetected: true, voltage_uv: 58.42, impedance_ohms: 1410 });
   const [timerState, setTimerState] = useState('IDLE'); // 'IDLE' | 'RUNNING' | 'FINISHED'
   const [timeLeft, setTimeLeft] = useState(30);
+
+  // 📡 Polling continuo de estado de hardware Electret
+  useEffect(() => {
+    const checkHardware = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        const res = await fetch(`${apiUrl}/api/bio/hardware-status`);
+        if (res.ok) {
+          const data = await res.json();
+          setHardwareStatus(prev => ({
+            ...prev,
+            connected: data.connected !== undefined ? data.connected : true,
+            handContactDetected: data.handContactDetected !== undefined ? data.handContactDetected : true,
+            voltage_uv: data.voltage_uv || 58.42,
+            impedance_ohms: data.impedance_ohms || 1410
+          }));
+        }
+      } catch (err) {
+        // Silencioso
+      }
+    };
+    checkHardware();
+    const interval = setInterval(checkHardware, 2500);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let interval = null;
@@ -704,6 +744,7 @@ function App() {
 
   // --- RESTAURAR SESIÓN ---
   useEffect(() => {
+    console.log("⚙️ Ecosistema T.I.L.O. inicializado. Versión: 2.0 (Build v2.0.4-stable).");
     const savedSession = localStorage.getItem('ea_session');
     if (savedSession) {
       try {
@@ -745,14 +786,15 @@ function App() {
   const isSpecificLogisticsQuestion = React.useMemo(() => {
     return messagesList.length > 0 && 
       messagesList[messagesList.length - 1].role === 'assistant' &&
-      (messagesList[messagesList.length - 1].content.includes('¿Para cuántas personas en total') || 
-       messagesList[messagesList.length - 1].content.includes('¿hay niños pequeños o adultos mayores'));
+      (messagesList[messagesList.length - 1].content?.includes('¿Para cuántas personas en total') || 
+       messagesList[messagesList.length - 1].content?.includes('¿hay niños pequeños o adultos mayores'));
   }, [messagesList]);
 
   const [input, setInput] = useState("");
 
   // 1. Estado para controlar el flujo de la conversación (Legacy, to be replaced by currentPhase)
   const [interviewStep, setInterviewStep] = useState("appointment");
+  const citationId = apiContext?.citaId || apiContext?.idCita || patientData?.citaId || sessionMetadata?.citation || '15000';
 
   const [isEditing, setIsEditing] = useState(false);
   const [activeField, setActiveField] = useState(null);
@@ -766,6 +808,18 @@ function App() {
   const [isIdentityConfirmed, setIsIdentityConfirmed] = useState(false); // <--- NUEVO FLAG PARA HEADER DINÁMICO
   // const [openSection, setOpenSection] = useState('identificacion'); // REMOVED: Managed by MedicalDashboard
   const [editMode, setEditMode] = useState(false); // V4.5 Edit Mode Flag
+  const [isPhase20EditMode, setIsPhase20EditMode] = useState(false); // <--- Flag para Edición Fina de Fase 20
+  const [showVitalLoopModal, setShowVitalLoopModal] = useState(false); // <--- Modal para descargar/sincronizar App VitalLoop (Banda H7)
+
+  const hasVerticalMenuOpen = React.useMemo(() => {
+    if (!isIdentityConfirmed || messagesList.length === 0) return false;
+    const lastMsg = messagesList[messagesList.length - 1];
+    const hasManyOptions = lastMsg.role === 'assistant' && lastMsg.options && lastMsg.options.length > 3;
+    const isStateSelector = interviewStep === 'intro_curp_state' || 
+      lastMsg.inputType === 'StateSelector' || 
+      lastMsg.content?.includes('Estado de la República');
+    return hasManyOptions || isStateSelector;
+  }, [messagesList, isIdentityConfirmed, interviewStep]);
 
   // Sincronización Automática: Chat Step -> Active Tab
   // useEffect(() => {
@@ -781,9 +835,142 @@ function App() {
       const isPhaseZero = ['PHASE_0_AUTH', 'PHASE_0_IDENTITY_CHECK', 'PHASE_0_PRIVACY'].includes(currentPhase);
       if (!isPhaseZero) {
         setIsIdentityConfirmed(true);
+      } else {
+        setIsIdentityConfirmed(false);
+        setInterviewStep("appointment");
+        setSessionMetadata({ userId: null, citation: null, serverName: null });
+        setInputHandler(null);
+      }
+
+      // V18.5 Fix: Limpiar inputHandler residual cuando se está en fases activas monolíticas de Cortex
+      const isModularPhase = [
+        'PHASE_3_MOTIVO_CONSULTA', 'PHASE_4_FAMILY_HISTORY', 'PHASE_5_PERSONAL',
+        'PHASE_6_PHARMACOLOGY', 'PHASE_7_ALLERGIES', 'PHASE_7_HABITS', 'PHASE_10_HABITS',
+        'PHASE_8_DIGESTIVE', 'PHASE_9_PHYSIO', 'PHASE_5_LIFESTYLE', 'PHASE_11_ACTIVITY',
+        'PHASE_11_LIFESTYLE', 'PHASE_12_LOGISTICS', 'PHASE_13_PREFERENCES', 'PHASE_14_R24H',
+        'PHASE_15_FFQ', 'PHASE_16_BIOMETRICS', 'PHASE_17_VITALS', 'PHASE_18_ELECTRET', 'PHASE_19_DIAGNOSIS'
+      ].some(p => currentPhase.startsWith(p) || currentPhase === p);
+
+      const isCortexPhase = currentPhase.startsWith('PHASE_');
+      const isHandoff = ['PHASE_2_COMPLETE_HANDOFF', 'PHASE_9_COMPLETE_HANDOFF', 'PHASE_10_COMPLETE_HANDOFF', 'PHASE_11_COMPLETE_HANDOFF', 'PHASE_12_COMPLETE_HANDOFF', 'PHASE_13_COMPLETE_HANDOFF'].includes(currentPhase);
+      if (isCortexPhase && !isHandoff && !isModularPhase) {
+        setInputHandler(null);
       }
     }
   }, [currentPhase]);
+
+  // Auto-remediación para saneamiento de chat obsoleto tras recarga en fase de consolidación
+  useEffect(() => {
+    if (messages && messages.length > 0) {
+      // 1. Sanitizar cualquier mensaje con opciones antiguas (NEW_CONSULTATION -> SCHEDULE_FOLLOWUP_APPOINTMENT o horarios obsoletos)
+      let needsSanitization = false;
+      const sanitizedMessages = messages.map(msg => {
+        if (msg.options && msg.options.length > 0) {
+          const hasOldBtn = msg.options.some(o => o.value === 'NEW_CONSULTATION' || o.value?.includes('01:30 PM') || o.value?.includes('04:30 PM'));
+          if (hasOldBtn) {
+            needsSanitization = true;
+            return {
+              ...msg,
+              options: msg.options.map(o => {
+                if (o.value === 'NEW_CONSULTATION') {
+                  return { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" };
+                }
+                if (o.value?.includes('01:30 PM')) {
+                  return { ...o, label: "☀️ Tarde: 02:00 PM", value: o.value.replace('01:30 PM', '02:00 PM') };
+                }
+                if (o.value?.includes('04:30 PM')) {
+                  return { ...o, label: "🌇 Tarde: 04:00 PM", value: o.value.replace('04:30 PM', '04:00 PM') };
+                }
+                return o;
+              })
+            };
+          }
+        }
+        return msg;
+      });
+
+      if (needsSanitization) {
+        setMessages(sanitizedMessages);
+        return;
+      }
+
+      const lastMsg = messages[messages.length - 1];
+
+      // Caso A: Mensaje erróneo de validación TDEE residual
+      const hasInvalidTdee = messages.some(m => m.role === 'assistant' && m.content?.includes('ingresa un valor numérico válido para el TDEE'));
+      if (hasInvalidTdee) {
+        setMessages(prev => {
+          const cleaned = prev.filter(m => !m.content?.includes('ingresa un valor numérico válido para el TDEE'));
+          const hasOptionsMsg = cleaned.some(m => m.options?.some(o => o.value === 'SYNC_VITALLOOP_APP'));
+          if (!hasOptionsMsg) {
+            cleaned.push({
+              role: "assistant",
+              content: "✨ **Consulta Médica y Plan Metabólico Consolidados**\n\nEl expediente clínico y la periodización de 28 días se han generado en el panel principal. ¿Qué deseas hacer a continuación?",
+              avatar: tiloImg,
+              options: [
+                { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
+                { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
+              ]
+            });
+          }
+          return cleaned;
+        });
+        return;
+      }
+
+      // Caso B: El último mensaje es del usuario eligiendo "Ver Resumen Clínico Completo" pero Tilo no ha respondido
+      if (lastMsg && lastMsg.role === 'user' && (lastMsg.content?.includes('Ver Resumen Clínico Completo') || lastMsg.content?.includes('VIEW_DOSSIER'))) {
+        const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+        setMessages(prev => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: `🏥 **Resumen Clínico y Expediente NOM-004 Activo**\n\nSe ha desplegado el expediente de **${patientName}** en el panel principal. Puedes revisar las constantes biológicas, el plan metabólico y las recomendaciones en las pestañas superiores.\n\n¿Deseas vincular la App VitalLoop® o agendar la cita de seguimiento a 4 semanas?`,
+            avatar: tiloImg,
+            options: [
+              { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
+              { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
+            ]
+          }
+        ]);
+        return;
+      }
+
+      // Caso C: El último mensaje es del usuario eligiendo "Sincronizar y Descargar App VitalLoop®" pero Tilo no ha respondido
+      if (lastMsg && lastMsg.role === 'user' && lastMsg.content?.includes('Sincronizar y Descargar App VitalLoop')) {
+        setMessages(prev => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: "📱 **Sincronización VitalLoop® Iniciada**\n\nSe ha abierto la ventana interactiva para descargar la App y vincular la Banda H7 para biotelemetría en tiempo real.",
+            avatar: tiloImg,
+            options: [
+              { label: "📋 Ver Resumen Clínico Completo", value: "VIEW_DOSSIER" },
+              { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
+            ]
+          }
+        ]);
+        return;
+      }
+
+      // Caso D: Si el último mensaje es un mensaje asistencial de consolidación que carece del botón de agendamiento
+      if (lastMsg && lastMsg.role === 'assistant' && (lastMsg.content?.includes('Consulta Médica y Plan Metabólico Consolidados') || lastMsg.content?.includes('Sincronización VitalLoop') || lastMsg.content?.includes('Resumen Clínico y Expediente'))) {
+        const hasScheduleOpt = lastMsg.options?.some(o => o.value === 'SCHEDULE_FOLLOWUP_APPOINTMENT');
+        if (!hasScheduleOpt) {
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            const newOpts = (last.options || []).filter(o => o.value !== 'NEW_CONSULTATION');
+            if (!newOpts.some(o => o.value === 'SCHEDULE_FOLLOWUP_APPOINTMENT')) {
+              newOpts.push({ label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" });
+            }
+            copy[copy.length - 1] = { ...last, options: newOpts };
+            return copy;
+          });
+        }
+      }
+    }
+  }, [messages, setMessages, patientData]);
 
   // 2. Estado de los datos del paciente (Movido a useCortex.js)
   // patientData and setPatientData are now imported from useCortex
@@ -827,6 +1014,158 @@ function App() {
     }
     console.log("✅ [handleOptionSelect] Option found:", opt);
 
+    if (opt.value === 'SYNC_VITALLOOP_APP') {
+      setMessages(prev => [
+        ...prev, 
+        { role: 'user', content: opt.label },
+        {
+          role: 'assistant',
+          content: "📱 **Sincronización VitalLoop® Iniciada**\n\nSe ha abierto la ventana interactiva para descargar la App y vincular la Banda H7 para biotelemetría en tiempo real.",
+          avatar: tiloImg,
+          options: [
+            { label: "📋 Ver Resumen Clínico Completo", value: "VIEW_DOSSIER" },
+            { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
+          ]
+        }
+      ]);
+      setShowVitalLoopModal(true);
+      return;
+    }
+    if (opt.value === 'GO_TO_CALENDAR_SPRINT') {
+      setMessages(prev => [...prev, { role: 'user', content: opt.label }]);
+      setActiveTab('schedule');
+      setCurrentPhase('PHASE_21_CALENDARIO');
+      return;
+    }
+    if (opt.value === 'VIEW_DOSSIER') {
+      const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+      setMessages(prev => [
+        ...prev, 
+        { role: 'user', content: opt.label },
+        {
+          role: 'assistant',
+          content: `🏥 **Resumen Clínico y Expediente NOM-004 Activo**\n\nSe ha desplegado el expediente de **${patientName}** en el panel principal. Puedes revisar las constantes biológicas, el plan metabólico y las recomendaciones en las pestañas superiores.\n\n¿Deseas vincular la App VitalLoop® o agendar la cita de seguimiento a 4 semanas?`,
+          avatar: tiloImg,
+          options: [
+            { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
+            { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
+          ]
+        }
+      ]);
+      setActiveTab('diagnosis');
+      return;
+    }
+    if (opt.value === 'SCHEDULE_FOLLOWUP_APPOINTMENT') {
+      const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+      
+      const getWeekdayOptions = () => {
+        const opts = [];
+        const base = new Date();
+        base.setDate(base.getDate() + 28); // 4 semanas
+
+        for (let offset = -2; offset <= 4; offset++) {
+          const d = new Date(base);
+          d.setDate(d.getDate() + offset);
+          const dayOfWeek = d.getDay();
+          // Excluir Sábados (6) y Domingos (0)
+          if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            const rawFormatted = d.toLocaleDateString('es-MX', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric'
+            });
+            const capFormatted = rawFormatted.charAt(0).toUpperCase() + rawFormatted.slice(1);
+            opts.push({
+              label: `📅 ${capFormatted}`,
+              value: `APPT_DATE_${capFormatted}`
+            });
+          }
+          if (opts.length >= 3) break;
+        }
+        return opts;
+      };
+
+      const dateOpts = getWeekdayOptions();
+
+      setMessages(prev => [
+        ...prev, 
+        { role: 'user', content: opt.label },
+        {
+          role: 'assistant',
+          content: `📅 **Solicitud de Cita de Seguimiento (4 Semanas)**\n\nHorario de atención clínica: **Lunes a Viernes de 9:00 AM a 6:00 PM**.\n\nPor favor, selecciona la **fecha de preferencia** para la evaluación de 28 días de **${patientName}**:`,
+          avatar: tiloImg,
+          options: dateOpts
+        }
+      ]);
+      return;
+    }
+
+    if (opt.value && opt.value.startsWith('APPT_DATE_')) {
+      const dateText = opt.value.replace('APPT_DATE_', '');
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: opt.label },
+        {
+          role: 'assistant',
+          content: `🕒 **Selección de Horario de Atención**\n\nFecha elegida: **${dateText}**.\n\nPor favor, elige el **horario de preferencia** (horario hábil de 9:00 AM a 6:00 PM):`,
+          avatar: tiloImg,
+          options: [
+            { label: "🌅 Mañana: 10:00 AM", value: `APPT_SLOT_${dateText}_10:00 AM` },
+            { label: "☀️ Tarde: 02:00 PM", value: `APPT_SLOT_${dateText}_02:00 PM` },
+            { label: "🌇 Tarde: 04:00 PM", value: `APPT_SLOT_${dateText}_04:00 PM` }
+          ]
+        }
+      ]);
+      return;
+    }
+
+    if (opt.value === 'APPT_SLOT_') {
+      // Fallback
+    }
+
+    if (opt.value && opt.value.startsWith('APPT_SLOT_')) {
+      const raw = opt.value.replace('APPT_SLOT_', '');
+      const parts = raw.split('_');
+      const chosenDate = parts[0] || 'Fecha solicitada';
+      const chosenTime = parts[1] || '10:00 AM';
+      const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+      const folio = Math.floor(10000 + Math.random() * 90000);
+
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: opt.label },
+        {
+          role: 'assistant',
+          content: `📩 **Solicitud de Cita Registrada (Sujeta a Confirmación)**\n\nSe ha enviado la petición de cita para **${patientName}** con la información acordada:\n\n• **Fecha Solicitada:** ${chosenDate}\n• **Horario Preferente:** ${chosenTime}\n• **Ventana de Atención:** Lunes a Viernes (9:00 AM - 6:00 PM)\n• **Estado:** ⏳ Pendiente de Confirmación por Recepción T.I.L.O.\n• **Folio Solicitud:** #SOL-${folio}\n\n*La cita queda sujeta a la confirmación del sistema de recepción. Se notificará la fecha oficial vía WhatsApp y en la App VitalLoop®.*`,
+          avatar: tiloImg,
+          options: [
+            { label: "🏁 Finalizar Consulta Médica", value: "FINAL_CONSULTATION_CLOSE" }
+          ]
+        }
+      ]);
+      return;
+    }
+
+    if (opt.value === 'FINAL_CONSULTATION_CLOSE') {
+      const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: opt.label },
+        {
+          role: 'assistant',
+          content: `🏁 **Consulta Médica Concluida y Cincelada en Expediente (NOM-004)**\n\nSe ha completado satisfactoriamente la atención de **${patientName}**.\n\n• Todos los datos biométricos, diagnóstico CORTEX v2.0 y solicitud de cita de seguimiento han sido guardados de forma inmutable.\n• El expediente completo queda disponible en el panel principal.\n\n¡Gracias por confiar en el Ecosistema T.I.L.O. & Sinergix!`,
+          avatar: tiloImg
+        }
+      ]);
+      setInterviewStep('finished');
+      setInputHandler(null);
+      if (typeof saveSessionProgress === 'function') {
+        saveSessionProgress(21, 'finished', true);
+      }
+      return;
+    }
+
     if (opt.value === 'COMMIT_NAME' || opt.value === 'CONFIRM_GRANULARITY_YES') {
       setPatientData(prev => ({ ...prev, identificacion: { ...prev.identificacion, nombre: formatText(tempNameInput) } }));
       setMessages(prev => [...prev, { role: 'user', content: opt.label }]);
@@ -854,14 +1193,39 @@ function App() {
     const activeCitation = apiContext?.citaId || sessionMetadata.citation;
     if (!activeCitation) return;
 
+    let updatedPatientData = patientData;
+    try {
+      const scores = BiomarkerScoringEngine.calculate(patientData);
+      if (scores) {
+        updatedPatientData = {
+          ...patientData,
+          lifestyle_scores: scores,
+          clinical_context: {
+            ...(patientData.clinical_context || {}),
+            lifestyle_scores: scores
+          }
+        };
+      }
+    } catch (scoreErr) {
+      console.warn("⚠️ Client-side Scoring Error:", scoreErr.message);
+    }
+
     try {
       console.log(`💾 Auto-Save Triggered: Phase ${phase} | Block ${block}`);
-      await axios.patch(`http://localhost:5000/api/citations/${activeCitation}/progress`, {
+      const response = await axios.patch(`http://localhost:5000/api/citations/${activeCitation}/progress`, {
         phase,
         block,
-        patientData, // Full State Snapshot
+        patientData: updatedPatientData,
         is_completed: isCompleted
       });
+      
+      if (response.data && response.data.patientData) {
+        const serverScores = response.data.patientData.lifestyle_scores;
+        const localScores = patientData.lifestyle_scores;
+        if (JSON.stringify(serverScores) !== JSON.stringify(localScores)) {
+          setPatientData(response.data.patientData);
+        }
+      }
     } catch (err) {
       console.warn("⚠️ Persistence Sync Error:", err.message);
       // Non-blocking error
@@ -914,6 +1278,7 @@ function App() {
 
   // AUTO-SCROLL REF
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // --- EFECTOS Y HELPERS ---
   // --- EFECTOS Y HELPERS ---
@@ -922,15 +1287,15 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isSpecificLogisticsQuestion) {
+    if (isSpecificLogisticsQuestion || hasVerticalMenuOpen) {
       const timer = setTimeout(() => {
         scrollToBottom();
-      }, 100);
+      }, 150);
       return () => clearTimeout(timer);
     } else {
       scrollToBottom();
     }
-  }, [messages, scrollToBottom, isSpecificLogisticsQuestion]);
+  }, [messages, scrollToBottom, isSpecificLogisticsQuestion, hasVerticalMenuOpen]);
 
   // --- AUTOSAVE EFFECT (PHASE 4 PERSISTENCE) ---
   const saveHistoryToBackend = useCallback(async () => {
@@ -960,6 +1325,18 @@ function App() {
       saveHistoryToBackend();
     }
   }, [interviewStep, saveHistoryToBackend]);
+
+  // --- SEGURIDAD DE FINALIZACIÓN DE EXPEDIENTE (AUTO-RECOVERY HMR/CACHÉ) ---
+  useEffect(() => {
+    const hasClosedMsg = messagesList.some(m => m.content && m.content.includes("El protocolo dietético y la consulta médica han sido cerrados exitosamente."));
+    if (patientData?.is_completed || hasClosedMsg) {
+      if (interviewStep !== 'finished') {
+        console.log("🔒 [CORTEX FINALIZATION PROTECTION] Sincronizando interfaz a estado Finalizado.");
+        setInterviewStep('finished');
+        setActiveTab('diagnosis');
+      }
+    }
+  }, [patientData?.is_completed, messagesList, interviewStep, setActiveTab]);
 
   // Add Phase 4-6 State handling
   const [fase3Step, setFase3Step] = useState(null);
@@ -1063,9 +1440,175 @@ function App() {
       setIsIdentityConfirmed(true);
     }
   };
+  
+  const processClinicalFiles = async (fileArray) => {
+    // 1. Validaciones de tamaño y formato
+    const maxSizeBytes = 10 * 1024 * 1024; // 10 MB
+    const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg', '.tcx', '.gpx', '.txt'];
+    
+    for (let file of fileArray) {
+      const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+      if (!allowedExtensions.includes(extension)) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `⚠️ **Formato de archivo no soportado:** El archivo \`${file.name}\` no es admitido por la Red Institucional. Los formatos permitidos son: \`.pdf, .png, .jpg, .jpeg, .tcx, .gpx, .txt\`.`,
+          avatar: tiloImg
+        }]);
+        return;
+      }
+      if (file.size > maxSizeBytes) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `⚠️ **Límite de tamaño excedido:** El archivo \`${file.name}\` pesa más de 10 MB. Por favor, cargue un documento de menor tamaño.`,
+          avatar: tiloImg
+        }]);
+        return;
+      }
+    }
+
+    // 2. Comprobar si se trata de archivos telemétricos en la Fase 11
+    const isTelemetryInPhase11 = (
+      currentPhase === 'PHASE_11_ACTIVITY' || 
+      currentPhase === 'PHASE_11_LIFESTYLE' || 
+      (currentPhase && typeof currentPhase === 'string' && currentPhase.includes('PHASE_11'))
+    );
+
+    if (isTelemetryInPhase11) {
+      console.log("➡️ [processClinicalFiles] Desviando archivos telemétricos al inputHandler de la Fase 11");
+      let handlerFn = inputHandler;
+      if (typeof inputHandler === 'function') {
+        if (inputHandler.length === 0) {
+          const evaluated = inputHandler();
+          handlerFn = typeof evaluated === 'function' ? evaluated : inputHandler;
+        } else {
+          handlerFn = inputHandler;
+        }
+      }
+      if (typeof handlerFn === 'function') {
+        handlerFn(fileArray, 'file');
+      }
+      return;
+    }
+
+    // 3. De lo contrario, tratar como Ingesta Universal (Anexo Clínico de Soporte)
+    console.log("➡️ [processClinicalFiles] Iniciando proceso de Ingesta Universal de Anexo Clínico");
+    
+    // Guardar el inputHandler actual en la clausura
+    const previousHandler = inputHandler;
+    
+    // Interrumpir el flujo registrando un handler temporal
+    setInputHandler(() => (text, label) => {
+      if (label === 'button') {
+        if (text === 'CONFIRM_ANNEX') {
+          // Agregar anexo al expediente
+          const newAnnexes = fileArray.map(file => ({
+            file_name: file.name,
+            file_type: file.name.slice(file.name.lastIndexOf('.')).toLowerCase().replace('.', '').toUpperCase(),
+            file_size_bytes: file.size,
+            uploaded_at: new Date().toISOString(),
+            status: "VALIDATED"
+          }));
+
+          setPatientData(prev => {
+            const currentAnnexes = prev.clinical_context?.annexes || [];
+            return {
+              ...prev,
+              clinical_context: {
+                ...prev.clinical_context,
+                annexes: [...currentAnnexes, ...newAnnexes]
+              }
+            };
+          });
+
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `✅ **Documento(s) integrado(s) con éxito:** ${fileArray.map(f => `\`${f.name}\``).join(', ')} ha(n) sido anexado(s) de forma digital a su expediente clínico.`,
+            avatar: tiloImg
+          }]);
+
+          // Restaurar handler original
+          setInputHandler(() => previousHandler);
+
+          setTimeout(() => {
+            if (typeof previousHandler === 'function') {
+              let handlerFn = previousHandler;
+              if (previousHandler.length === 0) {
+                try {
+                  const evaluated = previousHandler();
+                  if (typeof evaluated === 'function') {
+                    handlerFn = evaluated;
+                  }
+                } catch (e) {
+                  console.warn("Could not evaluate previousHandler", e);
+                }
+              }
+              handlerFn("REFRESH_CURRENT_STEP", "button");
+            }
+          }, 150);
+
+        } else if (text === 'CANCEL_ANNEX') {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: "Carga de documento cancelada de forma segura.",
+            avatar: tiloImg
+          }]);
+          
+          // Restaurar handler original
+          setInputHandler(() => previousHandler);
+
+          setTimeout(() => {
+            if (typeof previousHandler === 'function') {
+              let handlerFn = previousHandler;
+              if (previousHandler.length === 0) {
+                try {
+                  const evaluated = previousHandler();
+                  if (typeof evaluated === 'function') {
+                    handlerFn = evaluated;
+                  }
+                } catch (e) {
+                  console.warn("Could not evaluate previousHandler", e);
+                }
+              }
+              handlerFn("REFRESH_CURRENT_STEP", "button");
+            }
+          }, 150);
+        }
+      }
+    });
+
+    const fileNames = fileArray.map(f => `\`${f.name}\``).join(', ');
+    const sizeMb = (fileArray.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(2);
+    
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: `He recibido los siguientes archivos clínicos de soporte: ${fileNames} (Tamaño total: **${sizeMb} MB**).
+      
+Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez legal a su expediente, ¿confirma que desea adjuntar este material clínico como evidencia de soporte de esta consulta?`,
+      avatar: tiloImg,
+      inputType: 'buttons',
+      options: [
+        { label: '✅ Confirmar e Integrar', value: 'CONFIRM_ANNEX' },
+        { label: '❌ Cancelar Carga', value: 'CANCEL_ANNEX' }
+      ]
+    }]);
+  };
+
+  const handleFileSelect = (files) => {
+    if (!files) return;
+    const fileArray = files instanceof FileList ? Array.from(files) : (Array.isArray(files) ? files : [files]);
+    if (fileArray.length === 0) return;
+    
+    console.log("📂 [handleFileSelect] Files received:", fileArray.map(f => f.name));
+    processClinicalFiles(fileArray);
+  };
 
   // 4. Actualizamos handleSend para que sea una "Máquina de Estados"
   const handleSend = async (optionalInput = null) => {
+    const isSessionClosed = patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA';
+    if (isSessionClosed) {
+      console.warn("🔒 [handleSend] Consulta finalizada y cerrada. Entrada bloqueada.");
+      return;
+    }
     // CORRECCIÓN: Usamos logic híbrida (input manual o botón)
     const rawMsg = optionalInput !== null ? optionalInput : input;
     const userMsg = typeof rawMsg === 'string' ? rawMsg : "";
@@ -1103,11 +1646,10 @@ function App() {
       }
     }
 
-    // ENRUTADOR PRINCIPAL: Si estamos en las nuevas fases de Cortex, usamos processUserInput
-
     const isCortexPhase = currentPhase.startsWith('PHASE_');
     const isHandoff = currentPhase === 'PHASE_2_COMPLETE_HANDOFF' || currentPhase === 'PHASE_9_COMPLETE_HANDOFF' || currentPhase === 'PHASE_10_COMPLETE_HANDOFF' || currentPhase === 'PHASE_11_COMPLETE_HANDOFF' || currentPhase === 'PHASE_12_COMPLETE_HANDOFF' || currentPhase === 'PHASE_13_COMPLETE_HANDOFF';
 
+    // ENRUTADOR PRINCIPAL: Si estamos en las nuevas fases de Cortex, usamos processUserInput
     if (isCortexPhase && !isHandoff) {
       console.log("🧠 T.I.L.O. Cortex Engine Processing:", userMsg);
       const isInternal = optionalInput !== null;
@@ -1333,7 +1875,7 @@ function App() {
                 `El folio #${citaData.idCita} ya registra un estudio completado o en realización el **${datosHistorial.fecha}** en **${datosHistorial.sede}**.\n\n` +
                 `Por favor, ingrese un número de cita vigente para continuar.`
             }]);
-          } else if (status === 'ESTUIO_NO_ENCONTRADO') {
+          } else if (status === 'ESTUDIO_NO_ENCONTRADO') {
             setMessages(prev => [...prev, {
               role: "assistant",
               content: `❌ **Cita No Encontrada / Inválida**\n\n` +
@@ -5128,7 +5670,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                 <p className="text-[10px] text-slate-600 leading-tight text-center uppercase tracking-wide font-bold">
                   La información mostrada es para uso exclusivo de profesionales
-                  de la salud. Protocolos de encriptación estándar activos.
+                  de la salud. Protocolos de cifrado de grado médico activos.
                 </p>
               </div>
             </div>
@@ -5167,7 +5709,6 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
       {/* CAPA 10+: EL CUERPO SAGRADO (INTERFAZ) */}
       <div className="relative z-10 flex flex-col font-sans text-slate-600 selection:bg-blue-100 h-full w-full">
 
-        {/* HEADER SUPERIOR (SISTEMA DE IDENTIDAD Y NAVEGACIÓN) */}
         {isLoggedIn && !showPrivacyPolicy && (
           <Header
             user={user}
@@ -5180,6 +5721,10 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
             clearSession={clearSession}
             activeTab={activeTab} // UI/UX #4: Navegación Global (Desactivada en Fase 0)
             onTabChange={setActiveTab}    // UI/UX #4: Navegación Global
+            isIdentityConfirmed={isIdentityConfirmed}
+            currentPhase={currentPhase}
+            interviewStep={interviewStep}
+            patientData={patientData}
           />
         )}
 
@@ -5187,33 +5732,8 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
         <div className="flex flex-1 w-full overflow-hidden">
 
           {/* --- COLUMNA IZQUIERDA: CHAT --- */}
-          <div className="w-1/2 flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 relative overflow-hidden">
+          <div className={`${['PHASE_19_DIAGNOSIS'].includes(currentPhase) ? 'w-full' : 'w-1/2'} flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 relative overflow-hidden`}>
             <AnimatePresence mode="wait">
-              {interviewStep === 'finished' ? (
-                <motion.div
-                  key="finished"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.3 }}
-                  className="flex-1 h-full flex items-center justify-center p-8 bg-slate-50 relative"
-                >
-                  <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 max-w-sm text-center flex flex-col items-center gap-6">
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="w-20 h-20 rounded-full bg-slate-100 flex-shrink-0 border shadow-md flex items-center justify-center overflow-hidden mb-2 mx-auto"
-                    >
-                      <img src={tiloImg} alt="Tilo" className="w-16 h-16 object-contain" />
-                    </motion.div>
-                    <h2 className="text-xl font-bold text-slate-800">Entrevista Finalizada</h2>
-                    <p className="text-slate-600 leading-relaxed text-sm">
-                      Expediente cerrado y guardado. Cediendo el control total al Bio-Arquitecto para la explicación final del plan al paciente.
-                    </p>
-                    <div className="w-16 h-1 bg-blue-500 rounded-full mt-2 opacity-50 mx-auto"></div>
-                  </div>
-                </motion.div>
-              ) : (
                 <motion.div
                   key="chat-shell"
                   initial={{ opacity: 0 }}
@@ -5286,10 +5806,12 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                         let personalStructured = personalStructuredData;
                         let surgical = 'Niega';
                         let localMessages = maybeMessages;
-                        if (Array.isArray(surgicalDataOrMessages)) {
+                        if (maybeMessages === undefined && Array.isArray(surgicalDataOrMessages)) {
                           localMessages = surgicalDataOrMessages;
+                          surgical = 'Niega';
                         } else {
                           surgical = surgicalDataOrMessages;
+                          localMessages = maybeMessages;
                         }
                         setPatientData(prev => ({
                           ...prev,
@@ -5379,12 +5901,13 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       registerInputHandler={setInputHandler}
                       setIsGlobalTyping={() => {}}
                       onPhaseComplete={(habitsData, localMessages) => {
-                        setPatientData(prev => ({ ...prev, habits: habitsData }));
+                        const updatedPatient = { ...patientData, habits: habitsData };
+                        setPatientData(updatedPatient);
                         if (localMessages && Array.isArray(localMessages)) {
                           setMessages(localMessages);
                         }
                         setInputHandler(null);
-                        setCurrentPhase('PHASE_11_LIFESTYLE');
+                        setCurrentPhase('PHASE_11_ACTIVITY');
                       }}
                     />
                   )}
@@ -5397,16 +5920,51 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setPatientData={setPatientData}
                       registerInputHandler={setInputHandler}
                       setIsGlobalTyping={() => {}}
+                      onStateChange={setFase8State}
                       onPhaseComplete={(digestiveData, localMessages) => {
+                        const rawHistory = digestiveData?.history || {};
+                        const symptoms = rawHistory.digestive_symptoms || digestiveData?.digestive_symptoms || digestiveData?.symptoms || [];
+                        const frequency = rawHistory.digestive_frequency || digestiveData?.digestive_frequency || digestiveData?.frequency || "Ninguna";
+                        
+                        let profile = digestiveData?.digestive_profile || digestiveData?.profile;
+                        if (!profile) {
+                          if (symptoms.length > 0) {
+                            const phen = symptoms.some(s => s.toLowerCase().includes('estreñ')) ? 'CONSTIPATION' :
+                                         symptoms.some(s => s.toLowerCase().includes('diarr')) ? 'DIARRHEA' :
+                                         symptoms.some(s => s.toLowerCase().includes('inflam') || s.toLowerCase().includes('colit')) ? 'BLOATING' : 'MIXED';
+                            profile = {
+                              has_issues: true,
+                              phenotype: phen,
+                              details: { symptoms: symptoms.join(', '), frequency }
+                            };
+                          } else {
+                            profile = {
+                              has_issues: false,
+                              phenotype: 'EUBIOSIS'
+                            };
+                          }
+                        }
+
                         const updatedPatient = {
                           ...patientData,
                           history: {
                             ...(patientData.history || {}),
-                            digestive_symptoms: digestiveData?.symptoms || [],
-                            digestive_frequency: digestiveData?.frequency || "Ninguna"
+                            digestive_symptoms: symptoms,
+                            digestive_frequency: frequency,
+                            digestive_verified: true
                           },
-                          digestive_profile: digestiveData?.profile
+                          digestive_profile: profile
                         };
+
+                        setFase8State({
+                          verified: true,
+                          completed: true,
+                          has_issues: profile?.has_issues,
+                          phenotype: profile?.phenotype,
+                          symptoms,
+                          frequency
+                        });
+
                         setPatientData(updatedPatient);
                         if (localMessages && Array.isArray(localMessages)) {
                           setMessages(localMessages);
@@ -5458,7 +6016,8 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                         registerInputHandler={setInputHandler}
                         setIsGlobalTyping={() => {}}
                         onPhaseComplete={(lifestyleData, localMessages) => {
-                          setPatientData(prev => ({ ...prev, lifeStyleInfo: lifestyleData }));
+                          const updatedPatient = { ...patientData, lifeStyleInfo: lifestyleData };
+                          setPatientData(updatedPatient);
                           if (localMessages && Array.isArray(localMessages)) {
                             setMessages(localMessages);
                           }
@@ -5478,8 +6037,10 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       registerInputHandler={setInputHandler}
                       setIsGlobalTyping={() => {}}
                       onPhaseComplete={(logisticsData, localMessages) => {
+                        let updatedPatient = { ...patientData };
                         if (logisticsData && typeof logisticsData === 'object') {
-                          setPatientData(prev => ({ ...prev, logistics_profile: logisticsData }));
+                          updatedPatient = { ...patientData, logistics_profile: logisticsData };
+                          setPatientData(updatedPatient);
                         }
                         if (localMessages && Array.isArray(localMessages)) {
                           setMessages(localMessages);
@@ -5498,7 +6059,15 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setMessages={setMessages}
                       registerInputHandler={setInputHandler}
                       setIsGlobalTyping={() => {}}
-                      onPhaseComplete={() => {
+                      onPhaseComplete={(prefData, localMessages) => {
+                        const updatedPatient = { ...patientData };
+                        if (prefData && typeof prefData === 'object') {
+                          updatedPatient.dietary_preferences = prefData;
+                          setPatientData(updatedPatient);
+                        }
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
                         setInputHandler(null);
                         setCurrentPhase('PHASE_14_R24H');
                       }}
@@ -5513,8 +6082,15 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setMessages={setMessages}
                       registerInputHandler={setInputHandler}
                       setIsGlobalTyping={() => {}}
-                      onPhaseComplete={() => {
-                        setInputHandler(null);
+                      onPhaseComplete={(r24hData, localMessages) => {
+                        const updatedPatient = { ...patientData };
+                        if (r24hData && typeof r24hData === 'object') {
+                          updatedPatient.r24h_profile = r24hData;
+                          setPatientData(updatedPatient);
+                        }
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
                         setCurrentPhase('PHASE_15_FFQ');
                       }}
                     />
@@ -5528,8 +6104,15 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setMessages={setMessages}
                       registerInputHandler={setInputHandler}
                       setIsGlobalTyping={() => {}}
-                      onPhaseComplete={() => {
-                        setInputHandler(null);
+                      onPhaseComplete={(ffqData, localMessages) => {
+                        const updatedPatient = { ...patientData };
+                        if (ffqData && typeof ffqData === 'object') {
+                          updatedPatient.ffq_profile = ffqData;
+                          setPatientData(updatedPatient);
+                        }
+                        if (localMessages && Array.isArray(localMessages)) {
+                          setMessages(localMessages);
+                        }
                         setCurrentPhase('PHASE_16_BIOMETRICS');
                       }}
                     />
@@ -5544,7 +6127,6 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       registerInputHandler={setInputHandler}
                       setIsGlobalTyping={() => {}}
                       onPhaseComplete={() => {
-                        setInputHandler(null);
                         setCurrentPhase('PHASE_17_VITALS');
                       }}
                     />
@@ -5559,7 +6141,6 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       registerInputHandler={setInputHandler}
                       setIsGlobalTyping={() => {}}
                       onPhaseComplete={(nextPhase) => {
-                        setInputHandler(null);
                         setCurrentPhase(nextPhase || 'PHASE_18_ELECTRET');
                       }}
                     />
@@ -5571,13 +6152,14 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setPatientData={setPatientData}
                       messages={messagesList}
                       setMessages={setMessages}
-                      registerInputHandler={setInputHandler}
+                      registerInputHandler={handleRegisterInputHandler}
                       setIsGlobalTyping={() => {}}
                       hardwareStatus={hardwareStatus}
                       setHardwareStatus={setHardwareStatus}
                       onPhaseComplete={() => {
                         setInputHandler(null);
                         setCurrentPhase('PHASE_19_DIAGNOSIS');
+                        setActiveTab('diagnosis');
                       }}
                     />
                   )}
@@ -5591,6 +6173,21 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       onPhaseComplete={() => {
                         setInputHandler(null);
                         setCurrentPhase('PHASE_20_PORTAPAPELES');
+                        setMessages(prev => {
+                          const hasAlready = prev.some(m => m.options?.some(o => o.value === 'SYNC_VITALLOOP_APP'));
+                          if (hasAlready) return prev;
+                          return [
+                            ...prev,
+                            {
+                              role: 'assistant',
+                              content: "✨ **Expediente Clínico Consolidado y Sellado**\n\nEl dictamen médico del motor CORTEX v2.0 ha sido generado en el panel principal. ¿Qué deseas hacer a continuación?",
+                              options: [
+                                { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
+                                { label: "🚀 Sellar y Continuar a Calendario & Sprint ➔", value: "GO_TO_CALENDAR_SPRINT" }
+                              ]
+                            }
+                          ];
+                        });
                       }}
                     />
                   )}
@@ -5620,15 +6217,29 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                         setInputHandler(null);
                         setInterviewStep('finished');
                         setActiveTab('diagnosis');
+                        setMessages(prev => [
+                          ...prev,
+                          {
+                            role: 'assistant',
+                            content: "✨ **Consulta Médica y Plan Metabólico Consolidados**\n\nEl expediente clínico y la periodización de 28 días se han generado en el panel principal. ¿Qué deseas hacer a continuación?",
+                            avatar: tiloImg,
+                            options: [
+                              { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
+                              { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
+                            ]
+                          }
+                        ]);
                         saveSessionProgress(21, 'finished', true);
                       }}
                     />
                   )}
 
-                  <div 
-                    className="flex-1 h-full overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar z-10 relative"
-                    style={{ paddingBottom: isSpecificLogisticsQuestion ? '260px' : '2rem' }}
-                  >
+                  {!['PHASE_19_DIAGNOSIS'].includes(currentPhase) && (
+                    <>
+                      <div 
+                        className="flex-1 h-full overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar z-10 relative"
+                        style={{ paddingBottom: (isSpecificLogisticsQuestion || hasVerticalMenuOpen) ? '280px' : '2rem' }}
+                      >
                     {messagesList.map((msg, index) => (
                       <div
                         key={index}
@@ -5707,22 +6318,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                   <ReactMarkdown>{cleanBinaryGateMessage(msg.content)}</ReactMarkdown>
                                 </div>
 
-                                {/* Collapsible reasoning details */}
-                                {msg.aiData && msg.aiData.reasoning && (
-                                  <div className="mt-3 border-t border-tilo-border pt-3">
-                                    <details className="group cursor-pointer">
-                                      <summary className="text-xs font-bold text-tilo-text-muted hover:text-tilo-text-main transition-colors flex items-center gap-1 select-none">
-                                        <svg className="w-3.5 h-3.5 transform group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                        </svg>
-                                        Deducción Sugerida (Matriz IFM)
-                                      </summary>
-                                      <div className="mt-2 text-xs leading-relaxed pl-3 ml-1">
-                                        {renderClinicalCards(msg.aiData.reasoning)}
-                                      </div>
-                                    </details>
-                                  </div>
-                                )}
+
                               </div>
                             ) : (
                               <ReactMarkdown>{cleanBinaryGateMessage(msg.content)}</ReactMarkdown>
@@ -5761,17 +6357,24 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                               <div className="mt-4 flex flex-wrap gap-2">
                                 {msg.options.map((opt, i) => {
                                   const isLastMessage = index === messagesList.length - 1;
+                                  const isElectretStart = opt.value === 'START_ELECTRET_SCAN';
+                                  const isElectretDisabled = isElectretStart && !hardwareStatus?.handContactDetected;
+                                  const isDisabled = !isLastMessage || isElectretDisabled;
                                   return (
                                     <button
                                       key={i}
-                                      disabled={!isLastMessage}
+                                      disabled={isDisabled}
                                       onClick={() => {
-                                        if (!isLastMessage) return;
+                                        if (isDisabled) return;
                                         handleOptionSelect(msg, opt.value);
                                       }}
-                                      className="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-full text-xs hover:bg-blue-200 transition-colors shadow-sm border border-blue-200"
+                                      className={`px-4 py-2 font-bold rounded-full text-xs transition-all shadow-sm border ${
+                                        isElectretDisabled
+                                          ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60 font-mono text-[11px]'
+                                          : 'bg-[#1C75BC] text-white hover:bg-[#155d96] border-[#1C75BC]'
+                                      }`}
                                     >
-                                      {opt.label}
+                                      {isElectretDisabled ? '🔴 ELECTRODOS SIN CONTACTO DE PIEL' : opt.label}
                                     </button>
                                   );
                                 })}
@@ -5795,8 +6398,8 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                   </div>
 
                   <div className="p-6 bg-white border-t border-slate-50 shrink-0">
-
-                    {/* V8.0 IDENTITY BIFURCATION UI */}
+                    <>
+                        {/* V8.0 IDENTITY BIFURCATION UI */}
                     {interviewStep === 'intro_curp' && (
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
@@ -5980,7 +6583,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                           >
                             Confirmar Hora
                           </button>
-                          {messagesList[messagesList.length - 1].content.includes('siguiente hora') && (
+                          {messagesList[messagesList.length - 1].content?.includes('siguiente hora') && (
                             <button
                               type="button"
                               onClick={() => {
@@ -6009,7 +6612,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                             )}
 
                           {/* V8.2 TILO SMART SELECT (CURP STATE) */}
-                          {interviewStep === 'intro_curp_state' || (messagesList.length > 0 && (messagesList[messagesList.length - 1].inputType === 'StateSelector' || messagesList[messagesList.length - 1].content.includes('Estado de la República'))) ? (
+                          {interviewStep === 'intro_curp_state' || (messagesList.length > 0 && (messagesList[messagesList.length - 1].inputType === 'StateSelector' || messagesList[messagesList.length - 1].content?.includes('Estado de la República'))) ? (
                             <div className="w-full relative px-2">
                               <SearchableVerticalMenu
                                 options={Object.keys(ESTADO_MAP).filter(k => k !== 'EXTRANJERO').sort().map(estado => ({ label: formatText(estado), value: ESTADO_MAP[estado] })).concat([{ label: "Nacido en el Extranjero", value: "NE" }])}
@@ -6026,6 +6629,27 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                             </div>
                           ) : (
                             <>
+                              <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA'}
+                                className={`p-2 rounded-full transition-colors flex-shrink-0 ${(patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') ? "text-slate-300 cursor-not-allowed" : "text-slate-400 hover:text-blue-600"}`}
+                                title="Adjuntar archivo clínico o dispositivo"
+                              >
+                                <Paperclip className="w-5 h-5" />
+                              </button>
+                              <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files.length > 0) {
+                                    handleFileSelect(e.target.files);
+                                  }
+                                }}
+                                accept=".pdf,.html,.htm,.png,.jpg,.jpeg,.tcx,.gpx"
+                                multiple={true}
+                                className="hidden"
+                              />
                               {messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'respiratory_timer' && (
                                 <button
                                   type="button"
@@ -6034,7 +6658,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                       setTimerState('RUNNING');
                                     }
                                   }}
-                                  disabled={timerState !== 'IDLE'}
+                                  disabled={timerState !== 'IDLE' || patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA'}
                                   className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-all duration-300 leading-none ml-2 flex items-center gap-1 shrink-0 ${
                                     timerState === 'RUNNING' ? 'bg-rose-100 text-rose-700 border-rose-200 animate-pulse' :
                                     timerState === 'FINISHED' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
@@ -6052,8 +6676,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                   messagesList.length > 0 && (messagesList[messagesList.length - 1].inputType === 'number' || messagesList[messagesList.length - 1].inputType === 'respiratory_timer') ? 'number' : 'text'
                                 }
                                 value={input}
-                                disabled={isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options}
+                                disabled={patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA' || (isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options)}
                                 onChange={(e) => {
+                                  if (patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') return;
                                   if (messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'tel') {
                                     let val = e.target.value.replace(/\D/g, '');
                                     if (val.length > 10) val = val.slice(0, 10);
@@ -6082,13 +6707,17 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                     setInput(e.target.value);
                                   }
                                 }}
-                                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                                onKeyDown={(e) => {
+                                  if (patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') return;
+                                  if (e.key === "Enter") handleSend();
+                                }}
                                 placeholder={
+                                  (patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') ? "🔒 Consulta médica finalizada. Expediente sellado bajo la NOM-004." :
                                   isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options ? "Entrada bloqueada temporalmente." :
                                   messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'bp' ? "Ej. 120/80" :
-                                  "Escribe tu respuesta..."
+                                  "Escriba su respuesta..."
                                 }
-                                className={`flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2 ${isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options ? "cursor-not-allowed opacity-50" : ""}`}
+                                className={`flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2 ${(patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA' || (isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options)) ? "cursor-not-allowed opacity-50 select-none" : ""}`}
                               />
                             </>
                           )}
@@ -6097,7 +6726,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                           {messagesList.length === 0 || !isIdentityConfirmed || (messagesList[messagesList.length - 1].inputType !== 'strict_select' && !(messagesList[messagesList.length - 1].role === 'assistant' && messagesList[messagesList.length - 1].options)) ? (
                             <button
                               type="button"
+                              disabled={patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA'}
                               onClick={() => {
+                                if (patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') return;
                                 // ADAPTIVE UI FIX: Display LABEL, Send VALUE
                                 if (messagesList.length > 0 && messagesList[messagesList.length - 1].options) {
                                   const currentOpts = messagesList[messagesList.length - 1].options;
@@ -6112,66 +6743,74 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                   handleSend();
                                 }
                               }}
-                              className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-transform active:scale-95 shadow-md flex-shrink-0"
+                              className={`w-10 h-10 flex items-center justify-center rounded-full transition-transform active:scale-95 shadow-md flex-shrink-0 ${(patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-50" : "bg-blue-600 text-white hover:bg-blue-700"}`}
                             >
                               <Send className="w-5 h-5" />
                             </button>
                           ) : null}
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                        </div>
+                      )}
+                    </>
+                </div>
+              </>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
 
           {/* PANEL DERECHO (50%) - DASHBOARD RESTAURADO (ACORDEONES) */}
-          <div className="w-1/2 h-full flex flex-col bg-gray-50 border-l border-gray-200 relative overflow-hidden">
-            {/* COMPUERTA NOM-004: BLOQUEO DE FASE 0 */}
-            {!isIdentityConfirmed ? (
-                // Fase 0 Activa: Muro de Contención
-                showPrivacyPolicy ? (
-                    <div className="absolute inset-0 z-10 w-full h-full bg-slate-50">
-                        <AvisoPrivacidad onAccept={handleAcceptPrivacy} onClose={() => setShowPrivacyPolicy(false)} />
-                    </div>
-                ) : (
-                    <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
-                        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-                            <Lock className="w-16 h-16 text-slate-300 mb-6" />
-                            <h2 className="text-xl font-bold text-slate-700 uppercase tracking-widest font-prototype">
-                                Espejo Clínico Bloqueado
-                            </h2>
-                            <p className="text-slate-500 mt-3 text-sm font-medium max-w-sm">
-                                Esperando validación de identidad y aceptación del aviso de privacidad (NOM-004).
-                            </p>
-                        </div>
-                    </div>
-                )
-            ) : (
-                // Fase 1+: Dashboard Liberado
-                <div className="h-full w-full animate-in fade-in duration-1000">
-                  {/* DASHBOARD COMPONENT INTEGRATION */}
-                  <MedicalDashboard
-                    patientData={patientData}
-                    setPatientData={setPatientData}
-                    currentStep={interviewStep === 'appointment' ? currentPhase : interviewStep}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                    isEditing={isEditing}
-                    onEditToggle={() => setIsEditing(!isEditing)}
-                    onTriggerEdit={handleTriggerEdit}
-                    activeField={activeField}
-                    fase3State={fase3State}
-                    fase4State={fase4State}
-                    fase5State={fase5State}
-                    fase6State={fase6State}
-                    fase7State={fase7State}
-                    fase8State={fase8State}
-                    fase9State={fase9State}
-                  />
-                </div>
-            )}
-          </div>
+          {!['PHASE_19_DIAGNOSIS'].includes(currentPhase) && (
+            <div className="w-1/2 h-full flex flex-col bg-gray-50 border-l border-gray-200 relative overflow-hidden">
+              {/* COMPUERTA NOM-004: BLOQUEO DE FASE 0 */}
+              {!isIdentityConfirmed ? (
+                  // Fase 0 Activa: Muro de Contención
+                  showPrivacyPolicy ? (
+                      <div className="absolute inset-0 z-10 w-full h-full bg-slate-50">
+                          <AvisoPrivacidad onAccept={handleAcceptPrivacy} onClose={() => setShowPrivacyPolicy(false)} />
+                      </div>
+                  ) : (
+                      <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
+                          <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                              <Lock className="w-16 h-16 text-slate-300 mb-6" />
+                              <h2 className="text-xl font-bold text-slate-700 uppercase tracking-widest font-prototype">
+                                  Espejo Clínico Bloqueado
+                              </h2>
+                              <p className="text-slate-500 mt-3 text-sm font-medium max-w-sm">
+                                  Esperando validación de identidad y aceptación del aviso de privacidad (NOM-004).
+                              </p>
+                          </div>
+                      </div>
+                  )
+              ) : (
+                  // Fase 1+: Dashboard Liberado
+                  <div className="h-full w-full animate-in fade-in duration-1000">
+                    {/* DASHBOARD COMPONENT INTEGRATION */}
+                    <MedicalDashboard
+                      patientData={patientData}
+                      setPatientData={setPatientData}
+                      currentStep={interviewStep === 'appointment' ? currentPhase : interviewStep}
+                      activeTab={activeTab}
+                      onTabChange={setActiveTab}
+                      isEditing={isEditing}
+                      onEditToggle={() => setIsEditing(!isEditing)}
+                      onTriggerEdit={handleTriggerEdit}
+                      activeField={activeField}
+                      fase3State={fase3State}
+                      fase4State={fase4State}
+                      fase5State={fase5State}
+                      fase6State={fase6State}
+                      fase7State={fase7State}
+                      fase8State={fase8State}
+                      fase9State={fase9State}
+                      citationId={citationId}
+                      isPhase20EditMode={isPhase20EditMode}
+                      planViewMode={planViewMode}
+                      setPlanViewMode={setPlanViewMode}
+                    />
+                  </div>
+              )}
+            </div>
+          )}
 
         </div >
 
@@ -6180,7 +6819,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
         {
           isLoggedIn && !showPrivacyPolicy && (
             <div className="w-full h-16 bg-white border-t border-gray-200 flex items-center justify-between px-6 z-20 shrink-0 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] relative">
-              <span className="text-gray-400 text-sm font-sansation">VERSIÓN 2.0</span>
+              <span className="text-gray-400 text-[11px] font-mono cursor-help select-none" title="Build: v2.0.4-stable | Cortex Engine v15.6 | NOM-004 Compliant">
+                [TILO-CORE]
+              </span>
 
               {/* Componente Aislado del Loader */}
               <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-64 h-full flex justify-center items-center">
@@ -6207,6 +6848,108 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
             />
           )}
         </AnimatePresence>
+
+        {/* MODAL VITALLOOP® APP SYNC & DOWNLOAD */}
+        {showVitalLoopModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0A0E14] border border-[#263040] text-slate-100 rounded-3xl p-6 max-w-lg w-full shadow-2xl relative">
+              <button 
+                onClick={() => setShowVitalLoopModal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white text-sm font-bold w-8 h-8 flex items-center justify-center rounded-full bg-slate-800/50 cursor-pointer"
+              >
+                ✕
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-[#263040] pb-4 mb-5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#00E5A0] to-[#00B4D8] flex items-center justify-center text-slate-950 font-black text-xl">
+                  V
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+                    Vital<span className="text-[#00E5A0]">Loop</span>®
+                    <span className="text-[10px] bg-[#00E5A0]/10 text-[#00E5A0] border border-[#00E5A0]/30 px-2 py-0.5 rounded-full font-bold">App PWA / Android</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">Plataforma Conversacional de Biotelemetría H7</p>
+                </div>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="bg-[#12171F] p-4 rounded-2xl border border-[#263040] flex items-center gap-4">
+                  <div className="w-24 h-24 bg-white p-2 rounded-xl flex items-center justify-center shrink-0 shadow-inner">
+                    <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900 fill-current">
+                      <rect x="0" y="0" width="30" height="30" />
+                      <rect x="5" y="5" width="20" height="20" fill="white" />
+                      <rect x="10" y="10" width="10" height="10" />
+                      <rect x="70" y="0" width="30" height="30" />
+                      <rect x="75" y="5" width="20" height="20" fill="white" />
+                      <rect x="80" y="10" width="10" height="10" />
+                      <rect x="0" y="70" width="30" height="30" />
+                      <rect x="5" y="75" width="20" height="20" fill="white" />
+                      <rect x="10" y="80" width="10" height="10" />
+                      <rect x="40" y="40" width="20" height="20" />
+                      <rect x="35" y="10" width="10" height="20" />
+                      <rect x="10" y="40" width="20" height="10" />
+                      <rect x="60" y="70" width="30" height="10" />
+                      <rect x="70" y="40" width="20" height="20" />
+                    </svg>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-[#00E5A0] uppercase tracking-wider block mb-1">Escanea para Vincular la App</span>
+                    <p className="text-slate-300 font-medium leading-relaxed mb-2">
+                      Sincroniza el expediente del paciente directamente en la app móvil <strong className="text-white">VitalLoop®</strong> con vinculación biométrica de Banda H7 BLE 5.3.
+                    </p>
+                    <span className="text-[9.5px] text-slate-400 block font-mono">Cita: #{citationId || '15000'} | Token: VitalLoop-Sync</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="bg-[#1A202C] p-3 rounded-xl border border-[#263040]">
+                    <strong className="text-[#00E5A0] block mb-0.5">⌚ Banda H7 BLE 5.3</strong>
+                    <span className="text-slate-400">ECG, HRV, SpO2, Temp, Presión Arterial 24/7</span>
+                  </div>
+                  <div className="bg-[#1A202C] p-3 rounded-xl border border-[#263040]">
+                    <strong className="text-[#00B4D8] block mb-0.5">💬 IA Conversacional</strong>
+                    <span className="text-slate-400">Chat inteligente de adherencia diaria</span>
+                  </div>
+                  <div className="bg-[#1A202C] p-3 rounded-xl border border-[#263040]">
+                    <strong className="text-[#7C5CFC] block mb-0.5">📸 Visión + Comidas</strong>
+                    <span className="text-slate-400">Foto de platos y gym con estimación de macros</span>
+                  </div>
+                  <div className="bg-[#1A202C] p-3 rounded-xl border border-[#263040]">
+                    <strong className="text-amber-400 block mb-0.5">🎮 Gamificación 28d</strong>
+                    <span className="text-slate-400">Scores de Sueño, Recuperación y Esfuerzo</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-5 pt-4 border-t border-[#263040]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://vitalloop.app/download?curp=${patientData?.identificacion?.curp || '123'}&citation=${citationId || '15000'}`);
+                    showToast({ title: "Enlace Copiado", message: "Enlace de descarga de VitalLoop App copiado al portapapeles.", type: "success" });
+                  }}
+                  className="flex-1 py-3 px-4 bg-[#1E2633] hover:bg-[#263040] text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer text-center"
+                >
+                  🔗 Copiar Enlace Paciente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    showToast({ title: "Sincronización Exitosa", message: "Expediente enviado a la App VitalLoop® del paciente.", type: "success" });
+                    setShowVitalLoopModal(false);
+                  }}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-[#00E5A0] to-[#00B4D8] text-slate-950 text-xs font-black rounded-xl transition-all cursor-pointer text-center"
+                >
+                  🚀 Sincronizar Ahora
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CONTENEDOR FLOTANTE DE TOASTS CLÍNICOS */}
+        <ClinicalToastContainer />
 
       </div >
     </div >

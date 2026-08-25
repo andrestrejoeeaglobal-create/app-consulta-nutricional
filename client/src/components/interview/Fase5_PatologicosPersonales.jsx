@@ -311,6 +311,20 @@ const Fase5_PatologicosPersonales = ({
         if (textToProcess === "ADD_MORE") userLabel = "Registrar otra condición";
         if (textToProcess === "CONFIRM_DATA") userLabel = "Sí, es correcta";
         if (textToProcess === "CORRECT_DATA") userLabel = "No, quiero corregir algo";
+        if (textToProcess === "MODIFY_SELECT") userLabel = "✏️ Modificar patología registrada";
+        if (textToProcess === "DELETE_SELECT") userLabel = "🗑️ Eliminar patología de la lista";
+        if (textToProcess === "CANCEL_REVIEW") userLabel = "❌ Cancelar (Volver)";
+        if (textToProcess === "BACK_TO_CORRECT") userLabel = "⬅️ Volver al menú anterior";
+        if (textToProcess.startsWith("DELETE_INDEX_")) {
+            const idx = parseInt(textToProcess.replace("DELETE_INDEX_", ""), 10);
+            const pat = personalStructured[idx];
+            userLabel = pat ? `🗑️ Eliminar: ${pat.specific_condition}` : "Eliminar patología";
+        }
+        if (textToProcess.startsWith("MODIFY_INDEX_")) {
+            const idx = parseInt(textToProcess.replace("MODIFY_INDEX_", ""), 10);
+            const pat = personalStructured[idx];
+            userLabel = pat ? `✏️ Modificar: ${pat.specific_condition}` : "Modificar patología";
+        }
         
         // Botoneras quirúrgicas
         if (textToProcess === "SURG_NONE") userLabel = `Ninguna / Declarar san${isFemale ? 'a' : 'o'}`;
@@ -319,6 +333,20 @@ const Fase5_PatologicosPersonales = ({
         if (textToProcess === "SURG_ADD_MORE") userLabel = "Registrar otra cirugía";
         if (textToProcess === "SURG_CONFIRM") userLabel = "Sí, es correcta";
         if (textToProcess === "SURG_CORRECT") userLabel = "No, quiero corregir algo";
+        if (textToProcess === "SURG_MODIFY_SELECT") userLabel = "✏️ Modificar cirugía registrada";
+        if (textToProcess === "SURG_DELETE_SELECT") userLabel = "🗑️ Eliminar cirugía de la lista";
+        if (textToProcess === "SURG_CANCEL_REVIEW") userLabel = "❌ Cancelar (Volver)";
+        if (textToProcess === "SURG_BACK_TO_CORRECT") userLabel = "⬅️ Volver al menú anterior";
+        if (textToProcess.startsWith("SURG_DELETE_INDEX_")) {
+            const idx = parseInt(textToProcess.replace("SURG_DELETE_INDEX_", ""), 10);
+            const surg = surgicalStructured[idx];
+            userLabel = surg ? `🗑️ Eliminar: ${surg.label}` : "Eliminar cirugía";
+        }
+        if (textToProcess.startsWith("SURG_MODIFY_INDEX_")) {
+            const idx = parseInt(textToProcess.replace("SURG_MODIFY_INDEX_", ""), 10);
+            const surg = surgicalStructured[idx];
+            userLabel = surg ? `✏️ Modificar: ${surg.label}` : "Modificar cirugía";
+        }
         if (textToProcess === "SURG_OTHER") userLabel = "Otra cirugía (Ingreso Manual)";
 
         // Mapear etiqueta en caso de menú clínico
@@ -397,17 +425,22 @@ const Fase5_PatologicosPersonales = ({
                     }
                 }));
 
-                const finalMessages = [
-                    ...currentMsgs,
-                    { 
-                        role: 'assistant', 
-                        content: makeP1P2(
-                            "Declaratoria de salud óptima registrada en el expediente base. Procedemos al cierre de validación bajo la firma del clínico.",
-                            "Confirmación exitosa. Avanzamos hacia la siguiente sección del triage."
-                        ) 
-                    }
-                ];
-                onPhaseComplete?.(updatedList, finalMessages);
+                // Mutar al paso de cirugías (Q24 - Antecedentes Quirúrgicos)
+                setFlowState('quirurgicos_start');
+
+                const greetingMsg = {
+                    role: 'assistant',
+                    content: makeP1P2(
+                        "Declaratoria de salud óptima registrada en el expediente base. Procedemos al cierre de validación bajo la firma del clínico.",
+                        `Pasemos ahora a su historial de intervenciones. Como ${isMinor ? 'tutor responsable de este expediente' : 'titular de este expediente'}, por favor declare: **¿Ha sido ${isMinor ? pNameFormatted : 'usted'} sometido/a a alguna cirugía u operación médica en el pasado?**`
+                    ),
+                    options: [
+                        { label: `❌ NINGUNA / DECLARAR SAN${isFemale ? 'A' : 'O'}`, value: "SURG_NONE" },
+                        { label: "✅ SÍ, REGISTRAR CIRUGÍA", value: "SURG_YES" }
+                    ]
+                };
+
+                setMessages([...currentMsgs, greetingMsg]);
                 setIsAnalyzing(false);
                 return;
             } else if (isYes) {
@@ -504,7 +537,9 @@ const Fase5_PatologicosPersonales = ({
                 content: `Condición **${val}** agregada. ¿Qué desea hacer?`,
                 options: [
                     { label: "➕ REGISTRAR OTRA CONDICIÓN", value: "ADD_MORE" },
-                    { label: "➡️ CONTINUAR AL HISTORIAL", value: "FINISH" }
+                    { label: "➡️ CONTINUAR AL HISTORIAL", value: "FINISH" },
+                    { label: "🛠️ MODIFICAR REGISTROS", value: "MODIFY_SELECT" },
+                    { label: "🗑️ ELIMINAR REGISTROS", value: "DELETE_SELECT" }
                 ]
             });
         }
@@ -513,7 +548,8 @@ const Fase5_PatologicosPersonales = ({
                              normalizedVal.includes("FINISH") || 
                              normalizedVal.includes("CONTINUAR") || 
                              normalizedVal.includes("HISTORIAL") || 
-                             normalizedVal.includes("TERMINAR");
+                             normalizedVal.includes("TERMINAR") ||
+                             val === "CANCEL_REVIEW";
                              
             const isAddMore = val === "ADD_MORE" || 
                               normalizedVal.includes("ADD_MORE") || 
@@ -529,14 +565,12 @@ const Fase5_PatologicosPersonales = ({
                     ? personalStructured.map(a => `- 📋 **${a.specific_condition}**`).join('\n')
                     : "Ningún antecedente personal patológico registrado.";
 
-                const finalContent = makeP1P2(
-                    "Para dar cumplimiento a la NOM-004-SSA3-2012 y consolidar formalmente su expediente patológico, por favor verifique los datos declarados:",
-                    `${summaryText}\n\n---\n\n¿Es correcta esta información?`
-                );
-
                 pushMessage({
                     role: 'assistant',
-                    content: finalContent,
+                    content: makeP1P2(
+                        "Para dar cumplimiento a la NOM-004-SSA3-2012 y consolidar formalmente su expediente patológico, por favor verifique los datos declarados:",
+                        summaryText + "\n\n¿Es correcta esta información?"
+                    ),
                     options: [
                         { label: "✅ Sí, es correcta", value: "CONFIRM_DATA" },
                         { label: "❌ No, quiero corregir algo", value: "CORRECT_DATA" }
@@ -555,6 +589,75 @@ const Fase5_PatologicosPersonales = ({
                     options: filteredOptions,
                     showMenu: filteredOptions.length > 3 ? 'disease' : undefined
                 });
+            } else if (val === "CLEAR_ALL") {
+                setFlowState('ASK_START');
+                setPersonalStructured([]);
+                setPatientData(prev => ({
+                    ...prev,
+                    history: {
+                        ...prev.history,
+                        personal_structured: [],
+                        personal_raw_text: '',
+                        personal_checklist_verified: false
+                    }
+                }));
+                pushMessage({
+                    role: 'assistant',
+                    content: makeP1P2(
+                        "Sistemas clínicos reiniciados. Se ha limpiado el mapa patológico de la sesión para evitar contaminación cruzada de datos.",
+                        `Por favor declare nuevamente si ${isMinor ? `**${pNameFormatted}**` : 'usted'} padece alguna patología diagnosticada:`
+                    ),
+                    options: [
+                        { label: `❌ NINGUNA / DECLARAR SAN${isFemale ? 'A' : 'O'}`, value: "NO_DIAGNOSIS" },
+                        { label: "✅ SÍ, SELECCIONAR DIAGNÓSTICOS", value: "YES_DIAGNOSIS" }
+                    ]
+                });
+            } else if (val === "MODIFY_SELECT") {
+                if (personalStructured.length > 0) {
+                    setFlowState('SELECT_MODIFY_ITEM');
+                    const opts = personalStructured.map((p, idx) => ({
+                        label: `👤 ${p.specific_condition}`,
+                        value: `MODIFY_INDEX_${idx}`
+                    })).concat([{ label: "⬅️ Volver al menú anterior", value: "BACK_TO_CORRECT" }]);
+
+                    pushMessage({
+                        role: 'assistant',
+                        content: "¿Qué patología desea modificar? Seleccione de la lista:",
+                        options: opts
+                    });
+                } else {
+                    pushMessage({
+                        role: 'assistant',
+                        content: "No existen patologías registradas para modificar.",
+                        options: [
+                            { label: "➕ Registrar otra condición", value: "ADD_MORE" },
+                            { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                        ]
+                    });
+                }
+            } else if (val === "DELETE_SELECT") {
+                if (personalStructured.length > 0) {
+                    setFlowState('SELECT_DELETE_ITEM');
+                    const opts = personalStructured.map((p, idx) => ({
+                        label: `👤 ${p.specific_condition}`,
+                        value: `DELETE_INDEX_${idx}`
+                    })).concat([{ label: "⬅️ Volver al menú anterior", value: "BACK_TO_CORRECT" }]);
+
+                    pushMessage({
+                        role: 'assistant',
+                        content: "¿Qué patología desea eliminar del expediente? Seleccione de la lista:",
+                        options: opts
+                    });
+                } else {
+                    pushMessage({
+                        role: 'assistant',
+                        content: "No existen patologías registradas para eliminar.",
+                        options: [
+                            { label: "➕ Registrar otra condición", value: "ADD_MORE" },
+                            { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                        ]
+                    });
+                }
             }
         }
         else if (flowState === 'REVIEW_SUMMARY') {
@@ -617,28 +720,126 @@ const Fase5_PatologicosPersonales = ({
                 setIsAnalyzing(false);
                 return;
             } else if (isCorrect) {
-                setFlowState('ASK_START');
-                setPersonalStructured([]);
-                setPatientData(prev => ({
-                    ...prev,
-                    history: {
-                        ...prev.history,
-                        personal_structured: [],
-                        personal_raw_text: '',
-                        personal_checklist_verified: false
-                    }
-                }));
+                setFlowState('ASK_MORE');
                 pushMessage({
                     role: 'assistant',
-                    content: makeP1P2(
-                        "Sistemas clínicos reiniciados. Se ha limpiado el mapa patológico de la sesión para evitar contaminación cruzada de datos.",
-                        `Por favor declare nuevamente si ${isMinor ? `**${pNameFormatted}**` : 'usted'} padece alguna patología diagnosticada:`
-                    ),
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en la lista de patologías?",
                     options: [
-                        { label: `❌ NINGUNA / DECLARAR SAN${isFemale ? 'A' : 'O'}`, value: "NO_DIAGNOSIS" },
-                        { label: "✅ SÍ, SELECCIONAR DIAGNÓSTICOS", value: "YES_DIAGNOSIS" }
+                        { label: "➕ Agregar otra patología", value: "ADD_MORE" },
+                        { label: "✏️ Modificar patología registrada", value: "MODIFY_SELECT" },
+                        { label: "🗑️ Eliminar patología de la lista", value: "DELETE_SELECT" },
+                        { label: "🔄 Limpiar lista completa (Reiniciar)", value: "CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver)", value: "FINISH" }
                     ]
                 });
+            }
+        }
+        else if (flowState === 'SELECT_MODIFY_ITEM') {
+            if (val === "BACK_TO_CORRECT") {
+                setFlowState('ASK_MORE');
+                pushMessage({
+                    role: 'assistant',
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en la lista de patologías?",
+                    options: [
+                        { label: "➕ Agregar otra patología", value: "ADD_MORE" },
+                        { label: "✏️ Modificar patología registrada", value: "MODIFY_SELECT" },
+                        { label: "🗑️ Eliminar patología de la lista", value: "DELETE_SELECT" },
+                        { label: "🔄 Limpiar lista completa (Reiniciar)", value: "CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                    ]
+                });
+                setIsAnalyzing(false);
+                return;
+            }
+            if (val.startsWith("MODIFY_INDEX_")) {
+                const idx = parseInt(val.replace("MODIFY_INDEX_", ""), 10);
+                if (!isNaN(idx) && personalStructured[idx]) {
+                    const target = personalStructured[idx];
+                    const updated = personalStructured.filter((_, i) => i !== idx);
+                    
+                    setPersonalStructured(updated);
+                    setPatientData(prev => ({
+                        ...prev,
+                        history: {
+                            ...prev.history,
+                            personal_structured: updated,
+                            personal_raw_text: `Presenta antecedentes de: ${updated.map(a => a.specific_condition).join(', ')}.`,
+                            personal_checklist_verified: true
+                        }
+                    }));
+
+                    setFlowState('SELECT_DISEASES');
+                    
+                    const selectedCats = updated.map(i => i.condition_category);
+                    const filteredOptions = getOptionsList().filter(opt => !selectedCats.includes(opt.value) || opt.value === "Otras");
+
+                    pushMessage({
+                        role: 'assistant',
+                        content: `Entendido. Vamos a reconfigurar la patología. Por favor, seleccione la condición médica de la siguiente lista oficial:`,
+                        options: filteredOptions,
+                        showMenu: filteredOptions.length > 3 ? 'disease' : undefined
+                    });
+                }
+            }
+        }
+        else if (flowState === 'SELECT_DELETE_ITEM') {
+            if (val === "BACK_TO_CORRECT") {
+                setFlowState('ASK_MORE');
+                pushMessage({
+                    role: 'assistant',
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en la lista de patologías?",
+                    options: [
+                        { label: "➕ Agregar otra patología", value: "ADD_MORE" },
+                        { label: "✏️ Modificar patología registrada", value: "MODIFY_SELECT" },
+                        { label: "🗑️ Eliminar patología de la lista", value: "DELETE_SELECT" },
+                        { label: "🔄 Limpiar lista completa (Reiniciar)", value: "CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                    ]
+                });
+                setIsAnalyzing(false);
+                return;
+            }
+            if (val.startsWith("DELETE_INDEX_")) {
+                const idx = parseInt(val.replace("DELETE_INDEX_", ""), 10);
+                if (!isNaN(idx) && personalStructured[idx]) {
+                    const updated = personalStructured.filter((_, i) => i !== idx);
+                    
+                    setPersonalStructured(updated);
+                    setPatientData(prev => ({
+                        ...prev,
+                        history: {
+                            ...prev.history,
+                            personal_structured: updated,
+                            personal_raw_text: `Presenta antecedentes de: ${updated.map(a => a.specific_condition).join(', ')}.`,
+                            personal_checklist_verified: true
+                        }
+                    }));
+
+                    pushMessage({
+                        role: 'assistant',
+                        content: "Patología eliminada con éxito."
+                    });
+
+                    setTimeout(() => {
+                        setFlowState('REVIEW_SUMMARY');
+                        
+                        const summaryText = updated.length > 0
+                            ? updated.map(a => `- 📋 **${a.specific_condition}**`).join('\n')
+                            : "Ningún antecedente personal patológico registrado.";
+                        
+                        pushMessage({
+                            role: 'assistant',
+                            content: makeP1P2(
+                                "Para dar cumplimiento a la NOM-004-SSA3-2012 y consolidar formalmente su expediente patológico, por favor verifique los datos declarados:",
+                                summaryText + "\n\n¿Es correcta esta información?"
+                            ),
+                            options: [
+                                { label: "✅ Sí, es correcta", value: "CONFIRM_DATA" },
+                                { label: "❌ No, quiero corregir algo", value: "CORRECT_DATA" }
+                            ]
+                        });
+                    }, 500);
+                }
             }
         }
         else if (flowState === 'quirurgicos_start') {
@@ -727,7 +928,9 @@ const Fase5_PatologicosPersonales = ({
                     content: `Cirugía **${resolvedLabel}** registrada. ¿Qué desea hacer?`,
                     options: [
                         { label: "➕ REGISTRAR OTRA CIRUGÍA", value: "SURG_ADD_MORE" },
-                        { label: "⏩ CONTINUAR AL HISTORIAL", value: "SURG_FINISH" }
+                        { label: "⏩ CONTINUAR AL HISTORIAL", value: "SURG_FINISH" },
+                        { label: "🛠️ MODIFICAR REGISTROS", value: "SURG_MODIFY_SELECT" },
+                        { label: "🗑️ ELIMINAR REGISTROS", value: "SURG_DELETE_SELECT" }
                     ]
                 });
             }
@@ -755,12 +958,14 @@ const Fase5_PatologicosPersonales = ({
                 content: `Cirugía **${val}** registrada de forma manual. ¿Qué desea hacer?`,
                 options: [
                     { label: "➕ REGISTRAR OTRA CIRUGÍA", value: "SURG_ADD_MORE" },
-                    { label: "⏩ CONTINUAR AL HISTORIAL", value: "SURG_FINISH" }
+                    { label: "⏩ CONTINUAR AL HISTORIAL", value: "SURG_FINISH" },
+                    { label: "🛠️ MODIFICAR REGISTROS", value: "SURG_MODIFY_SELECT" },
+                    { label: "🗑️ ELIMINAR REGISTROS", value: "SURG_DELETE_SELECT" }
                 ]
             });
         }
         else if (flowState === 'quirurgicos_more') {
-            const isFinish = val === "SURG_FINISH" || normalizedVal.includes("SURG_FINISH") || normalizedVal.includes("CONTINUAR") || normalizedVal.includes("HISTORIAL");
+            const isFinish = val === "SURG_FINISH" || normalizedVal.includes("SURG_FINISH") || normalizedVal.includes("CONTINUAR") || normalizedVal.includes("HISTORIAL") || val === "SURG_CANCEL_REVIEW";
             const isAddMore = val === "SURG_ADD_MORE" || normalizedVal.includes("SURG_ADD_MORE") || normalizedVal.includes("REGISTRAR OTRA") || normalizedVal.includes("OTRA CIRUGIA");
 
             if (isFinish) {
@@ -792,6 +997,73 @@ const Fase5_PatologicosPersonales = ({
                     showMenu: filteredOptions.length > 3 ? 'disease' : undefined,
                     inputType: 'strict_select'
                 });
+            } else if (val === "SURG_CLEAR_ALL") {
+                setFlowState('quirurgicos_start');
+                setSurgicalStructured([]);
+                setPatientData(prev => ({
+                    ...prev,
+                    history: {
+                        ...prev.history,
+                        surgical: []
+                    }
+                }));
+                pushMessage({
+                    role: 'assistant',
+                    content: makeP1P2(
+                        "Sistemas clínicos de antecedentes quirúrgicos reiniciados.",
+                        `Por favor declare nuevamente si ${isMinor ? `**${pNameFormatted}**` : 'usted'} ha sido sometido/a a alguna cirugía u operación en el pasado:`
+                    ),
+                    options: [
+                        { label: `❌ NINGUNA / DECLARAR SAN${isFemale ? 'A' : 'O'}`, value: "SURG_NONE" },
+                        { label: "✅ SÍ, REGISTRAR CIRUGÍA", value: "SURG_YES" }
+                    ]
+                });
+            } else if (val === "SURG_MODIFY_SELECT") {
+                if (surgicalStructured.length > 0) {
+                    setFlowState('SELECT_SURG_MODIFY_ITEM');
+                    const opts = surgicalStructured.map((s, idx) => ({
+                        label: `👤 ${s.label}`,
+                        value: `SURG_MODIFY_INDEX_${idx}`
+                    })).concat([{ label: "⬅️ Volver al menú anterior", value: "SURG_BACK_TO_CORRECT" }]);
+
+                    pushMessage({
+                        role: 'assistant',
+                        content: "¿Qué cirugía desea modificar? Seleccione de la lista:",
+                        options: opts
+                    });
+                } else {
+                    pushMessage({
+                        role: 'assistant',
+                        content: "No existen cirugías registradas para modificar.",
+                        options: [
+                            { label: "➕ Registrar otra cirugía", value: "SURG_ADD_MORE" },
+                            { label: "❌ Cancelar (Volver)", value: "SURG_FINISH" }
+                        ]
+                    });
+                }
+            } else if (val === "SURG_DELETE_SELECT") {
+                if (surgicalStructured.length > 0) {
+                    setFlowState('SELECT_SURG_DELETE_ITEM');
+                    const opts = surgicalStructured.map((s, idx) => ({
+                        label: `👤 ${s.label}`,
+                        value: `SURG_DELETE_INDEX_${idx}`
+                    })).concat([{ label: "⬅️ Volver al menú anterior", value: "SURG_BACK_TO_CORRECT" }]);
+
+                    pushMessage({
+                        role: 'assistant',
+                        content: "¿Qué cirugía desea eliminar del expediente? Seleccione de la lista:",
+                        options: opts
+                    });
+                } else {
+                    pushMessage({
+                        role: 'assistant',
+                        content: "No existen cirugías registradas para eliminar.",
+                        options: [
+                            { label: "➕ Registrar otra cirugía", value: "SURG_ADD_MORE" },
+                            { label: "❌ Cancelar (Volver)", value: "SURG_FINISH" }
+                        ]
+                    });
+                }
             }
         }
         else if (flowState === 'quirurgicos_review') {
@@ -825,27 +1097,120 @@ const Fase5_PatologicosPersonales = ({
                 }
                 return;
             } else if (isCorrect) {
-                setFlowState('quirurgicos_start');
-                setSurgicalStructured([]);
-                setPatientData(prev => ({
-                    ...prev,
-                    history: {
-                        ...prev.history,
-                        surgical: []
-                    }
-                }));
-
+                setFlowState('quirurgicos_more');
                 pushMessage({
                     role: 'assistant',
-                    content: makeP1P2(
-                        "Sistemas clínicos de antecedentes quirúrgicos reiniciados.",
-                        `Por favor declare nuevamente si ${isMinor ? `**${pNameFormatted}**` : 'usted'} ha sido sometido/a a alguna cirugía u operación en el pasado:`
-                    ),
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en la lista de cirugías?",
                     options: [
-                        { label: `❌ NINGUNA / DECLARAR SAN${isFemale ? 'A' : 'O'}`, value: "SURG_NONE" },
-                        { label: "✅ SÍ, REGISTRAR CIRUGÍA", value: "SURG_YES" }
+                        { label: "➕ Agregar otra cirugía", value: "SURG_ADD_MORE" },
+                        { label: "✏️ Modificar cirugía registrada", value: "SURG_MODIFY_SELECT" },
+                        { label: "🗑️ Eliminar cirugía de la lista", value: "SURG_DELETE_SELECT" },
+                        { label: "🔄 Limpiar lista quirúrgica", value: "SURG_CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver)", value: "SURG_FINISH" }
                     ]
                 });
+            }
+        }
+        else if (flowState === 'SELECT_SURG_MODIFY_ITEM') {
+            if (val === "SURG_BACK_TO_CORRECT") {
+                setFlowState('quirurgicos_more');
+                pushMessage({
+                    role: 'assistant',
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en la lista de cirugías?",
+                    options: [
+                        { label: "➕ Agregar otra cirugía", value: "SURG_ADD_MORE" },
+                        { label: "✏️ Modificar cirugía registrada", value: "SURG_MODIFY_SELECT" },
+                        { label: "🗑️ Eliminar cirugía de la lista", value: "SURG_DELETE_SELECT" },
+                        { label: "🔄 Limpiar lista quirúrgica", value: "SURG_CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver)", value: "SURG_FINISH" }
+                    ]
+                });
+                setIsAnalyzing(false);
+                return;
+            }
+            if (val.startsWith("SURG_MODIFY_INDEX_")) {
+                const idx = parseInt(val.replace("SURG_MODIFY_INDEX_", ""), 10);
+                if (!isNaN(idx) && surgicalStructured[idx]) {
+                    const updated = surgicalStructured.filter((_, i) => i !== idx);
+
+                    setSurgicalStructured(updated);
+                    setPatientData(prev => ({
+                        ...prev,
+                        history: {
+                            ...prev.history,
+                            surgical: updated
+                        }
+                    }));
+
+                    setFlowState('quirurgicos_capture');
+                    const selectedIds = updated.map(i => i.id);
+                    const filteredOptions = getSurgicalOptions().filter(opt => !selectedIds.includes(opt.value) || opt.value === "SURG_OTHER");
+
+                    pushMessage({
+                        role: 'assistant',
+                        content: "Entendido. Vamos a reconfigurar esta cirugía. Por favor, selecciónela de la lista oficial:",
+                        options: filteredOptions,
+                        showMenu: filteredOptions.length > 3 ? 'disease' : undefined,
+                        inputType: 'strict_select'
+                    });
+                }
+            }
+        }
+        else if (flowState === 'SELECT_SURG_DELETE_ITEM') {
+            if (val === "SURG_BACK_TO_CORRECT") {
+                setFlowState('quirurgicos_more');
+                pushMessage({
+                    role: 'assistant',
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en la lista de cirugías?",
+                    options: [
+                        { label: "➕ Agregar otra cirugía", value: "SURG_ADD_MORE" },
+                        { label: "✏️ Modificar cirugía registrada", value: "SURG_MODIFY_SELECT" },
+                        { label: "🗑️ Eliminar cirugía de la lista", value: "SURG_DELETE_SELECT" },
+                        { label: "🔄 Limpiar lista quirúrgica", value: "SURG_CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver)", value: "SURG_FINISH" }
+                    ]
+                });
+                setIsAnalyzing(false);
+                return;
+            }
+            if (val.startsWith("SURG_DELETE_INDEX_")) {
+                const idx = parseInt(val.replace("SURG_DELETE_INDEX_", ""), 10);
+                if (!isNaN(idx) && surgicalStructured[idx]) {
+                    const updated = surgicalStructured.filter((_, i) => i !== idx);
+
+                    setSurgicalStructured(updated);
+                    setPatientData(prev => ({
+                        ...prev,
+                        history: {
+                            ...prev.history,
+                            surgical: updated
+                        }
+                    }));
+
+                    pushMessage({
+                        role: 'assistant',
+                        content: "Cirugía eliminada con éxito del expediente."
+                    });
+
+                    setTimeout(() => {
+                        setFlowState('quirurgicos_review');
+                        const summaryText = updated.length > 0
+                            ? updated.map(s => `- 🩺 **${s.label}**`).join('\n')
+                            : "Ninguna cirugía registrada.";
+
+                        pushMessage({
+                            role: 'assistant',
+                            content: makeP1P2(
+                                "Para dar cumplimiento a la NOM-004-SSA3-2012 y sellar formalmente su expediente quirúrgico, por favor verifique los datos declarados:",
+                                `${summaryText}\n\n---\n\n¿Es correcta esta información?`
+                            ),
+                            options: [
+                                { label: "✅ Sí, es correcta", value: "SURG_CONFIRM" },
+                                { label: "❌ No, quiero corregir algo", value: "SURG_CORRECT" }
+                            ]
+                        });
+                    }, 500);
+                }
             }
         }
         

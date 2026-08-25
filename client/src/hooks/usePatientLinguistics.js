@@ -4,11 +4,23 @@ export const usePatientLinguistics = (patientData) => {
     const identityLock = useClinicalGenome(state => state.identityLock);
 
     let patientAge = 30;
-    if (identityLock?.patientInfo?.age !== undefined && identityLock?.patientInfo?.age !== null) {
-        patientAge = Number(identityLock.patientInfo.age);
-    } else if (patientData) {
-        if (patientData.profile?.age !== undefined && patientData.profile?.age !== null) patientAge = Number(patientData.profile.age);
-        else if (patientData.identificacion?.edad !== undefined && patientData.identificacion?.edad !== null) patientAge = Number(patientData.identificacion.edad);
+    const ageCandidates = [
+        identityLock?.patientInfo?.age,
+        patientData?.age,
+        patientData?.edad,
+        patientData?.identificacion?.edad,
+        patientData?.profile?.age,
+        patientData?.vitals?.age,
+        patientData?.profile?.pediatric_profile?.age
+    ];
+    for (const val of ageCandidates) {
+        if (val !== undefined && val !== null && val !== "") {
+            const num = Number(val);
+            if (!isNaN(num)) {
+                patientAge = num;
+                break;
+            }
+        }
     }
 
     let patientSex = 'M';
@@ -28,17 +40,38 @@ export const usePatientLinguistics = (patientData) => {
         else if (patientData.identificacion?.nombre) patientName = patientData.identificacion.nombre;
     }
 
-    // Para efectos lingüísticos en las plantillas de chat, consideramos "isMinor" 
-    // a los pacientes menores de 12 años (pediátricos). Para adolescentes (12-17),
-    // el protocolo de comunicación exige el tratamiento directo de "Usted" 
-    // (soberanía biológica), comportándose igual que los adultos en el diálogo.
-    const isMinor = patientAge < 12;
-    const isGeriatric = patientAge >= 65;
     const cleanName = patientName !== "NOM" ? patientName.split(' ')[0] : "el paciente";
-    
-    let placeholder = isMinor 
-        ? `Escriba el motivo principal para ${cleanName}...`
-        : "Describa brevemente su motivo...";
 
-    return { patientAge, patientSex, patientGender: patientSex, patientName: cleanName, placeholder, isMinor, isGeriatric, pName: cleanName };
+    const isLactante = patientAge < 2;
+    const isPreescolar = patientAge >= 2 && patientAge < 6;
+    const isEscolar = patientAge >= 6 && patientAge < 12;
+    const isMinor = patientAge < 12;
+    const isPediatrico = patientAge < 18;
+    const isAdolescente = patientAge >= 12 && patientAge < 18;
+    const isGeriatric = patientAge >= 65;
+
+    let babyTerm = "el paciente";
+    if (isLactante) babyTerm = "su bebé";
+    else if (isMinor) babyTerm = "su hijo/a";
+
+    let placeholder = isLactante 
+        ? `Escriba el motivo principal para el bebé ${cleanName}...`
+        : (isMinor ? `Escriba el motivo principal para ${cleanName}...` : "Describa brevemente su motivo...");
+
+    return { 
+        patientAge, 
+        patientSex, 
+        patientGender: patientSex, 
+        patientName: cleanName, 
+        placeholder, 
+        isMinor, 
+        isPediatrico,
+        isLactante,
+        isPreescolar,
+        isEscolar,
+        isAdolescente,
+        isGeriatric, 
+        pName: cleanName,
+        babyTerm
+    };
 };

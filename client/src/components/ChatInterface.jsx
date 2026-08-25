@@ -10,7 +10,8 @@ const ChatInterface = ({
     currentInputType = 'text',
     inputAreaTopAddon = null, // Controles adicionales encima del input
     customInputControl = null, // Reemplaza solo el campo de texto interno
-    hideDefaultInputArea = false // Oculta TODO el área de input
+    hideDefaultInputArea = false, // Oculta TODO el área de input
+    onFileSelect = null // Callback para ingesta de archivos telemétricos o clínicos
 }) => {
     const [input, setInput] = useState('');
     const messagesEndRef = useRef(null);
@@ -43,9 +44,12 @@ const ChatInterface = ({
     };
 
     const handleFileChange = (e) => {
-        // Lógica de archivo (Placeholder visual por ahora)
-        if (e.target.files && e.target.files[0]) {
-            console.log("Archivo seleccionado:", e.target.files[0].name);
+        if (e.target.files && e.target.files.length > 0) {
+            const files = Array.from(e.target.files);
+            console.log("Archivos seleccionados:", files.map(f => f.name));
+            if (onFileSelect) {
+                onFileSelect(files);
+            }
         }
     };
 
@@ -74,11 +78,19 @@ const ChatInterface = ({
                                         {(msg.options || msg.quickReplies).map((opt, oIdx) => {
                                             const label = opt.label || opt;
                                             const value = opt.value || opt;
+                                            
+                                            let btnClass = "px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-full text-xs hover:bg-slate-200 hover:text-slate-900 transition-colors shadow-sm border border-slate-200";
+                                            if (opt.style) {
+                                                btnClass = opt.style;
+                                            } else if (value === 'SYNC_ELECTRET_HARDWARE' || value === 'START_ELECTRET_SCAN') {
+                                                btnClass = "px-4 py-2 bg-[#1C75BC] text-white font-bold rounded-full text-xs hover:bg-[#155d96] transition-colors shadow-md border border-[#1C75BC]";
+                                            }
+                                            
                                             return (
                                                 <button
                                                     key={oIdx}
                                                     onClick={(e) => { e.preventDefault(); handleQuickReply(value); }}
-                                                    className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-full text-xs hover:bg-slate-200 hover:text-slate-900 transition-colors shadow-sm border border-slate-200"
+                                                    className={btnClass}
                                                 >
                                                     {label}
                                                 </button>
@@ -145,7 +157,8 @@ const ChatInterface = ({
                             type="file"
                             ref={fileInputRef}
                             onChange={handleFileChange}
-                            accept=".pdf,.html,.htm,.png,.jpg,.jpeg"
+                            accept=".pdf,.html,.htm,.png,.jpg,.jpeg,.tcx,.gpx"
+                            multiple={true}
                             className="hidden"
                         />
 

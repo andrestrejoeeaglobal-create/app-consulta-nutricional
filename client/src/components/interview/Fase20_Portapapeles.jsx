@@ -3,38 +3,79 @@ import tiloImg from '../../assets/tilo.png';
 
 const mockSuggestions = [
     {
-        id: 'sup_1',
-        cortex: '34Plus (Metabólico)',
-        name: 'Inulina de Agave',
-        dosage: '10g al día',
-        timing: 'En ayuno con agua natural',
-        rationale: 'Modulación de microbiota y mejora en sensibilidad a la insulina.',
-        status: 'pending' // pending | approved | rejected | adjusted
+        id: 'sup_33plus',
+        cortex: '33Plus (Ignición Mitocondrial)',
+        name: '33 PLUS - Semilla de Uva, Cromo (200mcg) y L-Teanina (200mg)',
+        dosage: '1 toma al día (disuelto en agua temp. ambiente)',
+        timing: 'Por la mañana con el primer alimento',
+        rationale: 'Optimización de microcirculación, oxigenación tisular diurna y regulación de sensibilidad a la insulina.',
+        status: 'approved'
     },
     {
-        id: 'sup_2',
-        cortex: '33Plus (Neuro-cognitivo)',
-        name: 'L-Teanina + Extracto de Té Verde',
-        dosage: '200mg',
-        timing: 'Por la mañana',
-        rationale: 'Neuroprotección y control de picos de cortisol inducidos por estrés.',
-        status: 'pending'
-    },
-    {
-        id: 'sup_3',
-        cortex: '34Plus (Celular)',
-        name: 'Picolinato de Cromo',
-        dosage: '200mcg',
-        timing: 'Con la comida principal',
-        rationale: 'Manejo de picos glucémicos postprandiales (Evidencia NOM-043).',
-        status: 'pending'
+        id: 'sup_34plus',
+        cortex: '34Plus (Ingeniería Tisular)',
+        name: '34 PLUS - Colágeno Hidrolizado, Vit C, L-Arginina e Inulina de Agave',
+        dosage: '1 toma al día (disuelto en MÍNIMO 500 ml de agua 💧)',
+        timing: 'Por la noche (60 min antes de dormir)',
+        rationale: 'Reparación de matriz extracelular durante el sueño. La hidratación en 500ml es obligatoria para prevenir retraso del vaciado gástrico y no interrumpir el sistema glinfático cerebral.',
+        status: 'approved'
     }
 ];
 
-const Fase15_SuplementacionAv = ({ onPhaseComplete, setPatientData, messages, setMessages, registerInputHandler }) => {
+const Fase15_SuplementacionAv = ({ patientData, onPhaseComplete, setPatientData, messages, setMessages, registerInputHandler }) => {
     const [suggestions, setSuggestions] = useState(mockSuggestions);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [internalStep, setInternalStep] = useState('INTRO'); // INTRO, REVIEWING, ADJUST_DOSAGE, ADJUST_TIMING, FINAL
+
+    // Cruce de Seguridad (Fase 20): Bloqueo de Energizantes y Cafeína (NOM-028 / NOM-004)
+    const hasStimulantsConflict = () => {
+        const habits = patientData?.habits || patientData?.clinical_context?.habits;
+        const hasCaffeineHistory = habits?.caffeine?.consumed === 'yes' || 
+                                   habits?.stimulants?.consumed === 'yes' ||
+                                   habits?.drugs?.stimulants === 'yes' ||
+                                   habits?.consumption?.stimulants === true;
+        
+        const medications = patientData?.history?.medications || [];
+        const hasConflictMeds = medications.some(m => {
+            const mName = (m.name || '').toLowerCase();
+            return mName.includes('estimulante') || 
+                   mName.includes('metilfenidato') || 
+                   mName.includes('anfetamina') || 
+                   mName.includes('antidepresivo') ||
+                   mName.includes('ansiolítico') ||
+                   mName.includes('ansiolitico') ||
+                   mName.includes('clonazepam') ||
+                   mName.includes('diazepam') ||
+                   mName.includes('fluoxetina') ||
+                   mName.includes('sertralina') ||
+                   mName.includes('acidosis') ||
+                   mName.includes('metformina');
+        });
+
+        return hasCaffeineHistory || hasConflictMeds;
+    };
+
+    useEffect(() => {
+        const conflict = hasStimulantsConflict();
+        if (conflict) {
+            // Reemplazar energizantes o té verde por alternativas libres de cafeína (Maca/L-Teanina pura)
+            const filtered = mockSuggestions.map(s => {
+                const sName = s.name.toLowerCase();
+                if (sName.includes('té verde') || sName.includes('guaraná') || sName.includes('cafeína') || sName.includes('taurina')) {
+                    return {
+                        ...s,
+                        name: 'L-Teanina Pura (Nootrópico Libre de Estimulantes)',
+                        rationale: '⚠️ BLOQUEO DE SEGURIDAD (NOM-028): Se suspendió el Extracto de Té Verde/Cafeína por cruce de riesgos con su historial de fármacos activos o estimulantes. Se receta L-Teanina pura para soporte cognitivo y control de estrés sin sobreestimular el SNC.',
+                        dosage: '150mg al día'
+                    };
+                }
+                return s;
+            });
+            setSuggestions(filtered);
+        } else {
+            setSuggestions(mockSuggestions);
+        }
+    }, [patientData]);
 
     useEffect(() => {
         if (internalStep === 'INTRO') {

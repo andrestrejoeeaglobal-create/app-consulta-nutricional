@@ -347,14 +347,29 @@ const EspejoClinicoActivo = ({ patientData }) => {
                 })()}
             </div>
 
-            {/* MOTIVO PRINCIPAL (Rápida Lectura) */}
+            {/* ANÁLISIS DE REQUERIMIENTO Y OBJETIVOS ESTRATÉGICOS (PÁRRAFOS DE PODER) */}
             <div className={`bg-tilo-bg-panel p-5 rounded-2xl shadow-sm border border-tilo-border transition-all duration-300 ${quoteGlow}`}>
                 <h4 className="text-[10px] font-bold text-tilo-text-muted uppercase tracking-widest mb-2 font-prototype flex items-center gap-2">
-                    <ClipboardList size={14} className="text-tilo-primary/80" /> Motivo de Consulta
+                    <ClipboardList size={14} className="text-tilo-primary/80" /> Análisis de Requerimiento (Motivo de Consulta)
                 </h4>
-                <p className="text-[1.1rem] text-tilo-text-main font-medium leading-relaxed">
-                    {motiveText}
-                </p>
+                <div className="text-[0.95rem] text-tilo-text-main font-medium leading-relaxed font-sansation space-y-3">
+                    <p>{motiveText}</p>
+                    
+                    {Array.isArray(aiAnalysis.strategicGoals) && aiAnalysis.strategicGoals.length > 0 && (
+                        <div className="pt-2 border-t border-tilo-border/60">
+                            <span className="text-[10px] font-bold text-tilo-primary uppercase tracking-wider block mb-1.5">
+                                Objetivos Estratégicos de la Intervención:
+                            </span>
+                            <ol className="list-decimal list-inside space-y-1.5 text-xs text-tilo-text-main font-medium">
+                                {aiAnalysis.strategicGoals.map((goal, idx) => (
+                                    <li key={idx} className="pl-1 leading-relaxed">
+                                        {goal}
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* ANÁLISIS FORENSE (GLASSMORPHISM) */}

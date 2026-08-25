@@ -1,0 +1,2352 @@
+{
+  "cardiovascular": {
+    "viscosidad_de_la_sangre": {
+      "name": "Viscosidad de la Sangre",
+      "reference": "48,264 - 65,371",
+      "value": "55.622",
+      "raw_value": "55.622",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "cristal_de_colesterol": {
+      "name": "Cristal de Colesterol",
+      "reference": "56,749 - 67,522",
+      "value": "67.113",
+      "raw_value": "67.113",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "grasa_en_sangre": {
+      "name": "Grasa en Sangre",
+      "reference": "0,481 - 1,043",
+      "value": "0.539",
+      "raw_value": "0.539",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "resistencia_vascular": {
+      "name": "Resistencia Vascular",
+      "reference": "0,327 - 0,937",
+      "value": "1.574",
+      "raw_value": "1.574",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "elasticidad_vascular": {
+      "name": "Elasticidad Vascular",
+      "reference": "1,672 - 1,978",
+      "value": "1.711",
+      "raw_value": "1.711",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "demanda_de_sangre_miocardial": {
+      "name": "Demanda de Sangre Miocardial",
+      "reference": "0,192 - 0,412",
+      "value": "0.349",
+      "raw_value": "0.349",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "volumen_de_perfusion_sanguinea_miocardial": {
+      "name": "Volumen de Perfusión Sanguínea Miocardial",
+      "reference": "4,832 - 5,147",
+      "value": "4.439",
+      "raw_value": "4.439",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "consumo_de_oxigeno_miocardial": {
+      "name": "Consumo de Oxígeno Miocardial",
+      "reference": "3,321 - 4,244",
+      "value": "4.487",
+      "raw_value": "4.487",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "volumen_de_latido": {
+      "name": "Volumen de Latido",
+      "reference": "1,338 - 1,672",
+      "value": "0.919",
+      "raw_value": "0.919",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "impedancia_ventricular_izquierda_de_expulsion": {
+      "name": "Impedancia Ventricular Izquierda de Expulsión",
+      "reference": "0,669 - 1,544",
+      "value": "1.428",
+      "raw_value": "1.428",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "fuerza_de_bombeo_efectiva_ventricular_izquierda": {
+      "name": "Fuerza de Bombeo Efectiva Ventricular Izquierda",
+      "reference": "1,554 - 1,988",
+      "value": "1.494",
+      "raw_value": "1.494",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "elasticidad_de_arteria_coronaria": {
+      "name": "Elasticidad de Arteria Coronaria",
+      "reference": "1,553 - 2,187",
+      "value": "1.701",
+      "raw_value": "1.701",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "presion_de_perfusion_coronaria": {
+      "name": "Presión de Perfusión Coronaria",
+      "reference": "11,719 - 18,418",
+      "value": "19.098",
+      "raw_value": "19.098",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "elasticidad_de_vaso_sanguineo_cerebral": {
+      "name": "Elasticidad de Vaso Sanguíneo Cerebral",
+      "reference": "0,708 - 1,942",
+      "value": "1.653",
+      "raw_value": "1.653",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "estado_de_suministro_sanguineo_de_tejido_cerebral": {
+      "name": "Estado de Suministro Sanguíneo de Tejido Cerebral",
+      "reference": "6,138 - 21,396",
+      "value": "10.931",
+      "raw_value": "10.931",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "gastrointestinal": {
+    "coeficiente_de_secrecion_de_pepsina": {
+      "name": "Coeficiente de Secreción de Pepsina",
+      "reference": "59,847 - 65,234",
+      "value": "62.557",
+      "raw_value": "62.557",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coeficiente_de_funcion_de_peristalsis_gastrica": {
+      "name": "Coeficiente de Función de Peristalsis Gástrica",
+      "reference": "58,425 - 61,213",
+      "value": "55.921",
+      "raw_value": "55.921",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "coeficiente_de_funcion_de_absorcion_gastrica": {
+      "name": "Coeficiente de Función de Absorción Gástrica",
+      "reference": "34,367 - 35,642",
+      "value": "33.429",
+      "raw_value": "33.429",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "coeficiente_de_funcion_de_peristalsis_del_intestino_delgado": {
+      "name": "Coeficiente de Función de Peristalsis del Intestino Delgado",
+      "reference": "133,437 - 140,476",
+      "value": "133.234",
+      "raw_value": "133.234",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "coeficiente_de_funcion_de_absorcion_del_intestino_delgado": {
+      "name": "Coeficiente de Función de Absorción del Intestino Delgado",
+      "reference": "3,572 - 6,483",
+      "value": "2.446",
+      "raw_value": "2.446",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    }
+  },
+  "colon": {
+    "coeficiente_de_la_funcion_de_peristalsis_del_intestino_grueso_colon": {
+      "name": "Coeficiente de la Función de Peristalsis del Intestino Grueso (colon)",
+      "reference": "4,572 - 6,483",
+      "value": "4.432",
+      "raw_value": "4.432",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "coeficiente_de_absorcion_colonica": {
+      "name": "Coeficiente de absorción colónica",
+      "reference": "2,946 - 3,815",
+      "value": "1.535",
+      "raw_value": "1.535",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "coeficiente_intestinal_bacteriano": {
+      "name": "Coeficiente intestinal bacteriano",
+      "reference": "1,734 - 2,621",
+      "value": "1.354",
+      "raw_value": "1.354",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "coeficiente_de_presion_intraluminal": {
+      "name": "Coeficiente de presión intraluminal",
+      "reference": "1,173 - 2,297",
+      "value": "1.796",
+      "raw_value": "1.796",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "liver": {
+    "metabolismo_de_las_proteinas": {
+      "name": "Metabolismo de las proteínas",
+      "reference": "116,34 - 220,621",
+      "value": "195.193",
+      "raw_value": "195.193",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "funcion_de_produccion_de_energia": {
+      "name": "Función de producción de energía",
+      "reference": "0,713 - 0,992",
+      "value": "0.815",
+      "raw_value": "0.815",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "funcion_de_desintoxicacion": {
+      "name": "Función de Desintoxicación",
+      "reference": "0,202 - 0,991",
+      "value": "0.902",
+      "raw_value": "0.902",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "funcion_de_secrecion_de_bilis": {
+      "name": "Función de Secreción de Bilis",
+      "reference": "0,432 - 0,826",
+      "value": "0.748",
+      "raw_value": "0.748",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "contenido_de_grasa_en_el_higado": {
+      "name": "Contenido de Grasa en el Hígado",
+      "reference": "0,097 - 0,419",
+      "value": "0.535",
+      "raw_value": "0.535",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    }
+  },
+  "gallbladder": {
+    "seroglobulina_a_g": {
+      "name": "Seroglobulina (A/G)",
+      "reference": "126 - 159",
+      "value": "138.604",
+      "raw_value": "138.604",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "bilirrubina_total_tbil": {
+      "name": "Bilirrubina Total (TBIL)",
+      "reference": "0,232 - 0,686",
+      "value": "0.425",
+      "raw_value": "0.425",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "fosfatasa_alcalina_alp": {
+      "name": "Fosfatasa Alcalina (ALP)",
+      "reference": "0,082 - 0,342",
+      "value": "0.189",
+      "raw_value": "0.189",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "acidos_biliares_totales_sericos_tba": {
+      "name": "Ácidos Biliares Totales Séricos (TBA)",
+      "reference": "0,317 - 0,695",
+      "value": "0.43",
+      "raw_value": "0.43",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "bilirrubina_dbil": {
+      "name": "Bilirrubina (DBIL)",
+      "reference": "0,218 - 0,549",
+      "value": "0.482",
+      "raw_value": "0.482",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "pancreas": {
+    "insulina": {
+      "name": "Insulina",
+      "reference": "2,845 - 4,017",
+      "value": "4.007",
+      "raw_value": "4.007",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "polipeptido_pancreatico_pp": {
+      "name": "Polipéptido Pancreático (PP)",
+      "reference": "3,210 - 6,854",
+      "value": "6.596",
+      "raw_value": "6.596",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "glucagon": {
+      "name": "Glucagón",
+      "reference": "2,412 - 2,974",
+      "value": "2.453",
+      "raw_value": "2.453",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "renal": {
+    "indice_de_urobilinogeno": {
+      "name": "Índice de Urobilinógeno",
+      "reference": "2,762 - 5,424",
+      "value": "5.491",
+      "raw_value": "5.491",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "ndice_de_acido_urico": {
+      "name": "Ïndice de Ácido Úrico",
+      "reference": "1,435 - 1,987",
+      "value": "3.169",
+      "raw_value": "3.169",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "indice_de_nitrogeno_ureico_en_la_sangre_bun": {
+      "name": "Índice de Nitrógeno Ureico en la Sangre (BUN)",
+      "reference": "4,725 - 8,631",
+      "value": "9.592",
+      "raw_value": "9.592",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "indice_de_proteinuria": {
+      "name": "Índice de Proteinuria",
+      "reference": "1,571 - 4,079",
+      "value": "5.261",
+      "raw_value": "5.261",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    }
+  },
+  "pulmonary": {
+    "capacidad_vital_vc": {
+      "name": "Capacidad Vital VC",
+      "reference": "3348 - 3529",
+      "value": "3566",
+      "raw_value": "3566",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "capacidad_pulmonar_total_tlc": {
+      "name": "Capacidad Pulmonar Total TLC",
+      "reference": "4301 - 4782",
+      "value": "4477",
+      "raw_value": "4477",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "resistencia_de_las_vias_aereas_ram": {
+      "name": "Resistencia de las Vías Aéreas RAM",
+      "reference": "1,374 - 1,709",
+      "value": "1.468",
+      "raw_value": "1.468",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "contenido_de_oxigeno_arterial_paco2": {
+      "name": "Contenido de Oxígeno Arterial PaCO2",
+      "reference": "17,903 - 21,012",
+      "value": "22.486",
+      "raw_value": "22.486",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    }
+  },
+  "brain": {
+    "estado_del_suministro_sanguineo_al_tejido_cerebral": {
+      "name": "Estado del Suministro Sanguíneo al Tejido Cerebral",
+      "reference": "143,37 - 210,81",
+      "value": "180.713",
+      "raw_value": "180.713",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "arterioesclerosis_cerebral": {
+      "name": "Arterioesclerosis Cerebral",
+      "reference": "0,103 - 0,642",
+      "value": "0.45",
+      "raw_value": "0.45",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "estado_funcional_de_nervio_craneal": {
+      "name": "Estado Funcional de Nervio Craneal",
+      "reference": "0,253 - 0,659",
+      "value": "0.379",
+      "raw_value": "0.379",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_emocion": {
+      "name": "Índice de Emoción",
+      "reference": "0,109 - 0,351",
+      "value": "0.152",
+      "raw_value": "0.152",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_memoria_zs": {
+      "name": "Índice de Memoria (ZS)",
+      "reference": "0,442 - 0,817",
+      "value": "0.331",
+      "raw_value": "0.331",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    }
+  },
+  "bone_disease": {
+    "dimension_del_prolapso_de_la_fibra_lumbar": {
+      "name": "Dimensión del Prolapso de la Fibra Lumbar",
+      "reference": "Sin Dirección",
+      "value": "Sin Dirección",
+      "raw_value": "Sin Dirección",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "grado_de_adhesion_del_musculo_del_hombro": {
+      "name": "Grado de Adhesión del Músculo del Hombro",
+      "reference": "< u 0,2",
+      "value": "u 0.17",
+      "raw_value": "u 0.17",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "limite_de_circulacion_de_extremidades": {
+      "name": "Límite de Circulación de Extremidades",
+      "reference": "+",
+      "value": "+",
+      "raw_value": "+",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "envejecimiento_del_ligamento": {
+      "name": "Envejecimiento del Ligamento",
+      "reference": "10%-40%",
+      "value": "33%",
+      "raw_value": "33%",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "bone_density": {
+    "coeficiente_de_osteoclasto": {
+      "name": "Coeficiente de Osteoclasto",
+      "reference": "86,73 - 180,97",
+      "value": "158.086",
+      "raw_value": "158.086",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "cantidad_de_perdida_de_calcio": {
+      "name": "Cantidad de Pérdida de Calcio",
+      "reference": "0,209 - 0,751",
+      "value": "0.567",
+      "raw_value": "0.567",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "grado_de_hiperplasia_osea": {
+      "name": "Grado de Hiperplasia Ósea",
+      "reference": "0,046 - 0,167",
+      "value": "0.097",
+      "raw_value": "0.097",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "grado_de_osteoporosis": {
+      "name": "Grado de Osteoporosis",
+      "reference": "0,124 - 0,453",
+      "value": "0.396",
+      "raw_value": "0.396",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "densidad_mineral_osea": {
+      "name": "Densidad Mineral Ósea",
+      "reference": "0,796 - 0,433",
+      "value": "0.564",
+      "raw_value": "0.564",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "rheumatoid": {
+    "grado_de_calcificacion_cervical": {
+      "name": "Grado de Calcificación Cervical",
+      "reference": "421 - 490",
+      "value": "433.085",
+      "raw_value": "433.085",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "grado_de_calcificacion_lumbar": {
+      "name": "Grado de Calcificación Lumbar",
+      "reference": "4,326 - 7,531",
+      "value": "4.88",
+      "raw_value": "4.88",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coeficiente_de_hiperplasia_osea": {
+      "name": "Coeficiente de Hiperplasia Ósea",
+      "reference": "2,954 - 5,543",
+      "value": "5.306",
+      "raw_value": "5.306",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coeficiente_de_osteoporosis": {
+      "name": "Coeficiente de Osteoporosis",
+      "reference": "2,019 - 4,721",
+      "value": "4.461",
+      "raw_value": "4.461",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coeficiente_de_reumatismo": {
+      "name": "Coeficiente de Reumatismo",
+      "reference": "4,023 - 11,627",
+      "value": "11.389",
+      "raw_value": "11.389",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "ndice_de_crecimiento_seo": {
+    "fosfatasa_alcalina_osea": {
+      "name": "Fosfatasa alcalina ósea",
+      "reference": "0,433 - 0,796",
+      "value": "0.33",
+      "raw_value": "0.33",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "osteocalcinabgp": {
+      "name": "Osteocalcina(BGP)",
+      "reference": "0,525 - 0,817",
+      "value": "0.309",
+      "raw_value": "0.309",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "estado_de_recuperacion_de_huesos_largos": {
+      "name": "Estado de recuperación de huesos largos",
+      "reference": "0,713 - 0,992",
+      "value": "0.499",
+      "raw_value": "0.499",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "estado_de_recuperacion_de_cartilagos_en_huesos_cortos": {
+      "name": "Estado de recuperación de cartílagos en huesos cortos",
+      "reference": "0,202 - 0,991",
+      "value": "0.23",
+      "raw_value": "0.23",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "linea_epifisaria": {
+      "name": "Línea epifisaria",
+      "reference": "0,432 - 0,826",
+      "value": "0.697",
+      "raw_value": "0.697",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "blood_glucose": {
+    "coeficiente_de_secrecion_de_insulina": {
+      "name": "Coeficiente de Secreción de Insulina",
+      "reference": "2,967 - 3,528",
+      "value": "3.494",
+      "raw_value": "3.494",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coeficiente_de_glucosa_en_sangre": {
+      "name": "Coeficiente de Glucosa en Sangre",
+      "reference": "2,163 - 7,321",
+      "value": "7.311",
+      "raw_value": "7.311",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coeficiente_de_glucosa_en_orina": {
+      "name": "Coeficiente de Glucosa en Orina",
+      "reference": "2,204 - 2,819",
+      "value": "2.788",
+      "raw_value": "2.788",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "trace_elements": {
+    "calcio": {
+      "name": "Calcio",
+      "reference": "1,219 - 3,021",
+      "value": "3.001",
+      "raw_value": "3.001",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "hierro": {
+      "name": "Hierro",
+      "reference": "1,151 - 1,847",
+      "value": "0.904",
+      "raw_value": "0.904",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "zinc": {
+      "name": "Zinc",
+      "reference": "1,143 - 1,989",
+      "value": "0.769",
+      "raw_value": "0.769",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "selenio": {
+      "name": "Selenio",
+      "reference": "0,847 - 2,045",
+      "value": "1.525",
+      "raw_value": "1.525",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "fosforo": {
+      "name": "Fósforo",
+      "reference": "1,195 - 2,134",
+      "value": "1.611",
+      "raw_value": "1.611",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "potasio": {
+      "name": "Potasio",
+      "reference": "0,689 - 0,987",
+      "value": "0.694",
+      "raw_value": "0.694",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "magnesio": {
+      "name": "Magnesio",
+      "reference": "0,568 - 0,992",
+      "value": "0.484",
+      "raw_value": "0.484",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "cobre": {
+      "name": "Cobre",
+      "reference": "0,474 - 0,749",
+      "value": "0.469",
+      "raw_value": "0.469",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "cobalto": {
+      "name": "Cobalto",
+      "reference": "2,326 - 5,531",
+      "value": "4.275",
+      "raw_value": "4.275",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "manganeso": {
+      "name": "Manganeso",
+      "reference": "0,497 - 0,879",
+      "value": "0.692",
+      "raw_value": "0.692",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "yodo": {
+      "name": "Yodo",
+      "reference": "1,421 - 5,490",
+      "value": "1.597",
+      "raw_value": "1.597",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "niquel": {
+      "name": "Níquel",
+      "reference": "2,462 - 5,753",
+      "value": "5.189",
+      "raw_value": "5.189",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "fluor": {
+      "name": "Flúor",
+      "reference": "1,954 - 4,543",
+      "value": "4.256",
+      "raw_value": "4.256",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "molibdeno": {
+      "name": "Molibdeno",
+      "reference": "0,938 - 1,712",
+      "value": "1.677",
+      "raw_value": "1.677",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "vanadio": {
+      "name": "Vanadio",
+      "reference": "1,019 - 3,721",
+      "value": "2.868",
+      "raw_value": "2.868",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "estano": {
+      "name": "Estaño",
+      "reference": "1,023 - 7,627",
+      "value": "4.631",
+      "raw_value": "4.631",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "silicio": {
+      "name": "Silicio",
+      "reference": "1,425 - 5,872",
+      "value": "0.901",
+      "raw_value": "0.901",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "estroncio": {
+      "name": "Estroncio",
+      "reference": "1,142 - 5,862",
+      "value": "4.133",
+      "raw_value": "4.133",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "boro": {
+      "name": "Boro",
+      "reference": "1,124 - 3,453",
+      "value": "2.331",
+      "raw_value": "2.331",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "vitamins": {
+    "vitamina_a": {
+      "name": "Vitamina A",
+      "reference": "0,346 - 0,401",
+      "value": "0.389",
+      "raw_value": "0.389",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "vitamina_b1": {
+      "name": "Vitamina B1",
+      "reference": "2,124 - 4,192",
+      "value": "3.036",
+      "raw_value": "3.036",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "vitamina_b2": {
+      "name": "Vitamina B2",
+      "reference": "1,549 - 2,213",
+      "value": "2.163",
+      "raw_value": "2.163",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "vitamina_b3": {
+      "name": "Vitamina B3",
+      "reference": "14,477 - 21,348",
+      "value": "13.709",
+      "raw_value": "13.709",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "vitamina_b6": {
+      "name": "Vitamina B6",
+      "reference": "0,824 - 1,942",
+      "value": "0.825",
+      "raw_value": "0.825",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "vitamina_b12": {
+      "name": "Vitamina B12",
+      "reference": "6,428 - 21,396",
+      "value": "7.999",
+      "raw_value": "7.999",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "vitamina_c": {
+      "name": "Vitamina C",
+      "reference": "4,543 - 5,023",
+      "value": "4.26",
+      "raw_value": "4.26",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "vitamina_d3": {
+      "name": "Vitamina D3",
+      "reference": "5,327 - 7,109",
+      "value": "5.419",
+      "raw_value": "5.419",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "vitamina_e": {
+      "name": "Vitamina E",
+      "reference": "4,826 - 6,013",
+      "value": "4.878",
+      "raw_value": "4.878",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "vitamina_k": {
+      "name": "Vitamina K",
+      "reference": "0,717 - 1,486",
+      "value": "0.481",
+      "raw_value": "0.481",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    }
+  },
+  "amino_acids": {
+    "lisina": {
+      "name": "Lisina",
+      "reference": "0,253 - 0,659",
+      "value": "0.998",
+      "raw_value": "0.998",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "triptofano": {
+      "name": "Triptófano",
+      "reference": "2,374 - 3,709",
+      "value": "2.654",
+      "raw_value": "2.654",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "fenilalanina": {
+      "name": "Fenilalanina",
+      "reference": "0,731 - 1,307",
+      "value": "0.923",
+      "raw_value": "0.923",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "metionina": {
+      "name": "Metionina",
+      "reference": "0,432 - 0,826",
+      "value": "0.626",
+      "raw_value": "0.626",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "treonina": {
+      "name": "Treonina",
+      "reference": "0,422 - 0,817",
+      "value": "0.586",
+      "raw_value": "0.586",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "isoleucina": {
+      "name": "Isoleucina",
+      "reference": "1,831 - 3,248",
+      "value": "4.476",
+      "raw_value": "4.476",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "leucina": {
+      "name": "Leucina",
+      "reference": "2,073 - 4,579",
+      "value": "5.041",
+      "raw_value": "5.041",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "valina": {
+      "name": "Valina",
+      "reference": "2,012 - 4,892",
+      "value": "2.623",
+      "raw_value": "2.623",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "histidina": {
+      "name": "Histidina",
+      "reference": "2,903 - 4,012",
+      "value": "5.029",
+      "raw_value": "5.029",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "arginina": {
+      "name": "Arginina",
+      "reference": "0,710 - 1,209",
+      "value": "1.484",
+      "raw_value": "1.484",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    }
+  },
+  "coenzymes": {
+    "nicotinamida": {
+      "name": "Nicotinamida",
+      "reference": "2,074 - 3,309",
+      "value": "1.229",
+      "raw_value": "1.229",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "biotina": {
+      "name": "Biotina",
+      "reference": "1,833 - 2,979",
+      "value": "0.946",
+      "raw_value": "0.946",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "acido_pantotenico": {
+      "name": "Ácido pantoténico",
+      "reference": "1,116 - 2,101",
+      "value": "0.62",
+      "raw_value": "0.62",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "acido_folico": {
+      "name": "Ácido fólico",
+      "reference": "1,449 - 2,246",
+      "value": "1.543",
+      "raw_value": "1.543",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coenzima_q10": {
+      "name": "Coenzima Q10",
+      "reference": "0,831 - 1,588",
+      "value": "0.461",
+      "raw_value": "0.461",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "glutation": {
+      "name": "Glutatión",
+      "reference": "0,726 - 1,281",
+      "value": "1.006",
+      "raw_value": "1.006",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "fatty_acids": {
+    "acido_linoleico": {
+      "name": "Ácido linoleico",
+      "reference": "0,642 - 0,985",
+      "value": "0.799",
+      "raw_value": "0.799",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "acido_linolenico": {
+      "name": "γ-Ácido linolénico",
+      "reference": "0,921 - 1,334",
+      "value": "0.978",
+      "raw_value": "0.978",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "acido_araquidonico": {
+      "name": "Ácido araquidónico",
+      "reference": "0,661 - 0,808",
+      "value": "0.707",
+      "raw_value": "0.707",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "endocrine": {
+    "indice_de_secrecion_de_la_glandula_tiroides": {
+      "name": "Índice de Secreción de la Glándula Tiroides",
+      "reference": "2,954 - 5,543",
+      "value": "5.057",
+      "raw_value": "5.057",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_secrecion_de_las_glandulas_paratiroides": {
+      "name": "Índice de Secreción de las Glándulas Paratiroides",
+      "reference": "2,845 - 4,017",
+      "value": "2.076",
+      "raw_value": "2.076",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "indice_de_las_glandulas_suprarrenales": {
+      "name": "Índice de las Glándulas Suprarrenales",
+      "reference": "2,412 - 2,974",
+      "value": "2.663",
+      "raw_value": "2.663",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_secrecion_de_la_glandula_pituitaria": {
+      "name": "Índice de Secreción de la Glándula Pituitaria",
+      "reference": "2,163 - 7,34",
+      "value": "6.366",
+      "raw_value": "6.366",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_secrecion_de_la_glandula_pineal": {
+      "name": "Índice de Secreción de la Glándula Pineal",
+      "reference": "3,210 - 6,854",
+      "value": "5.518",
+      "raw_value": "5.518",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_secrecion_del_timo": {
+      "name": "Índice de Secreción del Timo",
+      "reference": "2,967 - 3,528",
+      "value": "2.759",
+      "raw_value": "2.759",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "indice_de_secrecion_glandular": {
+      "name": "Índice de Secreción Glandular",
+      "reference": "2,204 - 2,819",
+      "value": "2.082",
+      "raw_value": "2.082",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    }
+  },
+  "immune": {
+    "indice_de_ganglios_linfaticos": {
+      "name": "Índice de Ganglios linfáticos",
+      "reference": "133,437 - 140,47",
+      "value": "139.875",
+      "raw_value": "139.875",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_inmunologico_de_amigdalas": {
+      "name": "Índice Inmunológico de Amígdalas",
+      "reference": "0,124 - 0,453",
+      "value": "0.424",
+      "raw_value": "0.424",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_medula_osea": {
+      "name": "Índice de Médula Ósea",
+      "reference": "0,146 - 3,218",
+      "value": "2.65",
+      "raw_value": "2.65",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_bazo": {
+      "name": "Índice de Bazo",
+      "reference": "34,367 - 35,642",
+      "value": "33.638",
+      "raw_value": "33.638",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "indice_de_timo": {
+      "name": "Índice de Timo",
+      "reference": "58,425 - 61,213",
+      "value": "58.558",
+      "raw_value": "58.558",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_inmunoglobulina": {
+      "name": "Índice de Inmunoglobulina",
+      "reference": "3,712 - 6,981",
+      "value": "2.618",
+      "raw_value": "2.618",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "indice_inmuno_respiratorio": {
+      "name": "Índice Inmuno Respiratorio",
+      "reference": "3,241 - 9,814",
+      "value": "8.309",
+      "raw_value": "8.309",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_inmunologico_gastrointestinal": {
+      "name": "Índice Inmunológico Gastrointestinal",
+      "reference": "0,638 - 1,712",
+      "value": "0.852",
+      "raw_value": "0.852",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_inmunologico_de_mucosa": {
+      "name": "Índice Inmunológico de Mucosa",
+      "reference": "4,111 - 18,741",
+      "value": "15.495",
+      "raw_value": "15.495",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "thyroid": {
+    "tiroxina_libre_ft4": {
+      "name": "Tiroxina libre (FT4)",
+      "reference": "0,103 - 0,316",
+      "value": "0.494",
+      "raw_value": "0.494",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "la_tiroglobulina": {
+      "name": "La tiroglobulina",
+      "reference": "0,114 - 0,202",
+      "value": "0.178",
+      "raw_value": "0.178",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "los_anticuerpos_antitiroglobulina": {
+      "name": "Los anticuerpos anti-tiroglobulina",
+      "reference": "0,421 - 0,734",
+      "value": "0.533",
+      "raw_value": "0.533",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "tres_triyodotironina_t3": {
+      "name": "Tres triyodotironina (T3)",
+      "reference": "0,161 - 0,308",
+      "value": "0.236",
+      "raw_value": "0.236",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "toxins": {
+    "bebidas_carbonatadas": {
+      "name": "Bebidas Carbonatadas",
+      "reference": "0,209 - 0,751",
+      "value": "0.71",
+      "raw_value": "0.71",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "radiacion_electromagnetica": {
+      "name": "Radiación Electromagnética",
+      "reference": "0,046 - 0,167",
+      "value": "0.194",
+      "raw_value": "0.194",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "tabaco___nicotina": {
+      "name": "Tabaco / Nicotina",
+      "reference": "0,124 - 0,453",
+      "value": "0.126",
+      "raw_value": "0.126",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "residuos_de_pesticidas_toxicos": {
+      "name": "Residuos de Pesticidas Tóxicos",
+      "reference": "0,013 - 0,313",
+      "value": "0.263",
+      "raw_value": "0.263",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "heavy_metals": {
+    "plomo": {
+      "name": "Plomo",
+      "reference": "0,052 - 0,643",
+      "value": "0.776",
+      "raw_value": "0.776",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "mercurio": {
+      "name": "Mercurio",
+      "reference": "0,013 - 0,336",
+      "value": "0.986",
+      "raw_value": "0.986",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "cadmio": {
+      "name": "Cadmio",
+      "reference": "0,527 - 1,523",
+      "value": "1.428",
+      "raw_value": "1.428",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "cromo": {
+      "name": "Cromo",
+      "reference": "0,176 - 1,183",
+      "value": "0.345",
+      "raw_value": "0.345",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "arsenico": {
+      "name": "Arsénico",
+      "reference": "0,153 - 0,621",
+      "value": "0.953",
+      "raw_value": "0.953",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "antimonio": {
+      "name": "Antimonio",
+      "reference": "0,162 - 0,412",
+      "value": "0.29",
+      "raw_value": "0.29",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "talio": {
+      "name": "Talio",
+      "reference": "0,182 - 0,542",
+      "value": "0.422",
+      "raw_value": "0.422",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "aluminio": {
+      "name": "Aluminio",
+      "reference": "0,192 - 0,412",
+      "value": "0.472",
+      "raw_value": "0.472",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    }
+  },
+  "basic_physical": {
+    "capacidad_de_respuesta": {
+      "name": "Capacidad de Respuesta",
+      "reference": "59,786 - 65,424",
+      "value": "61.172",
+      "raw_value": "61.172",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "capacidad_mental": {
+      "name": "Capacidad Mental",
+      "reference": "58,715 - 63,213",
+      "value": "62.128",
+      "raw_value": "62.128",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "falta_de_agua": {
+      "name": "Falta de Agua",
+      "reference": "33,967 - 37,642",
+      "value": "32.978",
+      "raw_value": "32.978",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "hipoxia": {
+      "name": "Hipoxia",
+      "reference": "133,642 - 141,476",
+      "value": "130.909",
+      "raw_value": "130.909",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "ph": {
+      "name": "PH",
+      "reference": "3,156 - 3,694",
+      "value": "3.219",
+      "raw_value": "3.219",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "allergies": {
+    "indice_de_alergia_a_farmacos": {
+      "name": "Índice de alergia a fármacos",
+      "reference": "0,431 - 1,329",
+      "value": "1.343",
+      "raw_value": "1.343",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "indice_de_alergia_al_alcohol": {
+      "name": "Índice de alergia al alcohol",
+      "reference": "0,432 - 1,246",
+      "value": "0.547",
+      "raw_value": "0.547",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_alergia_al_polen": {
+      "name": "Índice de alergia al polen",
+      "reference": "0,143 - 1,989",
+      "value": "1.967",
+      "raw_value": "1.967",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_alergia_a_inyeccion": {
+      "name": "Índice de alergia a inyección",
+      "reference": "0,847 - 1,045",
+      "value": "0.874",
+      "raw_value": "0.874",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_alergia_a_productos_quimicos": {
+      "name": "Índice de alergia a productos químicos",
+      "reference": "0,842 - 1,643",
+      "value": "1.146",
+      "raw_value": "1.146",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_alergia_a_la_pintura": {
+      "name": "Índice de alergia a la pintura",
+      "reference": "0,346 - 1,401",
+      "value": "1.39",
+      "raw_value": "1.39",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_alergia_al_polvo": {
+      "name": "Índice de alergia al polvo",
+      "reference": "0,543 - 1,023",
+      "value": "1.042",
+      "raw_value": "1.042",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "indice_de_alergia_al_humo": {
+      "name": "Índice de alergia al humo",
+      "reference": "0,826 - 1,013",
+      "value": "1.325",
+      "raw_value": "1.325",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "indice_de_alergia_a_tintes_de_cabello": {
+      "name": "Índice de alergia a tintes de cabello",
+      "reference": "0,717 - 1,486",
+      "value": "1.039",
+      "raw_value": "1.039",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_alergia_a_la_piel_animal": {
+      "name": "Índice de alergia a la piel animal",
+      "reference": "0,124 - 1,192",
+      "value": "0.661",
+      "raw_value": "0.661",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_alergia_a_la_joyeria_de_metal": {
+      "name": "Índice de alergia a la joyería de metal",
+      "reference": "0,549 - 1,213",
+      "value": "0.859",
+      "raw_value": "0.859",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_alergia_a_los_mariscos": {
+      "name": "Índice de alergia a los mariscos",
+      "reference": "0,449 - 1,246",
+      "value": "2.338",
+      "raw_value": "2.338",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "indice_de_alergia_a_la_leche": {
+      "name": "Índice de alergia a la leche",
+      "reference": "0,477 - 1,348",
+      "value": "0.737",
+      "raw_value": "0.737",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "obesity": {
+    "coeficiente_anormal_de_metabolismo_lipidico": {
+      "name": "Coeficiente Anormal de Metabolismo Lipídico",
+      "reference": "1,992 - 3,713",
+      "value": "0.609",
+      "raw_value": "0.609",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "coeficiente_de_anormalidad_de_tejido_adiposo_marron": {
+      "name": "Coeficiente de anormalidad de tejido adiposo marrón",
+      "reference": "2,791 - 4,202",
+      "value": "2.324",
+      "raw_value": "2.324",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "coeficiente_de_hiperinsulinemia": {
+      "name": "Coeficiente de Hiperinsulinemia",
+      "reference": "0,097 - 0,215",
+      "value": "0.1",
+      "raw_value": "0.1",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coeficiente_anormal_del_nucleo_hipotalmico": {
+      "name": "Coeficiente Anormal del Núcleo Hipotalmico",
+      "reference": "0,332 - 0,626",
+      "value": "0.67",
+      "raw_value": "0.67",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "coeficiente_anormal_de_contenido_de_trigliceridos": {
+      "name": "Coeficiente anormal de contenido de triglicéridos",
+      "reference": "1,341 - 1,991",
+      "value": "5.165",
+      "raw_value": "5.165",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    }
+  },
+  "skin": {
+    "indice_de_radicales_libres_cutaneos": {
+      "name": "Índice de Radicales Libres Cutáneos",
+      "reference": "0,124 - 3,453",
+      "value": "0.265",
+      "raw_value": "0.265",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_colageno": {
+      "name": "Índice de Colágeno",
+      "reference": "4,471 - 6,079",
+      "value": "4.187",
+      "raw_value": "4.187",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "indice_grasa_cutanea": {
+      "name": "Índice Grasa Cutánea",
+      "reference": "14,477 - 21,348",
+      "value": "17.173",
+      "raw_value": "17.173",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_inmunidad_cutanea": {
+      "name": "Índice de Inmunidad Cutánea",
+      "reference": "1,035 - 3,230",
+      "value": "3.759",
+      "raw_value": "3.759",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "indice_de_humectacion_cutanea": {
+      "name": "Índice de Humectación Cutánea",
+      "reference": "0,218 - 0,953",
+      "value": "1.877",
+      "raw_value": "1.877",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "perdida_de_humectacion_cutanea": {
+      "name": "Perdida de Humectación Cutánea",
+      "reference": "2,214 - 4,158",
+      "value": "4.143",
+      "raw_value": "4.143",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_dilatacion_cutanea": {
+      "name": "Índice de Dilatación Cutánea",
+      "reference": "0,824 - 1,942",
+      "value": "1.124",
+      "raw_value": "1.124",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_elasticidad_cutanea": {
+      "name": "Índice de Elasticidad Cutánea",
+      "reference": "2,717 - 3,512",
+      "value": "3.119",
+      "raw_value": "3.119",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_melanina_cutanea": {
+      "name": "Índice de Melanina Cutánea",
+      "reference": "0,346 - 0,501",
+      "value": "0.509",
+      "raw_value": "0.509",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "indice_de_endurecimiento_cutaneo": {
+      "name": "Índice de Endurecimiento Cutáneo",
+      "reference": "0,842 - 1,858",
+      "value": "1.967",
+      "raw_value": "1.967",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    }
+  },
+  "eye": {
+    "bolsas_en_los_ojos": {
+      "name": "Bolsas en los ojos",
+      "reference": "0,510 - 3,109",
+      "value": "7.344",
+      "raw_value": "7.344",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "arrugas_de_colageno": {
+      "name": "Arrugas de colágeno",
+      "reference": "2,031 - 3,107",
+      "value": "0.952",
+      "raw_value": "0.952",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "circulos_oscuros": {
+      "name": "Círculos oscuros",
+      "reference": "0,831 - 3,188",
+      "value": "1.751",
+      "raw_value": "1.751",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "obstruccion_linfatica": {
+      "name": "Obstrucción linfática",
+      "reference": "1,116 - 4,101",
+      "value": "6.374",
+      "raw_value": "6.374",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "flacidez": {
+      "name": "Flacidez",
+      "reference": "0,233 - 0,559",
+      "value": "1.125",
+      "raw_value": "1.125",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "edema": {
+      "name": "Edema",
+      "reference": "0,332 - 0,726",
+      "value": "0.471",
+      "raw_value": "0.471",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "actividad_celular_del_ojo": {
+      "name": "Actividad celular del ojo",
+      "reference": "0,118 - 0,892",
+      "value": "1.218",
+      "raw_value": "1.218",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "fatiga_visual": {
+      "name": "Fatiga visual",
+      "reference": "2,017 - 5,157",
+      "value": "7.481",
+      "raw_value": "7.481",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    }
+  },
+  "collagen": {
+    "ojos": {
+      "name": "Ojos",
+      "reference": "6,352 - 8,325",
+      "value": "4.8",
+      "raw_value": "4.8",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "dientes": {
+      "name": "Dientes",
+      "reference": "7,245 - 8,562",
+      "value": "6.97",
+      "raw_value": "6.97",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "cabello_y_piel": {
+      "name": "Cabello y Piel",
+      "reference": "4,533 - 6,179",
+      "value": "2.958",
+      "raw_value": "2.958",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "sistema_endocrino": {
+      "name": "Sistema Endocrino",
+      "reference": "6,178 - 8,651",
+      "value": "7.758",
+      "raw_value": "7.758",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "sistema_circulatorio": {
+      "name": "Sistema Circulatorio",
+      "reference": "3,586 - 4,337",
+      "value": "2.211",
+      "raw_value": "2.211",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "sistema_digestivo": {
+      "name": "Sistema Digestivo",
+      "reference": "3,492 - 4,723",
+      "value": "2.754",
+      "raw_value": "2.754",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "sistema_inmunologico": {
+      "name": "Sistema Inmunológico",
+      "reference": "3,376 - 4,582",
+      "value": "3.071",
+      "raw_value": "3.071",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "sistema_motor": {
+      "name": "Sistema Motor",
+      "reference": "6,458 - 8,133",
+      "value": "6.919",
+      "raw_value": "6.919",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "tejido_muscular": {
+      "name": "Tejido Muscular",
+      "reference": "6,552 - 8,268",
+      "value": "7.73",
+      "raw_value": "7.73",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "metabolismo_de_las_grasas": {
+      "name": "Metabolismo de las Grasas",
+      "reference": "6,338 - 8,368",
+      "value": "3.787",
+      "raw_value": "3.787",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "desintoxicacion_y_metabolismo": {
+      "name": "Desintoxicación y Metabolismo",
+      "reference": "6,187 - 8,466",
+      "value": "5.355",
+      "raw_value": "5.355",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "sistema_reproductivo": {
+      "name": "Sistema Reproductivo",
+      "reference": "3,778 - 4,985",
+      "value": "4.926",
+      "raw_value": "4.926",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "sistema_nervioso": {
+      "name": "Sistema Nervioso",
+      "reference": "3,357 - 4,239",
+      "value": "2.562",
+      "raw_value": "2.562",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "sistema_respiratorio": {
+      "name": "Sistema Respiratorio",
+      "reference": "6,256 - 8,682",
+      "value": "8.055",
+      "raw_value": "8.055",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "meridians": {
+    "meridiano_de_mano_tai_yin_pulmon": {
+      "name": "Meridiano de Mano Tai Yin Pulmon",
+      "reference": "48,264 - 65,371",
+      "value": "48.977",
+      "raw_value": "48.977",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "meridiano_mano_yang_min_intestino_grueso": {
+      "name": "Meridiano Mano Yang min Intestino Grueso",
+      "reference": "56,749 - 67,522",
+      "value": "59.872",
+      "raw_value": "59.872",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "meridiano_del_pie_yangmin_estomago": {
+      "name": "Meridiano del Pie Yangmin Estomago",
+      "reference": "0,481 - 1,043",
+      "value": "0.953",
+      "raw_value": "0.953",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "meridiano_del_pie_tai_yin_bazo_pancreas": {
+      "name": "Meridiano del Pie Tai Yin Bazo Pancreas",
+      "reference": "0,327 - 0,937",
+      "value": "0.867",
+      "raw_value": "0.867",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "mano_shao_yin_corazon_sutra": {
+      "name": "Mano Shao Yin Corazon Sutra",
+      "reference": "1,672 - 1,978",
+      "value": "1.85",
+      "raw_value": "1.85",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "mano_intestino_delgado_por_el_sol": {
+      "name": "Mano intestino delgado por el Sol",
+      "reference": "0,192 - 0,412",
+      "value": "0.278",
+      "raw_value": "0.278",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "vejiga_plexo_solar": {
+      "name": "Vejiga plexo solar",
+      "reference": "4,832 - 5,147",
+      "value": "4.187",
+      "raw_value": "4.187",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "mano_shao_yin_rinon": {
+      "name": "Mano Shao Yin Riñon",
+      "reference": "3,321 - 4,244",
+      "value": "3.513",
+      "raw_value": "3.513",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "circulacion_y_sexualidad": {
+      "name": "Circulacion y Sexualidad",
+      "reference": "1,338 - 1,672",
+      "value": "1.614",
+      "raw_value": "1.614",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "mano_shao_yang_triple_calefactor": {
+      "name": "Mano Shao Yang Triple Calefactor",
+      "reference": "0,669 - 1,544",
+      "value": "1.389",
+      "raw_value": "1.389",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "pie_vesicula_biliar": {
+      "name": "Pie Vesicula Biliar",
+      "reference": "1,554 - 1,988",
+      "value": "1.461",
+      "raw_value": "1.461",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "pie_jue_yin_higado": {
+      "name": "Pie Jue Yin Higado",
+      "reference": "1,553 - 2,187",
+      "value": "1.6",
+      "raw_value": "1.6",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "jen_mai": {
+      "name": "Jen Mai",
+      "reference": "11,719 - 18,418",
+      "value": "13.633",
+      "raw_value": "13.633",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "meridiano_governador": {
+      "name": "Meridiano Governador",
+      "reference": "0,708 - 1,942",
+      "value": "0.733",
+      "raw_value": "0.733",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "meridiano_vital": {
+      "name": "Meridiano Vital",
+      "reference": "6,138 - 21,396",
+      "value": "21.126",
+      "raw_value": "21.126",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "tai_mai": {
+      "name": "Tai Mai",
+      "reference": "5,733 - 7,109",
+      "value": "6.811",
+      "raw_value": "6.811",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "pulso_cerebro_y_corazon": {
+    "indice_de_stroke": {
+      "name": "Indice de Stroke",
+      "reference": "60,735 - 65,396",
+      "value": "64.588",
+      "raw_value": "64.588",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "volumen_sistolico": {
+      "name": "Volumen Sistolico",
+      "reference": "63,012 - 67,892",
+      "value": "66.484",
+      "raw_value": "66.484",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "resistencia_periferica_total_tpr": {
+      "name": "Resistencia Periferica Total (TPR)",
+      "reference": "0,983 - 1,265",
+      "value": "0.991",
+      "raw_value": "0.991",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coeficiente_de_la_onda_del_pulso_k": {
+      "name": "Coeficiente de la onda del Pulso K",
+      "reference": "0,316 - 0,401",
+      "value": "0.311",
+      "raw_value": "0.311",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "saturacion_de_oxigeno_en_la_sangre_cerebrovascular_sa": {
+      "name": "Saturacion de Oxigeno en la sangre cerebrovascular (Sa)",
+      "reference": "0,710 - 1,109",
+      "value": "0.589",
+      "raw_value": "0.589",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "volumen_de_oxigeno_en_la_sangre_cerebrovascular_caco2": {
+      "name": "Volumen de Oxigeno en la sangre cerebrovascular (CaCO2)",
+      "reference": "7,880 - 10,090",
+      "value": "10.087",
+      "raw_value": "10.087",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "presion_de_oxigeno_en_la_sangre_cerebrovascular_pao2": {
+      "name": "Presion de Oxigeno en la sangre cerebrovascular (PaO2)",
+      "reference": "5,017 - 5,597",
+      "value": "5",
+      "raw_value": "5",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    }
+  },
+  "blood_lipids": {
+    "viscosidad_de_la_sangre": {
+      "name": "Viscosidad de la Sangre",
+      "reference": "4,131 - 4,562",
+      "value": "4.399",
+      "raw_value": "4.399",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "colesterol_total_tc": {
+      "name": "Colesterol Total (TC)",
+      "reference": "1,833 - 2,979",
+      "value": "2.692",
+      "raw_value": "2.692",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "trigliceridos_tg": {
+      "name": "Trigliceridos (TG)",
+      "reference": "1,116 - 2,101",
+      "value": "1.631",
+      "raw_value": "1.631",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "lipo_proteinas_de_alta_dencidad_hdlc": {
+      "name": "Lipo Proteinas de Alta dencidad (HDL-C)",
+      "reference": "1,449 - 2,246",
+      "value": "2.546",
+      "raw_value": "2.546",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "la_lipoproteina_de_baja_densidad_ldlc": {
+      "name": "La lipoproteína de baja densidad (LDL-C)",
+      "reference": "0,831 - 1,588",
+      "value": "1.15",
+      "raw_value": "1.15",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "grasas_neutras_mb": {
+      "name": "Grasas Neutras (MB)",
+      "reference": "0,726 - 1,281",
+      "value": "1.946",
+      "raw_value": "1.946",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "complejos_inmunes_circulantes_cic": {
+      "name": "Complejos Inmunes Circulantes (CIC)",
+      "reference": "13,012 - 17,291",
+      "value": "15.124",
+      "raw_value": "15.124",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "prostate": {
+    "grado_de_hiperplasia_prostatica": {
+      "name": "Grado de Hiperplasia Prostática",
+      "reference": "1,023 - 3,230",
+      "value": "4.128",
+      "raw_value": "4.128",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "grado_de_calcificacion_prostatica": {
+      "name": "Grado de Calcificación Prostática",
+      "reference": "1,471 - 6,079",
+      "value": "15.149",
+      "raw_value": "15.149",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "sindrome_de_prostatitis": {
+      "name": "Síndrome de Prostatitis",
+      "reference": "2,213 - 2,717",
+      "value": "5.742",
+      "raw_value": "5.742",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    }
+  },
+  "male_sexual": {
+    "testosterona": {
+      "name": "Testosterona",
+      "reference": "3,342 - 9,461",
+      "value": "1.458",
+      "raw_value": "1.458",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "gonadotropina": {
+      "name": "Gonadotropina",
+      "reference": "4,111 - 18,741",
+      "value": "15.606",
+      "raw_value": "15.606",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "transmisor_de_la_ereccion": {
+      "name": "Transmisor de la Erección",
+      "reference": "3,241 - 9,814",
+      "value": "2.279",
+      "raw_value": "2.279",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    }
+  },
+  "sperm_semen": {
+    "volumen_del_semen": {
+      "name": "Volumen del Semen",
+      "reference": "1,502 - 6,028",
+      "value": "1.178",
+      "raw_value": "1.178",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "tiempo_de_licuefaccion": {
+      "name": "Tiempo de Licuefaccion",
+      "reference": "10,283 - 30,282",
+      "value": "25.995",
+      "raw_value": "25.995",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "numero_de_espermas": {
+      "name": "Numero de Espermas",
+      "reference": "2,483 - 3,932",
+      "value": "3.122",
+      "raw_value": "3.122",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "tasa_de_movilidad_de_espermas": {
+      "name": "Tasa de Movilidad de Espermas",
+      "reference": "0,637 - 0,877",
+      "value": "0.574",
+      "raw_value": "0.574",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    }
+  },
+  "body_composition": {
+    "clasificacion_componencial": {
+      "name": "Clasificación Componencial",
+      "reference": "Mediciones",
+      "value": "Humedad del cuerpo",
+      "raw_value": "Humedad del cuerpo",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "2liquido_extracelularl": {
+      "name": "(2)líquido extracelular(L)",
+      "reference": "9.8",
+      "value": "(6)la humedad del cuerpo=(1)+(2)=29",
+      "raw_value": "(6)la humedad del cuerpo=(1)+(2)=29",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "5grasa_corporalkg": {
+      "name": "(5)grasa corporal(Kg)",
+      "reference": "21",
+      "value": "(9)Peso=(8)+(5)=86",
+      "raw_value": "(9)Peso=(8)+(5)=86",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "bajo_peso": {
+      "name": "bajo peso",
+      "reference": "Normal",
+      "value": "Sobrepeso",
+      "raw_value": "Sobrepeso",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "185": {
+      "name": "<18,5",
+      "reference": "18,5~22,9",
+      "value": ">=23",
+      "raw_value": ">=23",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "informe_de_anlisis_de_expertos": {
+    "sistema": {
+      "name": "Sistema",
+      "reference": "Objeto Analizado",
+      "value": "Rango Normal",
+      "raw_value": "Rango Normal",
+      "status": "NORMAL",
+      "translation": ""
+    }
+  },
+  "informe_de_anlisis_de_la_mano": {
+    "sistema": {
+      "name": "Sistema",
+      "reference": "Objeto Analizado",
+      "value": "Rango Normal",
+      "raw_value": "Rango Normal",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "obesidad": {
+      "name": "Obesidad",
+      "reference": "Coeficiente anormal de contenido de triglicéridos",
+      "value": "1,341 - 1,991",
+      "raw_value": "1,341 - 1,991",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "cardiovasculares_y_cerebrovasculares": {
+      "name": "Cardiovasculares y Cerebrovasculares",
+      "reference": "Resistencia Vascular",
+      "value": "0,327 - 0,937",
+      "raw_value": "0,327 - 0,937",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "presion_de_perfusion_coronaria": {
+      "name": "Presión de Perfusión Coronaria",
+      "reference": "11,719 - 18,418",
+      "value": "19.098",
+      "raw_value": "19.098",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "funcion_gastrointestinal": {
+      "name": "Función Gastrointestinal",
+      "reference": "Coeficiente de Función de Peristalsis Gástrica",
+      "value": "58,425 - 61,213",
+      "raw_value": "58,425 - 61,213",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coeficiente_de_funcion_de_absorcion_del_intestino_delgado": {
+      "name": "Coeficiente de Función de Absorción del Intestino Delgado",
+      "reference": "3,572 - 6,483",
+      "value": "2.446",
+      "raw_value": "2.446",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "funcion_del_intestino_grueso": {
+      "name": "Función del Intestino Grueso",
+      "reference": "Coeficiente de absorción colónica",
+      "value": "2,946 - 3,815",
+      "raw_value": "2,946 - 3,815",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "funcion_renal": {
+      "name": "Función Renal",
+      "reference": "Ïndice de Ácido Úrico",
+      "value": "1,435 - 1,987",
+      "raw_value": "1,435 - 1,987",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "indice_de_proteinuria": {
+      "name": "Índice de Proteinuria",
+      "reference": "1,571 - 4,079",
+      "value": "5.261",
+      "raw_value": "5.261",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "funcion_pulmonar": {
+      "name": "Función Pulmonar",
+      "reference": "Capacidad Vital VC",
+      "value": "3348 - 3529",
+      "raw_value": "3348 - 3529",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "contenido_de_oxigeno_arterial_paco2": {
+      "name": "Contenido de Oxígeno Arterial PaCO2",
+      "reference": "17,903 - 21,012",
+      "value": "22.486",
+      "raw_value": "22.486",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "indice_de_crecimiento_oseo": {
+      "name": "Índice de crecimiento óseo",
+      "reference": "Osteocalcina(BGP)",
+      "value": "0,525 - 0,817",
+      "raw_value": "0,525 - 0,817",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "oligoelementos": {
+      "name": "Oligoelementos",
+      "reference": "Zinc",
+      "value": "1,143 - 1,989",
+      "raw_value": "1,143 - 1,989",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "silicio": {
+      "name": "Silicio",
+      "reference": "1,425 - 5,872",
+      "value": "0.901",
+      "raw_value": "0.901",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    },
+    "vitamina": {
+      "name": "Vitamina",
+      "reference": "Vitamina K",
+      "value": "0,717 - 1,486",
+      "raw_value": "0,717 - 1,486",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "aminoacidos": {
+      "name": "Aminoácidos",
+      "reference": "Lisina",
+      "value": "0,253 - 0,659",
+      "raw_value": "0,253 - 0,659",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "coenzima": {
+      "name": "Coenzima",
+      "reference": "Nicotinamida",
+      "value": "2,074 - 3,309",
+      "raw_value": "2,074 - 3,309",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "biotina": {
+      "name": "Biotina",
+      "reference": "1,833 - 2,979",
+      "value": "0.946",
+      "raw_value": "0.946",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "acido_pantotenico": {
+      "name": "Ácido pantoténico",
+      "reference": "1,116 - 2,101",
+      "value": "0.62",
+      "raw_value": "0.62",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "coenzima_q10": {
+      "name": "Coenzima Q10",
+      "reference": "0,831 - 1,588",
+      "value": "0.461",
+      "raw_value": "0.461",
+      "status": "ANORMAL MODERADO",
+      "translation": ""
+    },
+    "metales_pesados": {
+      "name": "Metales Pesados",
+      "reference": "Mercurio",
+      "value": "0,013 - 0,336",
+      "raw_value": "0,013 - 0,336",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "piel": {
+      "name": "Piel",
+      "reference": "Índice de Humectación Cutánea",
+      "value": "0,218 - 0,953",
+      "raw_value": "0,218 - 0,953",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "ojo": {
+      "name": "Ojo",
+      "reference": "Bolsas en los ojos",
+      "value": "0,510 - 3,109",
+      "raw_value": "0,510 - 3,109",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "arrugas_de_colageno": {
+      "name": "Arrugas de colágeno",
+      "reference": "2,031 - 3,107",
+      "value": "0.952",
+      "raw_value": "0.952",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "flacidez": {
+      "name": "Flacidez",
+      "reference": "0,233 - 0,559",
+      "value": "1.125",
+      "raw_value": "1.125",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "colageno": {
+      "name": "Colágeno",
+      "reference": "Sistema Circulatorio",
+      "value": "3,586 - 4,337",
+      "raw_value": "3,586 - 4,337",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "metabolismo_de_las_grasas": {
+      "name": "Metabolismo de las Grasas",
+      "reference": "6,338 - 8,368",
+      "value": "3.787",
+      "raw_value": "3.787",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "prostata": {
+      "name": "Próstata",
+      "reference": "Grado de Calcificación Prostática",
+      "value": "1,471 - 6,079",
+      "raw_value": "1,471 - 6,079",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "sindrome_de_prostatitis": {
+      "name": "Síndrome de Prostatitis",
+      "reference": "2,213 - 2,717",
+      "value": "5.742",
+      "raw_value": "5.742",
+      "status": "ANORMAL SEVERO",
+      "translation": ""
+    },
+    "funcion_sexual_masculina": {
+      "name": "Función Sexual Masculina",
+      "reference": "Testosterona",
+      "value": "3,342 - 9,461",
+      "raw_value": "3,342 - 9,461",
+      "status": "NORMAL",
+      "translation": ""
+    },
+    "transmisor_de_la_ereccion": {
+      "name": "Transmisor de la Erección",
+      "reference": "3,241 - 9,814",
+      "value": "2.279",
+      "raw_value": "2.279",
+      "status": "ANORMAL LEVE",
+      "translation": ""
+    }
+  }
+}

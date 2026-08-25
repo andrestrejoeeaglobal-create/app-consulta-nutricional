@@ -19,7 +19,7 @@ const NeuralCore = ({ isListening, isAnalyzing }) => {
                 className="relative w-64 h-64 flex items-center justify-center"
             >
                 {/* Core Glow */}
-                <div className={`absolute w-32 h-32 rounded-full blur-3xl transition-colors duration-500 ${isAnalyzing ? 'bg-purple-500/30' :
+                <div className={`absolute w-32 h-32 rounded-full blur-3xl transition-colors duration-500 ${isAnalyzing ? 'bg-indigo-500/30' :
                     isListening ? 'bg-cyan-400/40' : 'bg-cyan-500/20'
                     }`} />
 
@@ -29,7 +29,7 @@ const NeuralCore = ({ isListening, isAnalyzing }) => {
                     return (
                         <motion.div
                             key={i}
-                            className={`absolute w-1 h-1 rounded-full ${isAnalyzing ? 'bg-purple-400' : 'bg-cyan-400'
+                            className={`absolute w-1 h-1 rounded-full ${isAnalyzing ? 'bg-indigo-400' : 'bg-cyan-400'
                                 }`}
                             animate={{
                                 x: Math.cos(i * (360 / particles.length)) * (100 + (isListening ? 20 : 0)),
@@ -53,7 +53,7 @@ const NeuralCore = ({ isListening, isAnalyzing }) => {
                         opacity: [0.5, 1, 0.5]
                     } : {}}
                     transition={{ duration: 0.3, repeat: Infinity }}
-                    className={`w-4 h-4 rounded-full shadow-[0_0_20px_#06b6d4] ${isAnalyzing ? 'bg-purple-400' : 'bg-cyan-400'
+                    className={`w-4 h-4 rounded-full shadow-[0_0_20px_#06b6d4] ${isAnalyzing ? 'bg-indigo-400' : 'bg-cyan-400'
                         }`}
                 />
             </motion.div>

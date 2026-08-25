@@ -48,8 +48,8 @@ export const TabRestrictions = ({
             >
                 <div className="space-y-6">
                     {/* TARJETA: FARMACOLOGÍA Y SUPLEMENTNOS */}
-                    <div id="card-meds" className={`bg-white p-6 rounded-2xl shadow-sm border border-purple-100 transition-all duration-300 ${currentStep?.includes('meds_') || currentStep?.includes('supp_') ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}>
-                        <CardHeader icon={FlaskConical} title="Farmacología y Suplementación" colorClass="text-purple-500"
+                    <div id="card-meds" className={`bg-white p-6 rounded-2xl shadow-sm border border-indigo-100 transition-all duration-300 ${currentStep?.includes('meds_') || currentStep?.includes('supp_') ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}>
+                        <CardHeader icon={FlaskConical} title="Farmacología y Suplementación" colorClass="text-indigo-600"
                             onEdit={() => onTriggerEdit && onTriggerEdit('meds')}
                             showEdit={true}
                         />
@@ -60,13 +60,13 @@ export const TabRestrictions = ({
                                 {patientData.history?.medications && patientData.history.medications.length > 0 ? (
                                     <div className="space-y-2">
                                         {patientData.history.medications.map((item, idx) => (
-                                            <div key={idx} className="flex justify-between items-start p-3 bg-purple-50 rounded-xl text-sm border border-purple-100">
+                                            <div key={idx} className="flex justify-between items-start p-3 bg-indigo-50 rounded-xl text-sm border border-indigo-100">
                                                 <div>
-                                                    <div className="font-bold text-purple-700">{item.name}</div>
-                                                    <div className="text-xs text-purple-600 mt-0.5">{item.dose_frequency}</div>
+                                                    <div className="font-bold text-indigo-700">{item.name}</div>
+                                                    <div className="text-xs text-indigo-600 mt-0.5">{item.dose_frequency}</div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <span className="inline-block px-2 py-0.5 bg-white rounded border border-purple-200 text-[10px] font-bold text-purple-400">
+                                                    <span className="inline-block px-2 py-0.5 bg-white rounded border border-indigo-200 text-[10px] font-bold text-indigo-500">
                                                         {item.duration || 'Sin dato'}
                                                     </span>
                                                 </div>

@@ -326,15 +326,51 @@ export const TabClinicalHistory = ({
 
         let filteredAlerts = [];
         if (category === 'ahf') {
-            filteredAlerts = (pendingAlerts || []).filter(isAhf);
+            const hasAhf = (patientData.familyTree?.antecedentes && patientData.familyTree.antecedentes.length > 0);
+            filteredAlerts = hasAhf ? (pendingAlerts || []).filter(isAhf) : [];
         } else if (category === 'app') {
-            filteredAlerts = (pendingAlerts || []).filter(isApp);
+            const activeAppConditions = (patientData.history?.personal_structured || []).map(p => 
+                String(p.specific_condition || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            );
+            filteredAlerts = (pendingAlerts || []).filter(isApp).filter(alert => {
+                const alertType = String(alert.type || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                const alertMsg = String(alert.message || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                
+                if (alertType.includes("GLUCEMICA") || alertType.includes("METABOLICA") || alertMsg.includes("DIABETES") || alertMsg.includes("GLUCOSA")) {
+                    return activeAppConditions.some(c => c.includes("DIABETES") || c.includes("GLUCOSA") || c.includes("RESISTENCIA"));
+                }
+                if (alertType.includes("TENSIO") || alertType.includes("ARTERIAL") || alertMsg.includes("HIPERTENSION") || alertMsg.includes("PRESION")) {
+                    return activeAppConditions.some(c => c.includes("HIPERTENS") || c.includes("PRESI"));
+                }
+                if (alertType.includes("TIROI") || alertMsg.includes("HIPOTIRO") || alertMsg.includes("TIROIDE")) {
+                    return activeAppConditions.some(c => c.includes("TIROI") || c.includes("HIPOTIRO"));
+                }
+                if (alertType.includes("HORMONAL") || alertType.includes("SOP") || alertMsg.includes("SOP") || alertMsg.includes("OVARIO")) {
+                    return activeAppConditions.some(c => c.includes("SOP") || c.includes("OVARIO"));
+                }
+                if (alertType.includes("INTESTINAL") || alertType.includes("MUCOSA") || alertMsg.includes("GASTRIT") || alertMsg.includes("COLIT") || alertMsg.includes("INTESTINO")) {
+                    return activeAppConditions.some(c => c.includes("GASTRIT") || c.includes("COLIT") || c.includes("INTESTINO"));
+                }
+                if (alertType.includes("DISLIPIDEMICO") || alertMsg.includes("COLESTEROL") || alertMsg.includes("TRIGLICERID") || alertMsg.includes("DISLIPIDEMIA")) {
+                    return activeAppConditions.some(c => c.includes("DISLIPIDEMIA") || c.includes("COLESTEROL") || c.includes("TRIGLICERID"));
+                }
+                return true;
+            });
         } else if (category === 'digestivo') {
             filteredAlerts = (pendingAlerts || []).filter(isDigestivo);
         } else if (category === 'alergias') {
             filteredAlerts = (pendingAlerts || []).filter(isAlergia);
         } else if (category === 'farmaco') {
-            filteredAlerts = (pendingAlerts || []).filter(isFarmaco);
+            const activeMedNames = (patientData.history?.medications || []).map(m => 
+                String(m.name).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+            );
+            filteredAlerts = (pendingAlerts || []).filter(isFarmaco).filter(alert => {
+                const alertText = String((alert.type || "") + " " + (alert.message || "")).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                return activeMedNames.some(medName => {
+                    if (medName.length < 3) return false;
+                    return alertText.includes(medName);
+                });
+            });
         } else if (category === 'unclassified') {
             filteredAlerts = (pendingAlerts || []).filter(a => 
                 !isAhf(a) && !isApp(a) && !isDigestivo(a) && !isAlergia(a) && !isFarmaco(a)
@@ -745,8 +781,8 @@ export const TabClinicalHistory = ({
                                 </div>
                             ) : (
                                 <div className="text-center py-4">
-                                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${fase8State ? 'bg-tilo-success/10 text-tilo-success border-tilo-success/20' : 'bg-tilo-warning/10 text-tilo-warning border-tilo-warning/20 animate-pulse'}`}>
-                                        {fase8State ? "EUBIOSIS (Sin hallazgos)" : "PENDIENTE DE EVALUAR"}
+                                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${(fase8State || patientData.history?.digestive_verified || patientData.digestive_profile) ? 'bg-tilo-success/10 text-tilo-success border-tilo-success/20' : 'bg-tilo-warning/10 text-tilo-warning border-tilo-warning/20 animate-pulse'}`}>
+                                        {(fase8State || patientData.history?.digestive_verified || patientData.digestive_profile) ? "EUBIOSIS (Sin hallazgos)" : "PENDIENTE DE EVALUAR"}
                                     </span>
                                 </div>
                             )}

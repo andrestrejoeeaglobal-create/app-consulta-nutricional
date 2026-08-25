@@ -95,6 +95,61 @@ export const useClinicalGenome = create((set, get) => ({
         medicalOverrides: [...state.medicalOverrides, { alertId, resolution, timestamp: new Date() }]
     })),
 
+    // Remover alerta por su tipo
+    removeAlertByType: (type) => set((state) => ({
+        pendingAlerts: state.pendingAlerts.filter(a => a.type !== type)
+    })),
+
+    // Resetear completamente el Genoma Clínico
+    resetGenome: () => set({
+        identityLock: {
+            verified: false,
+            privacySigned: false,
+            serverName: null,
+            patientInfo: { age: null, sex: null, curp: null, name: null, apellidoPaterno: null, apellidoMaterno: null },
+            emergencyContact: { name: "", relation: "", phone: "" },
+        },
+        socioculturalProfile: {
+            civilStatus: null,
+            religion: null,
+            occupation: null,
+            educationLevel: null,
+            lifeStage: null
+        },
+        vitalSigns: {
+            bloodPressure: { systolic: null, diastolic: null },
+            heartRate: null,
+            respiratoryRate: null,
+            temperature: null,
+            spo2: null,
+            glucose: null,
+            glucoseContext: null,
+        },
+        allergies: {
+            food: [],
+            medication: [],
+            verified: false
+        },
+        metabolicAxis: {
+            glucoseRisk: false,
+            insulinResistance: false,
+        },
+        hormonalAxis: {
+            cyclePhase: null,
+            stressLevel: 0,
+        },
+        psychiatricAxis: {
+            sleepQuality: 0,
+            anxietyMarkers: false,
+        },
+        biomechanicalAxis: {
+            activityLevel: 'sedentary',
+            exerciseRoutine: false,
+        },
+        pendingAlerts: [],
+        medicalOverrides: []
+    }),
+
     // Evaluador de Integridad Legal (El Daemon consulta esto)
     isLegallyCompliant: () => {
         const { identityLock, allergies } = get();

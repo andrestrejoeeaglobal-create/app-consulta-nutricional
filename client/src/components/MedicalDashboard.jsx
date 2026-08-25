@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Accordion from './Accordion';
 import { useClinicalGenome } from '../store/useClinicalGenome';
+import { useClinicalToast } from '../hooks/useClinicalToast';
 import { User, Activity, FlaskConical, FileText, Utensils, Calendar, MapPin, HeartPulse, Check, Edit2, ChevronDown, AlertTriangle, AlertCircle, Dna, Stethoscope, Salad, Search, Save, Scissors, Shield, Clipboard as PrescriptionBoard, Lock, Unlock, Clock, Heart, XCircle } from 'lucide-react';
 
 // Tabs Modulares (V15.5)
@@ -116,13 +117,50 @@ const TAG_CONFIG = {
     // 🟣 PSICONUTRICIÓN
     "ANXIETY_EATING": {
         label: "🧠 ANSIEDAD POR COMER",
-        style: "bg-purple-100 text-purple-700 border-purple-200",
+        style: "bg-indigo-100 text-indigo-700 border-indigo-200",
         icon: "🍩"
     },
     "MIGRAINE_HISTORY": {
         label: "⚡ MIGRAÑA",
         style: "bg-indigo-100 text-indigo-700 border-indigo-200",
         icon: "🤕"
+    },
+
+    // 🛡️ INCONGRUENCIAS Y ALERTAS BIOTELEMETRICAS (V2.1)
+    "HARD_STOP_UNDERWEIGHT": {
+        label: "⛔ HARD STOP: INFRAPESO / MUTACIÓN A GANANCIA MAGRA",
+        style: "bg-red-950 text-red-200 border-red-800 shadow-md",
+        icon: "🛑"
+    },
+    "INCONGRUENCIA_OBJETIVO_BIOMETRIA": {
+        label: "⚠️ INCONGRUENCIA: NORMOPESO / REORIENTACIÓN A RECOMPOSICIÓN",
+        style: "bg-amber-100 text-amber-900 border-amber-300 font-bold",
+        icon: "⚖️"
+    },
+    "BRADICARDIA_SEVERA_NO_ATLETA": {
+        label: "🔴 ALERTA ROJA: BRADICARDIA SEVERA NO ATLETA (<50 LPM)",
+        style: "bg-red-600 text-white font-bold border-red-700 animate-pulse",
+        icon: "🫀"
+    },
+    "BRADICARDIA_SEVERA_FARMACOLOGICA": {
+        label: "🟠 BRADICARDIA FARMACOLÓGICA (<50 LPM - BETABLOQUEADOR)",
+        style: "bg-orange-100 text-orange-800 border-orange-300",
+        icon: "💊"
+    },
+    "BRADICARDIA_ATLETA": {
+        label: "🟢 BRADICARDIA FISIOLÓGICA DE ATLETA (<50 LPM)",
+        style: "bg-emerald-100 text-emerald-800 border-emerald-300",
+        icon: "🏃"
+    },
+    "BRADICARDIA_LEVE_SILENCIOSA": {
+        label: "🟡 OBS: BRADICARDIA LEVE EN REPOSO (50-59 LPM)",
+        style: "bg-yellow-100 text-yellow-800 border-yellow-300",
+        icon: "🩺"
+    },
+    "TAQUICARDIA_PERSISTENTE": {
+        label: "🟠 TAQUICARDIA EN REPOSO PERSISTENTE (>100 LPM)",
+        style: "bg-amber-500 text-white font-bold border-amber-600",
+        icon: "⚡"
     }
 };
 
@@ -138,8 +176,15 @@ export const MedicalDashboard = ({
     fase7State,
     fase8State,
     fase9State,
-    apiContext
+    activeField, // V4.0 Highlight active field
+    citationId,
+    isPhase20EditMode,
+    apiContext,
+    planViewMode,
+    setPlanViewMode
 }) => {
+    const showToast = useClinicalToast(state => state.showToast);
+
     // --- CONEXIÓN AL GENOMA (Stack Sagrado V1.0) ---
     const pendingAlerts = useClinicalGenome(state => state.pendingAlerts);
     const metabolicAxis = useClinicalGenome(state => state.metabolicAxis);
@@ -169,6 +214,7 @@ export const MedicalDashboard = ({
         childPreferences: false,
         childChrononutrition: false,
         childLogistics: false,
+        childFfq: false,
 
         diet: false,
 
@@ -225,8 +271,8 @@ export const MedicalDashboard = ({
             'ahf_', 'app_', 'meds_', 'supp_', 'digestive_', 'allergies_', 'ipas_', 'clinica_', 'intro_triage', 'intro_triage_surgery', 'clinica_body_map', 'clinica_intensity',
             'habit', 'substance_'
         ];
-        const stepsLifestyle = ['phase_11_', 'phase_12_', 'ph11_', 'ph12_', 'lifestyle_', 'activity_', 'sleep_', 'stress_', 'logistics_'];
-        const stepsDiet = ['phase_13_', 'phase_14_', 'phase_15_', 'ph13_', 'ph14_', 'ph15_', 'diet_', 'r24h', 'ffq', 'food_'];
+        const stepsLifestyle = ['phase_11_', 'ph11_', 'lifestyle_', 'activity_', 'sleep_', 'stress_'];
+        const stepsDiet = ['phase_12_', 'phase_13_', 'phase_14_', 'phase_15_', 'ph12_', 'ph13_', 'ph14_', 'ph15_', 'diet_', 'r24h', 'ffq', 'food_', 'logistics_'];
         const stepsVitals = ['phase_16_', 'phase_17_', 'ph16_', 'ph17_', 'vitals', 'antropometria', 'imc'];
         const stepsLab = ['phase_18_', 'ph18_', 'bio_'];
         const stepsDiagnosis = ['phase_19_', 'phase_20_', 'ph19_', 'ph20_', 'diagnosis', 'portapapeles', 'notes', 'nota', 'intervention', 'intervencion', 'prescrip'];
@@ -338,6 +384,9 @@ export const MedicalDashboard = ({
             } else if (step.includes('logistics') || step.includes('phase_12') || step.includes('ph12')) {
                 targetChild = 'childLogistics';
                 targetCardId = 'card-logistics';
+            } else if (step.includes('ffq') || step.includes('phase_15') || step.includes('ph15') || step.includes('consumption')) {
+                targetChild = 'childFfq';
+                targetCardId = 'accordion-ffq';
             } else {
                 targetChild = 'childPreferences';
                 targetCardId = 'card-preferences';
@@ -397,7 +446,7 @@ export const MedicalDashboard = ({
                         parentProfile: false, childIdentity: false, childAddress: false, childSecurity: false, childMotive: false,
                         parentClinical: false, childAhf: false, childApp: false, childSurgical: false, childFarma: false, childAllergies: false, childDigestive: false, childPhysio: false, childHabits: false,
                         parentLifestyle: false, childActivity: false,
-                        parentNutrition: false, childPreferences: false, childChrononutrition: false, childLogistics: false,
+                        parentNutrition: false, childPreferences: false, childChrononutrition: false, childLogistics: false, childFfq: false,
                         parentDiagnosis: false, childDiagnosisAbcd: false, childGoldArchitecture: false, childNotes: false, childInterventionPlan: false,
                         parentCalendar: false, childMetabolicClock: false, childExecutionLogistics: false, childEvolutionRoute: false,
                         // Abrimos los que corresponden
@@ -417,7 +466,18 @@ export const MedicalDashboard = ({
             setTimeout(() => {
                 const element = document.getElementById(targetCardId);
                 if (element) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'center' }); // 'center' often better for visibility
+                    const scrollContainer = element.closest('.overflow-y-auto') || element.closest('[class*="overflow-y-auto"]');
+                    if (scrollContainer) {
+                        const containerRect = scrollContainer.getBoundingClientRect();
+                        const elementRect = element.getBoundingClientRect();
+                        const relativeTop = elementRect.top - containerRect.top + scrollContainer.scrollTop;
+                        scrollContainer.scrollTo({
+                            top: Math.max(0, relativeTop - 16),
+                            behavior: 'smooth'
+                        });
+                    } else {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
 
                     // Visual Focus Effect
                     element.classList.add('ring-4', 'ring-blue-300', 'ring-offset-2', 'transition-all', 'duration-500');
@@ -440,13 +500,33 @@ export const MedicalDashboard = ({
     const analyzeStatus = (valStr, refStr) => {
         if (!valStr || !refStr) return 'normal';
         try {
-            const cleanVal = valStr.replace(/[^\d.-]/g, '');
+            // Reemplazar comas por puntos y limpiar caracteres no numéricos
+            const cleanVal = valStr.replace(/,/g, '.').replace(/[^\d.-]/g, '');
             const value = parseFloat(cleanVal);
-            const parts = refStr.split('-').map(s => parseFloat(s.trim()));
+            
+            const parts = refStr.split('-').map(s => {
+                const cleanPart = s.trim().replace(/,/g, '.').replace(/[^\d.-]/g, '');
+                return parseFloat(cleanPart);
+            });
+            
             if (parts.length === 2) {
-                const [min, max] = parts;
-                if (value < min) return value < min * 0.9 ? 'critical_low' : 'low';
-                if (value > max) return value > max * 1.1 ? 'critical_high' : 'high';
+                const valMin = Math.min(parts[0], parts[1]);
+                const valMax = Math.max(parts[0], parts[1]);
+                
+                if (value >= valMin && value <= valMax) {
+                    return 'normal';
+                }
+                
+                // Calcular desviación proporcional para determinar severidad
+                const delta = valMax - valMin === 0 ? 1.0 : valMax - valMin;
+                const diff = value < valMin ? (valMin - value) : (value - valMax);
+                const ratio = diff / delta;
+                
+                if (value < valMin) {
+                    return ratio > 0.6 ? 'critical_low' : ratio > 0.25 ? 'warning_low' : 'low';
+                } else {
+                    return ratio > 0.6 ? 'critical_high' : ratio > 0.25 ? 'warning_high' : 'high';
+                }
             }
         } catch { return 'normal'; }
         return 'normal';
@@ -476,8 +556,12 @@ export const MedicalDashboard = ({
                         files: [...prev.files, newFile]
                     }));
                     setSelectedFileToView(newFile);
-                } else { alert("Error en el servidor backend."); }
-            } catch { alert("No se pudo conectar al Backend (Puerto 3000)."); }
+                } else { 
+                    showToast({ title: "Error de Servidor", message: "Error al procesar el archivo en el servidor.", type: "error" });
+                }
+            } catch { 
+                showToast({ title: "Error de Conexión", message: "No se pudo conectar con el servidor backend.", type: "error" });
+            }
         }
         setIsProcessing(false);
         event.target.value = '';
@@ -647,23 +731,14 @@ export const MedicalDashboard = ({
         );
     };
 
-    // Helper para Header de Tarjeta con Botón Editar (V4.2 Polish)
-    const CardHeader = ({ icon, title, colorClass = "text-tilo-text-muted", onEdit, showEdit = true }) => {
+    // Helper para Header de Tarjeta sin Botón Editar deshabilitado
+    const CardHeader = ({ icon, title, colorClass = "text-tilo-text-muted" }) => {
         const Icon = icon;
         return (
             <div className="flex justify-between items-center mb-4 border-b border-tilo-border/60 pb-2">
                 <h3 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 font-prototype ${colorClass}`}>
                     <Icon className="w-4 h-4" /> {title}
                 </h3>
-                {showEdit && (
-                    <button
-                        onClick={onEdit || onEditToggle}
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all bg-tilo-bg-base text-tilo-text-muted hover:bg-tilo-bg-base/80 border border-tilo-border font-sansation cursor-pointer"
-                        title="Editar Sección"
-                    >
-                        <Edit2 className="w-3 h-3" /> EDITAR
-                    </button>
-                )}
             </div>
         );
     };
@@ -834,6 +909,7 @@ export const MedicalDashboard = ({
                         selectedFileToView={selectedFileToView}
                         processedDocs={processedDocs}
                         analyzeStatus={analyzeStatus}
+                        patientData={patientData}
                     />
                 )}
 
@@ -847,6 +923,10 @@ export const MedicalDashboard = ({
                         Accordion={Accordion}
                         openSections={openSections}
                         toggleSection={toggleSection}
+                        citationId={citationId}
+                        isPhase20EditMode={isPhase20EditMode}
+                        planViewMode={planViewMode}
+                        setPlanViewMode={setPlanViewMode}
                     />
                 )}
 

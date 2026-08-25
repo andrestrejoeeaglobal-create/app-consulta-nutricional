@@ -268,12 +268,14 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
         let rawReasoning = patientData.clinical_context?.ai_analysis?.gem_reasoning;
 
         // Sanitize string "undefined" or "null" returned by LLM or state engine
-        if (rawRoute === 'undefined' || rawRoute === 'null') rawRoute = null;
-        if (rawReasoning === 'undefined' || rawReasoning === 'null') rawReasoning = null;
+        if (!rawRoute || rawRoute === 'undefined' || rawRoute === 'null') rawRoute = 'GOAL_CLINICAL';
+        if (!rawReasoning || rawReasoning === 'undefined' || rawReasoning === 'null') {
+            rawReasoning = 'Análisis clínico de motivo de consulta integrado en matriz de evaluación NOM-004.';
+        }
 
         const phase3Data = {
-            primaryRoute: rawRoute || 'No especificado',
-            gem_reasoning: rawReasoning || '',
+            primaryRoute: rawRoute,
+            gem_reasoning: rawReasoning,
             secondaryRoutes: []
         };
         onPhaseComplete(phase3Data);
@@ -286,8 +288,16 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
         if (!textToDisplay?.trim() && step !== 'clinica_body_map') return;
 
         setInputValue("");
-        if (valueToProcess !== 'BODY_MAP_COMPLETE' && inputSource !== 'button') {
-            setMessages(prev => [...prev, { role: "user", content: formatText(textToDisplay) }]);
+        if (valueToProcess !== 'BODY_MAP_COMPLETE') {
+            const isGoalCode = typeof valueToProcess === 'string' && valueToProcess.startsWith('GOAL_');
+            const isFromButton = inputSource === 'button' || directValue === 'button';
+            if (!isGoalCode && !isFromButton) {
+                let userBubbleText = formatText(textToDisplay);
+                if (valueToProcess === 'CONFIRM_DATA') userBubbleText = "✅ SÍ, CONFIRMAR EVALUACIÓN";
+                else if (valueToProcess === 'CORRECT_DATA') userBubbleText = "❌ NO, CORREGIR DATOS";
+
+                setMessages(prev => [...prev, { role: "user", content: userBubbleText }]);
+            }
         }
 
         setIsTyping(true);
@@ -367,7 +377,9 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                                          gem_reasoning: aiResult.reasoning,
                                          primaryRoute: aiResult.primaryRoute,
                                          secondaryRoute: aiResult.secondaryRoute,
-                                         redFlag: aiResult.redFlag
+                                         redFlag: aiResult.redFlag,
+                                         risk_level: aiResult.risk_level,
+                                         detected_tags: aiResult.detected_tags || patientData.clinical_context?.ai_analysis?.detected_tags || []
                                      }
                                  });
                                  
@@ -427,7 +439,9 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                                       gem_reasoning: aiResult.reasoning,
                                       primaryRoute: aiResult.primaryRoute,
                                       secondaryRoute: aiResult.secondaryRoute,
-                                      redFlag: aiResult.redFlag
+                                      redFlag: aiResult.redFlag,
+                                      risk_level: aiResult.risk_level,
+                                      detected_tags: aiResult.detected_tags || patientData.clinical_context?.ai_analysis?.detected_tags || []
                                   }
                              });
                              
@@ -484,7 +498,9 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                                       gem_reasoning: aiResult.reasoning,
                                       primaryRoute: aiResult.primaryRoute,
                                       secondaryRoute: aiResult.secondaryRoute,
-                                      redFlag: aiResult.redFlag
+                                      redFlag: aiResult.redFlag,
+                                      risk_level: aiResult.risk_level,
+                                      detected_tags: aiResult.detected_tags || patientData.clinical_context?.ai_analysis?.detected_tags || []
                                   }
                              });
                              
@@ -555,7 +571,9 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                                      gem_reasoning: aiResult.reasoning,
                                      primaryRoute: aiResult.primaryRoute,
                                      secondaryRoute: aiResult.secondaryRoute,
-                                     redFlag: aiResult.redFlag
+                                     redFlag: aiResult.redFlag,
+                                     risk_level: aiResult.risk_level,
+                                     detected_tags: aiResult.detected_tags || patientData.clinical_context?.ai_analysis?.detected_tags || []
                                  }
                              });
                              
@@ -600,7 +618,9 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                                  gem_reasoning: aiResult.reasoning,
                                  primaryRoute: aiResult.primaryRoute,
                                  secondaryRoute: aiResult.secondaryRoute,
-                                 redFlag: aiResult.redFlag
+                                 redFlag: aiResult.redFlag,
+                                 risk_level: aiResult.risk_level,
+                                 detected_tags: aiResult.detected_tags || patientData.clinical_context?.ai_analysis?.detected_tags || []
                              }
                          });
                          
@@ -650,9 +670,16 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                 }
 
                 case 'clinica_triage_review': {
-                    if (userMsg === 'CONFIRM_DATA') {
-                        setMessages(prev => [...prev, { role: "assistant", content: "Excelente. Transfiriendo su información al historial clínico..." }]);
-                        setTimeout(() => completePhase3(), 1500);
+                    const cleanUpper = String(userMsg || '').toUpperCase();
+                    const isConfirmation = cleanUpper.includes('CONFIRM') || cleanUpper.includes('SI') || cleanUpper.includes('SÍ') || cleanUpper.includes('EVALUACION') || cleanUpper.includes('EVALUACIÓN') || cleanUpper.includes('CORRECTO') || cleanUpper.includes('DATOS');
+                    const isRejection = cleanUpper.includes('NO') || cleanUpper.includes('CORREGIR') || cleanUpper.includes('CAMBIAR');
+
+                    if (isConfirmation && !isRejection) {
+                        setMessages(prev => [
+                            ...prev,
+                            { role: "assistant", content: "Excelente. Transfiriendo su información al historial clínico..." }
+                        ]);
+                        setTimeout(() => completePhase3(), 1000);
                         return;
                     } else {
                         responseMsg = "De acuerdo, ¿qué más le gustaría agregar o corregir sobre su motivo de consulta?";

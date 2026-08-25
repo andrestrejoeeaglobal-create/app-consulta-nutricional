@@ -17,7 +17,7 @@ const strictBooleanValidator = (text) => {
 // COMPONENTE: Fase 10 (Hábitos y Consumo)
 // ==========================================
 export default function Fase10_HabitosConsumo({ messages, setMessages, patientData, setPatientData, onPhaseComplete, registerInputHandler, setIsGlobalTyping }) {
-    const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
+    const { patientName: pName, isMinor, isLactante, isPediatrico } = usePatientLinguistics(patientData);
 
     console.log("🔍 Fase10_HabitosConsumo Mount/Render. Props:", {
         hasMessages: !!messages,
@@ -43,8 +43,97 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
     };
 
     const hasGreeted = useRef(false);
+    
+    const [currentStep, _setCurrentStep] = useState(() => {
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("registro de hábitos de consumo"));
+        const h = patientData?.habits;
+        const hasHabits = h && (h.smoking?.is_smoker !== null || h.alcohol?.is_drinker !== null);
+        if (hasSummary || hasHabits) {
+            return 'correct_menu';
+        }
+        return 'SMOKE_GATE';
+    });
+
+    const setCurrentStep = (newStep) => {
+        _setCurrentStep(newStep);
+        setHabitsData(prev => ({
+            ...prev,
+            currentStep: newStep
+        }));
+    };
+
     useEffect(() => {
         if (hasGreeted.current) return;
+
+        if (currentStep === 'correct_menu') {
+            hasGreeted.current = true;
+            const greetingMsg = {
+                role: 'assistant',
+                content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de hábitos de consumo?",
+                avatar: tiloImg,
+                options: [
+                    { label: "✏️ Modificar consumo de tabaco", value: "MODIFY_SMOKING" },
+                    { label: "✏️ Modificar consumo de alcohol", value: "MODIFY_ALCOHOL" },
+                    { label: "🔄 Limpiar historial de hábitos", value: "CLEAR_ALL" },
+                    { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                ]
+            };
+            setMessages(prev => [...prev, greetingMsg]);
+            return;
+        }
+
+        // TIERED BYPASS PEDIÁTRICO (patientAge < 18): Omitir toxicología de adultos (Tabaco, Alcohol, Drogas)
+        if (isPediatrico) {
+            hasGreeted.current = true;
+            const pediatricHabits = {
+                smoking: { is_smoker: false, type: "NINGUNO", quantity_text: "NO_APLICA_PEDIATRICO", risk_level: "LOW" },
+                alcohol: { is_drinker: false, preferred_drink: "NINGUNA", frequency_days: 0, units_per_session: 0, calculated_weekly_calories: 0, drinks: [] },
+                drugs: { has_usage: false, substance_name: "NINGUNA", frequency: "NO_APLICA_PEDIATRICO" },
+                sleep: { hours: isLactante ? 14 : 9, quality: "GOOD" },
+                stress: "Bajo (Entorno Pediátrico)"
+            };
+
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    habits: pediatricHabits,
+                    clinical_context: {
+                        ...(prev.clinical_context || {}),
+                        habits: pediatricHabits
+                    }
+                }));
+            }
+
+            if (isLactante) {
+                // Inyectar Pregunta Pediátrica ATM 4 (Ablactación & Mediadores de Desarrollo)
+                const atm4Msg = {
+                    role: 'assistant',
+                    content: `Para evaluar los **Mediadores de Desarrollo de ${pName}** (su bebé): ¿Cómo es el proceso de introducción de alimentos sólidos (ablactación)?`,
+                    avatar: tiloImg,
+                    options: [
+                        { label: "🍼 Lactancia Exclusiva (Aún no inicia sólidos)", value: "WEANING_NOT_STARTED" },
+                        { label: "🥣 Papillas / Purés tradicionales", value: "WEANING_PAPILLAS" },
+                        { label: "🥦 Baby-Led Weaning (BLW / Autorregulación)", value: "WEANING_BLW" },
+                        { label: "⚠️ Sensibilidad / Dificultad con texturas", value: "WEANING_SENSITIVE" }
+                    ]
+                };
+                setMessages(prev => [...prev, atm4Msg]);
+                setCurrentStep('PEDIATRIC_ATM_4');
+            } else {
+                // Pacientes pediátricos de 2 a 17 años: Sellar hábitos de entorno pediátrico
+                const pediatricMsg = {
+                    role: 'assistant',
+                    content: `✅ Hábitos de entorno y desarrollo pediátrico de **${pName}** registrados y consolidados sin exposición a factores de riesgo adulto.`,
+                    avatar: tiloImg
+                };
+                setMessages(prev => [...prev, pediatricMsg]);
+                setTimeout(() => {
+                    if (onPhaseComplete) onPhaseComplete(pediatricHabits, messages);
+                }, 800);
+            }
+            return;
+        }
+
         const alreadyGreeted = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("vapeadores"));
         if (!alreadyGreeted) {
             hasGreeted.current = true;
@@ -67,9 +156,12 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                 console.error("❌ setMessages is not a function in Fase10_HabitosConsumo!", { setMessages });
             }
         }
-    }, [messages, isMinor, pName, setMessages]);
+    }, [messages, isMinor, isLactante, isPediatrico, pName, setMessages, currentStep]);
+
+    const [collectedDrinks, setCollectedDrinks] = useState(() => {
+        return patientData?.habits?.alcohol?.drinks || [];
+    });
     const [inputValue, setInputValue] = useState('');
-    
     const [habitsData, setHabitsData] = useState(() => {
         const base = patientData?.habits || {};
         return {
@@ -80,22 +172,6 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
             stress: base.stress || "",
             currentStep: base.currentStep || 'SMOKE_GATE'
         };
-    });
-
-    const [currentStep, _setCurrentStep] = useState(() => {
-        return patientData?.habits?.currentStep || 'SMOKE_GATE';
-    });
-
-    const setCurrentStep = (newStep) => {
-        _setCurrentStep(newStep);
-        setHabitsData(prev => ({
-            ...prev,
-            currentStep: newStep
-        }));
-    };
-
-    const [collectedDrinks, setCollectedDrinks] = useState(() => {
-        return patientData?.habits?.alcohol?.drinks || [];
     });
 
     const messagesRef = useRef(messages);
@@ -157,8 +233,16 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
     const handleInput = (text, label = null) => {
         if (!text.trim()) return;
 
+        let userText = text;
+        if (text === "MODIFY_SMOKING") userText = "✏️ Modificar consumo de tabaco";
+        if (text === "MODIFY_ALCOHOL") userText = "✏️ Modificar consumo de alcohol";
+        if (text === "CLEAR_ALL") userText = "🔄 Limpiar historial de hábitos";
+        if (text === "FINISH") userText = "❌ Cancelar (Volver al resumen)";
+
         // Agregar mensaje del usuario a la pantalla
-        addMessage('user', label || text);
+        if (label !== 'button') {
+            addMessage('user', userText);
+        }
         setInputValue('');
 
         const cleanText = formatText(text);
@@ -166,6 +250,78 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
 
         setTimeout(() => {
             switch (currentStep) {
+                case 'correct_menu': {
+                    if (text === "MODIFY_SMOKING") {
+                        addMessage('assistant', isMinor 
+                            ? `¿Fuma tabaco o utiliza vapeadores?` 
+                            : '¿Fuma tabaco o utiliza vapeadores?', { 
+                            avatar: tiloImg,
+                            options: [
+                                { label: '✅ Sí', value: 'Sí' },
+                                { label: '❌ No', value: 'No' }
+                            ]
+                        });
+                        setCurrentStep('SMOKE_GATE');
+                    } else if (text === "MODIFY_ALCOHOL") {
+                        addMessage('assistant', isMinor 
+                            ? `¿${pName} consume bebidas alcohólicas?` 
+                            : '¿Consume bebidas alcohólicas?', {
+                            avatar: tiloImg,
+                            options: [
+                                { label: '✅ Sí', value: 'Sí' },
+                                { label: '❌ No', value: 'No' }
+                            ]
+                        });
+                        setCurrentStep('ALCOHOL_GATE');
+                    } else if (text === "CLEAR_ALL") {
+                        setCollectedDrinks([]);
+                        setHabitsData({
+                            smoking: { is_smoker: null, type: null, quantity_text: "", risk_level: null },
+                            alcohol: { is_drinker: null, preferred_drink: null, frequency_days: null, units_per_session: null, calculated_weekly_calories: null, drinks: [] },
+                            drugs: { has_usage: null, substance_name: "", frequency: "" },
+                            sleep: { hours: null, quality: "" },
+                            stress: "",
+                            currentStep: 'SMOKE_GATE'
+                        });
+                        addMessage('assistant', isMinor
+                            ? `Historial de hábitos reiniciado.\n\n¿Fuma tabaco o utiliza vapeadores?`
+                            : 'Historial de hábitos reiniciado.\n\n¿Fuma tabaco o utiliza vapeadores?', {
+                            avatar: tiloImg,
+                            options: [
+                                { label: '✅ Sí', value: 'Sí' },
+                                { label: '❌ No', value: 'No' }
+                            ]
+                        });
+                        setCurrentStep('SMOKE_GATE');
+                    } else if (text === "FINISH") {
+                        if (onPhaseComplete) {
+                            onPhaseComplete(habitsData, messagesRef.current);
+                        }
+                    }
+                    break;
+                }
+
+                case 'PEDIATRIC_ATM_4': {
+                    const atm4Map = {
+                        WEANING_NOT_STARTED: "Lactancia Exclusiva (Sin sólidos)",
+                        WEANING_PAPILLAS: "Papillas y Purés tradicionales",
+                        WEANING_BLW: "Baby-Led Weaning (BLW / Autorregulación)",
+                        WEANING_SENSITIVE: "Sensibilidad o Dificultad con texturas"
+                    };
+                    const weaningLabel = atm4Map[text] || text;
+                    const updatedHabits = {
+                        ...habitsData,
+                        pediatric_atm: { ...(habitsData.pediatric_atm || {}), weaning: weaningLabel }
+                    };
+                    setHabitsData(updatedHabits);
+                    updateClinicalContext({ habits: updatedHabits });
+
+                    addMessage('assistant', `✅ Mediadores de desarrollo y ablactación de **${pName}** (${weaningLabel}) registrados con éxito.`, { avatar: tiloImg });
+                    setTimeout(() => {
+                        if (onPhaseComplete) onPhaseComplete(updatedHabits, messagesRef.current);
+                    }, 800);
+                    break;
+                }
 
                 // --- TABAQUISMO ---
                 case 'SMOKE_GATE': {
@@ -671,6 +827,11 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
         if (registerInputHandler) {
             registerInputHandler(() => (text, val) => handleInputRef.current(text, val));
         }
+        return () => {
+            if (registerInputHandler) {
+                registerInputHandler(null);
+            }
+        };
     }, [registerInputHandler]);
 
     useEffect(() => {

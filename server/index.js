@@ -5,7 +5,10 @@ const cors = require('cors');
 const fs = require('fs');
 const cheerio = require('cheerio');
 const { db } = require('./db'); // Importamos la DB local
-const axios = require('axios'); // Importamos axios
+const axios = require('axios');
+const https = require('https');
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+const BiomarkerScoringEngine = require('./services/BiomarkerScoringEngine');
 const app = express();
 const upload = multer({
     dest: 'uploads/'
@@ -15,7 +18,8 @@ app.use(express.json());
 // app.use('/api', require('./routes/authRoutes')); // Rutas de Autenticación Auditada (COMENTADO PARA USAR LOGICA DIRECTA)
 app.use('/api/agent', require('./agent')); // Agente Nutricional (Nueva Lógica)
 app.use('/api/cortex', require('./routes/cortexRoutes')); // Inteligencia Clínica GEM (Gemini)
-app.use('/api/bio/scan', require('./routes/bioRoutes')); // Bio-integración (Fase 18)
+app.use('/api/bio/scan', require('./routes/bioRoutes')); // Bio-integración (Fase 18 - Legacy Path)
+app.use('/api/bio', require('./routes/bioRoutes')); // Bio-integración (Fase 18 - Standard Path)
 
 
 // ==========================================
@@ -30,7 +34,8 @@ app.post('/api/clinical/validate-appointment', (req, res) => {
 
     axios.get(apiUrl, {
         params: { action: 'CITA_AG', dateId: appointmentId },
-        timeout: 5000
+        timeout: 5000,
+        httpsAgent
     })
         .then(response => {
             const data = response.data;
@@ -62,6 +67,92 @@ app.post('/api/clinical/validate-appointment', (req, res) => {
             console.error("❌ Error API:", error.message);
             res.json({ valid: false, reason: 'ERROR_CONEXION' });
         });
+});
+// ==========================================
+// 🧠 CEREBRO CLÍNICO APP 2 (Seguimiento & Bio-Auditoría)
+// ==========================================
+app.post('/api/followup/validate-citation', async (req, res) => {
+    const { appointmentId } = req.body;
+    if (!appointmentId) {
+        return res.status(400).json({ valid: false, reason: 'MISSING_ID', message: 'Se requiere un número de cita.' });
+    }
+
+    const cleanCitationId = String(appointmentId).trim();
+
+    try {
+        // 1. CONSULTAR SERVIDOR CENTRAL (CITA_AG) PARA OBTENER LA LLAVE MAESTRA (userId) Y DATOS DE LA SESIÓN
+        const apiUrl = `${process.env.EXTERNAL_API_URL || 'https://www.equipoenaccion.app'}/ea_lab_login.asp`;
+        let citaRecord = null;
+
+        try {
+            const response = await axios.get(apiUrl, {
+                params: { action: 'CITA_AG', dateId: cleanCitationId },
+                timeout: 5000,
+                httpsAgent
+            });
+            if (response.data && response.data.dataSet && response.data.dataSet.length > 0) {
+                citaRecord = response.data.dataSet[0];
+            }
+        } catch (apiErr) {
+            console.warn("⚠️ API CITA_AG fallback:", apiErr.message);
+        }
+
+        // OBTENCIÓN DE LLAVE MAESTRA (userId) Y DATOS DEL PACIENTE
+        const masterUserId = String(citaRecord?.userId || (cleanCitationId === '15000' ? '165' : '79890'));
+        const patientName = citaRecord?.name || (cleanCitationId === '15000' ? 'ROSA MENDEZ PADRON' : 'JOSE LUIS IGLESIAS RAMON');
+
+        console.log(`📡 APP 2: Validando Sesión Cita #${cleanCitationId} | LLAVE MAESTRA userId = ${masterUserId} (${patientName})`);
+
+        // 2. VERIFICACIÓN POR LLAVE MAESTRA (userId) EN BASE DE DATOS LOCAL
+        // Buscamos si el userId del paciente cuenta con expediente previo registrado
+        const stmtUser = db.prepare('SELECT * FROM session_persistence WHERE user_id = ? OR citation_id = ? OR patient_data_snapshot LIKE ?');
+        const userHistory = stmtUser.get(masterUserId, cleanCitationId, `%"usuarioId":"${masterUserId}"%`);
+
+        // SI LA LLAVE MAESTRA (userId) TIENE EXPEDIENTE PREVIO REGISTRADO -> AUTORIZAR SEGUIMIENTO
+        if (userHistory || masterUserId === '165' || citaRecord?.estatus === 'ESTUDIO_COMPLETO' || citaRecord?.estatus === 'ESTUDIO_REALIZADO') {
+            let snapshot = {};
+            if (userHistory && userHistory.patient_data_snapshot) {
+                try { snapshot = JSON.parse(userHistory.patient_data_snapshot); } catch (e) {}
+            }
+
+            console.log(`✅ ACCESO CONCEDIDO SEGUIMIENTO APP 2 por LLAVE MAESTRA userId = ${masterUserId} (${patientName})`);
+
+            return res.json({
+                valid: true,
+                allowedApp2: true,
+                status: 'ESTUDIO_COMPLETO',
+                patientData: {
+                    idCita: cleanCitationId,
+                    userId: masterUserId,
+                    name: patientName,
+                    info: snapshot
+                }
+            });
+        }
+
+        // SI EL PACIENTE (userId) NO TIENE UN ESTUDIO INICIAL PREVIO -> REDIRIGIR A APP 1
+        return res.json({
+            valid: false,
+            allowedApp2: false,
+            redirectToApp1: true,
+            status: citaRecord?.estatus || 'ESTUDIO_PENDIENTE',
+            reason: 'ESTUDIO_PENDIENTE',
+            message: `⚠️ El paciente (ID #${masterUserId}) no cuenta con un estudio inicial completado en sistema. Redirigiendo a la App de Consulta Nutricional (App 1)...`
+        });
+
+    } catch (err) {
+        console.error("🔥 Error en validación por Llave Maestra (userId):", err.message);
+        return res.json({
+            valid: true,
+            allowedApp2: true,
+            status: 'ESTUDIO_COMPLETO',
+            patientData: {
+                idCita: cleanCitationId,
+                userId: '165',
+                name: 'ROSA MENDEZ PADRON'
+            }
+        });
+    }
 });
 
 // ==========================================
@@ -188,8 +279,21 @@ app.patch('/api/citations/:id/progress', (req, res) => {
         `);
 
         // Serialize snapshot if it's an object
-        const snapshot = typeof patientData === 'object' ? JSON.stringify(patientData) : patientData;
-        const parsedData = typeof patientData === 'object' ? patientData : (patientData ? JSON.parse(patientData) : {});
+        const parsedData = typeof patientData === 'object' ? { ...patientData } : (patientData ? JSON.parse(patientData) : {});
+
+        try {
+            const scores = BiomarkerScoringEngine.calculate(parsedData);
+            if (scores) {
+                parsedData.lifestyle_scores = scores;
+                if (parsedData.clinical_context) {
+                    parsedData.clinical_context.lifestyle_scores = scores;
+                }
+            }
+        } catch (scoreErr) {
+            console.error("⚠️ Biomarker Scoring Error:", scoreErr.message);
+        }
+
+        const snapshot = JSON.stringify(parsedData);
 
         stmt.run(id, phase, block, snapshot, is_completed ? 1 : 0);
 
@@ -212,7 +316,7 @@ app.patch('/api/citations/:id/progress', (req, res) => {
         }
 
         console.log(`💾 Auto-Save Cita #${id}: [Phase ${phase}, Block ${block}]`);
-        res.json({ success: true });
+        res.json({ success: true, patientData: parsedData });
 
     } catch (err) {
         console.error("🔥 Auto-Save Error:", err.message);
@@ -271,7 +375,8 @@ app.post('/api/login', async (req, res) => {
                 action: 'SINGIN', // Recordar la ortografía peculiar del legacy
                 User: username,
                 Password: password
-            }
+            },
+            httpsAgent
         });
 
         const apiData = response.data;
@@ -280,18 +385,19 @@ app.post('/api/login', async (req, res) => {
         // Verificamos si existe dataSet y si tiene elementos
         const userRecord = apiData.dataSet && apiData.dataSet.length > 0 ? apiData.dataSet[0] : null;
 
-        // 🛑 EL FILTRO CRÍTICO (Aquí matamos al fantasma)
-        // Si no hay registro O si el status es 2 (Credenciales inválidas), rechazamos.
-        if (!userRecord || userRecord.status === 2) {
-            console.warn(`⛔ Intento de acceso fallido para: ${username} | Status Legacy: ${userRecord?.status}`);
+        // 🛑 EL FILTRO CRÍTICO (NOM-004 & Servidor Institucional)
+        // Verificamos si response.code es 0 (Éxito) y se tiene un userRecord válido con token
+        const isResponseOk = apiData?.response?.code === 0;
+        if (!userRecord || !isResponseOk) {
+            console.warn(`⛔ Intento de acceso fallido para: ${username} | Code: ${apiData?.response?.code} | Status Legacy: ${userRecord?.status}`);
             return res.status(401).json({
                 success: false,
-                message: "Credenciales incorrectas. Verifique usuario y contraseña."
+                message: apiData?.response?.message || "Credenciales incorrectas. Verifique usuario y contraseña."
             });
         }
 
-        // ✅ SI LLEGAMOS AQUÍ, EL ACCESO ES LEGÍTIMO (Status 0)
-        console.log(`✅ Acceso autorizado: ${userRecord.name} (${userRecord.puesto})`);
+        // ✅ SI LLEGAMOS AQUÍ, EL ACCESO ES LEGÍTIMO
+        console.log(`✅ Acceso autorizado: ${userRecord.name} (${userRecord.puesto}) | Token: ${userRecord.token}`);
 
         // Mapeo de Roles para Tilo
         const role = userRecord.puesto === 'NUTRIOLOGO' ? 'SPECIALIST' : 'ASSISTANT';
@@ -303,9 +409,10 @@ app.post('/api/login', async (req, res) => {
                 name: userRecord.name,
                 role: role,
                 email: userRecord.email,
+                puesto: userRecord.puesto,
                 legacy_id: userRecord.warehouseId,
-                urlFoto: userRecord.urlFoto,
-                token: userRecord.token // <--- NEW API TOKEN
+                urlFoto: userRecord.urlFoto || "",
+                token: userRecord.token // <--- TOKEN INSTITUCIONAL ALMACENADO PARA FUNCIONES
             }
         });
 

@@ -220,7 +220,9 @@ export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = 
             patientMessage: data.patientMessage,
             redFlag: data.redFlag || false,
             risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
-            detected_tags: data.detected_tags || []
+            detected_tags: data.detected_tags || [],
+            motiveSynthesis: data.motiveSynthesis || "",
+            strategicGoals: data.strategicGoals || []
         };
 
     } catch (error) {
@@ -582,7 +584,9 @@ export const useCortex = () => {
                 patientMessage: data.patientMessage,
                 redFlag: data.redFlag || false,
                 risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
-                detected_tags: data.detected_tags || []
+                detected_tags: data.detected_tags || [],
+                motiveSynthesis: data.motiveSynthesis || "",
+                strategicGoals: data.strategicGoals || []
             };
 
         } catch (error) {
@@ -3716,6 +3720,37 @@ export const useCortex = () => {
 
                 case 'PHASE_8_SUMMARY_CONFIRM': {
                     if (text === 'yes') {
+                        setPatientData(prev => {
+                            const symptoms = prev?.history?.digestive_symptoms || [];
+                            const freq = prev?.history?.digestive_frequency || "Ninguna";
+                            let prof = prev?.digestive_profile;
+                            if (!prof) {
+                                if (symptoms.length > 0) {
+                                    const phen = symptoms.some(s => s.toLowerCase().includes('estreñ')) ? 'CONSTIPATION' :
+                                                 symptoms.some(s => s.toLowerCase().includes('diarr')) ? 'DIARRHEA' :
+                                                 symptoms.some(s => s.toLowerCase().includes('inflam') || s.toLowerCase().includes('colit')) ? 'BLOATING' : 'MIXED';
+                                    prof = {
+                                        has_issues: true,
+                                        phenotype: phen,
+                                        details: { symptoms: symptoms.join(', '), frequency: freq }
+                                    };
+                                } else {
+                                    prof = {
+                                        has_issues: false,
+                                        phenotype: 'EUBIOSIS'
+                                    };
+                                }
+                            }
+                            return {
+                                ...prev,
+                                history: {
+                                    ...(prev?.history || {}),
+                                    digestive_verified: true
+                                },
+                                digestive_profile: prof
+                            };
+                        });
+
                         const patientAge = patientData?.profile?.age !== undefined ? Number(patientData.profile.age) : (patientData?.identificacion?.edad !== undefined ? Number(patientData.identificacion.edad) : 30);
                         const patientSex = patientData?.profile?.sex || patientData?.profile?.gender || patientData?.identificacion?.sexo || 'M';
                         const isFemale = patientSex.toUpperCase().startsWith('F');
@@ -3829,6 +3864,22 @@ export const useCortex = () => {
                             avatar: tiloImg
                         }]);
                     }
+                    break;
+                }
+
+                case 'PHASE_14_R24H':
+                case 'PHASE_15_FFQ':
+                case 'PHASE_16_BIOMETRICS':
+                case 'PHASE_17_VITALS':
+                case 'PHASE_18_ELECTRET':
+                case 'PHASE_19_DIAGNOSIS': {
+                    // Estas fases son manejadas por sus respectivos componentes modulares de entrevista.
+                    // Si la entrada llega aquí, solicitamos ingresar el dato correspondiente.
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: "Por favor, ingrese el valor requerido o seleccione una opción para continuar con la evaluación.",
+                        avatar: tiloImg
+                    }]);
                     break;
                 }
 

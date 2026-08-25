@@ -256,13 +256,37 @@ const Fase6_Farmacologia = ({
 
     // Estado Local Initialize
     const hasInitializedRef = useRef(false);
-    const [step, setStep] = useState('meds_gate');
+    const [step, setStep] = useState(() => {
+        const hasMeds = patientData.history?.medications && patientData.history.medications.length > 0;
+        const hasSupps = patientData.history?.supplements && patientData.history.supplements.length > 0;
+        if (hasMeds || hasSupps) {
+            return 'pharma_correct_menu';
+        }
+        return 'meds_gate';
+    });
     const [tempItem, setTempItem] = useState({ name: '', details: '', duration: '', type: '' });
 
     useEffect(() => {
         if (!hasInitializedRef.current) {
             hasInitializedRef.current = true;
-            // Solo si el mensaje de Farmacología no ha sido inyectado aún
+            if (step === 'pharma_correct_menu') {
+                if (typeof setMessages === 'function') {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de farmacología y suplementación?",
+                        options: [
+                            { label: "➕ Registrar otro medicamento", value: "ADD_MED" },
+                            { label: "➕ Registrar otro suplemento", value: "ADD_SUPP" },
+                            { label: "✏️ Modificar registro existente", value: "MODIFY_SELECT" },
+                            { label: "🗑️ Eliminar registro de la lista", value: "DELETE_SELECT" },
+                            { label: "🔄 Limpiar lista completa (Reiniciar)", value: "CLEAR_ALL" },
+                            { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                        ]
+                    }]);
+                }
+                return;
+            }
+
             const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("Farmacología"));
             if (!alreadyGreeted) {
                 const initialMsg = isMinor
@@ -283,7 +307,7 @@ const Fase6_Farmacologia = ({
                 }
             }
         }
-    }, [messages, isMinor, pName, setMessages]);
+    }, [messages, isMinor, pName, setMessages, step]);
 
     // Update parent state (fase6State) when patientData changes
     useEffect(() => {
@@ -397,7 +421,39 @@ const Fase6_Farmacologia = ({
 
     const handleSend = (val, label) => {
         const isGeneric = label === 'text' || label === 'select' || label === 'number' || label === 'tel' || label === 'button';
-        const inputToSave = (label && !isGeneric) ? label : val;
+        let userLabel = (label && !isGeneric) ? label : val;
+        
+        if (val === "ADD_MED") userLabel = "➕ Registrar otro medicamento";
+        if (val === "ADD_SUPP") userLabel = "➕ Registrar otro suplemento";
+        if (val === "MODIFY_SELECT") userLabel = "✏️ Modificar registro existente";
+        if (val === "DELETE_SELECT") userLabel = "🗑️ Eliminar registro de la lista";
+        if (val === "CLEAR_ALL") userLabel = "🔄 Limpiar lista completa (Reiniciar)";
+        if (val === "FINISH") userLabel = "❌ Cancelar (Volver al resumen)";
+        if (val === "BACK_TO_CORRECT") userLabel = "⬅️ Volver al menú anterior";
+        if (typeof val === 'string') {
+            if (val.startsWith("DELETE_MED_INDEX_")) {
+                const idx = parseInt(val.replace("DELETE_MED_INDEX_", ""), 10);
+                const med = patientData.history?.medications?.[idx];
+                userLabel = med ? `🗑️ Eliminar Medicamento: ${med.name}` : "Eliminar medicamento";
+            }
+            else if (val.startsWith("DELETE_SUPP_INDEX_")) {
+                const idx = parseInt(val.replace("DELETE_SUPP_INDEX_", ""), 10);
+                const supp = patientData.history?.supplements?.[idx];
+                userLabel = supp ? `🗑️ Eliminar Suplemento: ${supp.name}` : "Eliminar suplemento";
+            }
+            else if (val.startsWith("MODIFY_MED_INDEX_")) {
+                const idx = parseInt(val.replace("MODIFY_MED_INDEX_", ""), 10);
+                const med = patientData.history?.medications?.[idx];
+                userLabel = med ? `✏️ Modificar Medicamento: ${med.name}` : "Modificar medicamento";
+            }
+            else if (val.startsWith("MODIFY_SUPP_INDEX_")) {
+                const idx = parseInt(val.replace("MODIFY_SUPP_INDEX_", ""), 10);
+                const supp = patientData.history?.supplements?.[idx];
+                userLabel = supp ? `✏️ Modificar Suplemento: ${supp.name}` : "Modificar suplemento";
+            }
+        }
+        
+        const inputToSave = userLabel;
         if (!inputToSave) return;
 
         // Limpiar opciones previas al mandar mensaje del usuario
@@ -418,6 +474,263 @@ const Fase6_Farmacologia = ({
 
     const processStep = async (input) => {
         switch (step) {
+            case 'pharma_correct_menu': {
+                if (input === "ADD_MED") {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: isMinor 
+                            ? "Alineando Vademécum PLM. Por favor, selecciona el medicamento de la lista interactiva o escribe su nombre:" 
+                            : "Alineando Vademécum PLM. Por favor, seleccione el medicamento de la lista interactiva o escriba su nombre:",
+                        options: plmOptionsList
+                    }]);
+                    setStep('meds_select');
+                } else if (input === "ADD_SUPP") {
+                    setStep('supp_name');
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: isMinor
+                            ? `¿Qué vitaminas, proteínas, tés o suplementos consume **${pName}**? Por favor escribe el nombre comercial o principio activo:`
+                            : "¿Qué vitaminas, proteínas, tés o suplementos consume usted? Por favor escriba el nombre comercial o principio activo:"
+                    }]);
+                } else if (input === "MODIFY_SELECT") {
+                    const meds = patientData.history?.medications || [];
+                    const supps = patientData.history?.supplements || [];
+                    
+                    if (meds.length > 0 || supps.length > 0) {
+                        setStep('SELECT_MODIFY_ITEM');
+                        const opts = [];
+                        meds.forEach((m, idx) => {
+                            opts.push({ label: `💊 Med: ${m.name}`, value: `MODIFY_MED_INDEX_${idx}` });
+                        });
+                        supps.forEach((s, idx) => {
+                            opts.push({ label: `🥛 Supp: ${s.name}`, value: `MODIFY_SUPP_INDEX_${idx}` });
+                        });
+                        opts.push({ label: "⬅️ Volver al menú anterior", value: "BACK_TO_CORRECT" });
+
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "¿Qué registro desea modificar? Seleccione de la lista:",
+                            options: opts
+                        }]);
+                    } else {
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "No existen registros para modificar.",
+                            options: [
+                                { label: "➕ Registrar otro medicamento", value: "ADD_MED" },
+                                { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                            ]
+                        }]);
+                    }
+                } else if (input === "DELETE_SELECT") {
+                    const meds = patientData.history?.medications || [];
+                    const supps = patientData.history?.supplements || [];
+                    
+                    if (meds.length > 0 || supps.length > 0) {
+                        setStep('SELECT_DELETE_ITEM');
+                        const opts = [];
+                        meds.forEach((m, idx) => {
+                            opts.push({ label: `💊 Med: ${m.name}`, value: `DELETE_MED_INDEX_${idx}` });
+                        });
+                        supps.forEach((s, idx) => {
+                            opts.push({ label: `🥛 Supp: ${s.name}`, value: `DELETE_SUPP_INDEX_${idx}` });
+                        });
+                        opts.push({ label: "⬅️ Volver al menú anterior", value: "BACK_TO_CORRECT" });
+
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "¿Qué registro desea eliminar de su expediente? Seleccione de la lista:",
+                            options: opts
+                        }]);
+                    } else {
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "No existen registros para eliminar.",
+                            options: [
+                                { label: "➕ Registrar otro medicamento", value: "ADD_MED" },
+                                { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                            ]
+                        }]);
+                    }
+                } else if (input === "CLEAR_ALL") {
+                    setPatientData(prev => ({
+                        ...prev,
+                        history: {
+                            ...(prev.history || {}),
+                            medications: [],
+                            supplements: []
+                        }
+                    }));
+                    setStep('meds_gate');
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: makeP1P2(
+                            "Sistemas clínicos de historial farmacológico y suplementación reiniciados.",
+                            isMinor
+                                ? `¿Toma ${pName} actualmente algún medicamento recetado por un médico?`
+                                : "¿Toma usted actualmente algún medicamento recetado por un médico?"
+                        ),
+                        options: [
+                            { label: "✅ Sí", value: "Sí" },
+                            { label: "❌ No", value: "No" },
+                        ]
+                    }]);
+                } else if (input === "FINISH") {
+                    const meds = patientData.history?.medications || [];
+                    const supps = patientData.history?.supplements || [];
+                    if (onPhaseComplete) {
+                        onPhaseComplete({ medications: meds, supplements: supps });
+                    }
+                }
+                break;
+            }
+
+            case 'SELECT_MODIFY_ITEM': {
+                if (input === "BACK_TO_CORRECT") {
+                    setStep('pharma_correct_menu');
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: "De acuerdo. ¿Qué cambio o acción desea realizar?",
+                        options: [
+                            { label: "➕ Registrar otro medicamento", value: "ADD_MED" },
+                            { label: "➕ Registrar otro suplemento", value: "ADD_SUPP" },
+                            { label: "✏️ Modificar registro existente", value: "MODIFY_SELECT" },
+                            { label: "🗑️ Eliminar registro de la lista", value: "DELETE_SELECT" },
+                            { label: "🔄 Limpiar lista completa (Reiniciar)", value: "CLEAR_ALL" },
+                            { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                        ]
+                    }]);
+                    setIsAnalyzing(false);
+                    return;
+                }
+                if (input.startsWith("MODIFY_MED_INDEX_")) {
+                    const idx = parseInt(input.replace("MODIFY_MED_INDEX_", ""), 10);
+                    const meds = patientData.history?.medications || [];
+                    if (meds[idx]) {
+                        const target = meds[idx];
+                        const updated = meds.filter((_, i) => i !== idx);
+
+                        setPatientData(prev => ({
+                            ...prev,
+                            history: {
+                                ...(prev.history || {}),
+                                medications: updated
+                            }
+                        }));
+
+                        setTempItem({ name: target.name, details: '', duration: '', type: 'MED' });
+                        setStep('meds_select');
+
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: `Modificando medicamento. Por favor vuelva a seleccionar el medicamento o confirme si es: **${target.name}**`,
+                            options: [
+                                { label: `✅ Sí, es ${target.name}`, value: target.name },
+                                { label: "❌ No, buscar otro", value: "MANUAL" }
+                            ]
+                        }]);
+                    }
+                }
+                else if (input.startsWith("MODIFY_SUPP_INDEX_")) {
+                    const idx = parseInt(input.replace("MODIFY_SUPP_INDEX_", ""), 10);
+                    const supps = patientData.history?.supplements || [];
+                    if (supps[idx]) {
+                        const target = supps[idx];
+                        const updated = supps.filter((_, i) => i !== idx);
+
+                        setPatientData(prev => ({
+                            ...prev,
+                            history: {
+                                ...(prev.history || {}),
+                                supplements: updated
+                            }
+                        }));
+
+                        setTempItem({ name: target.name, details: '', duration: '', type: 'SUPP' });
+                        setStep('supp_name');
+
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: `Modificando suplemento. Por favor escriba el nombre o confirme si es: **${target.name}**`
+                        }]);
+                    }
+                }
+                break;
+            }
+
+            case 'SELECT_DELETE_ITEM': {
+                if (input === "BACK_TO_CORRECT") {
+                    setStep('pharma_correct_menu');
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: "De acuerdo. ¿Qué cambio o acción desea realizar?",
+                        options: [
+                            { label: "➕ Registrar otro medicamento", value: "ADD_MED" },
+                            { label: "➕ Registrar otro suplemento", value: "ADD_SUPP" },
+                            { label: "✏️ Modificar registro existente", value: "MODIFY_SELECT" },
+                            { label: "🗑️ Eliminar registro de la lista", value: "DELETE_SELECT" },
+                            { label: "🔄 Limpiar lista completa (Reiniciar)", value: "CLEAR_ALL" },
+                            { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                        ]
+                    }]);
+                    setIsAnalyzing(false);
+                    return;
+                }
+                if (input.startsWith("DELETE_MED_INDEX_")) {
+                    const idx = parseInt(input.replace("DELETE_MED_INDEX_", ""), 10);
+                    const meds = patientData.history?.medications || [];
+                    if (meds[idx]) {
+                        const updated = meds.filter((_, i) => i !== idx);
+
+                        setPatientData(prev => ({
+                            ...prev,
+                            history: {
+                                ...(prev.history || {}),
+                                medications: updated
+                            }
+                        }));
+
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "Medicamento eliminado con éxito."
+                        }]);
+
+                        setTimeout(() => {
+                            if (onPhaseComplete) {
+                                onPhaseComplete({ medications: updated, supplements: patientData.history?.supplements || [] });
+                            }
+                        }, 500);
+                    }
+                }
+                else if (input.startsWith("DELETE_SUPP_INDEX_")) {
+                    const idx = parseInt(input.replace("DELETE_SUPP_INDEX_", ""), 10);
+                    const supps = patientData.history?.supplements || [];
+                    if (supps[idx]) {
+                        const updated = supps.filter((_, i) => i !== idx);
+
+                        setPatientData(prev => ({
+                            ...prev,
+                            history: {
+                                ...(prev.history || {}),
+                                supplements: updated
+                            }
+                        }));
+
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "Suplemento eliminado con éxito."
+                        }]);
+
+                        setTimeout(() => {
+                            if (onPhaseComplete) {
+                                onPhaseComplete({ medications: patientData.history?.medications || [], supplements: updated });
+                            }
+                        }, 500);
+                    }
+                }
+                break;
+            }
+
             // ================= MEDICAMENTOS =================
             case 'meds_gate': {
                 if (input === "Sí") {

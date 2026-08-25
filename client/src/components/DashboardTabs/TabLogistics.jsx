@@ -1,10 +1,73 @@
 /* eslint-disable no-unused-vars */
 import React from 'react';
 import { Activity, AlertCircle, AlertTriangle, Dumbbell, Moon, Brain, Briefcase } from 'lucide-react';
+import BiomarkerScoringEngine from '../../utils/BiomarkerScoringEngine';
 
 const capitalizeFirst = (str) => {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+const ProgressRing = ({ score, label }) => {
+    const isEvaluated = score !== null && score !== undefined;
+    const displayScore = isEvaluated ? score : 0;
+    const displayLabel = isEvaluated ? label : "Sin evaluar";
+
+    let strokeColor = "stroke-tilo-text-muted/30";
+    let textColor = "text-tilo-text-muted";
+    
+    if (isEvaluated) {
+        if (displayLabel === "Óptimo") {
+            strokeColor = "stroke-tilo-success";
+            textColor = "text-tilo-success-text";
+        } else if (displayLabel === "Bueno") {
+            strokeColor = "stroke-tilo-primary";
+            textColor = "text-tilo-primary";
+        } else if (displayLabel === "Regular") {
+            strokeColor = "stroke-tilo-warning";
+            textColor = "text-tilo-warning-text";
+        } else if (displayLabel === "Deficiente") {
+            strokeColor = "stroke-tilo-danger";
+            textColor = "text-tilo-danger";
+        }
+    }
+    
+    const radius = 14;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (displayScore / 100) * circumference;
+    
+    return (
+        <div className="flex items-center gap-2">
+            <svg className="w-8 h-8 transform -rotate-90">
+                <circle
+                    className="stroke-tilo-border fill-transparent"
+                    strokeWidth="3"
+                    r={radius}
+                    cx="16"
+                    cy="16"
+                />
+                <circle
+                    className={`${strokeColor} fill-transparent transition-all duration-500 ease-out`}
+                    strokeWidth="3"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={offset}
+                    strokeLinecap="round"
+                    r={radius}
+                    cx="16"
+                    cy="16"
+                />
+            </svg>
+            <div className="flex flex-col text-left">
+                <span className={`text-xs font-black ${textColor} leading-none`}>
+                    {isEvaluated ? `${displayScore}` : "--"}{" "}
+                    <span className="text-[8px] font-normal text-tilo-text-muted">pts</span>
+                </span>
+                <span className="text-[8px] font-bold text-tilo-text-muted uppercase leading-none mt-0.5">
+                    {displayLabel}
+                </span>
+            </div>
+        </div>
+    );
 };
 
 export const TabLogistics = ({
@@ -20,6 +83,14 @@ export const TabLogistics = ({
     toggleSection,
     currentStep
 }) => {
+    // Calcular en tiempo real y de forma reactiva las puntuaciones
+    const scores = BiomarkerScoringEngine.calculate(patientData) || {
+        activity: { score: null, label: "Sin evaluar" },
+        neat: { score: null, label: "Sin evaluar" },
+        sleep: { score: null, label: "Sin evaluar" },
+        stress: { score: null, label: "Sin evaluar" }
+    };
+
     // --- UNIFICACIÓN RESILIENTE DE FUENTES DE DATOS CLÍNICOS (ESTADO ACTIVIDAD/SUEÑO/ESTRÉS) ---
     const hasLifestyle = (!!patientData.lifestyle_profile && 
                           patientData.lifestyle_profile.activity?.has_scheduled_exercise !== null &&
@@ -61,8 +132,11 @@ export const TabLogistics = ({
     const neatLevel = neatLevelRaw ? (neatMap[neatLevelRaw] || neatLevelRaw) : 'Sin evaluar';
     const neatDesc = neatLevelRaw ? (neatDescMap[neatLevelRaw] || '--') : 'Sin evaluar';
     
-    const exerciseLog = patientData.lifestyle_profile?.activity?.log || [];
+    const exerciseLog = patientData.lifestyle_profile?.activity?.log || patientData.lifestyle?.activity?.log || [];
     const exerciseLogF10 = patientData.clinical_context?.activity?.exercise?.log || [];
+    const telemetryMetadata = patientData.lifestyle?.activity?.telemetry_metadata || 
+                             patientData.lifestyle_profile?.activity?.telemetry_metadata || 
+                             patientData.clinical_context?.activity?.exercise?.telemetry_metadata;
 
     // 2. Sueño y Descanso
     const sleepHours = patientData.lifestyle_profile?.sleep?.hours_avg || 
@@ -119,17 +193,67 @@ export const TabLogistics = ({
                                             <div className="text-sm font-bold text-tilo-text-main">Actividad Física / Ejercicio</div>
                                         </div>
                                     </div>
-                                    {!hasLifestyle ? (
-                                        <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-text-muted/20">SIN EVALUAR</span>
-                                    ) : hasExercise ? (
-                                        <span className="bg-tilo-success/10 text-tilo-success text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-success/20">EJERCITANTE</span>
-                                    ) : (
-                                        <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-text-muted/20">SEDENTARIO</span>
-                                    )}
+                                    <ProgressRing score={scores?.activity?.score} label={scores?.activity?.label} />
                                 </div>
 
-                                {/* Activity Log */}
-                                {exerciseLog.length > 0 ? (
+                                {/* Telemetry Metadata Card */}
+                                {telemetryMetadata ? (
+                                    <div className="mt-3 p-3 bg-tilo-bg/50 rounded-xl border border-tilo-border text-xs space-y-2">
+                                        <div className="font-bold text-tilo-primary flex items-center gap-1.5 border-b border-tilo-border pb-1.5">
+                                            <span>📊</span>
+                                            <span>Resumen Metabólico Consolidado</span>
+                                            <span className="ml-auto text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                                {telemetryMetadata.total_parsed_sessions || 1} {telemetryMetadata.total_parsed_sessions === 1 ? 'sesión' : 'sesiones'} (.TCX)
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 py-1 text-tilo-text-main">
+                                            <div className="flex items-center gap-1.5 bg-white/60 dark:bg-slate-800/60 p-2 rounded-lg border border-tilo-border/60">
+                                                <span className="text-base">🔥</span>
+                                                <div>
+                                                    <div className="text-[10px] text-tilo-text-muted leading-none">Gasto Calórico</div>
+                                                    <div className="font-bold text-tilo-text-main mt-0.5">{telemetryMetadata.total_calories ? Math.round(telemetryMetadata.total_calories) : '--'} kcal</div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 bg-white/60 dark:bg-slate-800/60 p-2 rounded-lg border border-tilo-border/60">
+                                                <span className="text-base">⏱️</span>
+                                                <div>
+                                                    <div className="text-[10px] text-tilo-text-muted leading-none">Tiempo Total</div>
+                                                    <div className="font-bold text-tilo-text-main mt-0.5">{telemetryMetadata.total_minutes || '--'} min</div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 bg-white/60 dark:bg-slate-800/60 p-2 rounded-lg border border-tilo-border/60">
+                                                <span className="text-base">📈</span>
+                                                <div>
+                                                    <div className="text-[10px] text-tilo-text-muted leading-none">FC Ponderada</div>
+                                                    <div className="font-bold text-tilo-text-main mt-0.5">
+                                                        {telemetryMetadata.average_hr ? `${telemetryMetadata.average_hr} BPM` : '--'}
+                                                        {telemetryMetadata.max_hr ? ` (Pico ${telemetryMetadata.max_hr})` : ''}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {Array.isArray(telemetryMetadata.sessions) && telemetryMetadata.sessions.length > 0 && (
+                                            <div className="space-y-1.5 pt-1 border-t border-tilo-border/60">
+                                                <div className="text-[10px] font-bold text-tilo-text-muted uppercase">Sesiones Detectadas:</div>
+                                                {telemetryMetadata.sessions.map((sess, sIdx) => (
+                                                    <div key={sIdx} className="flex justify-between items-center bg-white/40 dark:bg-slate-800/40 px-2.5 py-1.5 rounded-md text-[11px] text-tilo-text-main">
+                                                        <span className="font-semibold flex items-center gap-1">
+                                                            <span>{sess.sport?.toLowerCase().includes('cicl') ? '🚴' : sess.sport?.toLowerCase().includes('nat') ? '🏊' : sess.sport?.toLowerCase().includes('run') || sess.sport?.toLowerCase().includes('carr') ? '🏃' : '🏋️'}</span>
+                                                            {sess.sport || 'Entrenamiento'}
+                                                        </span>
+                                                        <span className="text-tilo-text-muted font-medium">
+                                                            {sess.distanceMeters > 0 ? `${(sess.distanceMeters / 1000).toFixed(2)} km | ` : ''}
+                                                            {sess.durationMinutes} min
+                                                            {sess.calories > 0 ? ` | ${Math.round(sess.calories)} kcal` : ''}
+                                                            {sess.averageHeartRate > 0 ? ` | FC ${sess.averageHeartRate} BPM` : ''}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : exerciseLog.length > 0 ? (
                                     <div className="space-y-1 mt-2 pl-7">
                                         {exerciseLog.map((act, idx) => (
                                             <div key={idx} className="flex justify-between items-center py-1 text-xs text-tilo-text-main">
@@ -163,15 +287,7 @@ export const TabLogistics = ({
                                             </div>
                                         </div>
                                     </div>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${
-                                        neatLevelRaw === 'LIGHT' ? 'bg-tilo-success/10 text-tilo-success border-tilo-success/20' :
-                                        neatLevelRaw === 'MODERATE' ? 'bg-tilo-primary/10 text-tilo-primary border-tilo-primary/20' :
-                                        neatLevelRaw === 'HEAVY' ? 'bg-tilo-danger/10 text-tilo-danger border-tilo-danger/20' :
-                                        neatLevelRaw === 'SEDENTARY' ? 'bg-tilo-text-muted/10 text-tilo-text-muted border-tilo-text-muted/20' :
-                                        'bg-tilo-text-muted/10 text-tilo-text-muted border-tilo-text-muted/20'
-                                    }`}>
-                                        {neatLevelRaw ? (neatMap[neatLevelRaw]?.toUpperCase() || neatLevelRaw.toUpperCase()) : 'SIN EVALUAR'}
-                                    </span>
+                                    <ProgressRing score={scores?.neat?.score} label={scores?.neat?.label} />
                                 </div>
                             </div>
 
@@ -187,14 +303,7 @@ export const TabLogistics = ({
                                             </div>
                                         </div>
                                     </div>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${sleepQuality === 'GOOD' ? 'bg-tilo-primary/10 text-tilo-primary border-tilo-primary/20' :
-                                        sleepQuality === 'POOR' ? 'bg-tilo-danger/10 text-tilo-danger border-tilo-danger/20' :
-                                        sleepQuality === 'REGULAR' ? 'bg-tilo-primary/5 text-tilo-primary/80 border-tilo-primary/10' :
-                                        'bg-tilo-text-muted/10 text-tilo-text-muted border-tilo-text-muted/20'
-                                        }`}>
-                                        {sleepQuality === 'GOOD' ? 'CALIDAD BUENA' :
-                                            sleepQuality === 'POOR' ? 'MALA CALIDAD' : sleepQuality === 'REGULAR' ? 'REGULAR' : 'SIN DATO'}
-                                    </span>
+                                    <ProgressRing score={scores?.sleep?.score} label={scores?.sleep?.label} />
                                 </div>
                                 {/* Ghrelin Warning */}
                                 {sleepHours > 0 && sleepHours < 6 && (
@@ -223,12 +332,7 @@ export const TabLogistics = ({
                                         )}
                                     </div>
                                 </div>
-                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${stressLevel === 'BAJO' ? 'bg-tilo-success/10 text-tilo-success border-tilo-success/20' :
-                                    stressLevel === 'ALTO' ? 'bg-tilo-danger/10 text-tilo-danger border-tilo-danger/20' :
-                                    'bg-tilo-primary/10 text-tilo-primary border-tilo-primary/20'
-                                    }`}>
-                                    {stressLevel}
-                                </span>
+                                <ProgressRing score={scores?.stress?.score} label={scores?.stress?.label} />
                             </div>
                             {isCortisolAlert && (
                                 <div className="mt-2 flex items-center gap-2 bg-tilo-danger/10 px-2 py-1 rounded text-[10px] text-tilo-danger border border-tilo-danger/20">

@@ -46,6 +46,19 @@ export const calculateAge = (day, month, year) => {
     return age;
 };
 
+export const calculateAgeMonths = (day, month, year) => {
+    if (!day || !month || !year) return 0;
+    const birthDate = new Date(year, month - 1, day);
+    const today = new Date();
+    let months = (today.getFullYear() - birthDate.getFullYear()) * 12;
+    months -= birthDate.getMonth();
+    months += today.getMonth();
+    if (today.getDate() < birthDate.getDate()) {
+        months--;
+    }
+    return Math.max(0, months);
+};
+
 /**
  * Retorna las etiquetas de la compuerta binaria de confirmación según la NOM-004.
  * Basado en BINARY_GATE_LOGIC V37.1

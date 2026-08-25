@@ -14,9 +14,9 @@ export default function Fase15_FrecuenciaConsumoFFQ({
     setMessages,
     setIsGlobalTyping
 }) {
-    const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
+    const { patientName: pName, isMinor, isLactante } = usePatientLinguistics(patientData);
     
-    // Lista ordenada de los pasos de la FFQ
+    // Lista ordenada de los pasos de la FFQ Estándar (Adultos y Niños Mayores)
     const STEPS = [
         { key: 'leche', label: '1. **Lácteos** (Leche, Queso, Yogurt):', internalKey: 'FFQ_DAIRY', type: 'risk', flag: 'high_dairy_intake' },
         { key: 'carne_magra', label: '2. **Carnes Rojas Magras** (Bistec, Molida, Cuete):', internalKey: 'FFQ_RED_LEAN', type: 'magra' },
@@ -33,7 +33,26 @@ export default function Fase15_FrecuenciaConsumoFFQ({
         { key: 'agua', label: '13. **Agua Natural** (Vasos de 250ml al día):', internalKey: 'FFQ_WATER' }
     ];
 
-    const [stepIndex, setStepIndex] = useState(0);
+    // Lista adaptada para Lactantes (0-2 años)
+    const PEDIATRIC_LACTANTE_STEPS = [
+        { key: 'leche', label: '1. **Lactancia y Lácteos Pediátricos** (Leche materna, Fórmula infantil):', internalKey: 'FFQ_DAIRY', type: 'protective' },
+        { key: 'papillas_fruta_verdura', label: '2. **Papillas y Purés de Fruta / Verdura**:', internalKey: 'FFQ_VEGGIES', type: 'protective' },
+        { key: 'cereales_infantiles', label: '3. **Cereales Infantiles y Papillas de Grano**:', internalKey: 'FFQ_CEREALS' },
+        { key: 'proteina_triturada', label: '4. **Proteína / Papillas de Carne o Pollo**:', internalKey: 'FFQ_WHITE_MEAT' },
+        { key: 'leguminosas_coladas', label: '5. **Leguminosas Coladas / Frijol triturado**:', internalKey: 'FFQ_LEGUMES' },
+        { key: 'agua', label: '6. **Agua Natural o Hidratación Pediátrica** (Tomas o onzas al día):', internalKey: 'FFQ_WATER' }
+    ];
+
+    const ACTIVE_STEPS = isLactante ? PEDIATRIC_LACTANTE_STEPS : STEPS;
+
+    const [stepIndex, setStepIndex] = useState(() => {
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && (msg.content.includes("verifique las frecuencias registradas") || msg.content.includes("Cuestionario de Frecuencia de Consumo (FFQ) completado")));
+        const f = patientData?.evaluacionDietetica?.ffq;
+        if (hasSummary || (f && f.leche !== undefined && hasSummary)) {
+            return -1;
+        }
+        return 0;
+    });
     const [ffqData, setFfqData] = useState({});
     const [clinicalFlags, setClinicalFlags] = useState([]);
     const hasGreeted = useRef(false);
@@ -50,6 +69,20 @@ export default function Fase15_FrecuenciaConsumoFFQ({
     useEffect(() => {
         if (hasGreeted.current) return;
 
+        if (stepIndex === -1) {
+            hasGreeted.current = true;
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: "De acuerdo. ¿Qué cambio o acción desea realizar en su cuestionario de Frecuencia de Consumo de Alimentos (FFQ)?",
+                options: [
+                    { label: "✏️ Modificar frecuencia de consumo", value: "MODIFY_FFQ" },
+                    { label: "🔄 Limpiar y reiniciar FFQ", value: "CLEAR_ALL" },
+                    { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                ]
+            }]);
+            return;
+        }
+
         const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("Frecuencia de Consumo"));
         if (!alreadyGreeted) {
             hasGreeted.current = true;
@@ -63,19 +96,8 @@ export default function Fase15_FrecuenciaConsumoFFQ({
                 inputType: 'number'
             }]);
         }
-    }, [messages, isMinor, pName, setMessages]);
+    }, [messages, isMinor, pName, setMessages, stepIndex]);
 
-    useEffect(() => {
-        const handler = () => processStep;
-        if (registerInputHandler) {
-            registerInputHandler(() => handler);
-        }
-        return () => {
-            if (registerInputHandler) {
-                registerInputHandler(prev => prev === handler ? null : prev);
-            }
-        };
-    }, [stepIndex, ffqData, clinicalFlags, registerInputHandler]);
 
     // Sincronización en tiempo real con el expediente global
     useEffect(() => {
@@ -107,12 +129,47 @@ export default function Fase15_FrecuenciaConsumoFFQ({
     };
 
     async function processStep(input, label = null) {
-        if (stepIndex === STEPS.length) {
+        let userText = (label && label !== 'text' && label !== 'button') ? label : input;
+        if (input === "MODIFY_FFQ") userText = "✏️ Modificar frecuencia de consumo";
+        if (input === "CLEAR_ALL") userText = "🔄 Limpiar y reiniciar FFQ";
+        if (input === "FINISH") userText = "❌ Cancelar (Volver al resumen)";
+
+        if (stepIndex === -1) {
+            if (label !== 'button') {
+                setMessages(prev => [...prev, { role: 'user', content: userText }]);
+            }
+            setIsGlobalTyping(true);
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            if (input === "MODIFY_FFQ") {
+                setStepIndex(0);
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: STEPS[0].label,
+                    inputType: 'number'
+                }]);
+            } else if (input === "CLEAR_ALL") {
+                setFfqData({});
+                setClinicalFlags([]);
+                setStepIndex(0);
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "Historial de FFQ reiniciado.\n\n1. **Lácteos** (Leche, Queso, Yogurt):",
+                    inputType: 'number'
+                }]);
+            } else if (input === "FINISH") {
+                onPhaseComplete(ffqData, messages);
+            }
+            setIsGlobalTyping(false);
+            return;
+        }
+
+        if (stepIndex === ACTIVE_STEPS.length) {
             // Already finished all steps, waiting for confirmation
             return;
         }
 
-        const currentStep = STEPS[stepIndex];
+        const currentStep = ACTIVE_STEPS[stepIndex];
         const userMsg = input;
         const freqVal = parseInt(userMsg, 10);
         const maxVal = currentStep.key === 'agua' ? 20 : 7;
@@ -124,8 +181,8 @@ export default function Fase15_FrecuenciaConsumoFFQ({
             setIsGlobalTyping(true);
             await new Promise(resolve => setTimeout(resolve, 800));
             const errorMsg = currentStep.key === 'agua'
-                ? "⚠️ Entrada no válida. Por favor, introduzca un número de vasos del **0 al 20**:"
-                : "⚠️ Entrada no válida. Por favor, introduzca un número del **0 al 7**:";
+                ? "⚠️ Entrada no válida. Por favor, introduzca un número de vasos o tomas del **0 al 20**:"
+                : "⚠️ Entrada no válida. Por favor, introduzca un número del **0 al 7** (días a la semana):";
             setMessages(prev => [...prev, { 
                 role: 'assistant', 
                 content: errorMsg,
@@ -136,7 +193,7 @@ export default function Fase15_FrecuenciaConsumoFFQ({
         }
 
         if (label !== 'button') {
-            const displayContent = currentStep.key === 'agua' ? `${freqVal} vasos/día` : `${freqVal} días`;
+            const displayContent = currentStep.key === 'agua' ? `${freqVal} vasos/tomas al día` : `${freqVal} días/semana`;
             setMessages(prev => [...prev, { role: 'user', content: displayContent }]);
         }
         setIsGlobalTyping(true);
@@ -158,37 +215,66 @@ export default function Fase15_FrecuenciaConsumoFFQ({
         }
         setClinicalFlags(newFlags);
 
-        if (nextIndex < STEPS.length) {
+        if (nextIndex < ACTIVE_STEPS.length) {
             setStepIndex(nextIndex);
             setMessages(prev => [...prev, { 
                 role: 'assistant', 
-                content: STEPS[nextIndex].label,
-                inputType: nextIndex === 12 ? 'text' : 'number' // Agua es vasos de agua
+                content: ACTIVE_STEPS[nextIndex].label,
+                inputType: 'number'
             }]);
         } else {
             showSummary(updatedFfq);
-            setStepIndex(STEPS.length); // Final de pasos
+            setStepIndex(ACTIVE_STEPS.length); // Final de pasos
         }
 
         setIsGlobalTyping(false);
     };
 
+    const processStepRef = useRef(processStep);
+    useEffect(() => {
+        processStepRef.current = processStep;
+    });
+
+    useEffect(() => {
+        if (registerInputHandler) {
+            registerInputHandler(() => (text, label) => processStepRef.current(text, label));
+        }
+        return () => {
+            if (registerInputHandler) {
+                registerInputHandler(null);
+            }
+        };
+    }, [registerInputHandler]);
+
     const showSummary = (finalFfq) => {
-        const summary = `Para cerrar este bloque de Frecuencia de Consumo y dar cumplimiento a la **NOM-004**, verifique las frecuencias registradas (días/semana):\n\n` +
-            `- 🥛 **Lácteos:** ${finalFfq.leche || 0} días\n` +
-            `- 🥩 **C. Rojas (Magras/Grasas):** ${finalFfq.carne_magra || 0}/${finalFfq.carne_grasa || 0} días\n` +
-            `- 🥓 **C. Procesadas:** ${finalFfq.carne_procesada || 0} días\n` +
-            `- 🍗 **C. Blancas:** ${finalFfq.pollo || 0} días\n` +
-            `- 🌾 **Cereales:** ${finalFfq.cereales || 0} días\n` +
-            `- 🫘 **Leguminosas:** ${finalFfq.leguminosas || 0} días\n` +
-            `- 🥦 **Verduras:** ${finalFfq.verduras || 0} días\n` +
-            `- 🍎 **Frutas:** ${finalFfq.frutas || 0} días\n` +
-            `- 🥑 **Grasas Saludables:** ${finalFfq.grasas || 0} días\n` +
-            `- 🍬 **Azúcares:** ${finalFfq.azucares || 0} días\n` +
-            `- 🍕 **Comida Rápida:** ${finalFfq.chatarra || 0} días\n` +
-            `- 💧 **Agua:** ${finalFfq.agua || 0} vasos/día\n\n` +
-            `---\n\n` +
-            `¿Es correcta esta información?`;
+        let summary = "";
+        if (isLactante) {
+            summary = `Para cerrar este bloque de Evaluación Dietética Pediátrica y dar cumplimiento a la **NOM-004**, verifique los registros de alimentación de **${pName}** (su bebé):\n\n` +
+                `- 🥛 **Lactancia / Lácteos:** ${finalFfq.leche || 0} días/semana\n` +
+                `- 🥣 **Papillas / Purés (Fruta/Verdura):** ${finalFfq.papillas_fruta_verdura || 0} días/semana\n` +
+                `- 🌾 **Cereales Infantiles:** ${finalFfq.cereales_infantiles || 0} días/semana\n` +
+                `- 🍗 **Proteína / Papillas de Carne:** ${finalFfq.proteina_triturada || 0} días/semana\n` +
+                `- 🫘 **Leguminosas Coladas:** ${finalFfq.leguminosas_coladas || 0} días/semana\n` +
+                `- 💧 **Tomas de Agua / Hidratación:** ${finalFfq.agua || 0} tomas/día\n\n` +
+                `---\n\n` +
+                `¿Es correcta esta información?`;
+        } else {
+            summary = `Para cerrar este bloque de Frecuencia de Consumo y dar cumplimiento a la **NOM-004**, verifique las frecuencias registradas (días/semana):\n\n` +
+                `- 🥛 **Lácteos:** ${finalFfq.leche || 0} días\n` +
+                `- 🥩 **C. Rojas (Magras/Grasas):** ${finalFfq.carne_magra || 0}/${finalFfq.carne_grasa || 0} días\n` +
+                `- 🥓 **C. Procesadas:** ${finalFfq.carne_procesada || 0} días\n` +
+                `- 🍗 **C. Blancas:** ${finalFfq.pollo || 0} días\n` +
+                `- 🌾 **Cereales:** ${finalFfq.cereales || 0} días\n` +
+                `- 🫘 **Leguminosas:** ${finalFfq.leguminosas || 0} días\n` +
+                `- 🥦 **Verduras:** ${finalFfq.verduras || 0} días\n` +
+                `- 🍎 **Frutas:** ${finalFfq.frutas || 0} días\n` +
+                `- 🥑 **Grasas Saludables:** ${finalFfq.grasas || 0} días\n` +
+                `- 🍬 **Azúcares:** ${finalFfq.azucares || 0} días\n` +
+                `- 🍕 **Comida Rápida:** ${finalFfq.chatarra || 0} días\n` +
+                `- 💧 **Agua:** ${finalFfq.agua || 0} vasos/día\n\n` +
+                `---\n\n` +
+                `¿Es correcta esta información?`;
+        }
 
         setMessages(prev => [...prev, {
             role: 'assistant',
@@ -202,7 +288,7 @@ export default function Fase15_FrecuenciaConsumoFFQ({
 
     // Manejar confirmación de resumen
     useEffect(() => {
-        if (stepIndex === STEPS.length) {
+        if (stepIndex === ACTIVE_STEPS.length) {
             const lastMsg = messages[messages.length - 1];
             if (lastMsg && lastMsg.role === 'user') {
                 const userVal = lastMsg.content;

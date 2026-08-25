@@ -15,7 +15,14 @@ export default function Fase14_CrononutricionR24H({
     setIsGlobalTyping
 }) {
     const { patientName: pName, isMinor } = usePatientLinguistics(patientData);
-    const [internalStep, setInternalStep] = useState('R24H_TIME');
+    const [internalStep, setInternalStep] = useState(() => {
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("Crononutrición y Recordatorio de 24 Horas"));
+        const r = patientData?.evaluacionDietetica?.r24h;
+        if (hasSummary || (r && r.length > 0)) {
+            return 'correct_menu';
+        }
+        return 'R24H_TIME';
+    });
     const [r24hList, setR24hList] = useState(patientData?.evaluacionDietetica?.r24h || []);
     const [tempTime, setTempTime] = useState("");
     const hasGreeted = useRef(false);
@@ -32,6 +39,20 @@ export default function Fase14_CrononutricionR24H({
     useEffect(() => {
         if (hasGreeted.current) return;
 
+        if (internalStep === 'correct_menu') {
+            hasGreeted.current = true;
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de Crononutrición y Recordatorio de 24 Horas (R24H)?",
+                options: [
+                    { label: "✏️ Modificar/Agregar consumos", value: "MODIFY_R24H" },
+                    { label: "🔄 Reiniciar y limpiar R24H", value: "CLEAR_ALL" },
+                    { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                ]
+            }]);
+            return;
+        }
+
         const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("Recordatorio de 24 Horas"));
         if (!alreadyGreeted) {
             hasGreeted.current = true;
@@ -45,20 +66,8 @@ export default function Fase14_CrononutricionR24H({
                 inputType: 'time_picker'
             }]);
         }
-    }, [messages, isMinor, pName, setMessages]);
+    }, [messages, isMinor, pName, setMessages, internalStep]);
 
-    // Middleware de enrutamiento: callback constructor para corregir la ejecución prematura en App.jsx
-    useEffect(() => {
-        const handler = () => processStep;
-        if (registerInputHandler) {
-            registerInputHandler(() => handler);
-        }
-        return () => {
-            if (registerInputHandler) {
-                registerInputHandler(prev => prev === handler ? null : prev);
-            }
-        };
-    }, [internalStep, r24hList, tempTime, registerInputHandler]);
 
     // Sincronización en tiempo real con el expediente global
     useEffect(() => {
@@ -80,8 +89,13 @@ export default function Fase14_CrononutricionR24H({
     }, [r24hList, setPatientData]);
 
     const processStep = async (input, label = null) => {
+        let userText = (label && label !== 'text' && label !== 'button') ? label : input;
+        if (input === "MODIFY_R24H") userText = "✏️ Modificar/Agregar consumos";
+        if (input === "CLEAR_ALL") userText = "🔄 Reiniciar y limpiar R24H";
+        if (input === "FINISH") userText = "❌ Cancelar (Volver al resumen)";
+
         if (label !== 'button') {
-            setMessages(prev => [...prev, { role: 'user', content: input }]);
+            setMessages(prev => [...prev, { role: 'user', content: userText }]);
         }
         
         const userMsg = input;
@@ -93,7 +107,24 @@ export default function Fase14_CrononutricionR24H({
             setMessages(prev => [...prev, { role: 'assistant', content: msg, options, inputType }]);
         };
 
-        if (internalStep === 'R24H_TIME') {
+        if (internalStep === 'correct_menu') {
+            if (input === "MODIFY_R24H") {
+                const retryMsg = isMinor 
+                    ? `Entendido. ¿A qué hora consumió **${pName}** su siguiente/primer alimento ayer?` 
+                    : "Entendido. ¿A qué hora consumió su siguiente/primer alimento ayer?";
+                addBotMsg(retryMsg, null, 'time_picker');
+                setInternalStep('R24H_TIME');
+            } else if (input === "CLEAR_ALL") {
+                setR24hList([]);
+                const initialMsg = isMinor
+                    ? `Historial de recordatorio de 24 horas reiniciado.\n\n¿A qué hora consumió **${pName}** su primer alimento ayer?`
+                    : "Historial de recordatorio de 24 horas reiniciado.\n\n¿A qué hora consumió su primer alimento ayer?";
+                addBotMsg(initialMsg, null, 'time_picker');
+                setInternalStep('R24H_TIME');
+            } else if (input === "FINISH") {
+                onPhaseComplete(r24hList, messages);
+            }
+        } else if (internalStep === 'R24H_TIME') {
             const isDeclining = /^\s*(no|nada|ninguno|ninguna|no comi nada|no consumi nada|ayuno|ningun alimento|no, nada|no, ninguno)\s*$/i.test(lower) || lower === 'fin' || lower === 'terminar' || lower.includes('termina');
             if (isDeclining) {
                 if (r24hList.length === 0) {
@@ -183,6 +214,23 @@ export default function Fase14_CrononutricionR24H({
 
         setIsGlobalTyping(false);
     };
+
+    // Middleware de enrutamiento: callback constructor para corregir la ejecución prematura en App.jsx
+    const processStepRef = useRef(processStep);
+    useEffect(() => {
+        processStepRef.current = processStep;
+    });
+
+    useEffect(() => {
+        if (registerInputHandler) {
+            registerInputHandler(() => (text, label) => processStepRef.current(text, label));
+        }
+        return () => {
+            if (registerInputHandler) {
+                registerInputHandler(null);
+            }
+        };
+    }, [registerInputHandler]);
 
     const showSummary = (list) => {
         const itemsStr = list.map(item => `- ⏰ **${item.hora}**: ${item.alimento}`).join('\n');

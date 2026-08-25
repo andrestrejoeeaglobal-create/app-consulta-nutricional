@@ -71,3 +71,16 @@ Ante cualquier solicitud de cambio en estas fases (0 a 17), el agente debe:
 2. **Advertir:** Recordar al usuario que estas fases están bajo protección estricta del proyecto.
 3. **Preguntar de forma explícita:** *"Andrés, las Fases de la 0 a la 17 están bajo protección estricta. ¿Está absolutamente seguro de que desea proceder con este cambio en la Fase [X]?"*
 4. **Esperar confirmación:** No realizar ningún cambio en el código, ejecutar comandos ni alterar archivos hasta que el Director responda afirmativamente por escrito.
+
+---
+
+## 🔒 7. Blindaje Inviolable de la App de Consulta Nutricional (App 1)
+
+La **App de Consulta Nutricional** (`client/`) se declara **OFICIALMENTE COMPLETA Y FUNCIONAL EN SU TOTALIDAD**.
+
+Queda **ESTRICTAMENTE PROHIBIDO** bajo cualquier concepto modificar, alterar, refactorizar o editar cualquier archivo, componente, hook, módulo o configuración perteneciente a la **App de Consulta Nutricional** (`client/`), a menos que se cumpla el siguiente protocolo obligatorio:
+
+### Protocolo Obligatorio para Modificar la App 1:
+1. **Presentación de Plan de Implementación:** El agente debe elaborar y presentar previamente un **Plan de Implementación detallado** (`implementation_plan.md`) exponiendo los cambios sugeridos, la justificación clínica/técnica y la evaluación de impacto.
+2. **Autorización Expresa del Director:** El agente debe **detener la ejecución de inmediato** y solicitar la autorización afirmativa, explícita y por escrito del Director (Andrés Trejo) para proceder con dicho plan.
+3. **Prohibición de Edición Directa:** Sin un plan presentado y la confirmación explícita recibida por escrito del Director, queda estrictamente prohibida la edición de cualquier archivo dentro de `client/`.

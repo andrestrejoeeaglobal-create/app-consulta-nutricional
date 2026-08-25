@@ -176,7 +176,108 @@ export const TabNutrition = ({
                 variant="parent"
             >
                 <div className="space-y-6">
-                    {/* SUB-ACORDEÓN 1: PREFERENCIAS Y SEGURIDAD */}
+                    {/* SUB-ACORDEÓN 1: LOGÍSTICA ALIMENTARIA */}
+                    <Accordion
+                        title="Logística Alimentaria"
+                        id="accordion-logistics"
+                        isOpen={openSections.childLogistics}
+                        onToggle={() => toggleSection('childLogistics')}
+                    >
+                        <div id="card-logistics" className="space-y-4">
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-2">
+                                        <ShoppingBag className="w-5 h-5 text-tilo-text-muted" />
+                                        <div>
+                                            <div className="text-sm font-bold text-tilo-text-main font-prototype">Entorno y Cocina</div>
+                                            <div className="text-xs text-tilo-text-muted font-medium font-sansation">
+                                                {patientData.logistics_profile?.cook_type === 'SELF' ? 'Cocina Propia' :
+                                                    patientData.logistics_profile?.cook_type === 'FAMILY' ? 'Familiar Cocina' :
+                                                        patientData.logistics_profile?.cook_type === 'STAFF' ? 'Personal Cocina' :
+                                                            patientData.logistics_profile?.cook_type === 'BUYING' ? 'Compra Comida' : '--'}
+                                                {' • '}
+                                                {patientData.logistics_profile?.environment?.venue === 'HOME' ? 'Come en Casa' :
+                                                    patientData.logistics_profile?.environment?.venue === 'WORK' ? 'Come en Trabajo' :
+                                                        patientData.logistics_profile?.environment?.venue === 'STREET' ? 'Come en Calle' : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Constraints Badges */}
+                                    <div className="flex flex-col gap-1 items-end">
+                                        {!patientData.logistics_profile ? (
+                                            <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-text-muted/20 font-prototype">SIN EVALUAR</span>
+                                        ) : (
+                                            <>
+                                                {patientData.logistics_profile?.recipe_filters?.requires_reheating === false && (
+                                                    <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[9px] px-1.5 py-0.5 rounded border border-tilo-border font-bold">NO MICROONDAS</span>
+                                                )}
+                                                {patientData.logistics_profile?.recipe_filters?.requires_rehydration === false && (
+                                                    <span className="bg-tilo-danger/10 text-tilo-danger text-[9px] px-1.5 py-0.5 rounded border border-tilo-danger/20 font-bold">NO REFRIGERACIÓN</span>
+                                                )}
+                                                {patientData.logistics_profile?.cooking_time === 'LOW' && (
+                                                    <span className="bg-tilo-primary/10 text-tilo-primary text-[9px] px-1.5 py-0.5 rounded border border-tilo-primary/20 font-bold">TIEMPO LIMITADO</span>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* 4. COMPAÑÍA EN MESA */}
+                                <div className="pt-3 border-t border-tilo-border">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <Users className="w-5 h-5 text-tilo-text-muted" />
+                                            <div>
+                                                <div className="text-sm font-bold text-tilo-text-main font-prototype">Dinámica Familiar y Social</div>
+                                                <div className="text-xs text-tilo-text-muted font-medium font-sansation">
+                                                    Acompañamiento: <span className="text-tilo-text-main font-semibold">{socialCompany}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col gap-1 items-end">
+                                            {hasIsolationRisk && (
+                                                <span className="bg-tilo-danger/10 text-tilo-danger border border-tilo-danger/20 text-[10px] px-2.5 py-0.5 rounded font-bold animate-pulse font-prototype">
+                                                    RIESGO AISLAMIENTO
+                                                </span>
+                                            )}
+                                            {hasWorkloadRisk && (
+                                                <span className="bg-tilo-danger/10 text-tilo-danger border border-tilo-danger/20 text-[10px] px-2.5 py-0.5 rounded font-bold animate-pulse font-prototype">
+                                                    CARGA COCINA ELEVADA
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {socialCompanyRaw && socialCompanyRaw !== 'ALONE' && (
+                                        <div className="pl-7 mt-1 space-y-1 text-xs text-tilo-text-muted font-medium font-sansation">
+                                            {sharingDynamics && (
+                                                <div>
+                                                    Dinámica: <span className="text-tilo-text-main">{sharingDynamics}</span>
+                                                </div>
+                                            )}
+                                            {sharingDynamicsRaw === 'SHARED_MENU' && (
+                                                <>
+                                                    {dinersCount && (
+                                                        <div>
+                                                            Porciones/Comensales: <span className="text-tilo-text-main">{dinersCount} personas</span>
+                                                        </div>
+                                                    )}
+                                                    {demographics && (
+                                                        <div>
+                                                            Demografía: <span className="text-tilo-text-main">{demographics}</span>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </Accordion>
+
+                    {/* SUB-ACORDEÓN 2: PREFERENCIAS Y SEGURIDAD */}
                     <Accordion
                         title="Preferencias y Seguridad"
                         id="accordion-preferences"
@@ -248,7 +349,7 @@ export const TabNutrition = ({
                         </div>
                     </Accordion>
 
-                    {/* SUB-ACORDEÓN 2: CRONONUTRICIÓN (R24H) */}
+                    {/* SUB-ACORDEÓN 3: CRONONUTRICIÓN (R24H) */}
                     <Accordion
                         title="Crononutrición (R24H)"
                         id="accordion-chrononutrition"
@@ -256,7 +357,6 @@ export const TabNutrition = ({
                         onToggle={() => toggleSection('childChrononutrition')}
                     >
                         <div id="card-chrononutrition" className="space-y-4">
-
                             {/* METRICS ROW */}
                             <div className="flex justify-between items-center mb-6 bg-tilo-bg-base/30 p-4 rounded-2xl border border-tilo-border">
                                 <div className="text-center">
@@ -330,7 +430,7 @@ export const TabNutrition = ({
                         </div>
                     </Accordion>
 
-                    {/* SUB-ACORDEÓN 3: FRECUENCIA DE CONSUMO (FFQ) */}
+                    {/* SUB-ACORDEÓN 4: FRECUENCIA DE CONSUMO (FFQ) */}
                     <Accordion
                         title="Frecuencia de Consumo (FFQ)"
                         id="accordion-ffq"
@@ -422,108 +522,6 @@ export const TabNutrition = ({
                                     </div>
                                 </div>
                             )}
-                        </div>
-                    </Accordion>
-
-                    {/* SUB-ACORDEÓN 4: LOGÍSTICA ALIMENTARIA */}
-                    <Accordion
-                        title="Logística Alimentaria"
-                        id="accordion-logistics"
-                        isOpen={openSections.childLogistics}
-                        onToggle={() => toggleSection('childLogistics')}
-                    >
-                        <div id="card-logistics" className="space-y-4">
-
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex items-center gap-2">
-                                        <ShoppingBag className="w-5 h-5 text-tilo-text-muted" />
-                                        <div>
-                                            <div className="text-sm font-bold text-tilo-text-main font-prototype">Entorno y Cocina</div>
-                                            <div className="text-xs text-tilo-text-muted font-medium font-sansation">
-                                                {patientData.logistics_profile?.cook_type === 'SELF' ? 'Cocina Propia' :
-                                                    patientData.logistics_profile?.cook_type === 'FAMILY' ? 'Familiar Cocina' :
-                                                        patientData.logistics_profile?.cook_type === 'STAFF' ? 'Personal Cocina' :
-                                                            patientData.logistics_profile?.cook_type === 'BUYING' ? 'Compra Comida' : '--'}
-                                                {' • '}
-                                                {patientData.logistics_profile?.environment?.venue === 'HOME' ? 'Come en Casa' :
-                                                    patientData.logistics_profile?.environment?.venue === 'WORK' ? 'Come en Trabajo' :
-                                                        patientData.logistics_profile?.environment?.venue === 'STREET' ? 'Come en Calle' : ''}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Constraints Badges */}
-                                    <div className="flex flex-col gap-1 items-end">
-                                        {!patientData.logistics_profile ? (
-                                            <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-text-muted/20 font-prototype">SIN EVALUAR</span>
-                                        ) : (
-                                            <>
-                                                {patientData.logistics_profile?.recipe_filters?.requires_reheating === false && (
-                                                    <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[9px] px-1.5 py-0.5 rounded border border-tilo-border font-bold">NO MICROONDAS</span>
-                                                )}
-                                                {patientData.logistics_profile?.recipe_filters?.requires_rehydration === false && (
-                                                    <span className="bg-tilo-danger/10 text-tilo-danger text-[9px] px-1.5 py-0.5 rounded border border-tilo-danger/20 font-bold">NO REFRIGERACIÓN</span>
-                                                )}
-                                                {patientData.logistics_profile?.cooking_time === 'LOW' && (
-                                                    <span className="bg-tilo-primary/10 text-tilo-primary text-[9px] px-1.5 py-0.5 rounded border border-tilo-primary/20 font-bold">TIEMPO LIMITADO</span>
-                                                )}
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* 4. COMPAÑÍA EN MESA */}
-                                <div className="pt-3 border-t border-tilo-border">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <Users className="w-5 h-5 text-tilo-text-muted" />
-                                            <div>
-                                                <div className="text-sm font-bold text-tilo-text-main font-prototype">Dinámica Familiar y Social</div>
-                                                <div className="text-xs text-tilo-text-muted font-medium font-sansation">
-                                                    Acompañamiento: <span className="text-tilo-text-main font-semibold">{socialCompany}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col gap-1 items-end">
-                                            {hasIsolationRisk && (
-                                                <span className="bg-tilo-danger/10 text-tilo-danger border border-tilo-danger/20 text-[10px] px-2.5 py-0.5 rounded font-bold animate-pulse font-prototype">
-                                                    RIESGO AISLAMIENTO
-                                                </span>
-                                            )}
-                                            {hasWorkloadRisk && (
-                                                <span className="bg-tilo-danger/10 text-tilo-danger border border-tilo-danger/20 text-[10px] px-2.5 py-0.5 rounded font-bold animate-pulse font-prototype">
-                                                    CARGA COCINA ELEVADA
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {socialCompanyRaw && socialCompanyRaw !== 'ALONE' && (
-                                        <div className="pl-7 mt-1 space-y-1 text-xs text-tilo-text-muted font-medium font-sansation">
-                                            {sharingDynamics && (
-                                                <div>
-                                                    Dinámica: <span className="text-tilo-text-main">{sharingDynamics}</span>
-                                                </div>
-                                            )}
-                                            {sharingDynamicsRaw === 'SHARED_MENU' && (
-                                                <>
-                                                    {dinersCount && (
-                                                        <div>
-                                                            Porciones/Comensales: <span className="text-tilo-text-main">{dinersCount} personas</span>
-                                                        </div>
-                                                    )}
-                                                    {demographics && (
-                                                        <div>
-                                                            Demografía: <span className="text-tilo-text-main">{demographics}</span>
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
                         </div>
                     </Accordion>
                 </div>

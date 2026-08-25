@@ -2,12 +2,22 @@
 import time
 import sys
 import os
+
+# Configurar salida estándar a UTF-8 para evitar errores de codificación con emojis en Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 from pywinauto.application import Application
 from pywinauto.keyboard import send_keys
 
 # CONFIGURACIÓN
 # Ajusta esta ruta a donde realmente está el Electret.exe en tu PC
-ELECTRET_PATH = r"C:\Program Files (x86)\Electret\Electret.exe" 
+ELECTRET_PATHS = [
+    r"C:\Program Files (x86)\Electret\Electret.exe",
+    r"C:\Program Files (x86)\Sistema Cuántico Bio-Eléctrico (4)\Electret.exe",
+    r"C:\Program Files (x86)\Sistema Cuántico Bio-Eléctrico\Electret.exe"
+]
+ELECTRET_PATH = next((p for p in ELECTRET_PATHS if os.path.exists(p)), ELECTRET_PATHS[0])
+
 
 def start_scan_sequence(patient_name, patient_age, patient_height, patient_weight):
     print(f"🚀 BIO-BRIDGE: Iniciando secuencia para {patient_name}...")

@@ -132,7 +132,7 @@ const SearchableVerticalMenu = ({
     };
 
     return (
-        <div className="absolute bottom-[calc(100%+12px)] left-0 w-full bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden max-h-96 tilo-searchable-menu animate-in slide-in-from-bottom-2 duration-300">
+        <div className="absolute bottom-[calc(100%+12px)] left-0 w-full bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden max-h-[360px] tilo-searchable-menu animate-in slide-in-from-bottom-2 duration-300">
             {/* Input de Búsqueda Estilo Premium */}
             <div className="p-3 border-b border-slate-100 bg-slate-50 shrink-0 flex items-center gap-2">
                 <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />

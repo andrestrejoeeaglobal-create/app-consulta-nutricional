@@ -1,0 +1,80 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-background: #FAFAFA;
+  --color-accent: #1C75BC;
+  --font-sans: "Inter", "Roboto", sans-serif;
+  --font-prototype: "Prototype", "Inter", sans-serif;
+
+  /* --- TILO DESIGN SYSTEM THEME EXTENSION (v1.0) --- */
+  --color-tilo-bg-base: var(--tilo-bg-main);
+  --color-tilo-bg-panel: var(--tilo-bg-card);
+  --color-tilo-bg-chat-sys: var(--tilo-clinical-gray-50);
+  --color-tilo-text-main: var(--tilo-text-primary);
+  --color-tilo-text-muted: var(--tilo-text-secondary);
+  --color-tilo-border: var(--tilo-border-light);
+  --color-tilo-primary: var(--tilo-brand-blue);
+  --color-tilo-success: var(--tilo-brand-success);
+  --color-tilo-danger: var(--tilo-brand-danger);
+  --color-tilo-warning: var(--tilo-brand-warning);
+  --color-tilo-warning-text: var(--tilo-warning-text);
+  --color-tilo-success-text: var(--tilo-success-text);
+}
+
+:root {
+  color-scheme: light;
+  /* --- TILO DESIGN TOKENS (v1.0) --- */
+  --tilo-brand-blue: #1C75BC;    /* Azul Corporativo - Estabilizador */
+  --tilo-brand-dark: #0f172a;    /* Slate-900 */
+  --tilo-brand-success: #3AAA35; /* Verde Vida / Ingeniería Tisular */
+  --tilo-brand-warning: #FFCC00; /* Amarillo Creatividad */
+  --tilo-brand-danger: #E30613;  /* Rojo Pasión / Ignición Mitocondrial */
+
+  /* Neutral Surface Palette (60% Rule) */
+  --tilo-bg-main: #FAFAFA;        /* Blanco Quirúrgico */
+  --tilo-bg-card: #FFFFFF;        /* Tarjetas */
+  --tilo-bg-chat-user: #1C75BC;   /* Burbuja Usuario (Azul Corporativo) */
+  --tilo-bg-chat-sys: #F8FAFC;    /* Burbuja Tilo (Slate-50) */
+
+  /* Typography Colors */
+  --tilo-text-primary: #1E293B;   /* Slate-800 High Contrast */
+  --tilo-text-secondary: #64748B; /* Slate-500 Medium Contrast */
+  --tilo-warning-text: #92400E;   /* Amber-800 */
+  --tilo-success-text: #166534;   /* Green-800 */
+
+  /* Borders & Dividers (30% Rule) */
+  --tilo-border-light: #E2E8F0;   /* Slate-200 */
+  --tilo-border-card: #CBD5E1;    /* Slate-300 */
+}
+
+/* Dark Mode Overrides (Strictly No Pure Black #000000) */
+.dark {
+  color-scheme: dark;
+  --tilo-bg-main: #121212;        /* Graphite Canvas */
+  --tilo-bg-card: #1E1E1E;        /* Dark Surface Panel */
+  --tilo-bg-chat-sys: #1A1A1A;
+  --tilo-text-primary: #F1F5F9;   /* Slate-100 High Contrast */
+  --tilo-text-secondary: #94A3B8; /* Slate-400 Medium Contrast */
+  --tilo-border-light: #334155;   /* Slate-700 */
+  --tilo-border-card: #475569;    /* Slate-600 */
+}
+
+/* Custom Scrollbar for Clinical Panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}

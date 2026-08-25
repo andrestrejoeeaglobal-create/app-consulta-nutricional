@@ -8,6 +8,8 @@ import ReactMarkdown from 'react-markdown';
 import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
 import { Send } from 'lucide-react';
 
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+
 /**
  * T.I.L.O. - FASE 4 (ANTECEDENTES FAMILIARES)
  * Versión: v4.4 - Genómica Universal
@@ -39,6 +41,21 @@ const getLocalizedPathValue = (a) => {
         return match.label.split(' (')[0].split(' / ')[0];
     }
     return a.patologia || "Condición no especificada";
+};
+
+const getPathologyEmoji = (patologia) => {
+    switch (patologia) {
+        case "Diabetes": return "🩸";
+        case "Hipertension": return "📈";
+        case "Obesidad": return "⚖️";
+        case "Cancer": return "🎗️";
+        case "Renal": return "🧬";
+        case "Asma": return "🫁";
+        case "Tiroides": return "🦋";
+        case "Cardiopatia": return "❤️";
+        case "Psiquiatrico": return "🧠";
+        default: return "📋";
+    }
 };
 
 const syncAlertsWithStore = (currentAntecedentes) => {
@@ -177,15 +194,7 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
         };
     });
 
-    // Calcular edad para filtro
-    const ageStr = patientData?.profile?.pediatric_profile?.age || patientData?.identificacion?.edad || "0";
-    const age = parseInt(ageStr, 10) || 0;
-
-    const ptCtx = patientData?.profile?.pediatric_profile;
-    // Para efectos de diálogo, solo usamos tercera persona en menores de 12 años (pediátricos).
-    const isMinor = ptCtx?.is_minor === true && age < 12;
-    let pName = patientData?.profile?.first_name || patientData?.identificacion?.nombre || patientData?.identificacion?.nombres || patientData?.identityLock?.patientInfo?.firstName;
-    pName = pName ? pName.split(' ')[0] : null;
+    const { patientName: pName, isMinor, isLactante, isPediatrico, patientAge: age } = usePatientLinguistics(patientData);
 
     // Máquina de estados
     // ASK_START -> SELECT_DISEASE -> TYPE_DETAIL (if Cancer/Otras) -> SELECT_RELATIVE -> ASK_MORE
@@ -333,6 +342,20 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
         if (textToProcess === "CLEAR_ALL") userLabel = "Limpiar todo y empezar de nuevo";
         if (textToProcess === "CONFIRM_DATA") userLabel = "Sí, es correcta";
         if (textToProcess === "CORRECT_DATA") userLabel = "No, quiero corregir algo";
+        if (textToProcess === "MODIFY_SELECT") userLabel = "✏️ Modificar un antecedente";
+        if (textToProcess === "DELETE_SELECT") userLabel = "🗑️ Eliminar un antecedente";
+        if (textToProcess === "CANCEL_REVIEW") userLabel = "❌ Cancelar (Volver)";
+        if (textToProcess === "BACK_TO_CORRECT") userLabel = "⬅️ Volver al menú anterior";
+        if (textToProcess.startsWith("DELETE_INDEX_")) {
+            const idx = parseInt(textToProcess.replace("DELETE_INDEX_", ""), 10);
+            const ant = familyTree.antecedentes[idx];
+            userLabel = ant ? `🗑️ Eliminar: ${ant.familiar} - ${getLocalizedPathValue(ant)}` : "Eliminar antecedente";
+        }
+        if (textToProcess.startsWith("MODIFY_INDEX_")) {
+            const idx = parseInt(textToProcess.replace("MODIFY_INDEX_", ""), 10);
+            const ant = familyTree.antecedentes[idx];
+            userLabel = ant ? `✏️ Modificar: ${ant.familiar} - ${getLocalizedPathValue(ant)}` : "Modificar antecedente";
+        }
 
         // Find label if coming from menu
         if (type === "disease") userLabel = CAT_PATOLOGIAS.find(o => o.value === textToProcess)?.label || textToProcess;
@@ -373,6 +396,21 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
     const processState = (val, type, currentMsgs = messages) => {
         if (flowState === 'ASK_START') {
             if (val === "NO_ANTECEDENTES") {
+                if (isLactante && !familyTree.pediatric_atm?.birth_type) {
+                    setFlowState('PEDIATRIC_ATM_1');
+                    pushMessage({
+                        role: 'assistant',
+                        content: `Para evaluar la siembra del microbioma primario de **${pName || "su bebé"}**: ¿Nació por Vía Vaginal o por Cesárea? ¿Fue a término o prematuro?`,
+                        options: [
+                            { label: "👶 Parto Vaginal a Término", value: "ATM_BIRTH_VAGINAL_TERM" },
+                            { label: "✂️ Cesárea a Término", value: "ATM_BIRTH_CESAREAN_TERM" },
+                            { label: "⚠️ Parto Prematuro (< 37 semanas)", value: "ATM_BIRTH_PREMATURE" },
+                            { label: "🏥 Cesárea por Complicación", value: "ATM_BIRTH_CESAREAN_COMP" }
+                        ]
+                    });
+                    setIsAnalyzing(false);
+                    return;
+                }
                 const finalMessages = [...currentMsgs, { role: 'assistant', content: "Entendido, sin antecedentes registrados." }];
                 onPhaseComplete?.(familyTree, finalMessages);
                 setIsAnalyzing(false);
@@ -447,26 +485,9 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
             });
         }
         else if (flowState === 'ASK_MORE') {
-            if (val === "FINISH") {
+            if (val === "FINISH" || val === "CANCEL_REVIEW") {
                 setFlowState('REVIEW_SUMMARY');
                 
-                const getPathologyEmoji = (patologia) => {
-                    switch (patologia) {
-                        case "Diabetes": return "🩸";
-                        case "Hipertension": return "📈";
-                        case "Obesidad": return "⚖️";
-                        case "Cancer": return "🎗️";
-                        case "Renal": return "🧬";
-                        case "Asma": return "🫁";
-                        case "Tiroides": return "🦋";
-                        case "Cardiopatia": return "❤️";
-                        case "Psiquiatrico": return "🧠";
-                        default: return "📋";
-                    }
-                };
-
-                // getLocalizedPathValue is now defined at the component level
-
                 const summaryText = familyTree.antecedentes.length > 0
                     ? familyTree.antecedentes.map(a => `- ${getPathologyEmoji(a.patologia)} **${a.familiar || a.parentesco || 'Familiar no especificado'}**: ${getLocalizedPathValue(a)}`).join('\n')
                     : "Ningún antecedente registrado.";
@@ -541,11 +562,74 @@ ${summaryText}
                         { label: "✅ SÍ, REGISTRAR ANTECEDENTES", value: "SI_ANTECEDENTES" }
                     ]
                 });
+            } else if (val === "MODIFY_SELECT") {
+                if (familyTree.antecedentes.length > 0) {
+                    setFlowState('SELECT_MODIFY_ITEM');
+                    const opts = familyTree.antecedentes.map((a, idx) => ({
+                        label: `👤 ${a.familiar || 'Familiar'}: ${getLocalizedPathValue(a)}`,
+                        value: `MODIFY_INDEX_${idx}`
+                    })).concat([{ label: "⬅️ Volver al menú anterior", value: "BACK_TO_CORRECT" }]);
+                    
+                    pushMessage({
+                        role: 'assistant',
+                        content: "¿Qué antecedente desea modificar? Seleccione de la lista:",
+                        options: opts
+                    });
+                } else {
+                    pushMessage({
+                        role: 'assistant',
+                        content: "No existen antecedentes registrados para modificar.",
+                        options: [
+                            { label: "➕ Agregar familiar/condición", value: "ADD_MORE" },
+                            { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                        ]
+                    });
+                }
+            } else if (val === "DELETE_SELECT") {
+                if (familyTree.antecedentes.length > 0) {
+                    setFlowState('SELECT_DELETE_ITEM');
+                    const opts = familyTree.antecedentes.map((a, idx) => ({
+                        label: `👤 ${a.familiar || 'Familiar'}: ${getLocalizedPathValue(a)}`,
+                        value: `DELETE_INDEX_${idx}`
+                    })).concat([{ label: "⬅️ Volver al menú anterior", value: "BACK_TO_CORRECT" }]);
+                    
+                    pushMessage({
+                        role: 'assistant',
+                        content: "¿Qué antecedente desea eliminar del expediente? Seleccione de la lista:",
+                        options: opts
+                    });
+                } else {
+                    pushMessage({
+                        role: 'assistant',
+                        content: "No existen antecedentes registrados para eliminar.",
+                        options: [
+                            { label: "➕ Agregar familiar/condición", value: "ADD_MORE" },
+                            { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                        ]
+                    });
+                }
             }
         }
         else if (flowState === 'REVIEW_SUMMARY') {
             if (val === "CONFIRM_DATA") {
                 if (isConfirming.current) return;
+
+                if (isLactante && !familyTree.pediatric_atm?.birth_type) {
+                    setFlowState('PEDIATRIC_ATM_1');
+                    pushMessage({
+                        role: 'assistant',
+                        content: `Para evaluar la siembra del microbioma primario de **${pName || "su bebé"}**: ¿Nació por Vía Vaginal o por Cesárea? ¿Fue a término o prematuro?`,
+                        options: [
+                            { label: "👶 Parto Vaginal a Término", value: "ATM_BIRTH_VAGINAL_TERM" },
+                            { label: "✂️ Cesárea a Término", value: "ATM_BIRTH_CESAREAN_TERM" },
+                            { label: "⚠️ Parto Prematuro (< 37 semanas)", value: "ATM_BIRTH_PREMATURE" },
+                            { label: "🏥 Cesárea por Complicación", value: "ATM_BIRTH_CESAREAN_COMP" }
+                        ]
+                    });
+                    setIsAnalyzing(false);
+                    return;
+                }
+
                 isConfirming.current = true;
 
                 // Sync messages list cleanly (already contains the user bubble from currentMsgs)
@@ -570,14 +654,176 @@ ${summaryText}
                 setFlowState('ASK_MORE');
                 pushMessage({
                     role: 'assistant',
-                    content: "De acuerdo. ¿Qué acción desea tomar?",
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en la lista de antecedentes?",
                     options: [
-                        { label: "➕ AGREGAR OTRO ANTECEDENTE", value: "ADD_MORE" },
-                        { label: "↩️ BORRAR ÚLTIMO REGISTRO", value: "DELETE_LAST" },
-                        { label: "➡️ CONTINUAR AL HISTORIAL", value: "FINISH" }
+                        { label: "➕ Agregar familiar/condición", value: "ADD_MORE" },
+                        { label: "✏️ Modificar un antecedente", value: "MODIFY_SELECT" },
+                        { label: "🗑️ Eliminar un antecedente", value: "DELETE_SELECT" },
+                        { label: "🔄 Limpiar lista completa", value: "CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver)", value: "FINISH" }
                     ]
                 });
             }
+        }
+        else if (flowState === 'SELECT_MODIFY_ITEM') {
+            if (val === "BACK_TO_CORRECT") {
+                setFlowState('ASK_MORE');
+                pushMessage({
+                    role: 'assistant',
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en la lista de antecedentes?",
+                    options: [
+                        { label: "➕ Agregar familiar/condición", value: "ADD_MORE" },
+                        { label: "✏️ Modificar un antecedente", value: "MODIFY_SELECT" },
+                        { label: "🗑️ Eliminar un antecedente", value: "DELETE_SELECT" },
+                        { label: "🔄 Limpiar lista completa", value: "CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                    ]
+                });
+                setIsAnalyzing(false);
+                return;
+            }
+            if (val.startsWith("MODIFY_INDEX_")) {
+                const idx = parseInt(val.replace("MODIFY_INDEX_", ""), 10);
+                if (!isNaN(idx) && familyTree.antecedentes[idx]) {
+                    const updated = familyTree.antecedentes.filter((_, i) => i !== idx);
+                    const hasOnco = updated.some(a => a.patologia === "Cancer");
+                    updatePatientState({
+                        ...familyTree,
+                        antecedentes: updated,
+                        alert_detected: hasOnco
+                    });
+
+                    setFlowState('SELECT_DISEASE');
+                    pushMessage({
+                        role: 'assistant',
+                        content: "Entendido. Vamos a reconfigurar este antecedente. Por favor, seleccione la condición o enfermedad que padece el familiar:",
+                        showMenu: 'disease',
+                        options: CAT_PATOLOGIAS
+                    });
+                }
+            }
+        }
+        else if (flowState === 'SELECT_DELETE_ITEM') {
+            if (val === "BACK_TO_CORRECT") {
+                setFlowState('ASK_MORE');
+                pushMessage({
+                    role: 'assistant',
+                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en la lista de antecedentes?",
+                    options: [
+                        { label: "➕ Agregar familiar/condición", value: "ADD_MORE" },
+                        { label: "✏️ Modificar un antecedente", value: "MODIFY_SELECT" },
+                        { label: "🗑️ Eliminar un antecedente", value: "DELETE_SELECT" },
+                        { label: "🔄 Limpiar lista completa", value: "CLEAR_ALL" },
+                        { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                    ]
+                });
+                setIsAnalyzing(false);
+                return;
+            }
+            if (val.startsWith("DELETE_INDEX_")) {
+                const idx = parseInt(val.replace("DELETE_INDEX_", ""), 10);
+                if (!isNaN(idx) && familyTree.antecedentes[idx]) {
+                    const updated = familyTree.antecedentes.filter((_, i) => i !== idx);
+                    const hasOnco = updated.some(a => a.patologia === "Cancer");
+                    
+                    const newTree = {
+                        ...familyTree,
+                        antecedentes: updated,
+                        alert_detected: hasOnco
+                    };
+                    updatePatientState(newTree);
+
+                    pushMessage({
+                        role: 'assistant',
+                        content: "Antecedente eliminado con éxito."
+                    });
+
+                    setTimeout(() => {
+                        setFlowState('REVIEW_SUMMARY');
+                        
+                        const summaryText = newTree.antecedentes.length > 0
+                            ? newTree.antecedentes.map(a => `- ${getPathologyEmoji(a.patologia)} **${a.familiar || a.parentesco || 'Familiar no especificado'}**: ${getLocalizedPathValue(a)}`).join('\n')
+                            : "Ningún antecedente registrado.";
+                        
+                        const finalContent = `Para dar cumplimiento a la NOM-004 y sellar formalmente este bloque de antecedentes heredofamiliares, por favor verifique los datos registrados:
+
+${summaryText}
+
+---
+
+¿Es correcta esta información?`;
+
+                        pushMessage({
+                            role: 'assistant',
+                            content: finalContent,
+                            options: [
+                                { label: "✅ Sí, es correcta", value: "CONFIRM_DATA" },
+                                { label: "❌ No, quiero corregir algo", value: "CORRECT_DATA" }
+                            ]
+                        });
+                    }, 500);
+                }
+            }
+        }
+        else if (flowState === 'PEDIATRIC_ATM_1') {
+            const birthMap = {
+                ATM_BIRTH_VAGINAL_TERM: "Parto Vaginal a Término",
+                ATM_BIRTH_CESAREAN_TERM: "Cesárea a Término",
+                ATM_BIRTH_PREMATURE: "Parto Prematuro (< 37 sem)",
+                ATM_BIRTH_CESAREAN_COMP: "Cesárea por Complicación"
+            };
+            const birthLabel = birthMap[val] || val;
+            const updatedTree = {
+                ...familyTree,
+                pediatric_atm: { ...(familyTree.pediatric_atm || {}), birth_type: birthLabel }
+            };
+            updatePatientState(updatedTree);
+            setPatientData?.(prev => ({
+                ...prev,
+                pediatric_atm: { ...(prev.pediatric_atm || {}), birth_type: birthLabel }
+            }));
+
+            setFlowState('PEDIATRIC_ATM_2');
+            pushMessage({
+                role: 'assistant',
+                content: `En los primeros meses de vida de **${pName || "su bebé"}**: ¿Recibió Lactancia Materna Exclusiva, Fórmula Infantil o Alimentación Mixta?`,
+                options: [
+                    { label: "🤱 Lactancia Materna Exclusiva", value: "ATM_LACTATION_EXCLUSIVE" },
+                    { label: "🍼 Fórmula Infantil Exclusiva", value: "ATM_LACTATION_FORMULA" },
+                    { label: "🥣 Alimentación Mixta (Leche + Fórmula)", value: "ATM_LACTATION_MIXED" }
+                ]
+            });
+            setIsAnalyzing(false);
+            return;
+        }
+        else if (flowState === 'PEDIATRIC_ATM_2') {
+            const lacMap = {
+                ATM_LACTATION_EXCLUSIVE: "Lactancia Materna Exclusiva",
+                ATM_LACTATION_FORMULA: "Fórmula Infantil Exclusiva",
+                ATM_LACTATION_MIXED: "Alimentación Mixta (Leche + Fórmula)"
+            };
+            const lacLabel = lacMap[val] || val;
+            const updatedTree = {
+                ...familyTree,
+                pediatric_atm: { ...(familyTree.pediatric_atm || {}), lactation: lacLabel }
+            };
+            updatePatientState(updatedTree);
+            setPatientData?.(prev => ({
+                ...prev,
+                pediatric_atm: { ...(prev.pediatric_atm || {}), lactation: lacLabel }
+            }));
+
+            isConfirming.current = true;
+            pushMessage({
+                role: 'assistant',
+                content: `✅ Antecedentes perinatales de **${pName || "su bebé"}** (Vía de parto: ${updatedTree.pediatric_atm.birth_type}, Alimentación inicial: ${lacLabel}) registrados y sellados con éxito.`
+            });
+
+            setTimeout(() => {
+                onPhaseComplete?.(updatedTree, currentMsgs);
+                setIsAnalyzing(false);
+            }, 600);
+            return;
         }
         
         setIsAnalyzing(false);

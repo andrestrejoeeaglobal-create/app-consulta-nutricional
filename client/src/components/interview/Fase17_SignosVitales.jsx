@@ -3,17 +3,27 @@ import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 import { ShieldAlert, AlertTriangle, Check } from 'lucide-react';
 import tiloImg from '../../assets/tilo.png';
+import { evaluateVitalSignsSafety } from '../../ClinicalRules';
 
 const parseBP = (text) => {
     let cleaned = text.trim();
-    // Auto-fix "120 80" -> "120/80"
+    // Auto-fix "120 80" -> "120/80", "120-80" -> "120/80"
     if (cleaned.match(/^\d{2,3} \d{2,3}$/)) {
         cleaned = cleaned.replace(" ", "/");
     } else if (cleaned.match(/^\d{2,3}-\d{2,3}$/)) {
         cleaned = cleaned.replace("-", "/");
-    } else if (cleaned.match(/^\d{5,6}$/)) {
-        const mid = cleaned.length === 5 ? 3 : 3;
-        cleaned = cleaned.slice(0, mid) + "/" + cleaned.slice(mid);
+    } else if (cleaned.match(/^\d{5}$/)) {
+        const sys3 = parseInt(cleaned.slice(0, 3), 10);
+        const dia2 = parseInt(cleaned.slice(3), 10);
+        if (sys3 >= 50 && sys3 <= 250 && dia2 >= 30 && dia2 <= 150) {
+            cleaned = `${sys3}/${dia2}`;
+        } else {
+            const sys2 = parseInt(cleaned.slice(0, 2), 10);
+            const dia3 = parseInt(cleaned.slice(2), 10);
+            cleaned = `${sys2}/${dia3}`;
+        }
+    } else if (cleaned.match(/^\d{6}$/)) {
+        cleaned = cleaned.slice(0, 3) + "/" + cleaned.slice(3);
     }
     const match = cleaned.match(/^(\d{2,3})\/(\d{2,3})$/);
     if (!match) return null;
@@ -61,6 +71,44 @@ export default function Fase17_SignosVitales({
     const [showCrisisOverlay, setShowCrisisOverlay] = useState(false);
     const [showHypoxiaOverlay, setShowHypoxiaOverlay] = useState(false);
     const [dismissedHypoxia, setDismissedHypoxia] = useState(false);
+
+    // Rest countdown state (Anti-Bata Blanca)
+    const [showRestCountdownOverlay, setShowRestCountdownOverlay] = useState(false);
+    const [restCountdown, setRestCountdown] = useState(180);
+    const [isRetakingHR, setIsRetakingHR] = useState(false);
+
+    useEffect(() => {
+        let timer = null;
+        if (showRestCountdownOverlay && restCountdown > 0) {
+            timer = setInterval(() => {
+                setRestCountdown(prev => prev - 1);
+            }, 1000);
+        } else if (showRestCountdownOverlay && restCountdown === 0) {
+            setShowRestCountdownOverlay(false);
+            setIsRetakingHR(true);
+
+            const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
+            let target = 'Adulto';
+            if (patientAge < 13) target = 'Tutor';
+            else if (patientAge >= 13 && patientAge < 18) target = 'Adolescente';
+
+            const retryMsg = `<binary_gate_execution>\n` +
+                `P1: El tiempo de reposo de 3 minutos ha concluido exitosamente.\n\n` +
+                `P2: Por favor tome de nuevo su frecuencia cardíaca e ingrese la lectura de confirmación en LPM:\n\n` +
+                `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
+                `</binary_gate_execution>`;
+
+            setMessages(prev => [...prev, {
+                role: "assistant",
+                content: retryMsg,
+                avatar: tiloImg,
+                inputType: 'number'
+            }]);
+        }
+        return () => {
+            if (timer) clearInterval(timer);
+        };
+    }, [showRestCountdownOverlay, restCountdown, patientSex, patientAge, setMessages]);
 
     const hasGreeted = useRef(false);
 
@@ -245,13 +293,21 @@ export default function Fase17_SignosVitales({
     };
 
     async function handleSend(userMsg) {
+        const isInternalOption = ['FASTING', 'CASUAL', 'CONFIRM_DATA', 'CORRECT_DATA'].includes(userMsg);
+        if (!isInternalOption) {
+            setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+        }
         const lower = userMsg.toLowerCase();
         const addBotMsg = (msg, inputType = 'number') => setMessages(prev => [...prev, { role: "assistant", content: msg, avatar: tiloImg, inputType }]);
 
         if (internalStep === 'BP') {
             const bp = parseBP(userMsg);
-            if (!bp || bp.systolic < 50 || bp.systolic > 250 || bp.diastolic < 30 || bp.diastolic > 150) {
-                addBotMsg("⚠️ Presión arterial inusual o formato incorrecto. Por favor ingrese un valor válido como Sistólica/Diastólica (ej: 120/80):", 'bp');
+            if (!bp) {
+                addBotMsg("⚠️ Formato de presión arterial no reconocido. Por favor ingrese la lectura como Sistólica/Diastólica en mmHg (ej: 120/80):", 'bp');
+                return;
+            }
+            if (bp.systolic < 50 || bp.systolic > 250 || bp.diastolic < 30 || bp.diastolic > 150) {
+                addBotMsg(`⚠️ La presión arterial ingresada (${bp.systolic}/${bp.diastolic} mmHg) se encuentra fuera del rango fisiológico válido (Sistólica 50-250 / Diastólica 30-150 mmHg). Por favor revalúe la medición e ingrese el valor en formato Sistólica/Diastólica (ej: 120/80):`, 'bp');
                 return;
             }
 
@@ -313,14 +369,35 @@ export default function Fase17_SignosVitales({
 
             setHeartRate(val);
 
-            // Real-time synchronization
+            // Protocolo Anti-Bata Blanca: Si FC > 100 y no hemos hecho la re-toma
+            if (val > 100 && !isRetakingHR) {
+                setRestCountdown(180); // 3 minutos de reposo
+                setShowRestCountdownOverlay(true);
+                return;
+            }
+
+            // Evaluar seguridad de signos vitales (cruzamiento farmacológico y perfil atlético)
+            const safety = evaluateVitalSignsSafety({
+                heartRate: val,
+                activityLevel: patientData?.activity_level || patientData?.physical_activity || 'SEDENTARIO',
+                pharmacology: patientData?.pharmacology || patientData?.medications || []
+            });
+
+            const newFlags = (safety.alerts || []).map(a => a.flag);
+            if (isRetakingHR && val > 100) {
+                newFlags.push("TAQUICARDIA_PERSISTENTE");
+            }
+
+            // Sincronización en tiempo real y almacenamiento de banderas (Silenciosas para el paciente)
             if (setPatientData) {
                 setPatientData(prev => ({
                     ...prev,
                     vitals: {
                         ...(prev.vitals || {}),
-                        heart_rate: val
-                    }
+                        heart_rate: val,
+                        alerts: safety.alerts || []
+                    },
+                    clinical_flags: [...new Set([...(prev.clinical_flags || []), ...newFlags])]
                 }));
             }
 
@@ -736,17 +813,21 @@ export default function Fase17_SignosVitales({
         }
     }
 
+    const handleSendRef = useRef(handleSend);
     useEffect(() => {
-        const handler = () => handleSend;
+        handleSendRef.current = handleSend;
+    });
+
+    useEffect(() => {
         if (registerInputHandler) {
-            registerInputHandler(() => handler);
+            registerInputHandler(() => (text, label) => handleSendRef.current(text, label));
         }
         return () => {
             if (registerInputHandler) {
-                registerInputHandler(prev => prev === handler ? null : prev);
+                registerInputHandler(null);
             }
         };
-    }, [registerInputHandler, internalStep, systolic, diastolic, heartRate, respiratoryRate, temperature, spo2, glucose, glucoseContext]);
+    }, [registerInputHandler]);
 
     // RENDER EMERGENCIES ONLY (Otherwise Headless, letting standard chat display)
     if (showCrisisOverlay) {
@@ -834,6 +915,43 @@ export default function Fase17_SignosVitales({
                             Recalibrar sensor / Corregir dato
                         </button>
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (showRestCountdownOverlay) {
+        const minutes = Math.floor(restCountdown / 60);
+        const seconds = restCountdown % 60;
+        const formattedTime = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+
+        return (
+            <div className="fixed inset-0 bg-slate-900/90 z-[9999] flex items-center justify-center p-6 text-center">
+                <div className="bg-white border border-amber-500/30 rounded-3xl p-6 max-w-sm shadow-xl flex flex-col items-center gap-4">
+                    <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center text-amber-500 border border-amber-100 animate-pulse">
+                        <span className="text-2xl font-bold font-mono">⏱️</span>
+                    </div>
+                    
+                    <h3 className="text-base font-bold text-amber-600 uppercase tracking-wide">
+                        Protocolo de Reposo (Anti-Bata Blanca)
+                    </h3>
+                    
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                        T.I.L.O. ha detectado una variación basal en su frecuencia cardíaca (<strong>{heartRate} LPM</strong>).
+                    </p>
+                    
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                        Por favor, permanezca sentado, en reposo y con los brazos apoyados durante el tiempo de reposo para realizar la lectura de confirmación.
+                    </p>
+
+                    <div className="my-2 py-3 px-6 bg-slate-900 text-amber-400 rounded-2xl border border-slate-800 shadow-inner">
+                        <span className="text-3xl font-bold font-mono tracking-widest">{formattedTime}</span>
+                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">Tiempo de Reposo Restante</div>
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 italic">
+                        El sistema solicitará su nueva lectura automáticamente al finalizar el conteo.
+                    </p>
                 </div>
             </div>
         );

@@ -5,8 +5,10 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
     "dev:client": "cd client && npm run dev",
+    "dev:followup": "cd client_followup && npm run dev",
     "dev:server": "cd server && npm run dev",
-    "install:all": "npm install && cd client && npm install && cd ../server && npm install"
+    "build:followup": "cd client_followup && npm run build",
+    "install:all": "npm install && cd client && npm install && cd ../client_followup && npm install && cd ../server && npm install"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

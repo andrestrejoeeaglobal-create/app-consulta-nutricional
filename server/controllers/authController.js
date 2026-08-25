@@ -1,11 +1,13 @@
 const axios = require('axios');
+const https = require('https');
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 const login = async (req, res) => {
     const { user, password } = req.body;
 
     try {
         // Validación de EA
-        const response = await axios.get(`https://equipoenaccion.app/ea_lab_login.asp?action=SINGIN&User=${user}&Password=${password}`);
+        const response = await axios.get(`https://equipoenaccion.app/ea_lab_login.asp?action=SINGIN&User=${user}&Password=${password}`, { httpsAgent });
 
         // Verificación de seguridad: ¿Viene el dataSet?
         if (!response.data || !response.data.dataSet || response.data.dataSet.length === 0) {
