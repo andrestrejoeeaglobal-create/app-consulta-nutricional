@@ -19,6 +19,7 @@ server/*.txt
 server/bf_*
 server/brute_*
 server/*.py
+!server/export_db_dump.js
 server/pwds_*
 server/*.cs
 server/*.exe
