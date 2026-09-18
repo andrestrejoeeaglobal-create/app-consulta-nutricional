@@ -213,6 +213,7 @@ const Fase11_ActividadSueno = ({
 
     const [tempItem, setTempItem] = useState({});
     const [tempTelemetry, setTempTelemetry] = useState(null);
+    const isProcessingInputRef = useRef(false);
     const [tempNeatTelemetry, setTempNeatTelemetry] = useState(null);
     const [currentStep, setCurrentStep] = useState(() => {
         const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("evaluación de estilo de vida, actividad y sueño"));
@@ -548,6 +549,15 @@ const Fase11_ActividadSueno = ({
 
     // Procesamiento de respuestas y flujo conversacional
     const handleSend = async (text, label = 'text') => {
+        if (isProcessingInputRef.current) {
+            console.warn("⚠️ [Fase11] Ignorando entrada duplicada recibida en ventana de reentrada (debounce).");
+            return;
+        }
+        isProcessingInputRef.current = true;
+        setTimeout(() => {
+            isProcessingInputRef.current = false;
+        }, 600);
+
         const isFile = label === 'file' || text instanceof File || Array.isArray(text);
         const isButton = label === 'button';
 

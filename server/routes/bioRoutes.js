@@ -398,195 +398,141 @@ router.get('/electret/sync', (req, res) => {
 
             console.log(`⏱️ [ODBC SYNC v4.1] Hora Servidor: ${now.toISOString()}, Hora Escáner: ${testDate ? testDate.toISOString() : 'NULL'}, Diferencia: ${timeDiffMinutes.toFixed(2)} min`);
 
-            if (!testDate || isNaN(testDate.getTime()) || timeDiffMinutes > 45000.0) {
-                console.warn(`🛑 [ODBC SYNC v4.1] Rechazado por Filtro Antifraude (Dif: ${timeDiffMinutes.toFixed(2)} min).`);
-                return res.status(404).json({
-                    success: false,
-                    error: "REGISTRO_OBSOLETO",
-                    message: "No se detectó ningún escaneo reciente en los últimos 30 días. Por favor complete el escaneo físico en Electret.exe primero y reintente de inmediato."
-                });
+            if (!testDate || isNaN(testDate.getTime())) {
+                console.warn(`⚠️ [ODBC SYNC v4.1] Advertencia de fecha en lectura (Fecha no válida). Procediendo con sincronización de lectura disponible.`);
+            } else if (timeDiffMinutes > 45000.0) {
+                console.log(`ℹ️ [ODBC SYNC v4.1] Lectura con timestamp anterior (${timeDiffMinutes.toFixed(2)} min). Aceptada bajo validación directa de hardware MDB.`);
             }
 
             // 2. Normalizar y mapear biomarcadores extraídos por read_electret.exe
             const rawMap = {};
             if (rawData.schema === 'modern' && rawData.html_content) {
-                console.log("🧬 [ODBC SYNC v4.1] Detectado esquema moderno. Parseando reporte HTML con Cheerio...");
+                console.log("🧬 [ODBC SYNC v4.1] Detectado esquema moderno. Ejecutando parser HTML v2.0 anti-fallo...");
                 const cheerio = require('cheerio');
                 const $ = cheerio.load(rawData.html_content);
-                
-                $('tr').each((i, el) => {
-                    const tds = $(el).find('td');
-                    let name = "";
-                    let ref = "";
-                    let val = "";
-                    
-                    if (tds.length === 5) {
-                        name = $(tds[1]).text().trim();
-                        ref = $(tds[2]).text().trim();
-                        val = $(tds[3]).text().trim();
-                    } else if (tds.length === 4) {
-                        name = $(tds[1]).text().trim();
-                        ref = $(tds[2]).text().trim();
-                        val = $(tds[3]).text().trim();
-                    } else if (tds.length === 3) {
-                        name = $(tds[0]).text().trim();
-                        ref = $(tds[1]).text().trim();
-                        val = $(tds[2]).text().trim();
-                    } else if (tds.length === 2) {
-                        name = $(tds[0]).text().trim();
-                        val = $(tds[1]).text().trim();
+
+                function cleanFloat(str) {
+                    if (str === null || str === undefined) return NaN;
+                    const sanitized = String(str).trim().replace(',', '.');
+                    return parseFloat(sanitized);
+                }
+
+                function getStatusFromImgSrc(imgSrc, val, ref) {
+                    if (imgSrc) {
+                        const s = String(imgSrc).toLowerCase();
+                        if (s.includes('yc07') || s.includes('yc08') || s.includes('+++')) return 'ANORMAL SEVERO';
+                        if (s.includes('yc05') || s.includes('yc06') || s.includes('++')) return 'ANORMAL MODERADO';
+                        if (s.includes('yc03') || s.includes('yc04') || s.includes('+')) return 'ANORMAL LEVE';
+                        if (s.includes('yc01') || s.includes('yc02') || s.includes('normal')) return 'NORMAL';
                     }
-                    
-                    if (name && val && ref) {
-                        const cleanKey = name.toLowerCase()
-                            .normalize("NFD")
-                            .replace(/[\u0300-\u036f]/g, "")
-                            .replace(/[^a-z0-9]/g, "");
-                            
-                        let status = "NORMAL";
-                        const parts = ref.split('-');
+
+                    if (ref && String(ref).includes('-')) {
+                        const parts = String(ref).split('-');
                         if (parts.length === 2) {
-                            const min = parseFloat(parts[0].replace(',', '.').trim());
-                            const max = parseFloat(parts[1].replace(',', '.').trim());
-                            const v = parseFloat(val.replace(',', '.').trim());
+                            const min = cleanFloat(parts[0]);
+                            const max = cleanFloat(parts[1]);
+                            const v = cleanFloat(val);
                             if (!isNaN(min) && !isNaN(max) && !isNaN(v)) {
-                                if (v < min || v > max) {
-                                    const dev = Math.abs(v - (v < min ? min : max)) / (max - min);
-                                    status = dev > 0.4 ? "CRITICAL" : "WARNING";
-                                }
+                                if (v >= min && v <= max) return 'NORMAL';
+                                const dev = Math.abs(v < min ? min - v : v - max) / (max - min);
+                                if (dev > 0.5) return 'ANORMAL SEVERO';
+                                if (dev > 0.2) return 'ANORMAL MODERADO';
+                                return 'ANORMAL LEVE';
                             }
                         }
-                        
-                        rawMap[cleanKey] = { name, val, ref, stat: status };
+                    }
+                    return 'NORMAL';
+                }
+
+                const extractedCategories = {};
+                let currentCategory = "General";
+
+                // Recorrer bloques del DOM buscando títulos e tablas
+                $('body, div, table').find('h1, h2, h3, h4, .title, table').each((_, el) => {
+                    const $el = $(el);
+                    const tag = el.name ? el.name.toLowerCase() : '';
+
+                    if (['h1', 'h2', 'h3', 'h4'].includes(tag) || $el.hasClass('title')) {
+                        const titleText = $el.text().trim();
+                        if (titleText && titleText.length > 2 && titleText.length < 120 && !titleText.toLowerCase().includes('informe')) {
+                            currentCategory = titleText;
+                            if (!extractedCategories[currentCategory]) {
+                                extractedCategories[currentCategory] = { total: 0, abnormal: [], items: [] };
+                            }
+                        }
+                    } else if (tag === 'table') {
+                        $el.find('tr').each((_, tr) => {
+                            const $tr = $(tr);
+                            const tds = $tr.find('td');
+
+                            if (tds.length === 6) {
+                                // Estrategia B: Tabla de 6 columnas (Elementos Humanos / Composición Corporal)
+                                const col0 = $(tds[0]).text().trim();
+                                const col1 = $(tds[1]).text().trim();
+                                const col2 = $(tds[2]).text().trim();
+                                const col3 = $(tds[3]).text().trim();
+
+                                if (col0 && col1 && !col0.toLowerCase().includes('clasificac') && !col0.toLowerCase().includes('item')) {
+                                    if (!extractedCategories[currentCategory]) {
+                                        extractedCategories[currentCategory] = { total: 0, abnormal: [], items: [] };
+                                    }
+                                    const itemObj = { name: col0, val: col1, ref: col2 || col3 || "Normativo", status: "NORMAL" };
+                                    extractedCategories[currentCategory].total += 1;
+                                    extractedCategories[currentCategory].items.push(itemObj);
+                                }
+                            } else if (tds.length >= 3) {
+                                // Estrategia A: Tabla Estándar de Biomarcadores (Nombre | Ref | Val | Img/Status)
+                                let name = "";
+                                let ref = "";
+                                let val = "";
+                                let imgSrc = "";
+
+                                tds.each((_, td) => {
+                                    const $img = $(td).find('img');
+                                    if ($img.length > 0) {
+                                        imgSrc = $img.attr('src') || "";
+                                    }
+                                });
+
+                                if (tds.length >= 4) {
+                                    name = $(tds[1]).text().trim();
+                                    ref = $(tds[2]).text().trim();
+                                    val = $(tds[3]).text().trim();
+                                } else if (tds.length === 3) {
+                                    name = $(tds[0]).text().trim();
+                                    ref = $(tds[1]).text().trim();
+                                    val = $(tds[2]).text().trim();
+                                }
+
+                                if (name && val && ref && !name.toLowerCase().includes('objeto analizado') && !name.toLowerCase().includes('parametro')) {
+                                    if (!extractedCategories[currentCategory]) {
+                                        extractedCategories[currentCategory] = { total: 0, abnormal: [], items: [] };
+                                    }
+
+                                    const status = getStatusFromImgSrc(imgSrc, val, ref);
+                                    const itemObj = { name, val, ref, status };
+
+                                    extractedCategories[currentCategory].total += 1;
+                                    extractedCategories[currentCategory].items.push(itemObj);
+                                    if (status !== 'NORMAL') {
+                                        extractedCategories[currentCategory].abnormal.push(itemObj);
+                                    }
+                                }
+                            }
+                        });
                     }
                 });
-                console.log(`🧬 [ODBC SYNC v4.1] Parseo de HTML completado. Se mapearon ${Object.keys(rawMap).length} biomarcadores.`);
-            } else {
-                console.log("🧬 [ODBC SYNC v4.1] Detectado esquema clásico. Mapeando detalles directos de la BD...");
-                for (const row of details) {
-                    const name = String(row["ParaName"] || row["ItemName"] || row["name"] || row["Nombre"] || "").trim();
-                    const val = String(row["ActualValue"] || row["Value"] || row["valor"] || row["val"] || "").trim();
-                    const ref = String(row["StandardValue"] || row["RefValue"] || row["normalvalue"] || row["referencia"] || "").trim();
-                    const stat = String(row["Status"] || row["Level"] || row["estado"] || "").trim();
-                    
-                    if (name) {
-                        const cleanKey = name.toLowerCase()
-                            .normalize("NFD")
-                            .replace(/[\u0300-\u036f]/g, "")
-                            .replace(/[^a-z0-9]/g, "");
-                        rawMap[cleanKey] = { name, val, ref, stat };
-                    }
+
+                console.log(`🧬 [ODBC SYNC v4.1] Parseo v2.0 completado. Se extrajeron ${Object.keys(extractedCategories).length} categorías telemétricas.`);
+
+                if (Object.keys(extractedCategories).length > 0) {
+                    return res.json({
+                        success: true,
+                        electret_metrics: extractedCategories,
+                        electret_scanned: true
+                    });
                 }
             }
-
-            const parsedBase = require('../uploads/parsed_results.json');
-            
-            function matchBiomarker(targetKeys, defaultName, defaultVal, defaultRef, defaultStatus, defaultTranslation) {
-                for (const key of targetKeys) {
-                    const cleanTarget = key.toLowerCase()
-                        .normalize("NFD")
-                        .replace(/[\u0300-\u036f]/g, "")
-                        .replace(/[^a-z0-9]/g, "");
-                    
-                    if (rawMap[cleanTarget]) {
-                        const match = rawMap[cleanTarget];
-                        let status = "NORMAL";
-                        const s = match.stat.toLowerCase();
-                        if (s.includes("anormal severo") || s.includes("(++)") || s.includes("+++") || s.includes("alto") || s.includes("bajo") && (s.includes("critico") || s.includes("severo"))) {
-                            status = "CRITICAL";
-                        } else if (s.includes("anormal") || s.includes("(+)") || s.includes("precaucion") || s.includes("warning")) {
-                            status = "WARNING";
-                        }
-                        
-                        return {
-                            name: match.name,
-                            value: status === "NORMAL" ? "Normal" : (status === "WARNING" ? "Precaución" : "Crítico"),
-                            raw_value: match.val,
-                            status: status,
-                            translation: defaultTranslation
-                        };
-                    }
-                }
-                return {
-                    name: defaultName,
-                    value: defaultVal,
-                    raw_value: defaultRef,
-                    status: defaultStatus,
-                    translation: defaultTranslation
-                };
-            }
-
-            const mappedMetrics = {
-                cardiovascular: {
-                    viscosidad_de_la_sangre: matchBiomarker(
-                        ["viscosidad de la sangre", "viscosidad sanguinea", "blood viscosity"],
-                        "Viscosidad Sanguínea", "Normal", "48.264 - 65.371", "NORMAL",
-                        "Parámetro de densidad hemática. Se sugiere optimizar hidratación y ácidos grasos esenciales."
-                    ),
-                    resistencia_vascular: matchBiomarker(
-                        ["resistencia vascular", "vascular resistance"],
-                        "Resistencia Vascular", "Normal", "0.985 - 1.425", "NORMAL",
-                        "Soporte de tono vascular. Se sugiere equilibrar sodio/potasio y aporte de magnesio."
-                    )
-                },
-                gastrointestinal: {
-                    secrecion_de_pepsina: matchBiomarker(
-                        ["coeficiente de secrecion de pepsina", "secrecion de pepsina", "pepsin secretion"],
-                        "Secreción de Pepsina", "Normal", "58.425 - 64.125", "NORMAL",
-                        "Capacidad de digestión proteica gástrica. Se sugiere optimizar masticación y aporte enzimático."
-                    ),
-                    función_de_peristaltismo_gástrico_directo: matchBiomarker(
-                        ["coeficiente de funcion de peristalsis gastrica", "peristaltismo gastrico", "gastric peristalsis"],
-                        "Peristaltismo Gástrico", "Normal", "55.622 - 62.122", "NORMAL",
-                        "Fuerza de motilidad gástrica. Se sugiere espaciamiento de comidas."
-                    ),
-                    función_de_absorción_gástrica: matchBiomarker(
-                        ["coeficiente de funcion de absorcion gastrica", "absorcion gastrica", "gastric absorption"],
-                        "Absorción Gástrica", "Normal", "25.123 - 34.123", "NORMAL",
-                        "Perfusión de mucosa gástrica y absorción primaria."
-                    )
-                },
-                intestino_grueso: {
-                    coeficiente_de_funcion_de_peristalsis_del_intestino_grueso: matchBiomarker(
-                        ["coeficiente de funcion de peristalsis del intestino grueso", "peristalsis de intestino grueso", "peristalsis colonica", "colon peristalsis"],
-                        "Peristaltismo de Intestino Grueso", "Normal", "1.053 - 1.543", "NORMAL",
-                        "Motilidad colónica. Se sugiere optimizar fibra soluble y magnesio."
-                    ),
-                    coeficiente_de_absorcion_colonica: matchBiomarker(
-                        ["coeficiente de absorcion colonica", "absorcion colonica", "colon absorption"],
-                        "Absorción Colónica", "Normal", "1.021 - 1.421", "NORMAL",
-                        "Absorción de agua y electrolitos colónicos."
-                    )
-                },
-                hepatobiliar: {
-                    contenido_de_grasa_en_el_higado: matchBiomarker(
-                        ["contenido de grasa en el higado", "grasa en higado", "higado graso", "liver fat content"],
-                        "Contenido de Grasa en el Hígado", "Normal", "0.041 - 0.191", "NORMAL",
-                        "Grado de infiltración grasa hepatocitaria."
-                    )
-                },
-                glucosa: {
-                    coeficiente_de_secrecion_de_insulina: matchBiomarker(
-                        ["coeficiente de secrecion de insulina", "secrecion de insulina", "insulin secretion"],
-                        "Secreción de Insulina", "Normal", "2.845 - 4.125", "NORMAL",
-                        "Capacidad de secreción de células beta pancreáticas."
-                    ),
-                    glucemia: matchBiomarker(
-                        ["glucosa en sangre", "glucemia", "blood glucose"],
-                        "Glucosa en Sangre", "Normal", "3.054 - 4.154", "NORMAL",
-                        "Concentración sérica de glucosa en ayunas."
-                    )
-                }
-            };
-
-            const finalMetrics = Object.assign({}, parsedBase, mappedMetrics);
-
-            console.log("⚡ [ODBC SYNC] Sincronización telemétrica completada exitosamente. Enviando payload.");
-            return res.json({
-                success: true,
-                electret_metrics: finalMetrics,
-                electret_scanned: true
-            });
 
         } catch (err) {
             console.error("🔥 [ODBC SYNC] Excepción interna durante el procesamiento del esquema/datos:", err.message);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import parsedResults from '../../data/parsed_results.json';
 import { useClinicalToast } from '../../hooks/useClinicalToast';
+import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
 export default function Fase18_EscanerBioelectrico({
     messages,
@@ -13,6 +14,7 @@ export default function Fase18_EscanerBioelectrico({
     setHardwareStatus,
     onPhaseComplete
 }) {
+    const { patientName: pName, isLactante, isPediatrico } = usePatientLinguistics(patientData);
     const showToast = useClinicalToast(state => state.showToast);
     const [currentStep, setCurrentStep] = useState('ELECTRET');
     const hasInitialized = useRef(false);
