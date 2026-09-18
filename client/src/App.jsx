@@ -1602,62 +1602,82 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
     processClinicalFiles(fileArray);
   };
 
-  // 4. Actualizamos handleSend para que sea una "Máquina de Estados"
-  const handleSend = async (optionalInput = null) => {
+  // 4. Candado Anti-Duplicación de Reentrada v2.0 (Plan de Implementación v2.0)
+  const isSendingRef = useRef(false);
+
+  // Actualizamos handleSend para que sea una "Máquina de Estados" blindada
+  const handleSend = async (optionalInput = null, evt = null) => {
+    // Intercepción universal de eventos DOM / React
+    let effectiveInput = optionalInput;
+    if (optionalInput && typeof optionalInput === 'object' && typeof optionalInput.preventDefault === 'function') {
+      optionalInput.preventDefault();
+      effectiveInput = null;
+    }
+    if (evt && typeof evt.preventDefault === 'function') {
+      evt.preventDefault();
+    }
+
+    // 1. Verificación de Candado Activo (Anti-Duplicación)
+    if (isSendingRef.current) {
+      console.warn("🔒 [handleSend] Re-entry lock active, ignoring duplicate trigger.");
+      return;
+    }
+
     const isSessionClosed = patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA';
     if (isSessionClosed) {
       console.warn("🔒 [handleSend] Consulta finalizada y cerrada. Entrada bloqueada.");
       return;
     }
-    // CORRECCIÓN: Usamos logic híbrida (input manual o botón)
-    const rawMsg = optionalInput !== null ? optionalInput : input;
+    // CORRECCIÓN: Usamos lógica híbrida (input manual o botón)
+    const rawMsg = effectiveInput !== null ? effectiveInput : input;
     const userMsg = typeof rawMsg === 'string' ? rawMsg : "";
-    console.log("➡️ [handleSend] userMsg:", userMsg, "optionalInput:", optionalInput);
+    console.log("➡️ [handleSend] userMsg:", userMsg, "effectiveInput:", effectiveInput);
 
     if (!userMsg.trim()) {
       console.warn("⚠️ [handleSend] Empty message, returning.");
       return;
     }
 
-    // LIMPIEZA INCONDICIONAL: Siempre limpiamos el input visual,
-    // incuso si el usuario hizo clic en un botón teniendo texto escrito.
+    // 2. Activación Síncrona de Candado y Limpieza Visual Instantánea (UX Immediate Feedback)
+    isSendingRef.current = true;
     setInput("");
 
-    console.log("🔍 [handleSend] Checking inputHandler:", inputHandler);
-    // REDIRECCIÓN HEADLESS: Si hay un handler registrado de fase headless y la identidad está confirmada, delegar
-    if (isIdentityConfirmed && inputHandler) {
-      console.log("➡️ Delegating input to registered inputHandler:", userMsg);
-      let handlerFn = null;
-      if (typeof inputHandler === 'function') {
-        console.log("inputHandler is a function. Length:", inputHandler.length);
-        if (inputHandler.length === 0) {
-          const evaluated = inputHandler();
-          handlerFn = typeof evaluated === 'function' ? evaluated : inputHandler;
-          console.log("Evaluated inputHandler to:", handlerFn);
-        } else {
-          handlerFn = inputHandler;
+    try {
+      console.log("🔍 [handleSend] Checking inputHandler:", inputHandler);
+      // REDIRECCIÓN HEADLESS: Si hay un handler registrado de fase headless y la identidad está confirmada, delegar
+      if (isIdentityConfirmed && inputHandler) {
+        console.log("➡️ Delegating input to registered inputHandler:", userMsg);
+        let handlerFn = null;
+        if (typeof inputHandler === 'function') {
+          console.log("inputHandler is a function. Length:", inputHandler.length);
+          if (inputHandler.length === 0) {
+            const evaluated = inputHandler();
+            handlerFn = typeof evaluated === 'function' ? evaluated : inputHandler;
+            console.log("Evaluated inputHandler to:", handlerFn);
+          } else {
+            handlerFn = inputHandler;
+          }
+        }
+        if (typeof handlerFn === 'function') {
+          const isButton = effectiveInput !== null;
+          console.log("🚀 Executing handlerFn with:", userMsg, isButton ? 'button' : 'text');
+          await handlerFn(userMsg, isButton ? 'button' : 'text');
+          return;
         }
       }
-      if (typeof handlerFn === 'function') {
-        const isButton = optionalInput !== null;
-        console.log("🚀 Executing handlerFn with:", userMsg, isButton ? 'button' : 'text');
-        handlerFn(userMsg, isButton ? 'button' : 'text');
+
+      const isCortexPhase = currentPhase.startsWith('PHASE_');
+      const isHandoff = currentPhase === 'PHASE_2_COMPLETE_HANDOFF' || currentPhase === 'PHASE_9_COMPLETE_HANDOFF' || currentPhase === 'PHASE_10_COMPLETE_HANDOFF' || currentPhase === 'PHASE_11_COMPLETE_HANDOFF' || currentPhase === 'PHASE_12_COMPLETE_HANDOFF' || currentPhase === 'PHASE_13_COMPLETE_HANDOFF';
+
+      // ENRUTADOR PRINCIPAL: Si estamos en las nuevas fases de Cortex, usamos processUserInput
+      if (isCortexPhase && !isHandoff) {
+        console.log("🧠 T.I.L.O. Cortex Engine Processing:", userMsg);
+        const isInternal = effectiveInput !== null;
+        await processUserInput(userMsg, isInternal);
         return;
       }
-    }
 
-    const isCortexPhase = currentPhase.startsWith('PHASE_');
-    const isHandoff = currentPhase === 'PHASE_2_COMPLETE_HANDOFF' || currentPhase === 'PHASE_9_COMPLETE_HANDOFF' || currentPhase === 'PHASE_10_COMPLETE_HANDOFF' || currentPhase === 'PHASE_11_COMPLETE_HANDOFF' || currentPhase === 'PHASE_12_COMPLETE_HANDOFF' || currentPhase === 'PHASE_13_COMPLETE_HANDOFF';
-
-    // ENRUTADOR PRINCIPAL: Si estamos en las nuevas fases de Cortex, usamos processUserInput
-    if (isCortexPhase && !isHandoff) {
-      console.log("🧠 T.I.L.O. Cortex Engine Processing:", userMsg);
-      const isInternal = optionalInput !== null;
-      processUserInput(userMsg, isInternal);
-      return;
-    }
-
-    // --- MODO LEGACY ---
+      // --- MODO LEGACY ---
     // Solo agregar al chat en modo legacy si NO es un replay automático
     if (optionalInput === null) {
       setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
@@ -5402,12 +5422,16 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
         setMessages(p => [...p, { role: "assistant", content: "Reiniciando módulo de Dieta... ¿Hay algún alimento que le disguste o prefiera evitar?" }]);
         setInterviewStep("diet_aversiones_start");
       } else {
-        const t = determineNextStep(patientData); setInterviewStep(t);
-        setMessages(p => [...p, { role: "assistant", content: `Cancelado.` }]);
+        const t = determineNextStep(patientData);
+        setInterviewStep(t);
+        setMessages(p => [...p, { role: "assistant", content: `Cancelado. ${getQuestionForStep(t)}` }]);
       }
     }
-
-  };
+  } finally {
+    // Liberación exacta al finalizar el ciclo de procesamiento asíncrono
+    isSendingRef.current = false;
+  }
+};
 
 
 
@@ -6709,7 +6733,10 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                 }}
                                 onKeyDown={(e) => {
                                   if (patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') return;
-                                  if (e.key === "Enter") handleSend();
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleSend(null, e);
+                                  }
                                 }}
                                 placeholder={
                                   (patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') ? "🔒 Consulta médica finalizada. Expediente sellado bajo la NOM-004." :
