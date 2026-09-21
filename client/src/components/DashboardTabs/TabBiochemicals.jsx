@@ -147,39 +147,66 @@ export const TabBiochemicals = ({
         informe_de_anlisis_de_la_mano: "Informe de Análisis de la Mano"
     };
 
+    // Helper anti-crash para normalizar cualquier estructura telemétrica
+    const getCategoryItems = (catData) => {
+        if (!catData) return [];
+        if (Array.isArray(catData)) return catData;
+        if (Array.isArray(catData.items) && catData.items.length > 0) return catData.items;
+        if (Array.isArray(catData.abnormal) && catData.items === undefined) return catData.abnormal;
+        if (typeof catData === 'object') {
+            return Object.values(catData).filter(item => item && typeof item === 'object' && (item.name || item.val !== undefined || item.value !== undefined));
+        }
+        return [];
+    };
+
+    // Helper condicional seguro para insignias anti-crash
     const getBadgeStyle = (status) => {
-        const s = status ? status.toUpperCase() : 'NORMAL';
-        if (s === 'ANORMAL LEVE' || s === 'WARNING' || s === 'warning' || s === '+') {
+        if (!status || typeof status !== 'string') {
+            return {
+                bg: "bg-slate-100 text-slate-700 border-slate-200",
+                label: "Informativo / Métrica Base",
+                icon: <span className="text-slate-400 text-xs">📊</span>
+            };
+        }
+        const s = status.toUpperCase().trim();
+        if (s.includes('SEVERO') || s === 'CRITICAL' || s === '+++') {
+            return {
+                bg: "bg-red-50 text-red-700 border-red-200 font-extrabold",
+                label: "Anormal Severo (+++)",
+                icon: <AlertTriangle size={12} className="text-red-500 animate-pulse" />
+            };
+        } else if (s.includes('MODERADO') || s === 'WARNING' || s === '++') {
+            return {
+                bg: "bg-orange-50 text-orange-700 border-orange-200 font-bold",
+                label: "Anormal Moderado (++)",
+                icon: <AlertTriangle size={12} className="text-orange-500" />
+            };
+        } else if (s.includes('LEVE') || s === '+') {
             return {
                 bg: "bg-amber-50 text-amber-700 border-amber-200",
                 label: "Anormal Leve (+)",
                 icon: <span className="text-amber-500 text-xs">⚠️</span>
             };
-        } else if (s === 'ANORMAL MODERADO' || s === 'CRITICAL' || s === 'critical' || s === '++') {
+        } else if (s.includes('NORMAL') || s === '-') {
             return {
-                bg: "bg-orange-50 text-orange-700 border-orange-200 font-bold",
-                label: "Anormal Moderado (++)",
-                icon: <AlertTriangle size={12} className="text-orange-550 text-orange-500" />
-            };
-        } else if (s === 'ANORMAL SEVERO' || s === 'SEVERE' || s === 'severe' || s === '+++') {
-            return {
-                bg: "bg-red-50 text-red-700 border-red-200 font-extrabold",
-                label: "Anormal Severo (+++)",
-                icon: <AlertTriangle size={12} className="text-red-550 text-red-500 animate-pulse" />
+                bg: "bg-green-50 text-green-700 border-green-200",
+                label: "Normal (-)",
+                icon: <CheckCircle2 size={12} className="text-green-500" />
             };
         }
         return {
-            bg: "bg-green-50 text-green-700 border-green-200",
-            label: "Normal (-)",
-            icon: <CheckCircle2 size={12} className="text-green-500" />
+            bg: "bg-slate-100 text-slate-700 border-slate-200",
+            label: status,
+            icon: <span className="text-slate-400 text-xs">⚪</span>
         };
     };
 
     const getCategoryAbnormalCount = (catKey) => {
-        const items = activeMetrics?.[catKey] || {};
-        return Object.values(items).reduce((acc, item) => {
-            const s = item.status ? item.status.toUpperCase() : 'NORMAL';
-            if (s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-') {
+        const catData = activeMetrics?.[catKey];
+        const items = getCategoryItems(catData);
+        return items.reduce((acc, item) => {
+            const s = item?.status ? String(item.status).toUpperCase() : 'NORMAL';
+            if (s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-' && s !== 'INFORMATIVO') {
                 return acc + 1;
             }
             return acc;
@@ -425,31 +452,36 @@ export const TabBiochemicals = ({
 
                     {/* Content Right: Parameters list */}
                     <div className="flex-1 overflow-y-auto p-6 bg-white custom-scrollbar">
-                        {activeCategory && activeMetrics[activeCategory] ? (
-                            <div className="space-y-4">
-                                <h5 className="font-extrabold text-slate-800 text-sm border-b border-slate-100 pb-2 flex items-center justify-between uppercase tracking-wide">
-                                    <span>{CATEGORIAS_CLINICAS[activeCategory] || activeCategory.replace(/_/g, ' ')}</span>
-                                    <span className="text-xs text-slate-400 font-medium font-mono">{Object.keys(activeMetrics[activeCategory]).length} Parámetros</span>
-                                </h5>
-                                
-                                <div className="grid grid-cols-1 gap-3">
-                                    {Object.entries(activeMetrics[activeCategory])
-                                        .filter(([key, marker]) => {
-                                            if (!showOnlyAbnormalities) return true;
-                                            const s = marker.status ? marker.status.toUpperCase() : 'NORMAL';
-                                            return s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-';
-                                        })
-                                        .map(([key, marker]) => {
+                        {activeCategory && activeMetrics[activeCategory] ? (() => {
+                            const categoryItems = getCategoryItems(activeMetrics[activeCategory]);
+                            const displayedItems = categoryItems.filter(marker => {
+                                if (!showOnlyAbnormalities) return true;
+                                const s = marker?.status ? String(marker.status).toUpperCase() : 'NORMAL';
+                                return s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-' && s !== 'INFORMATIVO';
+                            });
+                            const categoryTitle = CATEGORIAS_CLINICAS[activeCategory] || activeCategory.replace(/_/g, ' ');
+
+                            return (
+                                <div className="space-y-4">
+                                    <h5 className="font-extrabold text-slate-800 text-sm border-b border-slate-100 pb-2 flex items-center justify-between uppercase tracking-wide">
+                                        <span>{categoryTitle}</span>
+                                        <span className="text-xs text-slate-400 font-medium font-mono">{categoryItems.length} Parámetros</span>
+                                    </h5>
+                                    
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {displayedItems.map((marker, idx) => {
                                             const badge = getBadgeStyle(marker.status);
+                                            const valText = marker.val !== undefined ? marker.val : (marker.value !== undefined ? marker.value : '-');
+                                            const refText = marker.ref !== undefined ? marker.ref : (marker.reference !== undefined ? marker.reference : '-');
                                             return (
-                                                <div key={key} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-[#1C75BC]/40 transition-colors font-sans">
+                                                <div key={marker.name || idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-[#1C75BC]/40 transition-colors font-sans">
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2 mb-1">
                                                             <span className="text-xs font-bold text-slate-700">{marker.name}</span>
                                                         </div>
                                                         <div className="flex items-baseline gap-2">
-                                                            <span className="text-base font-extrabold text-slate-900">{marker.value}</span>
-                                                            <span className="text-[10px] text-slate-400 font-mono">Ref: {marker.reference}</span>
+                                                            <span className="text-base font-extrabold text-slate-900">{valText}</span>
+                                                            <span className="text-[10px] text-slate-400 font-mono">Ref: {refText}</span>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2 self-start md:self-center">
@@ -461,19 +493,17 @@ export const TabBiochemicals = ({
                                                 </div>
                                             );
                                         })}
-                                        {showOnlyAbnormalities && Object.values(activeMetrics[activeCategory]).filter(item => {
-                                            const s = item.status ? item.status.toUpperCase() : 'NORMAL';
-                                            return s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-';
-                                        }).length === 0 && (
+                                        {showOnlyAbnormalities && displayedItems.length === 0 && (
                                             <div className="py-12 text-center text-slate-400">
                                                 <CheckCircle2 size={36} className="text-[#3AAA35] mx-auto mb-2 opacity-80" />
                                                 <p className="text-sm font-bold text-slate-500">¡Perfecto estado metabólico en esta área!</p>
                                                 <p className="text-xs">Todos los parámetros se encuentran dentro del rango fisiológico normal.</p>
                                             </div>
                                         )}
+                                    </div>
                                 </div>
-                            </div>
-                        ) : (
+                            );
+                        })() : (
                             <div className="h-full flex flex-col items-center justify-center text-slate-400">
                                 <span className="text-4xl mb-2">🧬</span>
                                 <p className="text-sm font-bold">Seleccione un sistema biológico</p>
