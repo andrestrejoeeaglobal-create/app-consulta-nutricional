@@ -6170,7 +6170,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     />
                   )}
 
-                  {currentPhase === 'PHASE_18_ELECTRET' && (
+                  {(currentPhase === 'PHASE_18_ELECTRET' || currentPhase === 'PHASE_18_BIOCHEMICALS') && (
                     <Fase18_EscanerBioelectrico
                       patientData={patientData}
                       setPatientData={setPatientData}
@@ -6696,8 +6696,10 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                               )}
                               <input
                                 type={
-                                  messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'tel' ? 'tel' :
-                                  messagesList.length > 0 && (messagesList[messagesList.length - 1].inputType === 'number' || messagesList[messagesList.length - 1].inputType === 'respiratory_timer') ? 'number' : 'text'
+                                  messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'tel' ? 'tel' : 'text'
+                                }
+                                inputMode={
+                                  messagesList.length > 0 && (messagesList[messagesList.length - 1].inputType === 'number' || messagesList[messagesList.length - 1].inputType === 'respiratory_timer' || messagesList[messagesList.length - 1].inputType === 'bp') ? 'decimal' : 'text'
                                 }
                                 value={input}
                                 disabled={patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA' || (isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options)}

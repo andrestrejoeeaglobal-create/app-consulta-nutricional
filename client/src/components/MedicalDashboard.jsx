@@ -164,6 +164,54 @@ const TAG_CONFIG = {
     }
 };
 
+// --- GUARDS DE INTEGRIDAD DE EXPEDIENTE NOM-004 ---
+const PatientIdentityGuard = ({ children, apiContext, patientData, citationId }) => {
+    // Resolver identificador oficial de la sesión activa
+    const activeCitationId = citationId || apiContext?.citaId || apiContext?.idCita;
+    const activePatientName = apiContext?.rawName || patientData?.profile?.name || patientData?.identificacion?.nombre;
+
+    // 1. Verificación por ID de Cita
+    const storedCitationId = patientData?.identificacion?.idCita || patientData?.identificacion?.citaId || patientData?.profile?.citationId;
+    const isIdMismatch = Boolean(
+        activeCitationId && 
+        storedCitationId && 
+        String(activeCitationId).trim() !== String(storedCitationId).trim()
+    );
+
+    // 2. Verificación por Nombre de Titular Activo (NOM-004)
+    const storedName = patientData?.profile?.name || patientData?.identificacion?.nombre;
+    const activeFirst = (apiContext?.rawName || '').trim().toLowerCase().split(' ')[0];
+    const storedFirst = (storedName || '').trim().toLowerCase().split(' ')[0];
+    const isNameMismatch = Boolean(
+        activeFirst && 
+        storedFirst && 
+        activeFirst !== storedFirst
+    );
+
+    if (isIdMismatch || isNameMismatch) {
+        return (
+            <div className="p-6 rounded-2xl bg-tilo-bg-panel border border-tilo-primary/30 shadow-md text-center space-y-3 animate-in fade-in duration-300">
+                <div className="flex justify-center text-tilo-primary">
+                    <Shield className="w-8 h-8 animate-pulse" />
+                </div>
+                <h4 className="text-sm font-bold text-tilo-primary uppercase tracking-wider">
+                    🔒 Protección de Integridad de Expediente (NOM-004)
+                </h4>
+                <p className="text-xs text-tilo-text-muted max-w-md mx-auto">
+                    Sincronizando telemetría biométrica aislada para{' '}
+                    <span className="font-bold text-tilo-text-main">{activePatientName || 'Paciente Activo'}</span>
+                    {activeCitationId ? ` (Cita #${activeCitationId})` : ''}...
+                </p>
+                <div className="text-[10px] text-tilo-text-muted/65 italic">
+                    Aislamiento activo en tiempo real. Se ha blanqueado la vista para prevenir contaminación entre folios.
+                </div>
+            </div>
+        );
+    }
+
+    return children;
+};
+
 export const MedicalDashboard = ({
     patientData, currentStep, // <--- Renamed from activeSection
     activeTab, onTabChange,  // <--- New controlled props
@@ -826,50 +874,12 @@ export const MedicalDashboard = ({
 
             {/* 2. ÁREA DE CONTENIDO */}
             <div className="max-w-5xl mx-auto pb-20">
-                {/* VISTAS ACTIVAS */}
-                {activeTab === 'profile' && (
-                    <TabIdentity
-                        patientData={patientData}
-                        setPatientData={setPatientData}
-                        isEditing={isEditing}
-                        onTriggerEdit={onTriggerEdit}
-                        renderEditableField={renderEditableField}
-                        CardHeader={CardHeader}
-                        Accordion={Accordion}
-                        openSections={openSections}
-                        toggleSection={toggleSection}
-                    />
-                )}
-
-                {activeTab === 'clinical_history' && (
-                    <TabClinicalHistory
-                        patientData={patientData}
-                        setPatientData={setPatientData}
-                        isEditing={isEditing}
-                        onTriggerEdit={onTriggerEdit}
-                        renderEditableField={renderEditableField}
-                        CardHeader={CardHeader}
-                        Accordion={Accordion}
-                        openSections={openSections}
-                        toggleSection={toggleSection}
-                        TAG_CONFIG={TAG_CONFIG}
-                        fase3State={fase3State}
-                        fase4State={fase4State}
-                        fase5State={fase5State}
-                        fase6State={fase6State}
-                        fase7State={fase7State}
-                        fase8State={fase8State}
-                        fase9State={fase9State}
-                        pendingAlerts={pendingAlerts}
-                        metabolicAxis={metabolicAxis}
-                        currentStep={currentStep}
-                    />
-                )}
-
-                {activeTab === 'lifestyle' && (
-                    <div className="space-y-6">
-                        <TabLogistics
+                <PatientIdentityGuard apiContext={apiContext} patientData={patientData} citationId={citationId}>
+                    {/* VISTAS ACTIVAS */}
+                    {activeTab === 'profile' && (
+                        <TabIdentity
                             patientData={patientData}
+                            setPatientData={setPatientData}
                             isEditing={isEditing}
                             onTriggerEdit={onTriggerEdit}
                             renderEditableField={renderEditableField}
@@ -878,8 +888,12 @@ export const MedicalDashboard = ({
                             openSections={openSections}
                             toggleSection={toggleSection}
                         />
-                        <TabNutrition
+                    )}
+
+                    {activeTab === 'clinical_history' && (
+                        <TabClinicalHistory
                             patientData={patientData}
+                            setPatientData={setPatientData}
                             isEditing={isEditing}
                             onTriggerEdit={onTriggerEdit}
                             renderEditableField={renderEditableField}
@@ -887,60 +901,96 @@ export const MedicalDashboard = ({
                             Accordion={Accordion}
                             openSections={openSections}
                             toggleSection={toggleSection}
+                            TAG_CONFIG={TAG_CONFIG}
+                            fase3State={fase3State}
+                            fase4State={fase4State}
+                            fase5State={fase5State}
+                            fase6State={fase6State}
+                            fase7State={fase7State}
+                            fase8State={fase8State}
+                            fase9State={fase9State}
+                            pendingAlerts={pendingAlerts}
+                            metabolicAxis={metabolicAxis}
+                            currentStep={currentStep}
                         />
-                    </div>
-                )}
+                    )}
 
-                {activeTab === 'vitals' && (
-                    <TabVitals
-                        patientData={patientData}
-                        onTriggerEdit={onTriggerEdit}
-                        setPatientData={setPatientData}
-                        CardHeader={CardHeader}
-                    />
-                )}
+                    {activeTab === 'lifestyle' && (
+                        <div className="space-y-6">
+                            <TabLogistics
+                                patientData={patientData}
+                                isEditing={isEditing}
+                                onTriggerEdit={onTriggerEdit}
+                                renderEditableField={renderEditableField}
+                                CardHeader={CardHeader}
+                                Accordion={Accordion}
+                                openSections={openSections}
+                                toggleSection={toggleSection}
+                            />
+                            <TabNutrition
+                                patientData={patientData}
+                                isEditing={isEditing}
+                                onTriggerEdit={onTriggerEdit}
+                                renderEditableField={renderEditableField}
+                                CardHeader={CardHeader}
+                                Accordion={Accordion}
+                                openSections={openSections}
+                                toggleSection={toggleSection}
+                            />
+                        </div>
+                    )}
 
-                {activeTab === 'lab' && (
-                    <TabBiochemicals
-                        isProcessing={isProcessing}
-                        displayData={displayData}
-                        handleFileUpload={handleFileUpload}
-                        setSelectedFileToView={setSelectedFileToView}
-                        selectedFileToView={selectedFileToView}
-                        processedDocs={processedDocs}
-                        analyzeStatus={analyzeStatus}
-                        patientData={patientData}
-                    />
-                )}
+                    {activeTab === 'vitals' && (
+                        <TabVitals
+                            patientData={patientData}
+                            onTriggerEdit={onTriggerEdit}
+                            setPatientData={setPatientData}
+                            CardHeader={CardHeader}
+                        />
+                    )}
 
-                {activeTab === 'diagnosis' && (
-                    <TabDiagnosis
-                        patientData={patientData}
-                        setPatientData={setPatientData}
-                        isEditing={isEditing}
-                        onTabChange={onTabChange}
-                        CardHeader={CardHeader}
-                        Accordion={Accordion}
-                        openSections={openSections}
-                        toggleSection={toggleSection}
-                        citationId={citationId}
-                        isPhase20EditMode={isPhase20EditMode}
-                        planViewMode={planViewMode}
-                        setPlanViewMode={setPlanViewMode}
-                    />
-                )}
+                    {activeTab === 'lab' && (
+                        <TabBiochemicals
+                            isProcessing={isProcessing}
+                            displayData={displayData}
+                            handleFileUpload={handleFileUpload}
+                            setSelectedFileToView={setSelectedFileToView}
+                            selectedFileToView={selectedFileToView}
+                            processedDocs={processedDocs}
+                            analyzeStatus={analyzeStatus}
+                            patientData={patientData}
+                        />
+                    )}
 
-                {/* Pestaña de Calendario y Sprint */}
-                {activeTab === 'schedule' && (
-                    <TabCalendar
-                        patientData={patientData}
-                        setPatientData={setPatientData}
-                        apiContext={apiContext}
-                        Accordion={Accordion}
-                        openSections={openSections}
-                        toggleSection={toggleSection}
-                    />
-                )}
+                    {activeTab === 'diagnosis' && (
+                        <TabDiagnosis
+                            patientData={patientData}
+                            setPatientData={setPatientData}
+                            isEditing={isEditing}
+                            onTabChange={onTabChange}
+                            CardHeader={CardHeader}
+                            Accordion={Accordion}
+                            openSections={openSections}
+                            toggleSection={toggleSection}
+                            citationId={citationId}
+                            isPhase20EditMode={isPhase20EditMode}
+                            planViewMode={planViewMode}
+                            setPlanViewMode={setPlanViewMode}
+                        />
+                    )}
+
+                    {/* Pestaña de Calendario y Sprint */}
+                    {activeTab === 'schedule' && (
+                        <TabCalendar
+                            patientData={patientData}
+                            setPatientData={setPatientData}
+                            apiContext={apiContext}
+                            Accordion={Accordion}
+                            openSections={openSections}
+                            toggleSection={toggleSection}
+                        />
+                    )}
+                </PatientIdentityGuard>
             </div>
 
 

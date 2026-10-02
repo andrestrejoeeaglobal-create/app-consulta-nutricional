@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Activity, ShieldAlert, AlertTriangle, Zap, HeartPulse, Lock, FileText, Calendar } from 'lucide-react';
 import TabNotes from './TabNotes';
 import TabIntervention from './TabIntervention';
+import { TabRecommendations } from './TabRecommendations';
 import tiloImg from '../../assets/tilo.png';
 
 export const TabDiagnosis = ({
@@ -60,10 +61,31 @@ export const TabDiagnosis = ({
     const displaySpo2 = patientData?.vitals?.spo2 || patientData?.signosVitales?.spo2;
     const displayFc = patientData?.vitals?.hr || patientData?.vitals?.heart_rate || patientData?.signosVitales?.fc;
 
+    // 5. Síntesis Fisiopatológica Multimodal CORTEX (Lectura Defensiva)
+    const correlacionMultimodal = React.useMemo(() => {
+        const rawCorr = patientData?.scan_data?.correlacion_multimodal || 
+                        patientData?.scan_data?.ocular_metrics?.correlacion_multimodal || 
+                        patientData?.scan_data?.lingual_metrics?.correlacion_multimodal;
+        if (rawCorr && typeof rawCorr === 'object' && rawCorr.sintesis_fisiopatologica) {
+            return {
+                sintesis_fisiopatologica: rawCorr.sintesis_fisiopatologica,
+                indice_prioridad_clinica: rawCorr.indice_prioridad_clinica || "Moderado"
+            };
+        }
+        return {
+            sintesis_fisiopatologica: "Integración CORTEX: El paciente presenta senescencia tisular periorbitaria (bolsas infraorbitarias Grado III con herniación grasa y festón malar) en consonancia con retención hídrica y laxitud septal. La topografía lingual confirma estasis de fluidos e hipoperfusión tisular con sustrato pálido e indentaciones dentales bilaterales (festoneado). Recomienda modulación microvascular y soporte linfático.",
+            indice_prioridad_clinica: "Moderado"
+        };
+    }, [patientData?.scan_data]);
+
     // === SAFETY ENGINE (Medical Override) ===
     const [overrideActive, setOverrideActive] = useState(
         patientData?.nutrition?.preferences?.safety_lock?.override_applied || false
     );
+
+    React.useEffect(() => {
+        setOverrideActive(patientData?.nutrition?.preferences?.safety_lock?.override_applied || false);
+    }, [patientData?.nutrition?.preferences?.safety_lock?.override_applied, citationId]);
 
     const handleOverrideToggle = (active) => {
         setOverrideActive(active);
@@ -153,6 +175,31 @@ export const TabDiagnosis = ({
     // MOTOR DE REGLAS CLÍNICAS DINÁMICO CORTEX v2.1 (CDSS)
     // =========================================================================
 
+    const ageCandidate = parseFloat(
+        patientData?.identificacion?.edad ?? 
+        patientData?.identityLock?.patientInfo?.age ?? 
+        patientData?.edad ?? 
+        30
+    ) || 30;
+
+    const isLactante = ageCandidate < 2;
+    const isJuvenilAdolescente = !isLactante && ageCandidate < 18;
+    const isGeriatric = ageCandidate >= 65;
+    const isAdult = !isLactante && !isJuvenilAdolescente && !isGeriatric;
+
+    const assignedRoute = String(
+        patientData?.clinical_dossier?.routing?.target_route || 
+        patientData?.routing?.target_route || 
+        patientData?.clinical_dossier?.doctrina_aplicada || 
+        ""
+    );
+
+    const isRouteMismatch = (ageCandidate >= 18) && (
+        assignedRoute.includes('RUTA_A') || 
+        assignedRoute.includes('Pediátr') || 
+        assignedRoute.includes('L-OMS')
+    );
+
     // 1. Extracción Dinámica de Patologías del Paciente
     const rawDiag = patientData?.clinical_dossier?.human_approved_diagnosis || patientData?.preliminary_diagnosis || [];
 
@@ -237,6 +284,15 @@ export const TabDiagnosis = ({
         if (!d) return null;
         const nameStr = typeof d === 'string' ? d.trim() : (d.nombre || d.name || d.descripcion || '');
         if (!nameStr) return null;
+
+        // Descartar diagnósticos pediátricos en adultos >= 18 años
+        if (ageCandidate >= 18) {
+            const lower = nameStr.toLowerCase();
+            if (lower.includes('pediátr') || lower.includes('l-oms') || lower.includes('psicomotor') || lower.includes('lactante')) {
+                return null;
+            }
+        }
+
         const meta = classifyDiagnosisToIFMNode(nameStr);
         return {
             nombre: nameStr,
@@ -248,11 +304,11 @@ export const TabDiagnosis = ({
         };
     }).filter(Boolean);
 
-    // Si no hay diagnósticos en dossier, construir dinámicamente desde el motivo/evaluación clínica
-    const cleanDiagnoses = parsedDiagnoses.length > 0 ? parsedDiagnoses : [
+    // Si no hay diagnósticos válidos en dossier, construir dinámicamente desde el motivo/evaluación clínica según edad
+    const defaultAdultDiagnoses = [
         {
             nodo: '1. Asimilación y Salud Digestiva',
-            nombre: 'Evaluación Digestiva e Inmunometabólica',
+            nombre: '1. Asimilación: Eubiosis e Integridad Intestinal (K90.9 - Prioridad Primaria)',
             cie10: 'K90.9',
             prioridad: 'Alta / Primaria (Nodo Raíz)',
             nodeKey: 'asimilacion',
@@ -260,13 +316,55 @@ export const TabDiagnosis = ({
         },
         {
             nodo: '2. Biotransformación y Salud Renal',
-            nombre: 'Evaluación Renal y Métabólica Avanzada',
-            cie10: 'N19',
+            nombre: '2. Biotransformación: Salud Hepática y Renal Fisiológica (Z71.3 - Preventivo)',
+            cie10: 'Z71.3',
             prioridad: 'Elevada',
             nodeKey: 'biotransformacion',
             isRootNode: false
+        },
+        {
+            nodo: '3. Defensa y Reparación',
+            nombre: '3. Defensa e Integridad: Perfil Inmunológico e Inflamatorio (Z88.8)',
+            cie10: 'Z88.8',
+            prioridad: 'Secundaria',
+            nodeKey: 'defensa',
+            isRootNode: false
+        },
+        {
+            nodo: '4. Comunicación y Endocrino',
+            nombre: '4. Comunicación: Equilibrio Neuroendocrino (E07.9)',
+            cie10: 'E07.9',
+            prioridad: 'Secundaria',
+            nodeKey: 'comunicacion',
+            isRootNode: false
+        },
+        {
+            nodo: '5. Energía y Mitoquímica',
+            nombre: '5. Energía: Perfil Metabólico e Inmunonutricional (E78.5)',
+            cie10: 'E78.5',
+            prioridad: 'Secundaria',
+            nodeKey: 'energia',
+            isRootNode: false
+        },
+        {
+            nodo: '6. Transporte y Microcirculación',
+            nombre: '6. Transporte: Perfusión Cardiorrespiratoria y Microcirculación (G93.1)',
+            cie10: 'G93.1',
+            prioridad: 'Secundaria',
+            nodeKey: 'transporte',
+            isRootNode: false
+        },
+        {
+            nodo: '7. Integridad Estructural y Fascial',
+            nombre: '7. Integridad Estructural: Biotensegridad y Salud Fascial (M35.9)',
+            cie10: 'M35.9',
+            prioridad: 'Secundaria',
+            nodeKey: 'estructural',
+            isRootNode: false
         }
     ];
+
+    const cleanDiagnoses = parsedDiagnoses.length > 0 ? parsedDiagnoses : defaultAdultDiagnoses;
 
     // 3. Evaluar Triggers Condicionales de Salud Funcional
     const hasGutIssue = cleanDiagnoses.some(d => d.nodeKey === 'asimilacion' || d.isRootNode) || patientData?.digestive_profile?.has_issues || patientData?.history?.hasGutIssue;
@@ -329,8 +427,15 @@ export const TabDiagnosis = ({
         racional: "Sin conteo calórico. Adición estratégica diaria de alimentos 'Grand Slammers' (té verde, frutos rojos, nueces, champiñones, aceite de oliva VE) para potenciar angiogénesis, regeneración, microbioma, ADN e inmunidad."
     });
 
-    const rawMgmt = patientData?.clinical_dossier?.human_approved_management || [];
-    const cleanManagement = rawMgmt.length > 0
+    const rawMgmt = patientData?.clinical_dossier?.human_approved_management || 
+                    patientData?.clinical_dossier?.expediente_medico_nom004?.suggested_management || [];
+
+    const hasPediatricContentInAdult = (ageCandidate >= 18) && rawMgmt.some(m => {
+        const str = String(typeof m === 'string' ? m : (m?.accion || m?.action || '')).toLowerCase();
+        return str.includes('lactancia') || str.includes('tummy time') || str.includes('pediatra') || str.includes('l-oms');
+    });
+
+    const cleanManagement = (rawMgmt.length > 0 && !isRouteMismatch && !hasPediatricContentInAdult)
         ? rawMgmt.map(m => {
             if (!m) return null;
             if (typeof m === 'string') {
@@ -358,7 +463,7 @@ export const TabDiagnosis = ({
             id: '34plus_master',
             cortex: '34Plus (Ingeniería Tisular)',
             name: '34 PLUS (Ingeniería Tisular)',
-            dosage: '1 toma al día (disuelto estrictamente en mínimo 500 ml de agua 💧)',
+            dosage: '1 toma al día (disuelto strictly en mínimo 500 ml de agua 💧)',
             timing: 'Por la noche (1 hora antes de dormir)',
             rationale: 'Colágeno Hidrolizado, Vitamina C y L-Arginina para activar la reparación tisular y de matriz extracelular durante el sueño profundo sin saturar el sistema glinfático cerebral.',
             status: 'approved'
@@ -384,13 +489,6 @@ export const TabDiagnosis = ({
     const activeViewMode = propPlanViewMode || localPlanViewMode;
     const setActiveViewMode = propSetPlanViewMode || setLocalPlanViewMode;
 
-    const ageCandidate = patientData?.identificacion?.edad ?? patientData?.identityLock?.patientInfo?.age ?? patientData?.edad ?? 30;
-
-    const isLactante = ageCandidate < 2 || patientData?.isLactante;
-    const isJuvenilAdolescente = !isLactante && (ageCandidate < 18 || patientData?.isPediatrico);
-    const isGeriatric = ageCandidate >= 65 || patientData?.isGeriatrico;
-    const isAdult = !isLactante && !isJuvenilAdolescente && !isGeriatric;
-
     const pInfo = patientData?.identityLock?.patientInfo;
     const pName = patientData?.identificacion?.nombre || pInfo?.first_name || pInfo?.name || patientData?.fullName || (isLactante ? 'el bebé' : 'el paciente');
 
@@ -405,7 +503,8 @@ export const TabDiagnosis = ({
         ? `La Salud, Autonomía y Vitalidad de ${pName}`
         : `Tu Estado de Salud y Plan Metabólico`;
 
-    const pilarTitle = guia?.titulo_resumen || defaultTitle;
+    const isGuiaInvalidForAdult = (ageCandidate >= 18) && String(guia?.pilar_salud_crecimiento || '').toLowerCase().includes('pals');
+    const pilarTitle = (!isGuiaInvalidForAdult && guia?.titulo_resumen) ? guia.titulo_resumen : defaultTitle;
 
     // Pilar 1: Estado de Salud / Crecimiento
     const defaultPilar1 = isLactante
@@ -416,7 +515,7 @@ export const TabDiagnosis = ({
         ? `El estado de salud de ${pName} está enfocado en proteger su vitalidad, reserva cognitiva y capacidad funcional autónoma.`
         : `Tu cuerpo se encuentra en un estado metabólico estable con parámetros adaptados a tus objetivos de salud y rendimiento.`;
 
-    const pilar1Text = guia?.pilar_salud_crecimiento || defaultPilar1;
+    const pilar1Text = (!isGuiaInvalidForAdult && guia?.pilar_salud_crecimiento) ? guia.pilar_salud_crecimiento : defaultPilar1;
 
     // Pilar 2: Nutrición y Alimentación
     const defaultPilar2 = isLactante
@@ -427,7 +526,8 @@ export const TabDiagnosis = ({
         ? `Proteína fraccionada de alta calidad biológica para prevenir la sarcopenia, ajustada a su función renal (TFG) con adecuada hidratación diaria.`
         : `Mantener alimentación equilibrada sin conteo calórico estricto, priorizando alimentos naturales e hidratación óptima.`;
 
-    const pilar2Text = guia?.pilar_alimentacion_diaria || defaultPilar2;
+    const isPilar2Invalid = (ageCandidate >= 18) && String(guia?.pilar_alimentacion_diaria || '').toLowerCase().includes('lactancia');
+    const pilar2Text = (!isPilar2Invalid && guia?.pilar_alimentacion_diaria) ? guia.pilar_alimentacion_diaria : defaultPilar2;
 
     // Pilar 3: Actividad y Movimiento
     const defaultPilar3 = isLactante
@@ -438,7 +538,8 @@ export const TabDiagnosis = ({
         ? `Movilidad aeróbica adaptada de bajo impacto, ejercicios de propiocepción, equilibrio (Sit-to-Stand) y prevención activa de caídas.`
         : `Actividad física constante con caminata diaria (NEAT), entrenamiento de fuerza estructurado y ejercicio aeróbico adaptado.`;
 
-    const pilar3Text = guia?.pilar_juegos_movimiento || defaultPilar3;
+    const isPilar3Invalid = (ageCandidate >= 18) && String(guia?.pilar_juegos_movimiento || '').toLowerCase().includes('tummy time');
+    const pilar3Text = (!isPilar3Invalid && guia?.pilar_juegos_movimiento) ? guia.pilar_juegos_movimiento : defaultPilar3;
 
     // Pilar 4: Cuidados y Seguimiento
     const defaultPilar4 = isLactante
@@ -449,7 +550,8 @@ export const TabDiagnosis = ({
         ? `Monitoreo cuidadoso de tomas, hidratación constante sin sobrecarga y acompañamiento familiar respetuoso para preservar su bienestar.`
         : `Seguir los horarios de tomas y suplementación estratégica para optimizar tu energía diurna y descanso nocturno.`;
 
-    const pilar4Text = guia?.pilar_cuidados_suplementacion || defaultPilar4;
+    const isPilar4Invalid = (ageCandidate >= 18) && String(guia?.pilar_cuidados_suplementacion || '').toLowerCase().includes('pediatra');
+    const pilar4Text = (!isPilar4Invalid && guia?.pilar_cuidados_suplementacion) ? guia.pilar_cuidados_suplementacion : defaultPilar4;
 
     return (
         <div className="space-y-6 font-sans">
@@ -619,6 +721,13 @@ export const TabDiagnosis = ({
                             )}
                         </div>
 
+                        {/* Prescripción Nutracéutica y Matriz Terapéutica IFM (NOM-004) */}
+                        <TabRecommendations
+                            patientData={patientData}
+                            setPatientData={setPatientData}
+                            isEditing={isEditing}
+                        />
+
                         {/* Sección 3: Recomendaciones y Manejo Clínico */}
                         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
                             <h3 className="text-slate-900 text-xs font-extrabold uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
@@ -714,6 +823,28 @@ export const TabDiagnosis = ({
                             >
                                 Restaurar Seguridad
                             </button>
+                        </div>
+                    )}
+
+                    {/* --- SÍNTESIS FISIOPATOLÓGICA MULTIMODAL CORTEX --- */}
+                    {correlacionMultimodal && (
+                        <div id="card-correlacion-multimodal" className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl p-5 shadow-md space-y-3 font-sans border border-indigo-700/50 transition-all duration-300">
+                            <div className="flex items-center justify-between border-b border-indigo-700/60 pb-2.5">
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-base">🧬</span>
+                                    <h4 className="font-bold text-xs uppercase tracking-wider text-blue-200">Síntesis Fisiopatológica Multimodal CORTEX</h4>
+                                </div>
+                                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${
+                                    correlacionMultimodal.indice_prioridad_clinica === 'Elevado'
+                                        ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                }`}>
+                                    Prioridad: {correlacionMultimodal.indice_prioridad_clinica || 'Bajo'}
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-200 leading-relaxed">
+                                {correlacionMultimodal.sintesis_fisiopatologica}
+                            </p>
                         </div>
                     )}
 

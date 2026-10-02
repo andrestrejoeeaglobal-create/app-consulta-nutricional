@@ -54,11 +54,48 @@ export const useClinicalGenome = create((set, get) => ({
         exerciseRoutine: false,
     },
 
+    // 3.5. TELEMETRÍA DE BIORRESONANCIA ELECTRET (NOM-004 ISOLATED MEMORY SLICE)
+    electretTelemetry: {
+        isScanned: false,
+        scannedAt: null,
+        citationId: null,
+        patientName: null,
+        categories: {},
+        abnormalCount: 0,
+        totalParameters: 0
+    },
+
     // 4. INTERFAZ DE AUTORIDAD (Human in the Loop)
     pendingAlerts: [], // Sugerencias de la IA (ej. "Déficit B12 por Metformina")
     medicalOverrides: [], // Decisiones del Sherpa (Aprobar/Descartar)
 
     // -- ACCIONES (Mutators) --
+
+    // Actualización de Telemetría Electret
+    setElectretTelemetry: (telemetryData) => set({
+        electretTelemetry: {
+            isScanned: true,
+            scannedAt: telemetryData?.parsedAt || new Date().toISOString(),
+            citationId: telemetryData?.citationId || null,
+            patientName: telemetryData?.patientName || null,
+            categories: telemetryData?.categories || {},
+            abnormalCount: telemetryData?.abnormalCount || 0,
+            totalParameters: telemetryData?.totalParameters || 0
+        }
+    }),
+
+    // Purga estricta NOM-004 de la Telemetría Electret
+    clearElectretTelemetry: () => set({
+        electretTelemetry: {
+            isScanned: false,
+            scannedAt: null,
+            citationId: null,
+            patientName: null,
+            categories: {},
+            abnormalCount: 0,
+            totalParameters: 0
+        }
+    }),
 
     // Actualización Parcial del Seguro de Identidad
     updateIdentityLock: (updates) => set((state) => ({
@@ -145,6 +182,15 @@ export const useClinicalGenome = create((set, get) => ({
         biomechanicalAxis: {
             activityLevel: 'sedentary',
             exerciseRoutine: false,
+        },
+        electretTelemetry: {
+            isScanned: false,
+            scannedAt: null,
+            citationId: null,
+            patientName: null,
+            categories: {},
+            abnormalCount: 0,
+            totalParameters: 0
         },
         pendingAlerts: [],
         medicalOverrides: []

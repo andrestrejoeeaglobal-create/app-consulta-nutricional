@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
-import axios from 'axios';
+import React from 'react';
 import {
-    CheckCircle, Clock, Coffee, Moon, Sun, Utensils,
-    Navigation, Activity, MapPin, Briefcase, User, Smartphone, Send, Shield, AlertTriangle,
+    Clock, Coffee, Moon, Sun, Utensils,
+    Navigation, Activity, MapPin, Briefcase, User, Smartphone, Shield,
     Layers, Dumbbell, Zap, RefreshCw, Lock
 } from 'lucide-react';
-import { formatCalendarForClipboard } from '../../utils/formatCalendarForClipboard';
 
 export const TabCalendar = ({
     patientData,
@@ -16,10 +14,6 @@ export const TabCalendar = ({
     toggleSection,
     isPhase20EditMode
 }) => {
-    const [isExporting, setIsExporting] = useState(false);
-    const [exportSuccess, setExportSuccess] = useState(false);
-    const [errorSync, setErrorSync] = useState(null);
-
     const has33Plus = patientData?.advanced_supplementation?.some(s => s.name?.includes('33') || s.cortex?.includes('33'));
     const has34Plus = patientData?.advanced_supplementation?.some(s => s.name?.includes('34') || s.cortex?.includes('34'));
 
@@ -43,11 +37,11 @@ export const TabCalendar = ({
 
     // 1. Evaluación de Triggers Clínicos y Tetra-Estratificación Etaria (Lactante < 2 | Juvenil 2-17 | Adulto 18-64 | Geriatría ≥ 65)
     const pInfo = patientData?.identityLock?.patientInfo;
-    const ageCandidate = pInfo?.age !== undefined ? pInfo.age : (patientData?.identificacion?.edad !== undefined ? patientData.identificacion.edad : 30);
-    const isLactante = ageCandidate < 2 || patientData?.isLactante || (pInfo?.dob_year && (new Date().getFullYear() - pInfo.dob_year < 2));
-    const isJuvenilAdolescente = (!isLactante && (ageCandidate < 18 || patientData?.isPediatrico || (pInfo?.dob_year && (new Date().getFullYear() - pInfo.dob_year < 18))));
+    const ageCandidate = parseFloat(pInfo?.age !== undefined ? pInfo.age : (patientData?.identificacion?.edad !== undefined ? patientData.identificacion.edad : (patientData?.edad ?? 30))) || 30;
+    const isLactante = (ageCandidate < 2) && Boolean(patientData?.isLactante || (pInfo?.dob_year && (new Date().getFullYear() - pInfo.dob_year < 2)));
+    const isJuvenilAdolescente = (!isLactante && ageCandidate < 18) && Boolean(patientData?.isPediatrico || (pInfo?.dob_year && (new Date().getFullYear() - pInfo.dob_year < 18)));
     const isGeriatric = ageCandidate >= 65 || patientData?.isGeriatrico;
-    const isLactanteOrPediatric = isLactante; // Alias retrocompatible para visores genéricos
+    const isLactanteOrPediatric = isLactante || isJuvenilAdolescente;
 
     const rawDiag = patientData?.clinical_dossier?.human_approved_diagnosis || patientData?.preliminary_diagnosis || [];
     const diagStrings = rawDiag.map(d => (typeof d === 'string' ? d : (d?.nombre || d?.name || '')).toLowerCase());
@@ -224,95 +218,6 @@ export const TabCalendar = ({
         }
     };
 
-    const handleExport = async () => {
-        setIsExporting(true);
-        setErrorSync(null);
-
-        const citationId = apiContext?.citaId || apiContext?.idCita || patientData?.citaId || '15000';
-        const userId = apiContext?.userId || patientData?.userId || '165';
-
-        const rawAllergiesList = [...(patientData?.history?.allergies?.food || []), ...(patientData?.history?.allergies?.drug || [])];
-        const formattedAllergies = rawAllergiesList.map(a => typeof a === 'string' ? a : (a.agent || a.name || 'Alimento'));
-
-        // Construir DTO compatible 100% con Pydantic CDSSv2EngineDTO (Clase Clinica expects key 'alergias')
-        const dto = {
-            metadata: {
-                citation_id: citationId,
-                user_id: userId,
-                timestamp: new Date().toISOString()
-            },
-            perfil_abcd: {
-                antropometria: {
-                    peso_kg: patientData?.vitals?.weight || 70,
-                    talla_m: patientData?.vitals?.height || 1.70,
-                    imc: patientData?.vitals?.imc || 24.2,
-                    icc: patientData?.vitals?.icc || 0.85,
-                    clasificacion_imc: patientData?.vitals?.imc_class || 'Normopeso'
-                },
-                bioquimicos_y_vitales: {
-                    presion_arterial: patientData?.vitals?.bp || '110/70',
-                    spo2_porcentaje: patientData?.vitals?.spo2 || 98,
-                    fc_reposo_lpm: patientData?.vitals?.fc || 65,
-                    angulo_fase_grados: patientData?.escaner?.anguloFase || 5.8,
-                    estado_muscular: 'Normotrófico'
-                },
-                clinica: {
-                    patologias: normalizeRedFlags(rawDiag),
-                    alergias: formattedAllergies // CLAVE EXACTA EXIGIDA POR PYDANTIC: alergias
-                },
-                dietetica: {
-                    enfoque: "Modulación de Insulina / Cortisol (Sin Conteo Calórico)",
-                    aversiones: patientData?.nutrition?.dislikes || [],
-                    preferencias_5x5x5: ["Té verde", "Frutos rojos", "Aceite de oliva VE"]
-                }
-            },
-            cronobiologia: {
-                formula_33_plus: {
-                    nombre: "33 PLUS (Ignición Mitocondrial)",
-                    horario: "Mañana con primer alimento",
-                    dosis: "1 sobre",
-                    preparacion: "Disolver en agua temp. ambiente",
-                    proposito_clinico: "Optimizar microcirculación diurna y sensibilidad a la insulina"
-                },
-                formula_34_plus: {
-                    nombre: "34 PLUS (Ingeniería Tisular)",
-                    horario: "Noche 60 min pre-sueño",
-                    dosis: "1 sobre",
-                    preparacion: "Disolver estrictamente en un MÍNIMO de 500 ml de agua natural 💧",
-                    advertencia_hidratacion: "Disolver en menos de 500 ml retrasa el vaciado gástrico y bloquea el drenaje glinfático cerebral nocturno.",
-                    proposito_clinico: "Reparación tisular nocturna y matriz extracelular"
-                }
-            },
-            calendario_28_dias: periodizationPhases
-        };
-
-        try {
-            const response = await axios.patch(`http://localhost:5000/api/citations/${citationId}/progress`, {
-                phase: 21,
-                block: 'finished',
-                patientData: dto,
-                is_completed: true
-            });
-
-            if (response.data?.success) {
-                setExportSuccess(true);
-                if (setPatientData) {
-                    setPatientData(prev => ({
-                        ...prev,
-                        is_completed: true
-                    }));
-                }
-            } else {
-                throw new Error("Respuesta del servidor sin éxito");
-            }
-        } catch (err) {
-            console.error("❌ Error al sincronizar con Terminal B:", err.message);
-            setErrorSync("Error de conexión: No se pudo transmitir el plan a la Terminal B.");
-        } finally {
-            setIsExporting(false);
-        }
-    };
-
     const translateVenue = (v) => {
         if (v === 'HOME') return 'Casa';
         if (v === 'WORK') return 'Oficina';
@@ -329,7 +234,7 @@ export const TabCalendar = ({
     };
 
     return (
-        <div className="space-y-6 font-sans">
+        <div className="space-y-6 font-sans pb-12">
             {/* --- ACORDEÓN PADRE: CALENDARIO Y RUTA DE EJECUCIÓN --- */}
             <Accordion
                 title="Calendario y Ruta de Ejecución"
@@ -575,51 +480,6 @@ export const TabCalendar = ({
                     </Accordion>
                 </div>
             </Accordion>
-
-            {/* ERROR SYNC BANNER */}
-            {errorSync && (
-                <div className="bg-tilo-danger/10 border border-tilo-danger/20 text-tilo-danger px-4 py-3 rounded-xl flex items-center gap-2 text-xs font-bold mt-4 animate-in fade-in">
-                    <AlertTriangle className="w-4 h-4 text-tilo-danger shrink-0" />
-                    <span>{errorSync}</span>
-                </div>
-            )}
-
-            {/* BOTÓN DE CIERRE (Sincronización) */}
-            <div className="flex justify-end pt-4 border-t border-tilo-border mt-8">
-                <button
-                    onClick={handleExport}
-                    disabled={isExporting || exportSuccess}
-                    className={`
-                        relative overflow-hidden flex justify-center items-center gap-2 px-8 py-4 rounded-2xl font-black tracking-wide text-xs transition-all duration-300 w-full sm:w-auto shadow-lg cursor-pointer
-                        ${exportSuccess
-                            ? 'bg-tilo-success text-white cursor-default shadow-tilo-success/20'
-                            : 'bg-tilo-primary text-white hover:bg-tilo-primary/80 shadow-tilo-primary/20 hover:shadow-tilo-primary/30 hover:-translate-y-0.5'
-                        }
-                    `}
-                >
-                    {isExporting ? (
-                        <>
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            <span>Enviando Datos...</span>
-                        </>
-                    ) : exportSuccess ? (
-                        <>
-                            <CheckCircle className="w-5 h-5 text-white" />
-                            <span>Plan Exportado con Éxito</span>
-                        </>
-                    ) : (
-                        <>
-                            <Send className="w-5 h-5" />
-                            <span>Sincronizar con Terminal B (Enviar al Paciente)</span>
-                        </>
-                    )}
-
-                    {/* Ripple/Glimmer effect */}
-                    {!exportSuccess && !isExporting && (
-                        <div className="absolute inset-0 -translate-x-full hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-                    )}
-                </button>
-            </div>
         </div>
     );
 };

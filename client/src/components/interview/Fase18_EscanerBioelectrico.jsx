@@ -939,12 +939,17 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
                 ...prev,
                 scan_data: {
                     ...(prev?.scan_data || {}),
-                    ocular_metrics: {
+                    ocular_metrics: data.ocular_audit ? {
+                        right_eye_url: data.rightEyeUrl,
+                        left_eye_url: data.leftEyeUrl,
+                        ...data.ocular_audit
+                    } : {
                         right_eye_url: data.rightEyeUrl,
                         left_eye_url: data.leftEyeUrl,
                         predictions: data.predictions,
                         asymmetry_findings: data.asymmetry_findings
-                    }
+                    },
+                    correlacion_multimodal: data.correlacion_multimodal || prev?.scan_data?.correlacion_multimodal
                 }
             }));
 
@@ -991,11 +996,15 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
                 ...prev,
                 scan_data: {
                     ...(prev?.scan_data || {}),
-                    lingual_metrics: {
+                    lingual_metrics: data.lingual_topography ? {
+                        imageUrl: data.imageUrl,
+                        ...data.lingual_topography
+                    } : {
                         imageUrl: data.imageUrl,
                         saburra_thickness: data.predictions?.glycemic_alteration?.value || "Normal (Capa delgada blanca)",
                         epithelial_hydration: "Adecuada"
-                    }
+                    },
+                    correlacion_multimodal: data.correlacion_multimodal || prev?.scan_data?.correlacion_multimodal
                 }
             }));
 

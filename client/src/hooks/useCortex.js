@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import tiloImg from "../assets/tilo.png";
 import { formatText, getGenderedTerm, fuzzyMatch, calculateCurp, cleanServerInfo, buildPediatricContext, inferGenderFromName, formatPhoneNumber, toTitleCase } from "../utils/utils";
 import useCitationValidation from './useCitationValidation';
+import { useClinicalGenome } from '../store/useClinicalGenome';
 
 // --- INITIAL STATES (EXTRACTED FOR RESET CAPABILITY) ---
 const INITIAL_CURRENT_PHASE = 'PHASE_0_AUTH';
@@ -131,6 +132,16 @@ const INITIAL_PATIENT_DATA = {
     biochemical: {
         electret_scan_data: {}
     },
+    scan_data: {
+        electret_scanned: false,
+        electret_metrics: null,
+        ocular_metrics: null,
+        lingual_metrics: null,
+        external_metrics: null,
+        visual_metrics: null,
+        active_substep: null
+    },
+    electret_scan_data: {},
     clinical_flags: [], // Acoplamiento estabilizado para alertas Fase 12
     // FASE 13 (Biométricos legacy Fase 6)
     peso: "",
@@ -256,7 +267,16 @@ export const useCortex = () => {
                 if (key === 'patientData' && parsed[key] !== undefined) {
                     const savedData = parsed[key];
                     if (savedData && typeof savedData === 'object') {
-                        // Self-healing: if curp starts with EXT-, enforce FOREIGN nationality type
+                        // Self-healing: Upgrade legacy scan_data properties without erasing objects
+                        if (savedData.scan_data) {
+                            if (savedData.scan_data.ocular_metrics && typeof savedData.scan_data.ocular_metrics.palidez_conjuntival === 'string') {
+                                savedData.scan_data.ocular_metrics.palidez_conjuntival = {
+                                    estado: savedData.scan_data.ocular_metrics.palidez_conjuntival,
+                                    descripcion_clinica: "Mucosa tarsal conjuntival evaluada"
+                                };
+                            }
+                        }
+
                         if (savedData.profile) {
                             if (savedData.profile.curp && savedData.profile.curp.startsWith('EXT-')) {
                                 savedData.profile.nationality_type = 'FOREIGN';
@@ -516,13 +536,21 @@ export const useCortex = () => {
                 }
             }
             window.localStorage.removeItem('tilo_session_data');
+            window.localStorage.removeItem('ea_session');
+            window.localStorage.removeItem('ea_token');
+            if (typeof window !== 'undefined' && window.sessionStorage) {
+                window.sessionStorage.clear();
+            }
+            if (useClinicalGenome && useClinicalGenome.getState) {
+                useClinicalGenome.getState().resetGenome();
+            }
             setCurrentPhase(INITIAL_CURRENT_PHASE);
             setActiveTab(INITIAL_ACTIVE_TAB);
             setMessages(INITIAL_MESSAGES);
-            setPatientData(INITIAL_PATIENT_DATA);
+            setPatientData(JSON.parse(JSON.stringify(INITIAL_PATIENT_DATA)));
             setApiContext({});
             setAuthAttempts(0);
-            console.log("♻️ Cortex Session Cleared to Default.");
+            console.log("♻️ Cortex Session & Clinical Genome Cleared to Default.");
         } catch (error) {
             console.error("Failed to clear session data", error);
         }
@@ -1025,13 +1053,42 @@ export const useCortex = () => {
                             // Saneamiento estricto para eliminar la "Coma Fantasma" y espacios dobles
                             extractedName = extractedName.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
 
+                            // Purga quirúrgica preventiva síncrona de Genoma Clínico y Almacenamiento al validar nueva cita
+                            if (typeof window !== 'undefined' && window.sessionStorage) {
+                                window.sessionStorage.clear();
+                            }
+                            window.localStorage.removeItem('tilo_session_data');
+                            if (useClinicalGenome && useClinicalGenome.getState) {
+                                useClinicalGenome.getState().resetGenome();
+                                console.log("🧹 Genoma Clínico y Caché de Sesión purgados al autenticar Cita ID:", citaData.idCita || citaData.cita);
+                            }
+
                             // Save context for fuzzy match and checkpoints
+                            const activeCitationStr = String(citaData.cita || citaData.idCita || citaData.folio || '');
                             setApiContext({
                                 rawName: extractedName,
                                 userId: citaData.userId,
                                 idCita: citaData.idCita, // internal citation ID
                                 citaId: citaData.cita || citaData.folio, // visual citation ID
                                 sucursal: formattedInfo.sede
+                            });
+
+                            // Vincular datos inmediatos de identidad y cita activa sobre plantilla virgen (Deep Clone)
+                            const cleanPatientTemplate = JSON.parse(JSON.stringify(INITIAL_PATIENT_DATA));
+                            setPatientData({
+                                ...cleanPatientTemplate,
+                                profile: {
+                                    ...cleanPatientTemplate.profile,
+                                    name: extractedName,
+                                    first_name: extractedName.split(' ')[0],
+                                    citationId: activeCitationStr
+                                },
+                                identificacion: {
+                                    ...cleanPatientTemplate.identificacion,
+                                    nombre: extractedName.split(' ')[0],
+                                    idCita: activeCitationStr,
+                                    citaId: activeCitationStr
+                                }
                             });
 
                             const titularName = formatText(extractedName);
@@ -1181,11 +1238,12 @@ export const useCortex = () => {
                 case 'PHASE_1_PROFILE_NAME_CONFIRM':
                     if (text === 'yes') {
                         const cleanFirstName = (apiContext.extractedFirst || "").replace(/,/g, '').trim();
+                        const activeCit = String(apiContext.citaId || apiContext.idCita || '');
                         setPatientData(prev => ({
                             ...prev,
                             // Usamos el valor extraido y formateado de la apiContext (limpio de comas fantasmas)
-                            profile: { ...prev.profile, first_name: cleanFirstName, name: apiContext.rawName },
-                            identificacion: { ...prev.identificacion, nombre: cleanFirstName } // Legacy Support
+                            profile: { ...prev.profile, first_name: cleanFirstName, name: apiContext.rawName, citationId: activeCit },
+                            identificacion: { ...prev.identificacion, nombre: cleanFirstName, idCita: activeCit, citaId: activeCit } // Legacy Support
                         }));
 
                         setMessages(prev => [...prev, {

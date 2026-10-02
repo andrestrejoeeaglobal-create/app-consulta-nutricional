@@ -107,17 +107,19 @@ const synthesizeDossier = async (req, res) => {
             ageMonths = extractedAge === 0 ? 11 : extractedAge * 12;
         }
 
-        // Banderas Booleanas Pediátricas Desacopladas
-        const isLactanteExplicit = patientData.isLactante || 
-                                   patientData.profile?.pediatric_profile?.is_lactante || 
-                                   (ageYears < 2) || 
-                                   (ageMonths >= 0 && ageMonths < 24);
+        // Banderas Booleanas Pediátricas Desacopladas (Fuerza Canónica por Edad)
+        const isLactanteExplicit = (ageYears < 2) && Boolean(
+            patientData.isLactante || 
+            patientData.profile?.pediatric_profile?.is_lactante || 
+            (dobDate !== null && ageMonths >= 0 && ageMonths < 24)
+        );
 
-        const isPediatricExplicit = patientData.isPediatrico || 
-                                    patientData.profile?.pediatric_profile?.is_minor || 
-                                    patientData.profile?.pediatric_profile?.is_pediatric || 
-                                    (ageYears < 18) || 
-                                    isLactanteExplicit;
+        const isPediatricExplicit = (ageYears < 18) && Boolean(
+            patientData.isPediatrico || 
+            patientData.profile?.pediatric_profile?.is_minor || 
+            patientData.profile?.pediatric_profile?.is_pediatric || 
+            isLactanteExplicit
+        );
 
         if (isNaN(ageYears) || ageYears < 0) {
             ageYears = isLactanteExplicit ? 0 : (isPediatricExplicit ? 10 : 30);
@@ -128,7 +130,7 @@ const synthesizeDossier = async (req, res) => {
         // ==========================================
         let determinedRoute = "RUTA_D"; 
 
-        if (isLactanteExplicit || isPediatricExplicit || ageYears < 18) {
+        if (ageYears < 18 && (isLactanteExplicit || isPediatricExplicit)) {
             determinedRoute = "RUTA_A";
         } else {
             const reasonText = String(patientData.reason_for_consultation || patientData.motivo || patientData.history?.primaryRoute || "").toUpperCase();
@@ -338,9 +340,9 @@ Devuelve strictly un objeto JSON estructurado con la siguiente firma (sin texto 
             preliminary_diagnosis.push("2. Biotransformación: Salud Hepática y Renal Fisiológica (Z71.3 - Preventivo)");
             preliminary_diagnosis.push("3. Energía: Perfil Metabólico e Inmunonutricional (E78.5)");
             preliminary_diagnosis.push("4. Comunicación: Equilibrio Neuroendocrino (E07.9)");
-            preliminary_diagnosis.push("5. Transporte: Perfusión Cardiorrespiratoria Pediátrica en Reposo (R53)");
-            preliminary_diagnosis.push("6. Defensa e Integridad: Perfil Inmunológico (Z88.8)");
-            preliminary_diagnosis.push("7. Integridad Estructural: Biotensegridad y Desarrollo Psicomotor (M79.7)");
+            preliminary_diagnosis.push("5. Transporte: Perfusión Cardiorrespiratoria y Microcirculación (G93.1)");
+            preliminary_diagnosis.push("6. Defensa e Integridad: Perfil Inmunológico e Inflamatorio (Z88.8)");
+            preliminary_diagnosis.push("7. Integridad Estructural: Biotensegridad y Salud Fascial (M35.9)");
             
             const critical_alerts = [];
             if (isLactanteExplicit) {

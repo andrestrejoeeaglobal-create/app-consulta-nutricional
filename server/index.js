@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const multer = require('multer');
 const cors = require('cors');
 const fs = require('fs');
@@ -10,11 +11,19 @@ const https = require('https');
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 const BiomarkerScoringEngine = require('./services/BiomarkerScoringEngine');
 const app = express();
+
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 const upload = multer({
-    dest: 'uploads/'
+    dest: uploadsDir
 });
 app.use(cors());
-app.use(express.json());
+app.use('/uploads', express.static(uploadsDir));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // app.use('/api', require('./routes/authRoutes')); // Rutas de Autenticación Auditada (COMENTADO PARA USAR LOGICA DIRECTA)
 app.use('/api/agent', require('./agent')); // Agente Nutricional (Nueva Lógica)
 app.use('/api/cortex', require('./routes/cortexRoutes')); // Inteligencia Clínica GEM (Gemini)
