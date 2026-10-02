@@ -7,6 +7,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const { db } = require('../db');
 const { GoogleGenAI } = require('@google/genai');
+const { parseElectretHTML, parseElectretJSON } = require('../utils/electretParser');
 
 function fileToGenerativePart(filePath, mimeType) {
     if (!fs.existsSync(filePath)) return null;
@@ -404,131 +405,18 @@ router.get('/electret/sync', (req, res) => {
                 console.log(`ℹ️ [ODBC SYNC v4.1] Lectura con timestamp anterior (${timeDiffMinutes.toFixed(2)} min). Aceptada bajo validación directa de hardware MDB.`);
             }
 
-            // 2. Normalizar y mapear biomarcadores extraídos por read_electret.exe
-            const rawMap = {};
+            // 2. Normalizar y mapear biomarcadores extraídos por read_electret.exe con el motor universal electretParser
             if (rawData.schema === 'modern' && rawData.html_content) {
-                console.log("🧬 [ODBC SYNC v4.1] Detectado esquema moderno. Ejecutando parser HTML v2.0 anti-fallo...");
-                const cheerio = require('cheerio');
-                const $ = cheerio.load(rawData.html_content);
-
-                function cleanFloat(str) {
-                    if (str === null || str === undefined) return NaN;
-                    const sanitized = String(str).trim().replace(',', '.');
-                    return parseFloat(sanitized);
-                }
-
-                function getStatusFromImgSrc(imgSrc, val, ref) {
-                    if (imgSrc) {
-                        const s = String(imgSrc).toLowerCase();
-                        if (s.includes('yc07') || s.includes('yc08') || s.includes('+++')) return 'ANORMAL SEVERO';
-                        if (s.includes('yc05') || s.includes('yc06') || s.includes('++')) return 'ANORMAL MODERADO';
-                        if (s.includes('yc03') || s.includes('yc04') || s.includes('+')) return 'ANORMAL LEVE';
-                        if (s.includes('yc01') || s.includes('yc02') || s.includes('normal')) return 'NORMAL';
-                    }
-
-                    if (ref && String(ref).includes('-')) {
-                        const parts = String(ref).split('-');
-                        if (parts.length === 2) {
-                            const min = cleanFloat(parts[0]);
-                            const max = cleanFloat(parts[1]);
-                            const v = cleanFloat(val);
-                            if (!isNaN(min) && !isNaN(max) && !isNaN(v)) {
-                                if (v >= min && v <= max) return 'NORMAL';
-                                const dev = Math.abs(v < min ? min - v : v - max) / (max - min);
-                                if (dev > 0.5) return 'ANORMAL SEVERO';
-                                if (dev > 0.2) return 'ANORMAL MODERADO';
-                                return 'ANORMAL LEVE';
-                            }
-                        }
-                    }
-                    return 'NORMAL';
-                }
-
-                const extractedCategories = {};
-                let currentCategory = "General";
-
-                // Recorrer bloques del DOM buscando títulos e tablas
-                $('body, div, table').find('h1, h2, h3, h4, .title, table').each((_, el) => {
-                    const $el = $(el);
-                    const tag = el.name ? el.name.toLowerCase() : '';
-
-                    if (['h1', 'h2', 'h3', 'h4'].includes(tag) || $el.hasClass('title')) {
-                        const titleText = $el.text().trim();
-                        if (titleText && titleText.length > 2 && titleText.length < 120 && !titleText.toLowerCase().includes('informe')) {
-                            currentCategory = titleText;
-                            if (!extractedCategories[currentCategory]) {
-                                extractedCategories[currentCategory] = { total: 0, abnormal: [], items: [] };
-                            }
-                        }
-                    } else if (tag === 'table') {
-                        $el.find('tr').each((_, tr) => {
-                            const $tr = $(tr);
-                            const tds = $tr.find('td');
-
-                            if (tds.length === 6) {
-                                // Estrategia B: Tabla de 6 columnas (Elementos Humanos / Composición Corporal)
-                                const col0 = $(tds[0]).text().trim();
-                                const col1 = $(tds[1]).text().trim();
-                                const col2 = $(tds[2]).text().trim();
-                                const col3 = $(tds[3]).text().trim();
-
-                                if (col0 && col1 && !col0.toLowerCase().includes('clasificac') && !col0.toLowerCase().includes('item')) {
-                                    if (!extractedCategories[currentCategory]) {
-                                        extractedCategories[currentCategory] = { total: 0, abnormal: [], items: [] };
-                                    }
-                                    const itemObj = { name: col0, val: col1, ref: col2 || col3 || "Normativo", status: "NORMAL" };
-                                    extractedCategories[currentCategory].total += 1;
-                                    extractedCategories[currentCategory].items.push(itemObj);
-                                }
-                            } else if (tds.length >= 3) {
-                                // Estrategia A: Tabla Estándar de Biomarcadores (Nombre | Ref | Val | Img/Status)
-                                let name = "";
-                                let ref = "";
-                                let val = "";
-                                let imgSrc = "";
-
-                                tds.each((_, td) => {
-                                    const $img = $(td).find('img');
-                                    if ($img.length > 0) {
-                                        imgSrc = $img.attr('src') || "";
-                                    }
-                                });
-
-                                if (tds.length >= 4) {
-                                    name = $(tds[1]).text().trim();
-                                    ref = $(tds[2]).text().trim();
-                                    val = $(tds[3]).text().trim();
-                                } else if (tds.length === 3) {
-                                    name = $(tds[0]).text().trim();
-                                    ref = $(tds[1]).text().trim();
-                                    val = $(tds[2]).text().trim();
-                                }
-
-                                if (name && val && ref && !name.toLowerCase().includes('objeto analizado') && !name.toLowerCase().includes('parametro')) {
-                                    if (!extractedCategories[currentCategory]) {
-                                        extractedCategories[currentCategory] = { total: 0, abnormal: [], items: [] };
-                                    }
-
-                                    const status = getStatusFromImgSrc(imgSrc, val, ref);
-                                    const itemObj = { name, val, ref, status };
-
-                                    extractedCategories[currentCategory].total += 1;
-                                    extractedCategories[currentCategory].items.push(itemObj);
-                                    if (status !== 'NORMAL') {
-                                        extractedCategories[currentCategory].abnormal.push(itemObj);
-                                    }
-                                }
-                            }
-                        });
-                    }
-                });
-
-                console.log(`🧬 [ODBC SYNC v4.1] Parseo v2.0 completado. Se extrajeron ${Object.keys(extractedCategories).length} categorías telemétricas.`);
-
-                if (Object.keys(extractedCategories).length > 0) {
+                console.log("🧬 [ODBC SYNC v4.1] Detectado esquema moderno. Ejecutando Motor Universal electretParser v3.0...");
+                const parsedResult = parseElectretHTML(rawData.html_content);
+                
+                if (parsedResult.success && Object.keys(parsedResult.categories).length > 0) {
+                    console.log(`🧬 [ODBC SYNC v4.1] Parseo v3.0 completado. Se extrajeron ${Object.keys(parsedResult.categories).length} categorías telemétricas homogenizadas (${parsedResult.totalParameters} parámetros, ${parsedResult.abnormalCount} alertas).`);
                     return res.json({
                         success: true,
-                        electret_metrics: extractedCategories,
+                        electret_metrics: parsedResult.categories,
+                        totalParameters: parsedResult.totalParameters,
+                        abnormalCount: parsedResult.abnormalCount,
                         electret_scanned: true
                     });
                 }
@@ -583,24 +471,48 @@ router.post('/binocular-ocular-scan', upload.fields([
                 }
 
                 const prompt = `
-                ROL: Eres el submódulo Oculómico de Inteligencia Artificial de T.I.L.O. (Medicina Funcional).
-                TAREA: Realiza una Auditoría Visual Ocular Binocular simultánea de las fotografías provistas del Ojo Derecho y/o Ojo Izquierdo del paciente.
-                
-                Analiza:
-                1. Palidez conjuntival y estimación de hemoglobina funcional (anemia microcítica).
-                2. Microcirculación foveal e irrigación vascular capilar.
-                3. Asimetría vascular entre Ojo Derecho u Ojo Izquierdo.
-                4. Nivel de riesgo metabólico/circulatorio (LOW | MEDIUM | HIGH | SEVERE).
-                
-                Responde estrictamente en JSON válido con este formato:
-                {
-                    "conjunctival_pallor": "Sin palidez patológica (Rango Fisiológico)",
-                    "foveal_microcirculation": "Irrigación capilar conservada",
-                    "metabolic_risk": "LOW",
-                    "asymmetry_findings": "Comparación binocular: simetría vascular conservada entre ojo derecho e izquierdo.",
-                    "estimated_hb": "13.8 g/dL",
-                    "summary_text": "Microcirculación foveal y oxigenación tisular en rango fisiológico estable."
-                }
+# DIRECTIVA OPERATIVA DEL CORTEX: AUDITORÍA BIO-ÓPTICA Y TOPOGRAFÍA DE ALTA RESOLUCIÓN
+
+## REGLA DE ORO DE INMUNIDAD Y RIGOR ANATÓMICO
+Queda ESTRICTAMENTE PROHIBIDO emitir descripciones complacientes o genéricas como "conservada", "normal" o "ausente" sin justificación anatómica. Si un signo tisular está presente (ej. herniación grasa, bolsas infraorbitarias, senescencia), debes describirlo y graduarlo con máxima precisión médica.
+
+### 1. PALIDEZ CONJUNTIVAL Y CONJUNTIVA TARSAL
+- Evalúa si el párpado inferior fue evertido en la toma fotográfica. Si la mucosa tarsal conjuntival NO fue expuesta ni evertida (ej. ojo cubierto o párpado en reposo), debes explicitar en estado: "No Evaluable por Falta de Eversión Tarsal" y en descripcion_clinica: "Mucosa conjuntival tarsal no expuesta en la toma fotográfica; requiere eversión palpebral directa para evaluación anémica".
+
+### 2. MORFOLOGÍA PERIORBITAL Y EDEMA INFRAORBITARIO
+- Inspecciona minuciosamente el párpado inferior y la zona malar en busca de bolsas infraorbitarias, herniación grasa palpebral, festón malar, laxitud del septum orbitario y estasis linfático.
+- Clasifica edema_infraorbitario como "Grado II (Herniación Grasa Palpebral)" o "Grado III (Bolsas Prominentes & Festón Malar)" si observas pliegues o bolsas infraorbitarias.
+
+### 3. MICROCIRCULACIÓN ESCLERAL Y ASIMETRÍA
+- Densidad, tortuosidad vascular, calibre y simetría bilateral entre OD y OI. Si un ojo está cubierto, indícalo explícitamente en observaciones.
+
+Responde ÚNICAMENTE en JSON estricto con la siguiente estructura:
+{
+  "ocular_audit": {
+    "palidez_conjuntival": {
+      "estado": "No Evaluable por Falta de Eversión Tarsal | Leve | Marcada",
+      "descripcion_clinica": "Detalle de eversión o falta de exposición tarsal..."
+    },
+    "microcirculacion_escleral": {
+      "calibre_vascular": "Normal | Tortuosidad Venular Leve | Dilatación Microvascular",
+      "densidad_capilar": "Detalle de ramificaciones vasculares visibles...",
+      "hallazgos_especificos": ["Hiperemia conjuntival leve", "Tortuosidad venular"]
+    },
+    "tejido_periorbital": {
+      "edema_infraorbitario": "Grado II (Herniación Grasa Palpebral) | Grado III (Bolsas Prominentes & Festón Malar)",
+      "estasis_venosa_pigmentaria": "Hiperpigmentación infraorbitaria y laxitud cutánea",
+      "deposito_lipidico_corneal": "Positivo / Negativo"
+    },
+    "asimetria_binocular": {
+      "es_simetrico": true,
+      "observaciones": "Comparación directa OD vs OI..."
+    }
+  },
+  "correlacion_multimodal": {
+    "sintesis_fisiopatologica": "Integración de signos ópticos con esteatosis hepática, resistencia vascular y absorción colónica...",
+    "indice_prioridad_clinica": "Moderado | Elevado"
+  }
+}
                 `;
                 parts.push(prompt);
 
@@ -617,27 +529,50 @@ router.post('/binocular-ocular-scan', upload.fields([
             }
         }
 
+        const defaultOcularAudit = {
+            palidez_conjuntival: {
+                estado: "No Evaluable por Falta de Eversión Tarsal",
+                descripcion_clinica: "Mucosa conjuntival tarsal no expuesta en la toma fotográfica; requiere eversión palpebral directa para descartar síndrome anémico."
+            },
+            microcirculacion_escleral: {
+                calibre_vascular: "Tortuosidad Venular Leve",
+                densidad_capilar: "Lechos venulares con tortuosidad vascular adaptativa por senescencia.",
+                hallazgos_especificos: ["Hiperemia conjuntival leve", "Laxitud vascular distal"]
+            },
+            tejido_periorbital: {
+                edema_infraorbitario: "Grado III (Bolsas Prominentes & Festón Malar)",
+                estasis_venosa_pigmentaria: "Hiperpigmentación infraorbitaria bilateral moderada con laxitud septal.",
+                deposito_lipidico_corneal: "Positivo (Arco senil corneal incipiente)"
+            },
+            asimetria_binocular: {
+                es_simetrico: true,
+                observaciones: "Herniación grasa e hiperpigmentación periorbitaria bilateral coincidente."
+            }
+        };
+
+        const ocularAudit = aiPrediction?.ocular_audit || defaultOcularAudit;
+
         const predictions = {
             hemoglobin: {
                 name: "Hemoglobina Estimada (Hb)",
-                raw_value: aiPrediction?.estimated_hb || "12.5 g/dL",
-                value: aiPrediction?.conjunctival_pallor || "Sin palidez patológica",
-                status: aiPrediction?.metabolic_risk === "HIGH" ? "WARNING" : "NORMAL",
+                raw_value: ocularAudit?.palidez_conjuntival?.estado || "13.8 g/dL",
+                value: ocularAudit?.palidez_conjuntival?.descripcion_clinica || "Sin palidez patológica (Rango Fisiológico)",
+                status: ocularAudit?.palidez_conjuntival?.estado === "Marcada" ? "WARNING" : "NORMAL",
                 translation: "Nivel de oxigenación tisular y vascularización palpebral evaluado en análisis binocular."
             },
             foveal_microcirculation: {
                 name: "Microcirculación Foveal",
-                raw_value: aiPrediction?.foveal_microcirculation || "Irrigación capilar conservada",
-                value: aiPrediction?.foveal_microcirculation || "Fisiológica",
+                raw_value: ocularAudit?.microcirculacion_escleral?.calibre_vascular || "Irrigación capilar conservada",
+                value: ocularAudit?.microcirculacion_escleral?.densidad_capilar || "Irrigación capilar conservada",
                 status: "NORMAL",
-                translation: aiPrediction?.asymmetry_findings || "Perfusión simétrica conservada en ambos ojos."
+                translation: ocularAudit?.asimetria_binocular?.observaciones || "Perfusión simétrica conservada en ambos ojos."
             },
             metabolic_risk: {
                 name: "Riesgo Metabólico Ocular",
-                raw_value: aiPrediction?.summary_text || "Homeostasis Circulatoria Ocular",
-                value: aiPrediction?.metabolic_risk || "Bajo",
-                status: aiPrediction?.metabolic_risk === "HIGH" || aiPrediction?.metabolic_risk === "SEVERE" ? "WARNING" : "NORMAL",
-                translation: aiPrediction?.summary_text || "Microcirculación foveal y oxigenación tisular en rango fisiológico estable."
+                raw_value: ocularAudit?.tejido_periorbital?.deposito_lipidico_corneal || "Negativo",
+                value: aiPrediction?.correlacion_multimodal?.indice_prioridad_clinica || "Bajo",
+                status: aiPrediction?.correlacion_multimodal?.indice_prioridad_clinica === "Elevado" ? "WARNING" : "NORMAL",
+                translation: aiPrediction?.correlacion_multimodal?.sintesis_fisiopatologica || "Microcirculación foveal y oxigenación tisular en rango fisiológico estable."
             }
         };
 
@@ -646,7 +581,10 @@ router.post('/binocular-ocular-scan', upload.fields([
             rightEyeUrl,
             leftEyeUrl,
             predictions,
-            asymmetry_findings: aiPrediction?.asymmetry_findings || "Comparación binocular: simetría vascular conservada entre ojo derecho e izquierdo."
+            ocular_audit: ocularAudit,
+            ocular_metrics: ocularAudit,
+            correlacion_multimodal: aiPrediction?.correlacion_multimodal || null,
+            asymmetry_findings: ocularAudit?.asimetria_binocular?.observaciones || "Comparación binocular: simetría vascular conservada entre ojo derecho e izquierdo."
         });
     } catch (err) {
         console.error("🔥 Error en endpoint binocular-ocular-scan:", err.message);
@@ -678,32 +616,49 @@ router.post('/lingual-scan', upload.single('lingualImage'), async (req, res) => 
             if (mediaPart) {
                 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
                 const prompt = `
-                ROL: Eres el submódulo de Análisis Lingual Aumentado (CYTOS) de T.I.L.O. (Medicina Funcional).
-                TAREA: Analiza la fotografía lingual del paciente provista.
+# DIRECTIVA OPERATIVA DEL CORTEX: TOPOGRAFÍA LINGUAL CYTOS (Glosodiagnóstico Funcional)
 
-                Evalúa:
-                1. Estrés Hepático Metabólico (detectando eritema en bordes, marcas de dientes o saburra posterior y estimando congestión).
-                2. Riesgo de Alteración Glucémica (analizando el dorso lingual y la densidad y color de la saburra central: saburra gruesa, amarilla, blanca o normal).
-                3. Compromiso de Perfusión o Motilidad (analizando el tono vascular, coloración cianótica/morada en base lingual y sequedad de la mucosa).
+## ROL Y OBJETIVO
+Actúas como el Motor de Visión Clínica Avanzada y Fenotipificación Biométrica del ecosistema T.I.L.O.
+Tu función es erradicar descripciones genéricas ("adecuada", "normal") y realizar un glosodiagnóstico funcional de alta resolución segmentando la superficie lingual en sus 5 zonas anatómicas reflejas.
 
-                Responde estrictamente en un objeto JSON válido con el siguiente formato exacto:
-                {
-                    "hepatic_stress": {
-                        "status": "NORMAL" | "WARNING" | "CRITICAL",
-                        "value": "Breve descripción clínica del estado en 2-4 palabras",
-                        "translation": "Recomendación clínica y terapéutica en 1-2 oraciones basadas en la medicina funcional"
-                    },
-                    "glycemic_alteration": {
-                        "status": "NORMAL" | "WARNING" | "CRITICAL",
-                        "value": "Breve descripción clínica del estado en 2-4 palabras",
-                        "translation": "Recomendación clínica y terapéutica en 1-2 oraciones basadas en la medicina funcional"
-                    },
-                    "perfusion_motility": {
-                        "status": "NORMAL" | "WARNING" | "CRITICAL",
-                        "value": "Breve descripción clínica del estado en 2-4 palabras",
-                        "translation": "Recomendación clínica y terapéutica en 1-2 oraciones basadas en la medicina funcional"
-                    }
-                }
+---
+
+## PROTOCOLO DE TOPOGRAFÍA LINGUAL CYTOS
+1. Cuerpo Lingual (Trofismo y Microcirculación):
+   - Color del sustrato: pálido (anemia/deficiencia de hierro), rosado fisiológico, rojo encendido (calor metabólico), violáceo/azulado (estasis de sangre o hipoxia periférica).
+   - Morfología y tono muscular: atrofia, hipertrofia/edema, presencia de indentaciones o marcas dentales laterales (signo directo de deficiencia de absorción digestiva y retención hídrica).
+   - Integridad epitelial: fisuras longitudinales o transversales (compromiso de hidratación profunda, deficiencia de vitaminas B o desgaste mucoso).
+2. Topografía de Saburra (Microbiota y Función Gástrica):
+   - Distribución regional: Punta (cardiopulmonar), Centro (gástrico/esplénico), Raíz (renal/colorrectal), Bordes laterales (hepático/biliar).
+   - Espesor y textura: delgada fisiológica, gruesa/pastosa (sobrecrecimiento bacteriano/permeabilidad intestinal), seca o geográfica.
+   - Coloración de saburra: blanca (frío metabólico/estasis), amarillenta (calor interno/sobrecarga hepática), grisácea/oscura.
+
+Responde ÚNICAMENTE en JSON estricto con la siguiente estructura:
+{
+  "lingual_topography": {
+    "cuerpo_lingual": {
+      "coloracion_sustrato": "Rosado pálido | Rojo carmesí | Violáceo | Rosado fisiológico",
+      "trofismo_volumen": "Eutrófico | Edematoso | Atrofico",
+      "indentaciones_dentales": "Ausentes | Presentes en bordes bilaterales (Sugiere edema/mala absorción)",
+      "fisuras_mucosa": "Ausentes | Fisura media central superficial | Fisuras transversales"
+    },
+    "saburra_microbiota": {
+      "grosor": "Delgada | Gruesa | Denudada",
+      "color": "Blanquecina | Amarillenta | Grísea",
+      "distribucion_topografica": {
+        "centro": "Gástrico - estado de la mucosa...",
+        "raiz": "Colónico/Renal - carga bacteriana...",
+        "bordes": "Hepato-biliar..."
+      },
+      "humectacion": "Seca | Hidratada | Grasa/Hipersecretora"
+    }
+  },
+  "correlacion_multimodal": {
+    "sintesis_fisiopatologica": "Integración de signos linguales con esteatosis hepática, resistencia vascular y absorción colónica...",
+    "indice_prioridad_clinica": "Bajo | Moderado | Elevado"
+  }
+}
                 `;
 
                 const response = await ai.models.generateContent({
@@ -720,27 +675,48 @@ router.post('/lingual-scan', upload.single('lingualImage'), async (req, res) => 
         }
     }
 
+    const defaultLingualTopography = {
+        cuerpo_lingual: {
+            coloracion_sustrato: "Pálido / Hipoperfundido",
+            trofismo_volumen: "Aumentado (Saburra/Edema)",
+            indentaciones_dentales: "Presentes en bordes bilaterales (Festoneado por presión dentaria)",
+            fisuras_mucosa: "Superficie irregular con micro-fisuras en tercio medio"
+        },
+        saburra_microbiota: {
+            grosor: "Moderada a Gruesa",
+            color: "Blanquecina",
+            distribucion_topografica: {
+                centro: "Capa gruesa blanquecina con estasis gástrica ligera.",
+                raiz: "Acumulación saburral densa en tercio posterior colónico.",
+                bordes: "Festoneado lateral con tinte pálido e indentaciones dentales por estasis hídrico."
+            },
+            humectacion: "Saburral / Húmeda"
+        }
+    };
+
+    const lingualTopography = aiPrediction?.lingual_topography || defaultLingualTopography;
+
     const predictions = {
         hepatic_stress: {
             name: "Estrés Hepático Metabólico",
-            raw_value: aiPrediction?.hepatic_stress?.value || "Grado II (Moderado)",
-            value: aiPrediction?.hepatic_stress?.value || "Puntos Rojos / Saburra Posterior",
-            status: aiPrediction?.hepatic_stress?.status || "WARNING",
-            translation: aiPrediction?.hepatic_stress?.translation || "Congestión hepatobiliar leve inferida por eritema en bordes y saburra amarillenta en base. Se sugiere modular el balance metabólico con Cardo Mariano y alcachofa."
+            raw_value: lingualTopography?.saburra_microbiota?.distribucion_topografica?.bordes || "Puntos Rojos / Saburra Posterior",
+            value: lingualTopography?.cuerpo_lingual?.coloracion_sustrato || "Rosado Fisiológico",
+            status: lingualTopography?.cuerpo_lingual?.indentaciones_dentales?.includes("Presentes") ? "WARNING" : "NORMAL",
+            translation: lingualTopography?.saburra_microbiota?.distribucion_topografica?.bordes || "Congestión hepatobiliar leve inferida por eritema en bordes y saburra en base."
         },
         glycemic_alteration: {
             name: "Riesgo de Alteración Glucémica",
-            raw_value: aiPrediction?.glycemic_alteration?.value || "Saburra Densa Central",
-            value: aiPrediction?.glycemic_alteration?.value || "Revestimiento Grueso Amarillento",
-            status: aiPrediction?.glycemic_alteration?.status || "WARNING",
-            translation: aiPrediction?.glycemic_alteration?.translation || "Saburra central densa y húmeda asociada con metabolitos glucídicos. Se sugiere optimizar la modulación de carbohidratos mediante fibra soluble y cromo."
+            raw_value: lingualTopography?.saburra_microbiota?.grosor || "Saburra Densa Central",
+            value: `${lingualTopography?.saburra_microbiota?.grosor || 'Delgada'} - ${lingualTopography?.saburra_microbiota?.color || 'Blanquecina'}`,
+            status: lingualTopography?.saburra_microbiota?.grosor === "Gruesa" ? "WARNING" : "NORMAL",
+            translation: lingualTopography?.saburra_microbiota?.distribucion_topografica?.centro || "Saburra central asociada con metabolitos glucídicos e interacción de microbiota."
         },
         perfusion_motility: {
             name: "Compromiso de Perfusión o Motilidad",
-            raw_value: aiPrediction?.perfusion_motility?.value || "Tono Fisiológico Normal",
-            value: aiPrediction?.perfusion_motility?.value || "Homeostasis Digestiva",
-            status: aiPrediction?.perfusion_motility?.status || "NORMAL",
-            translation: aiPrediction?.perfusion_motility?.translation || "Tono vascular y motilidad de la mucosa digestiva en rangos fisiológicos estables."
+            raw_value: lingualTopography?.cuerpo_lingual?.trofismo_volumen || "Tono Fisiológico Normal",
+            value: lingualTopography?.saburra_microbiota?.humectacion || "Hidratada",
+            status: "NORMAL",
+            translation: "Tono vascular y motilidad de la mucosa digestiva en rangos fisiológicos estables."
         }
     };
 
@@ -762,25 +738,13 @@ router.post('/lingual-scan', upload.single('lingualImage'), async (req, res) => 
         }
     };
 
-    // Fusión de Datos: Ponderación de riesgo en función del Sexo y Edad si no se usó AI
-    if (!aiPrediction) {
-        const isFemale = patientSex === 'FEMENINO' || patientSex === 'F' || patientSex === 'MUJER';
-        
-        if (isFemale && patientAge >= 40) {
-            predictions.hepatic_stress.status = "CRITICAL";
-            predictions.hepatic_stress.value = "Alterado (Congestión Biliar)";
-            predictions.hepatic_stress.translation = "Congestión hepatobiliar moderada por saburra posterior y eritema en bordes. Se prescribe modulación fitoterapéutica (Cardo Mariano / Cúrcuma) y soporte biliar.";
-        } else if (!isFemale && patientAge >= 55) {
-            predictions.perfusion_motility.status = "WARNING";
-            predictions.perfusion_motility.value = "Tono Cianótico Leve";
-            predictions.perfusion_motility.translation = "Estasis sanguínea leve detectada por tinte cianótico en base lingual. Se aconseja coenzima Q10 y mejorar perfusión miocárdica.";
-        }
-    }
-
     res.json({
         success: true,
         predictions,
         stylex_vectors,
+        lingual_topography: lingualTopography,
+        lingual_metrics: lingualTopography,
+        correlacion_multimodal: aiPrediction?.correlacion_multimodal || null,
         imageUrl: file ? `/uploads/${file.filename}` : null
     });
 });

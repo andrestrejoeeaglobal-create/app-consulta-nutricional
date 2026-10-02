@@ -18,6 +18,9 @@
       "temp_*.json",
       "**/temp_*.json",
       "*.sqlite*",
+      "database.sqlite",
+      "database.sqlite-journal",
+      "**/database.sqlite*",
       "*.db*"
     ]
   },

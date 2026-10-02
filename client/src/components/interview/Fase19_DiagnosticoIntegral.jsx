@@ -278,6 +278,7 @@ export default function Fase19_DiagnosticoIntegral({
 
         setIsAnalyzing(true);
         setDossierState('idle');
+        setErrorMessage('');
 
         setTimeout(async () => {
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -521,6 +522,27 @@ export default function Fase19_DiagnosticoIntegral({
                                     <span className="w-1.5 h-1.5 bg-[#1C75BC] rounded-full animate-bounce [animation-delay:0.4s]"></span>
                                 </span>
                                 🧠 Motor CORTEX v2.0 procesando expediente clínico...
+                            </div>
+                        </div>
+                    )}
+                    {errorMessage && !isAnalyzing && (
+                        <div className="flex justify-start items-start gap-3 animate-in fade-in">
+                            <div className="w-9 h-9 rounded-full bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0">
+                                <AlertTriangle className="w-5 h-5 text-red-600" />
+                            </div>
+                            <div className="bg-red-50 text-red-800 rounded-2xl rounded-tl-none p-4 border border-red-200 text-xs space-y-2 max-w-[85%]">
+                                <p className="font-bold">⚠️ Error en Procesamiento CORTEX:</p>
+                                <p>{errorMessage}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setErrorMessage('');
+                                        triggerSynthesis(additionalSymptoms || "Sin síntomas adicionales");
+                                    }}
+                                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-[11px] transition-colors cursor-pointer"
+                                >
+                                    🔄 Reintentar Síntesis
+                                </button>
                             </div>
                         </div>
                     )}

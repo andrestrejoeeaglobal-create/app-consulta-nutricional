@@ -2,7 +2,8 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 
-const db = new Database('database.sqlite', { verbose: console.log });
+const dbPath = path.join(__dirname, 'database.sqlite');
+const db = new Database(dbPath, { verbose: console.log });
 db.pragma('foreign_keys = ON');
 
 // Asegurar que existe la tabla session_persistence para auto-save sin alterar codigos_postales

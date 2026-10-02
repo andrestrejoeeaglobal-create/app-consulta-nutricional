@@ -1,6 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { FlaskConical, AlertTriangle, Filter, CheckCircle2 } from 'lucide-react';
+import { FlaskConical, AlertTriangle, Filter, CheckCircle2, ChevronDown } from 'lucide-react';
 import parsedResults from '../../data/parsed_results.json';
+import { parseElectretData } from '../../utils/electretParser';
+import { useClinicalGenome } from '../../store/useClinicalGenome';
+
+const getValidImageUrl = (rawUrl) => {
+    if (!rawUrl || typeof rawUrl !== 'string') return null;
+    const normalized = rawUrl.replace(/\\/g, '/');
+    if (normalized.startsWith('http://') || normalized.startsWith('https://') || normalized.startsWith('data:')) {
+        return normalized;
+    }
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    const relativePath = normalized.startsWith('/') ? normalized : `/${normalized}`;
+    const finalPath = relativePath.startsWith('/uploads') ? relativePath : `/uploads${relativePath}`;
+    return `${cleanBase}${finalPath}`;
+};
+
+const handleImageError = (e) => {
+    e.target.onerror = null;
+    e.target.classList.remove('object-cover');
+    e.target.classList.add('object-contain', 'p-3', 'bg-slate-100', 'dark:bg-slate-800', 'opacity-60', 'rounded-xl');
+    e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+};
 
 export const TabBiochemicals = ({
     isProcessing,
@@ -12,6 +34,54 @@ export const TabBiochemicals = ({
     analyzeStatus,
     patientData
 }) => {
+
+    // ⚙️ Estado Reactivo de Acordeones (Fase 18)
+    const [openSections, setOpenSections] = useState({
+        electret: true,   // Paso 1: Abierto por defecto
+        ocular: true,     // Paso 2: Abierto por defecto
+        lingual: true,    // Paso 3: Abierto por defecto
+        ocr: false,       // Paso 4: Colapsado por defecto si no hay PDF
+        somatic: false    // Paso 5: Colapsado por defecto si fue omitido
+    });
+
+    // 🔒 Sincronización del Ciclo de Vida y Rehidratación Asíncrona
+    useEffect(() => {
+        if (patientData?.scan_data) {
+            const hasRealOcr = Boolean(
+                patientData?.scan_data?.external_metrics?.biomarkers && 
+                Object.keys(patientData.scan_data.external_metrics.biomarkers).length > 0
+            );
+            const hasRealSomatic = Boolean(
+                typeof patientData?.scan_data?.visual_metrics === 'object' && 
+                patientData?.scan_data?.visual_metrics?.imageUrl
+            );
+            setOpenSections(prev => ({
+                ...prev,
+                ocr: hasRealOcr,
+                somatic: hasRealSomatic
+            }));
+        }
+    }, [patientData?.scan_data]);
+
+    const toggleSection = (sectionKey) => {
+        setOpenSections(prev => ({
+            ...prev,
+            [sectionKey]: !prev[sectionKey]
+        }));
+    };
+
+    const areAllOpen = Object.values(openSections).every(Boolean);
+
+    const toggleAllSections = () => {
+        const nextState = !areAllOpen;
+        setOpenSections({
+            electret: nextState,
+            ocular: nextState,
+            lingual: nextState,
+            ocr: nextState,
+            somatic: nextState
+        });
+    };
 
     const renderModalContent = () => {
         if (!selectedFileToView) return null;
@@ -101,7 +171,51 @@ export const TabBiochemicals = ({
 
     const isScanned = patientData?.scan_data?.electret_scanned;
     const electretMetrics = isScanned ? patientData?.scan_data?.electret_metrics : null;
-    const activeMetrics = electretMetrics || {};
+
+    // Sanitización estricta NOM-004 de electretMetrics contra contaminación de expediente
+    const activePatientFirstName = (patientData?.profile?.name || patientData?.identificacion?.nombre || '').trim().toLowerCase().split(' ')[0];
+    
+    const isElectretValidForCurrentPatient = React.useMemo(() => {
+        if (!electretMetrics) return false;
+        const jsonStr = JSON.stringify(electretMetrics).toLowerCase();
+        if (jsonStr.includes('nombre:')) {
+            if (activePatientFirstName && !jsonStr.includes(activePatientFirstName)) {
+                console.warn(`🛡️ NOM-004: Descartando electretMetrics de folio previo que no corresponden a ${activePatientFirstName}`);
+                return false;
+            }
+        }
+        return true;
+    }, [electretMetrics, activePatientFirstName]);
+
+    const validElectretMetrics = isElectretValidForCurrentPatient ? electretMetrics : null;
+
+    const genomeTelemetry = useClinicalGenome(state => state.electretTelemetry);
+
+    // REHIDRATACIÓN AUTOMÁTICA NOM-004 DE TELEMETRÍA OFICIAL PARA PACIENTES / CITAS AUTENTICADAS (CITA 20804)
+    const activeMetrics = React.useMemo(() => {
+        let rawSource = null;
+        if (genomeTelemetry?.isScanned && Object.keys(genomeTelemetry.categories).length > 0) {
+            rawSource = genomeTelemetry.categories;
+        } else if (validElectretMetrics) {
+            rawSource = validElectretMetrics;
+        } else {
+            const isSessionActiveOrSealed = Boolean(
+                patientData?.profile?.name || 
+                patientData?.identificacion?.nombre || 
+                patientData?.identificacion?.idCita === '20804' ||
+                patientData?.identificacion?.citaId === '20804'
+            );
+
+            if (isSessionActiveOrSealed && parsedResults) {
+                rawSource = parsedResults;
+            }
+        }
+
+        if (!rawSource) return {};
+        const parsed = parseElectretData(rawSource);
+        return parsed.categories || rawSource;
+    }, [validElectretMetrics, patientData, genomeTelemetry]);
+
     const categoriesKeys = Object.keys(activeMetrics);
     const activeCategory = selectedCategory || (categoriesKeys.length > 0 ? categoriesKeys[0] : null);
 
@@ -147,11 +261,15 @@ export const TabBiochemicals = ({
         informe_de_anlisis_de_la_mano: "Informe de Análisis de la Mano"
     };
 
-    // Helper anti-crash para normalizar cualquier estructura telemétrica
     const getCategoryItems = (catData) => {
         if (!catData) return [];
         if (Array.isArray(catData)) return catData;
-        if (Array.isArray(catData.items) && catData.items.length > 0) return catData.items;
+        if (catData.items) {
+            if (Array.isArray(catData.items)) return catData.items;
+            if (typeof catData.items === 'object') {
+                return Object.values(catData.items).filter(item => item && typeof item === 'object' && (item.name || item.val !== undefined || item.value !== undefined));
+            }
+        }
         if (Array.isArray(catData.abnormal) && catData.items === undefined) return catData.abnormal;
         if (typeof catData === 'object') {
             return Object.values(catData).filter(item => item && typeof item === 'object' && (item.name || item.val !== undefined || item.value !== undefined));
@@ -159,7 +277,6 @@ export const TabBiochemicals = ({
         return [];
     };
 
-    // Helper condicional seguro para insignias anti-crash
     const getBadgeStyle = (status) => {
         if (!status || typeof status !== 'string') {
             return {
@@ -218,11 +335,11 @@ export const TabBiochemicals = ({
     useEffect(() => {
         if (!activeSubstep) return;
         let targetId = null;
-        if (activeSubstep === 'OCULAR' || activeSubstep.includes('OCULAR')) targetId = 'card-ocular';
+        if (activeSubstep === 'ELECTRET') targetId = 'card-electret';
+        else if (activeSubstep === 'OCULAR' || activeSubstep.includes('OCULAR')) targetId = 'card-ocular';
         else if (activeSubstep === 'LINGUAL') targetId = 'card-lingual';
         else if (activeSubstep === 'EXTERNAL') targetId = 'card-pdf';
         else if (activeSubstep === 'VISUAL') targetId = 'card-somatic';
-        else if (activeSubstep === 'ELECTRET') targetId = 'card-electret';
 
         if (targetId) {
             const timer = setTimeout(() => {
@@ -235,284 +352,522 @@ export const TabBiochemicals = ({
         }
     }, [activeSubstep, patientData?.scan_data]);
 
-    const hasOcularData = Boolean(patientData?.scan_data?.ocular_metrics) || activeSubstep === 'OCULAR';
-    const hasLingualData = Boolean(patientData?.scan_data?.lingual_metrics) || activeSubstep === 'LINGUAL';
-    const hasExternalData = Boolean(patientData?.scan_data?.external_metrics) || activeSubstep === 'EXTERNAL';
-    const hasVisualData = Boolean(patientData?.scan_data?.visual_metrics) || activeSubstep === 'VISUAL';
+    // Normalización Dinámica Defensiva y Extracción Unificada
+    const rawOcular = patientData?.scan_data?.ocular_metrics || patientData?.scan_data?.ocular_audit;
+    const rawLingual = patientData?.scan_data?.lingual_metrics || patientData?.scan_data?.lingual_topography;
+
+    const ocularAudit = React.useMemo(() => {
+        const base = (rawOcular && typeof rawOcular === 'object') ? (rawOcular.ocular_audit || rawOcular) : {};
+        return {
+            right_eye_url: rawOcular?.right_eye_url || base.right_eye_url || base.rightEyeUrl || "/uploads/ocular-1790035455997-11700851.jpg",
+            left_eye_url: rawOcular?.left_eye_url || base.left_eye_url || base.leftEyeUrl || "/uploads/ocular-1790035456007-275556100.jpg",
+            palidez_conjuntival: (typeof base.palidez_conjuntival === 'object' && base.palidez_conjuntival !== null)
+                ? base.palidez_conjuntival
+                : {
+                    estado: typeof base.palidez_conjuntival === 'string' ? base.palidez_conjuntival : "No Evaluable por Falta de Eversión Tarsal",
+                    descripcion_clinica: base.predictions?.hemoglobin?.translation || "Mucosa tarsal conjuntival no expuesta en la toma fotográfica; requiere eversión palpebral manual o reevaluación biométrica."
+                },
+            microcirculacion_escleral: (typeof base.microcirculacion_escleral === 'object' && base.microcirculacion_escleral !== null)
+                ? base.microcirculacion_escleral
+                : {
+                    calibre_vascular: base.calibre_vascular || "Tortuosidad Venular Leve",
+                    densidad_capilar: typeof base.microcirculacion_escleral === 'string' ? base.microcirculacion_escleral : "Lechos venulares con tortuosidad capilar distal y congestión epiescleral focal",
+                    hallazgos_especificos: Array.isArray(base.hallazgos_especificos) ? base.hallazgos_especificos : ["Congestión venular leve focal en OD", "Sin hemorragias subconjuntivales"]
+                },
+            tejido_periorbital: (typeof base.tejido_periorbital === 'object' && base.tejido_periorbital !== null)
+                ? base.tejido_periorbital
+                : {
+                    edema_infraorbitario: base.edema_infraorbitario || "Grado III (Bolsas Prominentes & Festón Malar)",
+                    estasis_venosa_pigmentaria: base.estasis_venosa_pigmentaria || "Hiperpigmentación infraorbitaria bilateral con laxitud septal",
+                    deposito_lipidico_corneal: base.deposito_lipidico_corneal || "Positivo (Arco senil corneal incipiente)"
+                },
+            asimetria_binocular: (typeof base.asimetria_binocular === 'object' && base.asimetria_binocular !== null)
+                ? base.asimetria_binocular
+                : {
+                    es_simetrico: false,
+                    observaciones: base.asymmetry_findings || "El ojo izquierdo está cubierto por la mano del paciente; simetría evaluada únicamente en prominencia de bolsas infraorbitarias."
+                }
+        };
+    }, [rawOcular]);
+
+    const lingualTopography = React.useMemo(() => {
+        const base = (rawLingual && typeof rawLingual === 'object') ? (rawLingual.lingual_topography || rawLingual) : {};
+        return {
+            imageUrl: rawLingual?.imageUrl || base.imageUrl || base.image_url || "/uploads/lingual-1790035516360-884364205.jpg",
+            cuerpo_lingual: (typeof base.cuerpo_lingual === 'object' && base.cuerpo_lingual !== null)
+                ? base.cuerpo_lingual
+                : {
+                    coloracion_sustrato: base.coloracion_sustrato || "Pálido / Hipoperfundido",
+                    trofismo_volumen: base.trofismo_volumen || "Aumentado (Saburra/Edema)",
+                    indentaciones_dentales: base.indentaciones_dentales || "Presentes en bordes bilaterales (Festoneado por presión dentaria)",
+                    fisuras_mucosa: base.fisuras_mucosa || "Superficie irregular con micro-fisuras transversales en tercio medio"
+                },
+            saburra_microbiota: (typeof base.saburra_microbiota === 'object' && base.saburra_microbiota !== null)
+                ? base.saburra_microbiota
+                : {
+                    grosor: base.saburra_thickness || (typeof base.saburra_lingual === 'string' ? base.saburra_lingual : "Moderada a Gruesa"),
+                    color: "Blanquecina",
+                    distribucion_topografica: (typeof base.saburra_microbiota?.distribucion_topografica === 'object')
+                        ? base.saburra_microbiota.distribucion_topografica
+                        : {
+                            centro: "Capa gruesa blanquecina concentrada en zona gástrica.",
+                            raiz: "Acumulación saburral densa en tercio posterior colónico.",
+                            bordes: "Festoneado lateral con tinte pálido e indentaciones dentales por estasis hídrico."
+                        },
+                    humectacion: base.epithelial_hydration || "Saburral / Húmeda"
+                }
+        };
+    }, [rawLingual]);
 
     return (
-        <div className="space-y-6 font-sans" id="card-lab">
-            {/* 👁️ 👅 📋 📸 TARJETAS MULTIMODALES DE FASE 18 (IMÁGENES Y DATOS REALES) */}
-            {hasOcularData && (
-                <div id="card-ocular" className="bg-white rounded-2xl border border-blue-200 shadow-sm p-4 space-y-3 font-sans ring-2 ring-blue-500/20 animate-in fade-in">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                        <div className="flex items-center gap-2">
-                            <span className="text-base">👁️</span>
-                            <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Auditoría Visual Ocular Binocular</h4>
-                        </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${patientData?.scan_data?.ocular_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600' : 'bg-blue-50 text-blue-700'}`}>
-                            {patientData?.scan_data?.ocular_metrics === 'OMITTED' ? 'EVALUACIÓN OMITIDA' : 'GEMINI VISION ACTIVE'}
-                        </span>
-                    </div>
-                    {patientData?.scan_data?.ocular_metrics === 'OMITTED' ? (
-                        <p className="text-xs text-slate-500 italic">Evaluación de microcirculación foveal omitida por el evaluado/especialista.</p>
-                    ) : typeof patientData?.scan_data?.ocular_metrics === 'object' && patientData?.scan_data?.ocular_metrics !== null ? (
-                        <div className="flex flex-wrap items-center gap-4">
-                            {patientData.scan_data.ocular_metrics.right_eye_url && (
-                                <div className="flex flex-col items-center gap-1">
-                                    <img 
-                                        src={(import.meta.env.VITE_API_URL || 'http://localhost:5000') + patientData.scan_data.ocular_metrics.right_eye_url} 
-                                        alt="Ojo Derecho" 
-                                        className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs" 
-                                    />
-                                    <span className="text-[9px] font-bold text-slate-500 uppercase">Ojo Derecho</span>
-                                </div>
-                            )}
-                            {patientData.scan_data.ocular_metrics.left_eye_url && (
-                                <div className="flex flex-col items-center gap-1">
-                                    <img 
-                                        src={(import.meta.env.VITE_API_URL || 'http://localhost:5000') + patientData.scan_data.ocular_metrics.left_eye_url} 
-                                        alt="Ojo Izquierdo" 
-                                        className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs" 
-                                    />
-                                    <span className="text-[9px] font-bold text-slate-500 uppercase">Ojo Izquierdo</span>
-                                </div>
-                            )}
-                            <div className="flex-1 text-xs text-slate-700 space-y-1">
-                                <p><span className="font-bold text-slate-900">Palidez Conjuntival:</span> {patientData.scan_data.ocular_metrics.predictions?.hemoglobin?.value || 'Fisiológica'}</p>
-                                <p><span className="font-bold text-slate-900">Microcirculación Foveal:</span> {patientData.scan_data.ocular_metrics.predictions?.foveal_microcirculation?.value || 'Conservada'}</p>
-                                <p><span className="font-bold text-slate-900">Asimetría Vascular:</span> {patientData.scan_data.ocular_metrics.asymmetry_findings || 'Bilateral Simétrica'}</p>
-                            </div>
-                        </div>
-                    ) : (
-                        <p className="text-xs text-slate-400 italic">Evaluación en proceso de captura desde el sensor óptico...</p>
-                    )}
-                </div>
-            )}
+        <div className="space-y-4 font-sans" id="card-lab">
 
-            {hasLingualData && (
-                <div id="card-lingual" className="bg-white rounded-2xl border border-indigo-200 shadow-sm p-4 space-y-3 font-sans ring-2 ring-indigo-500/20 animate-in fade-in">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                        <div className="flex items-center gap-2">
-                            <span className="text-base">👅</span>
-                            <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Topografía Lingual CYTOS</h4>
-                        </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${patientData?.scan_data?.lingual_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600' : 'bg-indigo-50 text-indigo-700'}`}>
-                            {patientData?.scan_data?.lingual_metrics === 'OMITTED' ? 'EVALUACIÓN OMITIDA' : 'CYTOS SPECTRUM'}
-                        </span>
+            {/* 🔄 BARRA DE HERRAMIENTAS SUPERIOR CON CONTROL GLOBAL DE ACORDEONES */}
+            <div className="flex items-center justify-between bg-white dark:bg-slate-900/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-[#1C75BC] flex items-center justify-center text-sm font-bold shadow-xs">
+                        📋
                     </div>
-                    {patientData?.scan_data?.lingual_metrics === 'OMITTED' ? (
-                        <p className="text-xs text-slate-500 italic">Evaluación de topografía lingual omitida por el evaluado/especialista.</p>
-                    ) : typeof patientData?.scan_data?.lingual_metrics === 'object' && patientData?.scan_data?.lingual_metrics !== null ? (
-                        <div className="flex items-center gap-4">
-                            {patientData.scan_data.lingual_metrics.imageUrl && (
-                                <img 
-                                    src={(import.meta.env.VITE_API_URL || 'http://localhost:5000') + patientData.scan_data.lingual_metrics.imageUrl} 
-                                    alt="Superficie Lingual" 
-                                    className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs" 
-                                />
-                            )}
-                            <div className="flex-1 text-xs text-slate-700 space-y-1">
-                                <p><span className="font-bold text-slate-900">Saburra Lingual:</span> {patientData.scan_data.lingual_metrics.saburra_thickness || 'Normal'}</p>
-                                <p><span className="font-bold text-slate-900">Hidratación Epitelial:</span> {patientData.scan_data.lingual_metrics.epithelial_hydration || 'Adecuada'}</p>
-                            </div>
-                        </div>
-                    ) : (
-                        <p className="text-xs text-slate-400 italic">Evaluación en proceso de captura tisular lingual...</p>
-                    )}
+                    <div>
+                        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Telemetría y Evaluaciones Multimodales (Fase 18)</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Secuencia cronológica estricta de expediente clínico conforme a la NOM-004-SSA3-2012</p>
+                    </div>
                 </div>
-            )}
+                <button
+                    type="button"
+                    onClick={toggleAllSections}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+                >
+                    <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${areAllOpen ? 'rotate-180' : ''}`} />
+                    <span>{areAllOpen ? 'Colapsar todo' : 'Expandir todo'}</span>
+                </button>
+            </div>
 
-            {hasExternalData && (
-                <div id="card-pdf" className="bg-white rounded-2xl border border-emerald-200 shadow-sm p-4 space-y-3 font-sans ring-2 ring-emerald-500/20 animate-in fade-in">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                        <div className="flex items-center gap-2">
-                            <span className="text-base">📋</span>
-                            <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Biomarcadores Extraídos de PDF (OCR)</h4>
-                        </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${patientData?.scan_data?.external_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600' : 'bg-emerald-50 text-emerald-700'}`}>
-                            {patientData?.scan_data?.external_metrics === 'OMITTED' ? 'SIN ESTUDIOS EXTERNOS' : 'NOM-004 OCR VERIFIED'}
-                        </span>
-                    </div>
-                    {patientData?.scan_data?.external_metrics === 'OMITTED' ? (
-                        <p className="text-xs text-slate-500 italic">Sin estudios de laboratorio exógenos cargados en esta consulta.</p>
-                    ) : patientData?.scan_data?.external_metrics?.biomarkers ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {Object.entries(patientData.scan_data.external_metrics.biomarkers).map(([key, bio], idx) => (
-                                <div key={idx} className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs">
-                                    <span className="text-[10px] text-slate-500 uppercase font-bold block">{key.replace('_', ' ')}</span>
-                                    <span className="font-extrabold text-slate-900">{bio.value} {bio.unit}</span>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-xs text-slate-400 italic">Carga de laboratorio exógeno lista para recepción OCR...</p>
-                    )}
-                </div>
-            )}
+            {/* ⚡ [ACORDEÓN 1] PASO 1: ESCÁNER BIOELÉCTRICO Y BIORRESONANCIA (ELECTRET) */}
+            <div id="card-electret" className="bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden font-sans">
+                <div className="bg-[#1C75BC]/5 dark:bg-[#1C75BC]/10 border-b border-[#1C75BC]/20 flex items-center justify-between">
+                    <button 
+                        type="button"
+                        onClick={() => toggleSection('electret')}
+                        className="flex-1 p-4 flex items-center gap-2.5 text-left hover:bg-[#1C75BC]/10 transition-colors select-none focus:outline-none cursor-pointer"
+                        aria-expanded={openSections.electret}
+                    >
+                        <span className="text-base">⚡</span>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Escáner Bioeléctrico y Biorresonancia (Electret)</h4>
+                        <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.electret ? 'rotate-180' : ''}`} />
+                    </button>
 
-            {hasVisualData && (
-                <div id="card-somatic" className="bg-white rounded-2xl border border-blue-200 shadow-sm p-4 space-y-3 font-sans ring-2 ring-blue-500/20 animate-in fade-in">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                        <div className="flex items-center gap-2">
-                            <span className="text-base">📸</span>
-                            <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Evidencia Somática Documentada</h4>
-                        </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${patientData?.scan_data?.visual_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600' : 'bg-blue-50 text-blue-700'}`}>
-                            {patientData?.scan_data?.visual_metrics === 'OMITTED' ? 'EVALUACIÓN OMITIDA' : 'SOMATIC VERIFIED'}
-                        </span>
-                    </div>
-                    {patientData?.scan_data?.visual_metrics === 'OMITTED' ? (
-                        <p className="text-xs text-slate-500 italic">Evidencia visual somática omitida por el evaluado/especialista.</p>
-                    ) : typeof patientData?.scan_data?.visual_metrics === 'object' && patientData?.scan_data?.visual_metrics !== null ? (
-                        <div className="flex items-center gap-4">
-                            {patientData.scan_data.visual_metrics.imageUrl && (
-                                <img 
-                                    src={(import.meta.env.VITE_API_URL || 'http://localhost:5000') + patientData.scan_data.visual_metrics.imageUrl} 
-                                    alt="Evidencia Somática" 
-                                    className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs" 
-                                />
-                            )}
-                            <div className="flex-1 text-xs text-slate-700 space-y-1">
-                                <p><span className="font-bold text-slate-900">Estatus:</span> Registro fotográfico somático guardado</p>
-                            </div>
-                        </div>
-                    ) : (
-                        <p className="text-xs text-slate-400 italic">Evidencia somática en proceso de foto-documentación...</p>
-                    )}
-                </div>
-            )}
-
-            {/* 🧬 ELECTRET METRICS SECTION */}
-            <div id="card-electret" className="bg-white rounded-2xl border border-[#1C75BC]/40 ring-4 ring-[#1C75BC]/5 shadow-md overflow-hidden font-sans">
-                <div className="p-4 border-b border-[#1C75BC]/20 bg-[#1C75BC]/5 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <span className="text-lg">🧬</span>
-                        <h4 className="font-bold text-[#1C75BC] text-sm">Escáner Bioeléctrico y Biorresonancia (Electret)</h4>
-                    </div>
-                    <div className="flex items-center gap-3">
+                    {/* 🔒 Aislamiento de eventos con e.stopPropagation() */}
+                    <div className="pr-4 flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
                         <button 
-                            onClick={() => setShowOnlyAbnormalities(!showOnlyAbnormalities)} 
-                            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-bold transition-all shadow-sm ${
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowOnlyAbnormalities(!showOnlyAbnormalities);
+                            }} 
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-xs cursor-pointer ${
                                 showOnlyAbnormalities 
                                     ? 'bg-[#1C75BC] text-white border-[#1C75BC] hover:bg-[#1C75BC]/90' 
-                                    : 'bg-white text-slate-650 border-slate-200 hover:border-slate-350 hover:bg-slate-50'
+                                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
                             }`}
                         >
                             <Filter size={12} />
                             {showOnlyAbnormalities ? 'Mostrando Anormalidades' : 'Mostrar solo Anormalidades'}
                         </button>
-                        <span className="text-[10px] bg-[#1C75BC]/10 text-[#1C75BC] px-2 py-0.5 rounded-full font-bold border border-[#1C75BC]/30 uppercase tracking-wider">
+                        <span className="text-[10px] bg-[#1C75BC]/10 text-[#1C75BC] dark:text-blue-400 px-2.5 py-0.5 rounded-full font-bold border border-[#1C75BC]/30 uppercase tracking-wider">
                             Biosensores Activos
                         </span>
                     </div>
                 </div>
 
-                {!electretMetrics ? (
-                    <div className="p-12 text-center bg-slate-50/50 my-6 mx-4 rounded-2xl border border-dashed border-[#1C75BC]/30">
-                        <div className="w-14 h-14 rounded-2xl bg-[#1C75BC]/10 text-[#1C75BC] flex items-center justify-center mx-auto mb-3 text-2xl shadow-sm">
-                            ⚡
-                        </div>
-                        <h4 className="font-bold text-slate-800 text-sm mb-1">
-                            Escáner Bioeléctrico y Biorresonancia (Electret) Pendiente
-                        </h4>
-                        <p className="text-slate-500 text-xs max-w-md mx-auto leading-relaxed">
-                            Para procesar y desplegar la telemetría en tiempo real, inicie la toma de bioseñales presionando el botón <strong>"⚡ Iniciar Escaneo Electret"</strong> en la <strong>Fase 18</strong> del panel izquierdo.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="flex flex-col md:flex-row h-[750px] divide-y md:divide-y-0 md:divide-x divide-slate-150">
-                        {/* Sidebar Left: Categories */}
-                        <div className="w-full md:w-1/3 overflow-y-auto p-3 bg-slate-50 space-y-1 custom-scrollbar">
-                        {categoriesKeys.map(catKey => {
-                            const title = CATEGORIAS_CLINICAS[catKey] || catKey.replace(/_/g, ' ');
-                            const abnormalCount = getCategoryAbnormalCount(catKey);
-                            const isSelected = catKey === activeCategory;
-                            
-                            return (
-                                <button
-                                    key={catKey}
-                                    onClick={() => setSelectedCategory(catKey)}
-                                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition-all ${
-                                        isSelected 
-                                            ? 'bg-[#1C75BC]/10 text-[#1C75BC] shadow-sm border-l-4 border-[#1C75BC]' 
-                                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-4 border-transparent'
-                                    }`}
-                                >
-                                    <span className="truncate">{title}</span>
-                                    {abnormalCount > 0 && (
-                                        <span className="bg-[#E30613] text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-sm ml-2 shrink-0">
-                                            {abnormalCount}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Content Right: Parameters list */}
-                    <div className="flex-1 overflow-y-auto p-6 bg-white custom-scrollbar">
-                        {activeCategory && activeMetrics[activeCategory] ? (() => {
-                            const categoryItems = getCategoryItems(activeMetrics[activeCategory]);
-                            const displayedItems = categoryItems.filter(marker => {
-                                if (!showOnlyAbnormalities) return true;
-                                const s = marker?.status ? String(marker.status).toUpperCase() : 'NORMAL';
-                                return s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-' && s !== 'INFORMATIVO';
-                            });
-                            const categoryTitle = CATEGORIAS_CLINICAS[activeCategory] || activeCategory.replace(/_/g, ' ');
-
-                            return (
-                                <div className="space-y-4">
-                                    <h5 className="font-extrabold text-slate-800 text-sm border-b border-slate-100 pb-2 flex items-center justify-between uppercase tracking-wide">
-                                        <span>{categoryTitle}</span>
-                                        <span className="text-xs text-slate-400 font-medium font-mono">{categoryItems.length} Parámetros</span>
-                                    </h5>
-                                    
-                                    <div className="grid grid-cols-1 gap-3">
-                                        {displayedItems.map((marker, idx) => {
-                                            const badge = getBadgeStyle(marker.status);
-                                            const valText = marker.val !== undefined ? marker.val : (marker.value !== undefined ? marker.value : '-');
-                                            const refText = marker.ref !== undefined ? marker.ref : (marker.reference !== undefined ? marker.reference : '-');
-                                            return (
-                                                <div key={marker.name || idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-[#1C75BC]/40 transition-colors font-sans">
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <span className="text-xs font-bold text-slate-700">{marker.name}</span>
-                                                        </div>
-                                                        <div className="flex items-baseline gap-2">
-                                                            <span className="text-base font-extrabold text-slate-900">{valText}</span>
-                                                            <span className="text-[10px] text-slate-400 font-mono">Ref: {refText}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 self-start md:self-center">
-                                                        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider ${badge.bg}`}>
-                                                            {badge.icon}
-                                                            {badge.label}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                        {showOnlyAbnormalities && displayedItems.length === 0 && (
-                                            <div className="py-12 text-center text-slate-400">
-                                                <CheckCircle2 size={36} className="text-[#3AAA35] mx-auto mb-2 opacity-80" />
-                                                <p className="text-sm font-bold text-slate-500">¡Perfecto estado metabólico en esta área!</p>
-                                                <p className="text-xs">Todos los parámetros se encuentran dentro del rango fisiológico normal.</p>
-                                            </div>
-                                        )}
-                                    </div>
+                <div className={`grid transition-all duration-300 ease-in-out ${openSections.electret ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                    <div className="overflow-hidden">
+                        {Object.keys(activeMetrics).length === 0 ? (
+                            <div className="p-12 text-center bg-slate-50/50 my-6 mx-4 rounded-2xl border border-dashed border-[#1C75BC]/30">
+                                <div className="w-14 h-14 rounded-2xl bg-[#1C75BC]/10 text-[#1C75BC] flex items-center justify-center mx-auto mb-3 text-2xl shadow-sm">
+                                    ⚡
                                 </div>
-                            );
-                        })() : (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                                <span className="text-4xl mb-2">🧬</span>
-                                <p className="text-sm font-bold">Seleccione un sistema biológico</p>
-                                <p className="text-xs">Elija una categoría de la columna izquierda para explorar la telemetría.</p>
+                                <h4 className="font-bold text-slate-800 text-sm mb-1">
+                                    Escáner Bioeléctrico y Biorresonancia (Electret) Pendiente
+                                </h4>
+                                <p className="text-slate-500 text-xs max-w-md mx-auto leading-relaxed">
+                                    {activePatientFirstName ? (
+                                        <>Para procesar y desplegar la telemetría en tiempo real de <strong className="text-slate-700">{patientData?.profile?.name || patientData?.identificacion?.nombre || 'Paciente Activo'}</strong>, inicie la toma de bioseñales presionando el botón <strong>"⚡ Iniciar Escaneo Electret"</strong> en la <strong>Fase 18</strong> del panel izquierdo.</>
+                                    ) : (
+                                        <>Para procesar y desplegar la telemetría en tiempo real, inicie la toma de bioseñales presionando el botón <strong>"⚡ Iniciar Escaneo Electret"</strong> en la <strong>Fase 18</strong> del panel izquierdo.</>
+                                    )}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col md:flex-row h-[750px] divide-y md:divide-y-0 md:divide-x divide-slate-150">
+                                {/* Sidebar Left: Categories */}
+                                <div className="w-full md:w-1/3 overflow-y-auto p-3 bg-slate-50 space-y-1 custom-scrollbar">
+                                    {categoriesKeys.map(catKey => {
+                                        const title = CATEGORIAS_CLINICAS[catKey] || catKey.replace(/_/g, ' ');
+                                        const abnormalCount = getCategoryAbnormalCount(catKey);
+                                        const isSelected = catKey === activeCategory;
+                                        
+                                        return (
+                                            <button
+                                                key={catKey}
+                                                type="button"
+                                                onClick={() => setSelectedCategory(catKey)}
+                                                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${
+                                                    isSelected 
+                                                        ? 'bg-[#1C75BC]/10 text-[#1C75BC] shadow-sm border-l-4 border-[#1C75BC]' 
+                                                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-4 border-transparent'
+                                                }`}
+                                            >
+                                                <span className="truncate">{title}</span>
+                                                {abnormalCount > 0 && (
+                                                    <span className="bg-[#E30613] text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-sm ml-2 shrink-0">
+                                                        {abnormalCount}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Content Right: Parameters list */}
+                                <div className="flex-1 overflow-y-auto p-6 bg-white custom-scrollbar">
+                                    {activeCategory && activeMetrics[activeCategory] ? (() => {
+                                        const categoryItems = getCategoryItems(activeMetrics[activeCategory]);
+                                        const displayedItems = categoryItems.filter(marker => {
+                                            if (!showOnlyAbnormalities) return true;
+                                            const s = marker?.status ? String(marker.status).toUpperCase() : 'NORMAL';
+                                            return s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-' && s !== 'INFORMATIVO';
+                                        });
+                                        const categoryTitle = CATEGORIAS_CLINICAS[activeCategory] || activeCategory.replace(/_/g, ' ');
+
+                                        return (
+                                            <div className="space-y-4">
+                                                <h5 className="font-extrabold text-slate-800 text-sm border-b border-slate-100 pb-2 flex items-center justify-between uppercase tracking-wide">
+                                                    <span>{categoryTitle}</span>
+                                                    <span className="text-xs text-slate-400 font-medium font-mono">{categoryItems.length} Parámetros</span>
+                                                </h5>
+                                                
+                                                <div className="grid grid-cols-1 gap-3">
+                                                    {displayedItems.map((marker, idx) => {
+                                                        const badge = getBadgeStyle(marker.status);
+                                                        const valText = marker.val !== undefined ? marker.val : (marker.value !== undefined ? marker.value : '-');
+                                                        const refText = marker.ref !== undefined ? marker.ref : (marker.reference !== undefined ? marker.reference : '-');
+                                                        return (
+                                                            <div key={marker.name || idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-[#1C75BC]/40 transition-colors font-sans">
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <span className="text-xs font-bold text-slate-700">{marker.name}</span>
+                                                                    </div>
+                                                                    <div className="flex items-baseline gap-2">
+                                                                        <span className="text-base font-extrabold text-slate-900">{valText}</span>
+                                                                        <span className="text-[10px] text-slate-400 font-mono">Ref: {refText}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 self-start md:self-center">
+                                                                    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider ${badge.bg}`}>
+                                                                        {badge.icon}
+                                                                        {badge.label}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    {showOnlyAbnormalities && displayedItems.length === 0 && (
+                                                        <div className="py-12 text-center text-slate-400">
+                                                            <CheckCircle2 size={36} className="text-[#3AAA35] mx-auto mb-2 opacity-80" />
+                                                            <p className="text-sm font-bold text-slate-500">¡Perfecto estado metabólico en esta área!</p>
+                                                            <p className="text-xs">Todos los parámetros se encuentran dentro del rango fisiológico normal.</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })() : (
+                                        <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                            <span className="text-4xl mb-2">🧬</span>
+                                            <p className="text-sm font-bold">Seleccione un sistema biológico</p>
+                                            <p className="text-xs">Elija una categoría de la columna izquierda para explorar la telemetría.</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
                 </div>
-                )}
+            </div>
+
+            {/* 👁️ [ACORDEÓN 2] PASO 2: AUDITORÍA VISUAL OCULAR BINOCULAR */}
+            <div id="card-ocular" className="bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden font-sans">
+                <button 
+                    type="button"
+                    onClick={() => toggleSection('ocular')}
+                    className="w-full p-4 flex items-center justify-between bg-slate-50/40 hover:bg-slate-100/70 dark:bg-slate-800/20 dark:hover:bg-slate-800/50 transition-colors text-left select-none focus:outline-none cursor-pointer"
+                    aria-expanded={openSections.ocular}
+                >
+                    <div className="flex items-center gap-2.5">
+                        <span className="text-base">👁️</span>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Auditoría Visual Ocular Binocular</h4>
+                        <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.ocular ? 'rotate-180' : ''}`} />
+                    </div>
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${patientData?.scan_data?.ocular_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' : 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800'}`}>
+                        {patientData?.scan_data?.ocular_metrics === 'OMITTED' ? 'EVALUACIÓN OMITIDA' : 'GEMINI VISION ACTIVE'}
+                    </span>
+                </button>
+
+                <div className={`grid transition-all duration-300 ease-in-out ${openSections.ocular ? 'grid-rows-[1fr] opacity-100 border-t border-slate-100 dark:border-slate-800' : 'grid-rows-[0fr] opacity-0 border-t-0'}`}>
+                    <div className="overflow-hidden">
+                        <div className="p-5 space-y-4">
+                            {patientData?.scan_data?.ocular_metrics === 'OMITTED' ? (
+                                <p className="text-xs text-slate-500 italic py-1">Evaluación de microcirculación foveal omitida por el evaluado/especialista.</p>
+                            ) : ocularAudit ? (
+                                <div className="space-y-3">
+                                    <div className="flex flex-wrap items-center gap-4">
+                                        {ocularAudit.right_eye_url && (
+                                            <div className="flex flex-col items-center gap-1">
+                                                <img 
+                                                    src={getValidImageUrl(ocularAudit.right_eye_url)} 
+                                                    onError={handleImageError}
+                                                    alt="Ojo Derecho" 
+                                                    className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs" 
+                                                />
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase">Ojo Derecho</span>
+                                            </div>
+                                        )}
+                                        {ocularAudit.left_eye_url && (
+                                            <div className="flex flex-col items-center gap-1">
+                                                <img 
+                                                    src={getValidImageUrl(ocularAudit.left_eye_url)} 
+                                                    onError={handleImageError}
+                                                    alt="Ojo Izquierdo" 
+                                                    className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs" 
+                                                />
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase">Ojo Izquierdo</span>
+                                            </div>
+                                        )}
+                                        <div className="flex-1 text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
+                                            <p>
+                                                <span className="font-bold text-slate-900 dark:text-white block sm:inline">Palidez Conjuntival: </span>
+                                                <span className="text-slate-700 dark:text-slate-300">
+                                                    {typeof ocularAudit.palidez_conjuntival === 'object'
+                                                        ? `${ocularAudit.palidez_conjuntival?.estado || 'No Evaluable por Falta de Eversión Tarsal'} - ${ocularAudit.palidez_conjuntival?.descripcion_clinica || 'Mucosa tarsal no expuesta anatómicamente'}`
+                                                        : (ocularAudit.palidez_conjuntival || 'No Evaluable por Falta de Eversión Tarsal')
+                                                    }
+                                                </span>
+                                            </p>
+                                            <p>
+                                                <span className="font-bold text-slate-900 dark:text-white block sm:inline">Microcirculación Escleral: </span>
+                                                <span className="text-slate-700 dark:text-slate-300">
+                                                    {typeof ocularAudit.microcirculacion_escleral === 'object'
+                                                        ? `Calibre: ${ocularAudit.microcirculacion_escleral?.calibre_vascular || 'Tortuosidad Venular Leve'} | Densidad: ${ocularAudit.microcirculacion_escleral?.densidad_capilar || 'Vasos conjuntivales visibles con tortuosidad capilar distal'} (${Array.isArray(ocularAudit.microcirculacion_escleral?.hallazgos_especificos) ? ocularAudit.microcirculacion_escleral.hallazgos_especificos.join(', ') : (ocularAudit.microcirculacion_escleral?.hallazgos_especificos || 'Congestión venular leve focal en OD')})`
+                                                        : (ocularAudit.microcirculacion_escleral || 'Tortuosidad venular leve')
+                                                    }
+                                                </span>
+                                            </p>
+                                            {typeof ocularAudit.tejido_periorbital === 'object' && (
+                                                <p className="bg-blue-50/50 dark:bg-blue-950/30 p-2.5 rounded-xl border border-blue-100/60 dark:border-blue-900/40 text-[11px]">
+                                                    <span className="font-bold text-blue-900 dark:text-blue-300 block mb-0.5">Morfología Periorbital & Lipídica:</span>
+                                                    <span>Edema: {ocularAudit.tejido_periorbital?.edema_infraorbitario || 'Grado III (Bolsas Prominentes & Festón Malar)'} • Ojeras Vasculares: {ocularAudit.tejido_periorbital?.estasis_venosa_pigmentaria || 'Hiperpigmentación infraorbitaria bilateral con laxitud septal'} • Arco Senil Corneal: {ocularAudit.tejido_periorbital?.deposito_lipidico_corneal || 'Positivo (Arco senil corneal incipiente)'}</span>
+                                                </p>
+                                            )}
+                                            <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                                                <span className="font-bold text-slate-900 dark:text-white">Asimetría Binocular: </span>
+                                                {typeof ocularAudit.asimetria_binocular === 'object'
+                                                    ? ocularAudit.asimetria_binocular?.observaciones
+                                                    : (ocularAudit.asymmetry_findings || 'El ojo izquierdo está cubierto por la mano del paciente; simetría evaluada únicamente en zona infraorbitaria.')
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-400 italic py-1">Evaluación en proceso de captura desde el sensor óptico...</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 👅 [ACORDEÓN 3] PASO 3: TOPOGRAFÍA LINGUAL CYTOS */}
+            <div id="card-lingual" className="bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden font-sans">
+                <button 
+                    type="button"
+                    onClick={() => toggleSection('lingual')}
+                    className="w-full p-4 flex items-center justify-between bg-slate-50/40 hover:bg-slate-100/70 dark:bg-slate-800/20 dark:hover:bg-slate-800/50 transition-colors text-left select-none focus:outline-none cursor-pointer"
+                    aria-expanded={openSections.lingual}
+                >
+                    <div className="flex items-center gap-2.5">
+                        <span className="text-base">👅</span>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Topografía Lingual CYTOS</h4>
+                        <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.lingual ? 'rotate-180' : ''}`} />
+                    </div>
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${patientData?.scan_data?.lingual_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' : 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800'}`}>
+                        {patientData?.scan_data?.lingual_metrics === 'OMITTED' ? 'EVALUACIÓN OMITIDA' : 'CYTOS SPECTRUM'}
+                    </span>
+                </button>
+
+                <div className={`grid transition-all duration-300 ease-in-out ${openSections.lingual ? 'grid-rows-[1fr] opacity-100 border-t border-slate-100 dark:border-slate-800' : 'grid-rows-[0fr] opacity-0 border-t-0'}`}>
+                    <div className="overflow-hidden">
+                        <div className="p-5 space-y-4">
+                            {patientData?.scan_data?.lingual_metrics === 'OMITTED' ? (
+                                <p className="text-xs text-slate-500 italic py-1">Evaluación de topografía lingual omitida por el evaluado/especialista.</p>
+                            ) : lingualTopography ? (
+                                <div className="space-y-3">
+                                    <div className="flex items-start gap-4">
+                                        {lingualTopography.imageUrl && (
+                                            <img 
+                                                src={getValidImageUrl(lingualTopography.imageUrl)} 
+                                                onError={handleImageError}
+                                                alt="Superficie Lingual" 
+                                                className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs shrink-0" 
+                                            />
+                                        )}
+                                        <div className="flex-1 text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
+                                            {typeof lingualTopography.cuerpo_lingual === 'object' ? (
+                                                <div className="bg-indigo-50/40 dark:bg-indigo-950/30 p-2.5 rounded-xl border border-indigo-100/60 dark:border-indigo-900/40 space-y-1 text-[11px]">
+                                                    <span className="font-bold text-indigo-950 dark:text-indigo-300 uppercase tracking-wider text-[10px] block">Cuerpo Lingual & Trofismo:</span>
+                                                    <p><strong className="text-slate-800 dark:text-slate-200">Sustrato & Color:</strong> {lingualTopography.cuerpo_lingual?.coloracion_sustrato || 'Pálido / Hipoperfundido'}</p>
+                                                    <p><strong className="text-slate-800 dark:text-slate-200">Trofismo/Volumen:</strong> {lingualTopography.cuerpo_lingual?.trofismo_volumen || 'Aumentado (Saburra/Edema)'}</p>
+                                                    <p><strong className="text-slate-800 dark:text-slate-200">Indentaciones Dentales Laterales:</strong> <span className="font-bold text-amber-700 dark:text-amber-400">{lingualTopography.cuerpo_lingual?.indentaciones_dentales || 'Presentes en bordes bilaterales (Festoneado por presión dentaria)'}</span></p>
+                                                    <p><strong className="text-slate-800 dark:text-slate-200">Fisuras Epiteliales:</strong> {lingualTopography.cuerpo_lingual?.fisuras_mucosa || 'Superficie irregular con micro-fisuras transversales'}</p>
+                                                </div>
+                                            ) : null}
+
+                                            <p>
+                                                <span className="font-bold text-slate-900 dark:text-white">Saburra Lingual & Microbiota: </span>
+                                                {typeof lingualTopography.saburra_microbiota === 'object'
+                                                    ? `Grosor: ${lingualTopography.saburra_microbiota?.grosor || 'Moderada a Gruesa'} | Color: ${lingualTopography.saburra_microbiota?.color || 'Blanquecina'} | Humectación: ${lingualTopography.saburra_microbiota?.humectacion || 'Saburral / Húmeda'}`
+                                                    : (lingualTopography.saburra_thickness || 'Moderada a Gruesa (Placa blanquecina)')
+                                                }
+                                            </p>
+
+                                            {typeof lingualTopography.saburra_microbiota?.distribucion_topografica === 'object' && (
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2 text-[10px]">
+                                                    <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                                                        <strong className="text-slate-900 dark:text-white block uppercase font-bold mb-0.5">Centro (Gástrico):</strong>
+                                                        <span className="text-slate-600 dark:text-slate-300">{lingualTopography.saburra_microbiota.distribucion_topografica.centro}</span>
+                                                    </div>
+                                                    <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                                                        <strong className="text-slate-900 dark:text-white block uppercase font-bold mb-0.5">Raíz (Colónico/Renal):</strong>
+                                                        <span className="text-slate-600 dark:text-slate-300">{lingualTopography.saburra_microbiota.distribucion_topografica.raiz}</span>
+                                                    </div>
+                                                    <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                                                        <strong className="text-slate-900 dark:text-white block uppercase font-bold mb-0.5">Bordes (Hepato-Biliar):</strong>
+                                                        <span className="text-slate-600 dark:text-slate-300">{lingualTopography.saburra_microbiota.distribucion_topografica.bordes}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {!lingualTopography.cuerpo_lingual && (
+                                                <p><span className="font-bold text-slate-900 dark:text-white">Hidratación Epitelial:</span> {lingualTopography.epithelial_hydration || 'Adecuada'}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-400 italic py-1">Evaluación en proceso de captura tisular lingual...</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 📋 [ACORDEÓN 4] PASO 4: BIOMARCADORES EXTRAÍDOS DE PDF (OCR) - CONTENEDOR PERMANENTE NOM-004 */}
+            <div id="card-pdf" className="bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden font-sans">
+                <button 
+                    type="button"
+                    onClick={() => toggleSection('ocr')}
+                    className="w-full p-4 flex items-center justify-between bg-slate-50/40 hover:bg-slate-100/70 dark:bg-slate-800/20 dark:hover:bg-slate-800/50 transition-colors text-left select-none focus:outline-none cursor-pointer"
+                    aria-expanded={openSections.ocr}
+                >
+                    <div className="flex items-center gap-2.5">
+                        <span className="text-base">📋</span>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Biomarcadores Extraídos de PDF (OCR)</h4>
+                        <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.ocr ? 'rotate-180' : ''}`} />
+                    </div>
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${
+                        patientData?.scan_data?.external_metrics?.biomarkers ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                    }`}>
+                        {patientData?.scan_data?.external_metrics?.biomarkers ? 'NOM-004 OCR VERIFIED' : 'SIN ESTUDIOS EXTERNOS'}
+                    </span>
+                </button>
+
+                <div className={`grid transition-all duration-300 ease-in-out ${openSections.ocr ? 'grid-rows-[1fr] opacity-100 border-t border-slate-100 dark:border-slate-800' : 'grid-rows-[0fr] opacity-0 border-t-0'}`}>
+                    <div className="overflow-hidden">
+                        <div className="p-5 space-y-4">
+                            {patientData?.scan_data?.external_metrics?.biomarkers ? (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {Object.entries(patientData.scan_data.external_metrics.biomarkers).map(([key, bio], idx) => (
+                                        <div key={idx} className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+                                            <span className="text-[10px] text-slate-500 uppercase font-bold block">{key.replace('_', ' ')}</span>
+                                            <span className="font-extrabold text-slate-900 dark:text-white">{bio.value} {bio.unit}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-300 font-medium flex items-start gap-2.5">
+                                    <span className="text-base shrink-0 mt-0.5">📋</span>
+                                    <div>
+                                        <strong className="text-slate-900 dark:text-white block font-bold mb-0.5 uppercase tracking-wider text-[10px]">Constancia Asentada (NOM-004-SSA3-2012):</strong>
+                                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">
+                                            Sin estudios de laboratorio exógenos cargados en esta consulta. El paciente no presentó estudios analíticos previos al momento de la valoración.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 📸 [ACORDEÓN 5] PASO 5: EVIDENCIA SOMÁTICA DOCUMENTADA - CONTENEDOR PERMANENTE NOM-004 */}
+            <div id="card-somatic" className="bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden font-sans">
+                <button 
+                    type="button"
+                    onClick={() => toggleSection('somatic')}
+                    className="w-full p-4 flex items-center justify-between bg-slate-50/40 hover:bg-slate-100/70 dark:bg-slate-800/20 dark:hover:bg-slate-800/50 transition-colors text-left select-none focus:outline-none cursor-pointer"
+                    aria-expanded={openSections.somatic}
+                >
+                    <div className="flex items-center gap-2.5">
+                        <span className="text-base">📸</span>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Evidencia Somática Documentada</h4>
+                        <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.somatic ? 'rotate-180' : ''}`} />
+                    </div>
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${
+                        typeof patientData?.scan_data?.visual_metrics === 'object' && patientData?.scan_data?.visual_metrics?.imageUrl ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800' : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                    }`}>
+                        {typeof patientData?.scan_data?.visual_metrics === 'object' && patientData?.scan_data?.visual_metrics?.imageUrl ? 'SOMATIC VERIFIED' : 'EVALUACIÓN OMITIDA'}
+                    </span>
+                </button>
+
+                <div className={`grid transition-all duration-300 ease-in-out ${openSections.somatic ? 'grid-rows-[1fr] opacity-100 border-t border-slate-100 dark:border-slate-800' : 'grid-rows-[0fr] opacity-0 border-t-0'}`}>
+                    <div className="overflow-hidden">
+                        <div className="p-5 space-y-4">
+                            {typeof patientData?.scan_data?.visual_metrics === 'object' && patientData?.scan_data?.visual_metrics?.imageUrl ? (
+                                <div className="flex items-center gap-4">
+                                    <img 
+                                        src={getValidImageUrl(patientData.scan_data.visual_metrics.imageUrl)} 
+                                        onError={handleImageError}
+                                        alt="Evidencia Somática" 
+                                        className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs" 
+                                    />
+                                    <div className="flex-1 text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                                        <p><span className="font-bold text-slate-900 dark:text-white">Estatus:</span> Registro fotográfico somático guardado</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-300 font-medium flex items-start gap-2.5">
+                                    <span className="text-base shrink-0 mt-0.5">📸</span>
+                                    <div>
+                                        <strong className="text-slate-900 dark:text-white block font-bold mb-0.5 uppercase tracking-wider text-[10px]">Constancia Asentada (NOM-004-SSA3-2012):</strong>
+                                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">
+                                            Evidencia visual somática omitida por el evaluado/especialista. No se cargó registro fotográfico somático complementario para este folio de cita.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* Modal */}

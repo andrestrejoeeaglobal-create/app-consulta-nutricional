@@ -12,7 +12,9 @@ const parseWeight = (text) => {
 };
 
 const parseHeight = (text) => {
-    const match = text.match(/\d+(\.\d+)?/);
+    if (!text) return null;
+    const cleanText = text.toString().replace(',', '.');
+    const match = cleanText.match(/\d+(\.\d+)?/);
     if (!match) return null;
     let val = parseFloat(match[0]);
     // Si viene en metros (ej: 1.65), convertimos a centímetros (165)
@@ -23,7 +25,9 @@ const parseHeight = (text) => {
 };
 
 const parseCentimeters = (text) => {
-    const match = text.match(/\d+(\.\d+)?/);
+    if (!text) return null;
+    const cleanText = text.toString().replace(',', '.');
+    const match = cleanText.match(/\d+(\.\d+)?/);
     return match ? parseFloat(match[0]) : null;
 };
 
