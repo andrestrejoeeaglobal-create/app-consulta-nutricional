@@ -191,21 +191,18 @@ export const TabBiochemicals = ({
 
     const genomeTelemetry = useClinicalGenome(state => state.electretTelemetry);
 
-    // REHIDRATACIÓN AUTOMÁTICA NOM-004 DE TELEMETRÍA OFICIAL PARA PACIENTES / CITAS AUTENTICADAS (CITA 20804)
     const activeMetrics = React.useMemo(() => {
         let rawSource = null;
         if (genomeTelemetry?.isScanned && Object.keys(genomeTelemetry.categories).length > 0) {
             rawSource = genomeTelemetry.categories;
         } else if (validElectretMetrics) {
             rawSource = validElectretMetrics;
-        } else if (patientData?.scan_data?.electret_scanned && patientData?.scan_data?.electret_metrics) {
-            rawSource = patientData.scan_data.electret_metrics;
         }
 
         if (!rawSource) return {};
         const parsed = parseElectretData(rawSource);
         return parsed.categories || rawSource;
-    }, [validElectretMetrics, patientData, genomeTelemetry]);
+    }, [validElectretMetrics, genomeTelemetry]);
 
     const categoriesKeys = Object.keys(activeMetrics);
     const activeCategory = selectedCategory || (categoriesKeys.length > 0 ? categoriesKeys[0] : null);

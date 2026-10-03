@@ -274,6 +274,41 @@ Pídale al paciente que coloque la mano en los electrodos del sensor y complete 
                     throw new Error(data?.message || "No se detectaron métricas reales en el hardware escáner USB.");
                 }
                 const metricsToSet = data.electret_metrics;
+
+                // Validación de Identidad NOM-004 contra lecturas huérfanas de otros pacientes
+                const activeFirstName = (pName || '').trim().toLowerCase().split(' ')[0];
+                let scannedNameFound = null;
+                const nameMatch = JSON.stringify(metricsToSet).match(/nombre:\s*([^,\r\n\"\}]+)/i);
+                if (nameMatch && nameMatch[1]) {
+                    scannedNameFound = nameMatch[1].trim();
+                }
+
+                if (activeFirstName && scannedNameFound && !scannedNameFound.toLowerCase().includes(activeFirstName)) {
+                    setIsGlobalTyping?.(false);
+                    setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
+
+                    const mismatchMsg = {
+                        role: 'assistant',
+                        content: `### 🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB
+
+Se detectó una lectura en la base de datos del escáner a nombre de **"${scannedNameFound}"**, la cual **no corresponde** al paciente activo en este expediente (**"${pName}"**).
+
+Para prevenir la contaminación cruzada de datos clínicos entre pacientes, esta lectura ha sido bloqueada automáticamente.
+
+Por favor, ejecute la prueba en el software del escáner a nombre de **"${pName}"** y presione el botón a continuación para reintentar la sincronización.`,
+                        actions: [
+                            { id: 'btn_retry_sync', label: '🔄 Reintentar Sincronización USB', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
+                            { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
+                        ],
+                        options: [
+                            { label: "🔄 Reintentar Sincronización USB", value: "SYNC_ELECTRET_HARDWARE" },
+                            { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
+                        ]
+                    };
+                    setMessages(prev => [...prev, mismatchMsg]);
+                    return;
+                }
+
                 setPatientData(prev => ({
                     ...prev,
                     scan_data: {
