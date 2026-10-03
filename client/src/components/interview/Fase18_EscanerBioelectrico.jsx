@@ -189,23 +189,6 @@ Por favor presione el botón a continuación para iniciar la toma de bioseñales
         }
     }, [isLactante, pName, setMessages, setPatientData]);
 
-    // Auto-recuperación de respuestas colgadas (dangling user messages) en Fase 18
-    const hasRecoveredDangling = useRef(false);
-    useEffect(() => {
-        if (hasRecoveredDangling.current) return;
-        if (!messages || messages.length < 2) return;
-
-        const lastMsg = messages[messages.length - 1];
-        const prevMsg = messages[messages.length - 2];
-
-        if (lastMsg.role === 'user' && prevMsg.role === 'assistant') {
-            hasRecoveredDangling.current = true;
-            console.log("🔄 [FASE 18 RECOVERY] Re-procesando respuesta colgada:", lastMsg.content);
-            setTimeout(() => {
-                handleOptionInput(lastMsg.content);
-            }, 300);
-        }
-    }, [messages]);
 
     const getDerivedSubstep = (messagesList) => {
         if (!messagesList || messagesList.length === 0) return 'ELECTRET';

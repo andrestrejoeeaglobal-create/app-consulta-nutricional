@@ -198,17 +198,8 @@ export const TabBiochemicals = ({
             rawSource = genomeTelemetry.categories;
         } else if (validElectretMetrics) {
             rawSource = validElectretMetrics;
-        } else {
-            const isSessionActiveOrSealed = Boolean(
-                patientData?.profile?.name || 
-                patientData?.identificacion?.nombre || 
-                patientData?.identificacion?.idCita === '20804' ||
-                patientData?.identificacion?.citaId === '20804'
-            );
-
-            if (isSessionActiveOrSealed && parsedResults) {
-                rawSource = parsedResults;
-            }
+        } else if (patientData?.scan_data?.electret_scanned && patientData?.scan_data?.electret_metrics) {
+            rawSource = patientData.scan_data.electret_metrics;
         }
 
         if (!rawSource) return {};
