@@ -150,7 +150,7 @@ const Fase11_ActividadSueno = ({
     onPhaseComplete 
 }) => {
     // Hook de lingüística para unificar nombres y contextos
-    const { patientName: pName, patientSex, isMinor, isLactante, isPediatrico, patientAge: age } = usePatientLinguistics(patientData);
+    const { patientName: pName, patientSex, isMinor, isLactante, isPreescolar, isEscolar, isPediatrico, patientAge: age } = usePatientLinguistics(patientData);
 
     console.log("🔍 Fase11_ActividadSueno Mount/Render. Props:", {
         hasMessages: !!messages,
@@ -852,10 +852,10 @@ const Fase11_ActividadSueno = ({
         if (textToProcess.startsWith("CONFIRM_NEAT_TELEMETRY_")) userLabel = "Sí, es correcto";
         if (textToProcess === "CORRECT_NEAT_TELEMETRY") userLabel = "No, prefiero declarar manualmente";
         if (currentStep === 'NEAT' || currentStep === 'NEAT_MANUAL_SELECT') {
-            if (textToProcess === "SEDENTARY") userLabel = isLactante ? "Tranquilo / Acostado la mayor parte del tiempo" : "Sedentario (Todo el día sentado)";
-            if (textToProcess === "LIGHT") userLabel = isLactante ? "Gateo inicial / Juego sentado" : "Ligero (De pie o caminando poco)";
-            if (textToProcess === "MODERATE") userLabel = isLactante ? "Gateo activo / Ya camina con apoyo" : "Moderado (Mesero / Movimiento constante)";
-            if (textToProcess === "HEAVY") userLabel = isLactante ? "Explora activamente / Corre / Salta" : "Pesado (Construcción / Trabajo físico duro)";
+            if (textToProcess === "SEDENTARY") userLabel = isLactante ? "Tranquilo / Acostado la mayor parte del tiempo" : (isPreescolar || isEscolar || isMinor ? "Sedentario (Juego tranquilo / Sentado la mayor parte del tiempo)" : "Sedentario (Todo el día sentado)");
+            if (textToProcess === "LIGHT") userLabel = isLactante ? "Gateo inicial / Juego sentado" : (isPreescolar || isEscolar || isMinor ? "Ligero (Caminata tranquila / Juego suave en casa o escuela)" : "Ligero (De pie o caminando poco)");
+            if (textToProcess === "MODERATE") userLabel = isLactante ? "Gateo activo / Ya camina con apoyo" : (isPreescolar || isEscolar || isMinor ? "Moderado (Juego activo / Recreo / Corre en parque o jardín)" : "Moderado (Mesero / Movimiento constante)");
+            if (textToProcess === "HEAVY") userLabel = isLactante ? "Explora activamente / Corre / Salta" : (isPreescolar || isEscolar || isMinor ? "Intenso / Muy Activo (Juego dinámico constante / Corre y salta todo el día)" : "Pesado (Construcción / Trabajo físico duro)");
         } else if (currentStep === 'SLEEP_HOURS') {
             if (textToProcess === "14") userLabel = "14 horas o más (Adecuado para lactantes)";
             if (textToProcess === "11") userLabel = "Entre 11 y 13 horas";
@@ -1253,12 +1253,26 @@ const Fase11_ActividadSueno = ({
                         setMessages(prev => [...prev, {
                             role: 'assistant',
                             content: 'Por favor seleccione una opción válida de la lista:',
-                            options: [
-                                { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
-                                { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
-                                { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
-                                { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
-                            ]
+                            options: isLactante
+                                ? [
+                                    { label: 'Tranquilo / Acostado la mayor parte del tiempo', value: 'SEDENTARY' },
+                                    { label: 'Gateo inicial / Juego sentado', value: 'LIGHT' },
+                                    { label: 'Gateo activo / Ya camina con apoyo', value: 'MODERATE' },
+                                    { label: 'Explora activamente / Corre / Salta', value: 'HEAVY' }
+                                ]
+                                : (isPreescolar || isEscolar || isMinor
+                                    ? [
+                                        { label: 'Sedentario (Juego tranquilo / Sentado la mayor parte del tiempo)', value: 'SEDENTARY' },
+                                        { label: 'Ligero (Caminata tranquila / Juego suave en casa o escuela)', value: 'LIGHT' },
+                                        { label: 'Moderado (Juego activo / Recreo / Corre en parque o jardín)', value: 'MODERATE' },
+                                        { label: 'Intenso / Muy Activo (Juego dinámico constante / Corre y salta todo el día)', value: 'HEAVY' }
+                                    ]
+                                    : [
+                                        { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
+                                        { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
+                                        { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
+                                        { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
+                                    ])
                         }]);
                         return;
                     }
@@ -1545,7 +1559,9 @@ const Fase11_ActividadSueno = ({
         if (isMinor) {
             const neatMsg = isLactante
                 ? `Independientemente de la estimulación programada, ¿cómo describiría el nivel de movimiento o actividad espontánea diaria de **${pName}**?`
-                : `Independientemente del deporte, ¿cómo describiría la actividad diaria habitual de **${pName}** (trabajo, escuela o casa)?`;
+                : (isPreescolar || isEscolar
+                    ? `Independientemente del deporte o actividades estructuradas, ¿cómo describiría la actividad o juego espontáneo diario habitual de **${pName}** (escuela, jardín, casa)?`
+                    : `Independientemente del deporte, ¿cómo describiría la actividad diaria habitual de **${pName}** (trabajo, escuela o casa)?`);
             
             const neatOptions = isLactante
                 ? [
@@ -1554,12 +1570,19 @@ const Fase11_ActividadSueno = ({
                     { label: 'Gateo activo / Ya camina con apoyo', value: 'MODERATE' },
                     { label: 'Explora activamente / Corre / Salta', value: 'HEAVY' }
                 ]
-                : [
-                    { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
-                    { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
-                    { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
-                    { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
-                ];
+                : (isPreescolar || isEscolar || isMinor
+                    ? [
+                        { label: 'Sedentario (Juego tranquilo / Sentado la mayor parte del tiempo)', value: 'SEDENTARY' },
+                        { label: 'Ligero (Caminata tranquila / Juego suave en casa o escuela)', value: 'LIGHT' },
+                        { label: 'Moderado (Juego activo / Recreo / Corre en parque o jardín)', value: 'MODERATE' },
+                        { label: 'Intenso / Muy Activo (Juego dinámico constante / Corre y salta todo el día)', value: 'HEAVY' }
+                    ]
+                    : [
+                        { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
+                        { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
+                        { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
+                        { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
+                    ]);
 
             setMessages(prev => [...prev, {
                 role: 'assistant', 
