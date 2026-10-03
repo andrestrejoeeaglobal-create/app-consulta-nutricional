@@ -169,8 +169,8 @@ export const TabVitals = ({
                         </div>
                         <div>
                             <label className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Glucosa</label>
-                            <div className={`p-3 rounded-xl border flex items-center justify-between ${patientData.biochemical?.glucose?.value > 200 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-                                <span className={`text-xl font-bold ${patientData.biochemical?.glucose?.value > 200 ? 'text-red-700' : 'text-slate-700'}`}>{patientData.biochemical?.glucose?.value || '--'}</span>
+                            <div className={`p-3 rounded-xl border flex items-center justify-between ${(patientData.vitals?.glucose || patientData.biochemical?.glucose?.value) > 200 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+                                <span className={`text-xl font-bold ${(patientData.vitals?.glucose || patientData.biochemical?.glucose?.value) > 200 ? 'text-red-700' : 'text-slate-700'}`}>{patientData.vitals?.glucose || patientData.biochemical?.glucose?.value || '--'}</span>
                                 <span className="text-xs text-slate-400 font-bold">mg/dL</span>
                             </div>
                         </div>

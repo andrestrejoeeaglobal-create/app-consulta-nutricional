@@ -343,6 +343,15 @@ export default function Fase17_SignosVitales({
             }
 
             setHeartRate(val);
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    vitals: {
+                        ...(prev.vitals || {}),
+                        heart_rate: val
+                    }
+                }));
+            }
 
             if (val > 100 && !isRetakingHR) {
                 setRestCountdown(180);
@@ -399,6 +408,15 @@ export default function Fase17_SignosVitales({
             }
 
             setRespiratoryRate(val);
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    vitals: {
+                        ...(prev.vitals || {}),
+                        respiratory_rate: val
+                    }
+                }));
+            }
 
             setIsGlobalTyping(true);
             await new Promise(resolve => setTimeout(resolve, 800));
@@ -433,6 +451,15 @@ export default function Fase17_SignosVitales({
             }
 
             setTemperature(val);
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    vitals: {
+                        ...(prev.vitals || {}),
+                        temperature: val
+                    }
+                }));
+            }
 
             setIsGlobalTyping(true);
             await new Promise(resolve => setTimeout(resolve, 800));
@@ -467,6 +494,15 @@ export default function Fase17_SignosVitales({
             }
 
             setSpo2(val);
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    vitals: {
+                        ...(prev.vitals || {}),
+                        spo2: val
+                    }
+                }));
+            }
 
             if (val < 90 && !dismissedHypoxia) {
                 setShowHypoxiaOverlay(true);
@@ -479,6 +515,16 @@ export default function Fase17_SignosVitales({
             if (userMsg === 'OMIT') {
                 setGlucose('OMITTED');
                 setGlucoseContext('OMITTED');
+                if (setPatientData) {
+                    setPatientData(prev => ({
+                        ...prev,
+                        vitals: {
+                            ...(prev.vitals || {}),
+                            glucose: null,
+                            glucose_context: 'OMITTED'
+                        }
+                    }));
+                }
                 showSummary({
                     sys: systolic,
                     dia: diastolic,
@@ -499,6 +545,15 @@ export default function Fase17_SignosVitales({
             }
 
             setGlucose(val);
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    vitals: {
+                        ...(prev.vitals || {}),
+                        glucose: val
+                    }
+                }));
+            }
 
             setIsGlobalTyping(true);
             await new Promise(resolve => setTimeout(resolve, 800));
@@ -530,6 +585,15 @@ export default function Fase17_SignosVitales({
         else if (internalStep === 'GLUCOSE_CTX') {
             const ctx = userMsg === 'FASTING' ? 'FASTING' : 'CASUAL';
             setGlucoseContext(ctx);
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    vitals: {
+                        ...(prev.vitals || {}),
+                        glucose_context: ctx
+                    }
+                }));
+            }
             showSummary({
                 sys: systolic,
                 dia: diastolic,
