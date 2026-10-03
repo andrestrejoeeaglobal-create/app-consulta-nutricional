@@ -348,64 +348,58 @@ export const TabBiochemicals = ({
     const rawLingual = patientData?.scan_data?.lingual_metrics || patientData?.scan_data?.lingual_topography;
 
     const ocularAudit = React.useMemo(() => {
-        const base = (rawOcular && typeof rawOcular === 'object') ? (rawOcular.ocular_audit || rawOcular) : {};
+        if (!rawOcular || rawOcular === 'OMITTED' || typeof rawOcular !== 'object') return null;
+        const base = rawOcular.ocular_audit || rawOcular;
         return {
-            right_eye_url: rawOcular?.right_eye_url || base.right_eye_url || base.rightEyeUrl || "/uploads/ocular-1790035455997-11700851.jpg",
-            left_eye_url: rawOcular?.left_eye_url || base.left_eye_url || base.leftEyeUrl || "/uploads/ocular-1790035456007-275556100.jpg",
+            right_eye_url: rawOcular?.right_eye_url || base.right_eye_url || base.rightEyeUrl || null,
+            left_eye_url: rawOcular?.left_eye_url || base.left_eye_url || base.leftEyeUrl || null,
             palidez_conjuntival: (typeof base.palidez_conjuntival === 'object' && base.palidez_conjuntival !== null)
                 ? base.palidez_conjuntival
                 : {
-                    estado: typeof base.palidez_conjuntival === 'string' ? base.palidez_conjuntival : "No Evaluable por Falta de Eversión Tarsal",
-                    descripcion_clinica: base.predictions?.hemoglobin?.translation || "Mucosa tarsal conjuntival no expuesta en la toma fotográfica; requiere eversión palpebral manual o reevaluación biométrica."
+                    estado: typeof base.palidez_conjuntival === 'string' ? base.palidez_conjuntival : "Evaluación Tarsal Registrada",
+                    descripcion_clinica: base.predictions?.hemoglobin?.translation || "Análisis microvascular tarsal procesado."
                 },
             microcirculacion_escleral: (typeof base.microcirculacion_escleral === 'object' && base.microcirculacion_escleral !== null)
                 ? base.microcirculacion_escleral
                 : {
-                    calibre_vascular: base.calibre_vascular || "Tortuosidad Venular Leve",
-                    densidad_capilar: typeof base.microcirculacion_escleral === 'string' ? base.microcirculacion_escleral : "Lechos venulares con tortuosidad capilar distal y congestión epiescleral focal",
-                    hallazgos_especificos: Array.isArray(base.hallazgos_especificos) ? base.hallazgos_especificos : ["Congestión venular leve focal en OD", "Sin hemorragias subconjuntivales"]
+                    calibre_vascular: base.calibre_vascular || "Calibre Normal",
+                    densidad_capilar: typeof base.microcirculacion_escleral === 'string' ? base.microcirculacion_escleral : "Lechos venulares epiesclerales analizados",
+                    hallazgos_especificos: Array.isArray(base.hallazgos_especificos) ? base.hallazgos_especificos : []
                 },
             tejido_periorbital: (typeof base.tejido_periorbital === 'object' && base.tejido_periorbital !== null)
                 ? base.tejido_periorbital
-                : {
-                    edema_infraorbitario: base.edema_infraorbitario || "Grado III (Bolsas Prominentes & Festón Malar)",
-                    estasis_venosa_pigmentaria: base.estasis_venosa_pigmentaria || "Hiperpigmentación infraorbitaria bilateral con laxitud septal",
-                    deposito_lipidico_corneal: base.deposito_lipidico_corneal || "Positivo (Arco senil corneal incipiente)"
-                },
+                : null,
             asimetria_binocular: (typeof base.asimetria_binocular === 'object' && base.asimetria_binocular !== null)
                 ? base.asimetria_binocular
                 : {
-                    es_simetrico: false,
-                    observaciones: base.asymmetry_findings || "El ojo izquierdo está cubierto por la mano del paciente; simetría evaluada únicamente en prominencia de bolsas infraorbitarias."
+                    es_simetrico: true,
+                    observaciones: base.asymmetry_findings || "Simetría binocular evaluada."
                 }
         };
     }, [rawOcular]);
 
     const lingualTopography = React.useMemo(() => {
-        const base = (rawLingual && typeof rawLingual === 'object') ? (rawLingual.lingual_topography || rawLingual) : {};
+        if (!rawLingual || rawLingual === 'OMITTED' || typeof rawLingual !== 'object') return null;
+        const base = rawLingual.lingual_topography || rawLingual;
         return {
-            imageUrl: rawLingual?.imageUrl || base.imageUrl || base.image_url || "/uploads/lingual-1790035516360-884364205.jpg",
+            imageUrl: rawLingual?.imageUrl || base.imageUrl || base.image_url || null,
             cuerpo_lingual: (typeof base.cuerpo_lingual === 'object' && base.cuerpo_lingual !== null)
                 ? base.cuerpo_lingual
                 : {
-                    coloracion_sustrato: base.coloracion_sustrato || "Pálido / Hipoperfundido",
-                    trofismo_volumen: base.trofismo_volumen || "Aumentado (Saburra/Edema)",
-                    indentaciones_dentales: base.indentaciones_dentales || "Presentes en bordes bilaterales (Festoneado por presión dentaria)",
-                    fisuras_mucosa: base.fisuras_mucosa || "Superficie irregular con micro-fisuras transversales en tercio medio"
+                    coloracion_sustrato: base.coloracion_sustrato || "Normal / Rosado",
+                    trofismo_volumen: base.trofismo_volumen || "Normotrófico",
+                    indentaciones_dentales: base.indentaciones_dentales || "Ausentes",
+                    fisuras_mucosa: base.fisuras_mucosa || "Sin fisuras"
                 },
             saburra_microbiota: (typeof base.saburra_microbiota === 'object' && base.saburra_microbiota !== null)
                 ? base.saburra_microbiota
                 : {
-                    grosor: base.saburra_thickness || (typeof base.saburra_lingual === 'string' ? base.saburra_lingual : "Moderada a Gruesa"),
-                    color: "Blanquecina",
+                    grosor: base.saburra_thickness || (typeof base.saburra_lingual === 'string' ? base.saburra_lingual : "Delgada / Fisiológica"),
+                    color: "Normocoloreada",
                     distribucion_topografica: (typeof base.saburra_microbiota?.distribucion_topografica === 'object')
                         ? base.saburra_microbiota.distribucion_topografica
-                        : {
-                            centro: "Capa gruesa blanquecina concentrada en zona gástrica.",
-                            raiz: "Acumulación saburral densa en tercio posterior colónico.",
-                            bordes: "Festoneado lateral con tinte pálido e indentaciones dentales por estasis hídrico."
-                        },
-                    humectacion: base.epithelial_hydration || "Saburral / Húmeda"
+                        : null,
+                    humectacion: base.epithelial_hydration || "Normo-humectada"
                 }
         };
     }, [rawLingual]);
@@ -600,8 +594,8 @@ export const TabBiochemicals = ({
                         <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Auditoría Visual Ocular Binocular</h4>
                         <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.ocular ? 'rotate-180' : ''}`} />
                     </div>
-                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${patientData?.scan_data?.ocular_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' : 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800'}`}>
-                        {patientData?.scan_data?.ocular_metrics === 'OMITTED' ? 'EVALUACIÓN OMITIDA' : 'GEMINI VISION ACTIVE'}
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${patientData?.scan_data?.ocular_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' : (ocularAudit ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800' : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700')}`}>
+                        {patientData?.scan_data?.ocular_metrics === 'OMITTED' ? 'EVALUACIÓN OMITIDA' : (ocularAudit ? 'GEMINI VISION ACTIVE' : 'EVALUACIÓN PENDIENTE')}
                     </span>
                 </button>
 
@@ -640,8 +634,8 @@ export const TabBiochemicals = ({
                                                 <span className="font-bold text-slate-900 dark:text-white block sm:inline">Palidez Conjuntival: </span>
                                                 <span className="text-slate-700 dark:text-slate-300">
                                                     {typeof ocularAudit.palidez_conjuntival === 'object'
-                                                        ? `${ocularAudit.palidez_conjuntival?.estado || 'No Evaluable por Falta de Eversión Tarsal'} - ${ocularAudit.palidez_conjuntival?.descripcion_clinica || 'Mucosa tarsal no expuesta anatómicamente'}`
-                                                        : (ocularAudit.palidez_conjuntival || 'No Evaluable por Falta de Eversión Tarsal')
+                                                        ? `${ocularAudit.palidez_conjuntival?.estado || 'Evaluación Tarsal Registrada'} - ${ocularAudit.palidez_conjuntival?.descripcion_clinica || 'Mucosa tarsal analizada.'}`
+                                                        : (ocularAudit.palidez_conjuntival || 'Evaluación Tarsal Registrada')
                                                     }
                                                 </span>
                                             </p>
@@ -649,29 +643,39 @@ export const TabBiochemicals = ({
                                                 <span className="font-bold text-slate-900 dark:text-white block sm:inline">Microcirculación Escleral: </span>
                                                 <span className="text-slate-700 dark:text-slate-300">
                                                     {typeof ocularAudit.microcirculacion_escleral === 'object'
-                                                        ? `Calibre: ${ocularAudit.microcirculacion_escleral?.calibre_vascular || 'Tortuosidad Venular Leve'} | Densidad: ${ocularAudit.microcirculacion_escleral?.densidad_capilar || 'Vasos conjuntivales visibles con tortuosidad capilar distal'} (${Array.isArray(ocularAudit.microcirculacion_escleral?.hallazgos_especificos) ? ocularAudit.microcirculacion_escleral.hallazgos_especificos.join(', ') : (ocularAudit.microcirculacion_escleral?.hallazgos_especificos || 'Congestión venular leve focal en OD')})`
-                                                        : (ocularAudit.microcirculacion_escleral || 'Tortuosidad venular leve')
+                                                        ? `Calibre: ${ocularAudit.microcirculacion_escleral?.calibre_vascular || 'Calibre Normal'} | Densidad: ${ocularAudit.microcirculacion_escleral?.densidad_capilar || 'Lechos venulares epiesclerales analizados'}`
+                                                        : (ocularAudit.microcirculacion_escleral || 'Lechos venulares epiesclerales analizados')
                                                     }
                                                 </span>
                                             </p>
-                                            {typeof ocularAudit.tejido_periorbital === 'object' && (
+                                            {typeof ocularAudit.tejido_periorbital === 'object' && ocularAudit.tejido_periorbital !== null && (
                                                 <p className="bg-blue-50/50 dark:bg-blue-950/30 p-2.5 rounded-xl border border-blue-100/60 dark:border-blue-900/40 text-[11px]">
                                                     <span className="font-bold text-blue-900 dark:text-blue-300 block mb-0.5">Morfología Periorbital & Lipídica:</span>
-                                                    <span>Edema: {ocularAudit.tejido_periorbital?.edema_infraorbitario || 'Grado III (Bolsas Prominentes & Festón Malar)'} • Ojeras Vasculares: {ocularAudit.tejido_periorbital?.estasis_venosa_pigmentaria || 'Hiperpigmentación infraorbitaria bilateral con laxitud septal'} • Arco Senil Corneal: {ocularAudit.tejido_periorbital?.deposito_lipidico_corneal || 'Positivo (Arco senil corneal incipiente)'}</span>
+                                                    <span>Edema: {ocularAudit.tejido_periorbital?.edema_infraorbitario || 'Normal'} • Ojeras Vasculares: {ocularAudit.tejido_periorbital?.estasis_venosa_pigmentaria || 'Sin hallazgos'} • Arco Senil Corneal: {ocularAudit.tejido_periorbital?.deposito_lipidico_corneal || 'Negativo'}</span>
                                                 </p>
                                             )}
                                             <p className="text-[11px] text-slate-600 dark:text-slate-400">
                                                 <span className="font-bold text-slate-900 dark:text-white">Asimetría Binocular: </span>
                                                 {typeof ocularAudit.asimetria_binocular === 'object'
                                                     ? ocularAudit.asimetria_binocular?.observaciones
-                                                    : (ocularAudit.asymmetry_findings || 'El ojo izquierdo está cubierto por la mano del paciente; simetría evaluada únicamente en zona infraorbitaria.')
+                                                    : (ocularAudit.asymmetry_findings || 'Simetría binocular evaluada.')
                                                 }
                                             </p>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
-                                <p className="text-xs text-slate-400 italic py-1">Evaluación en proceso de captura desde el sensor óptico...</p>
+                                <div className="p-8 text-center bg-slate-50/50 my-1 rounded-xl border border-dashed border-blue-200/80">
+                                    <span className="text-3xl block mb-2">👁️</span>
+                                    <h5 className="font-bold text-slate-800 text-xs mb-1 uppercase tracking-wider">Auditoría Visual Ocular Binocular Pendiente</h5>
+                                    <p className="text-slate-500 text-[11px] max-w-md mx-auto leading-relaxed">
+                                        {activePatientFirstName ? (
+                                            <>Para procesar y desplegar el análisis de microcirculación foveal y oxigenación tisular de <strong className="text-slate-700">{activePatientFirstName}</strong>, ejecute la toma fotográfica en el <strong>Paso 2 de la Fase 18</strong>.</>
+                                        ) : (
+                                            <>Para procesar y desplegar el análisis de microcirculación foveal y oxigenación tisular, ejecute la toma fotográfica en el <strong>Paso 2 de la Fase 18</strong>.</>
+                                        )}
+                                    </p>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -691,8 +695,8 @@ export const TabBiochemicals = ({
                         <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Topografía Lingual CYTOS</h4>
                         <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.lingual ? 'rotate-180' : ''}`} />
                     </div>
-                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${patientData?.scan_data?.lingual_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' : 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800'}`}>
-                        {patientData?.scan_data?.lingual_metrics === 'OMITTED' ? 'EVALUACIÓN OMITIDA' : 'CYTOS SPECTRUM'}
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${patientData?.scan_data?.lingual_metrics === 'OMITTED' ? 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700' : (lingualTopography ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800' : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700')}`}>
+                        {patientData?.scan_data?.lingual_metrics === 'OMITTED' ? 'EVALUACIÓN OMITIDA' : (lingualTopography ? 'CYTOS SPECTRUM' : 'EVALUACIÓN PENDIENTE')}
                     </span>
                 </button>
 
@@ -716,22 +720,22 @@ export const TabBiochemicals = ({
                                             {typeof lingualTopography.cuerpo_lingual === 'object' ? (
                                                 <div className="bg-indigo-50/40 dark:bg-indigo-950/30 p-2.5 rounded-xl border border-indigo-100/60 dark:border-indigo-900/40 space-y-1 text-[11px]">
                                                     <span className="font-bold text-indigo-950 dark:text-indigo-300 uppercase tracking-wider text-[10px] block">Cuerpo Lingual & Trofismo:</span>
-                                                    <p><strong className="text-slate-800 dark:text-slate-200">Sustrato & Color:</strong> {lingualTopography.cuerpo_lingual?.coloracion_sustrato || 'Pálido / Hipoperfundido'}</p>
-                                                    <p><strong className="text-slate-800 dark:text-slate-200">Trofismo/Volumen:</strong> {lingualTopography.cuerpo_lingual?.trofismo_volumen || 'Aumentado (Saburra/Edema)'}</p>
-                                                    <p><strong className="text-slate-800 dark:text-slate-200">Indentaciones Dentales Laterales:</strong> <span className="font-bold text-amber-700 dark:text-amber-400">{lingualTopography.cuerpo_lingual?.indentaciones_dentales || 'Presentes en bordes bilaterales (Festoneado por presión dentaria)'}</span></p>
-                                                    <p><strong className="text-slate-800 dark:text-slate-200">Fisuras Epiteliales:</strong> {lingualTopography.cuerpo_lingual?.fisuras_mucosa || 'Superficie irregular con micro-fisuras transversales'}</p>
+                                                    <p><strong className="text-slate-800 dark:text-slate-200">Sustrato & Color:</strong> {lingualTopography.cuerpo_lingual?.coloracion_sustrato || 'Normal / Rosado'}</p>
+                                                    <p><strong className="text-slate-800 dark:text-slate-200">Trofismo/Volumen:</strong> {lingualTopography.cuerpo_lingual?.trofismo_volumen || 'Normotrófico'}</p>
+                                                    <p><strong className="text-slate-800 dark:text-slate-200">Indentaciones Dentales Laterales:</strong> <span className="font-bold text-amber-700 dark:text-amber-400">{lingualTopography.cuerpo_lingual?.indentaciones_dentales || 'Ausentes'}</span></p>
+                                                    <p><strong className="text-slate-800 dark:text-slate-200">Fisuras Epiteliales:</strong> {lingualTopography.cuerpo_lingual?.fisuras_mucosa || 'Sin fisuras'}</p>
                                                 </div>
                                             ) : null}
 
                                             <p>
                                                 <span className="font-bold text-slate-900 dark:text-white">Saburra Lingual & Microbiota: </span>
                                                 {typeof lingualTopography.saburra_microbiota === 'object'
-                                                    ? `Grosor: ${lingualTopography.saburra_microbiota?.grosor || 'Moderada a Gruesa'} | Color: ${lingualTopography.saburra_microbiota?.color || 'Blanquecina'} | Humectación: ${lingualTopography.saburra_microbiota?.humectacion || 'Saburral / Húmeda'}`
-                                                    : (lingualTopography.saburra_thickness || 'Moderada a Gruesa (Placa blanquecina)')
+                                                    ? `Grosor: ${lingualTopography.saburra_microbiota?.grosor || 'Delgada / Fisiológica'} | Color: ${lingualTopography.saburra_microbiota?.color || 'Normocoloreada'} | Humectación: ${lingualTopography.saburra_microbiota?.humectacion || 'Normo-humectada'}`
+                                                    : (lingualTopography.saburra_thickness || 'Delgada / Fisiológica')
                                                 }
                                             </p>
 
-                                            {typeof lingualTopography.saburra_microbiota?.distribucion_topografica === 'object' && (
+                                            {typeof lingualTopography.saburra_microbiota?.distribucion_topografica === 'object' && lingualTopography.saburra_microbiota.distribucion_topografica !== null && (
                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2 text-[10px]">
                                                     <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
                                                         <strong className="text-slate-900 dark:text-white block uppercase font-bold mb-0.5">Centro (Gástrico):</strong>
@@ -755,7 +759,17 @@ export const TabBiochemicals = ({
                                     </div>
                                 </div>
                             ) : (
-                                <p className="text-xs text-slate-400 italic py-1">Evaluación en proceso de captura tisular lingual...</p>
+                                <div className="p-8 text-center bg-slate-50/50 my-1 rounded-xl border border-dashed border-indigo-200/80">
+                                    <span className="text-3xl block mb-2">👅</span>
+                                    <h5 className="font-bold text-slate-800 text-xs mb-1 uppercase tracking-wider">Topografía Lingual CYTOS Pendiente</h5>
+                                    <p className="text-slate-500 text-[11px] max-w-md mx-auto leading-relaxed">
+                                        {activePatientFirstName ? (
+                                            <>Para procesar y desplegar la evaluación de saburra y textura tisular CYTOS de <strong className="text-slate-700">{activePatientFirstName}</strong>, ejecute la toma fotográfica en el <strong>Paso 3 de la Fase 18</strong>.</>
+                                        ) : (
+                                            <>Para procesar y desplegar la evaluación de saburra y textura tisular CYTOS, ejecute la toma fotográfica en el <strong>Paso 3 de la Fase 18</strong>.</>
+                                        )}
+                                    </p>
+                                </div>
                             )}
                         </div>
                     </div>
