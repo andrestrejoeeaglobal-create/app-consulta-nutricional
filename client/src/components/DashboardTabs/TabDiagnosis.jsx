@@ -72,9 +72,10 @@ export const TabDiagnosis = ({
                 indice_prioridad_clinica: rawCorr.indice_prioridad_clinica || "Moderado"
             };
         }
+        const patientName = patientData?.profile?.name || patientData?.identificacion?.nombre || "el paciente";
         return {
-            sintesis_fisiopatologica: "Integración CORTEX: El paciente presenta senescencia tisular periorbitaria (bolsas infraorbitarias Grado III con herniación grasa y festón malar) en consonancia con retención hídrica y laxitud septal. La topografía lingual confirma estasis de fluidos e hipoperfusión tisular con sustrato pálido e indentaciones dentales bilaterales (festoneado). Recomienda modulación microvascular y soporte linfático.",
-            indice_prioridad_clinica: "Moderado"
+            sintesis_fisiopatologica: `Pendiente de integración multimodal. Complete la toma de bioseñales, auditoría ocular y topografía lingual en la Fase 18 para generar la síntesis fisiopatológica CORTEX de ${patientName}.`,
+            indice_prioridad_clinica: "Pendiente"
         };
     }, [patientData?.scan_data]);
 
