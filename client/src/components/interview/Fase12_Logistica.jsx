@@ -345,12 +345,14 @@ export default function Fase12_Logistica({
                     
                     const venueMsg = isLactante
                         ? `Registrado. Configurando los parámetros del entorno nutricional de **${pName}**.\n\n¿En qué entorno principal pasa su bebé sus días de mayor actividad (lunes a viernes)?`
-                        : `Registrado. Configurando los parámetros del entorno nutricional.\n\n¿Dónde acostumbra desayunar y comer en sus días de mayor actividad (lunes a viernes)?`;
+                        : (isChild
+                            ? `Registrado. Configurando los parámetros del entorno nutricional de **${pName}**.\n\n¿En qué entorno principal pasa **${pName}** sus días de mayor actividad (lunes a viernes)?`
+                            : `Registrado. Configurando los parámetros del entorno nutricional.\n\n¿Dónde acostumbra desayunar y comer en sus días de mayor actividad (lunes a viernes)?`);
 
-                    const venueOptions = isLactante
+                    const venueOptions = (isLactante || isChild)
                         ? [
                             { label: "🏠 En casa con la familia", value: "HOME" },
-                            { label: "🏫 En guardería / estancia infantil", value: "WORK" }
+                            { label: "🏫 En guardería / escuela", value: "WORK" }
                         ]
                         : [
                             { label: "🏠 En casa", value: "HOME" },
@@ -374,12 +376,14 @@ export default function Fase12_Logistica({
                     setLogistics(prev => ({ ...prev, buying_type: userMsg }));
                     const venueMsg = isLactante
                         ? `Registrado. Configurando el entorno nutricional de **${pName}**.\n\n¿En qué entorno principal pasa su bebé sus días de mayor actividad (lunes a viernes)?`
-                        : `Registrado. Configurando los parámetros del entorno nutricional.\n\n¿Dónde acostumbra desayunar y comer en sus días de mayor actividad (lunes a viernes)?`;
+                        : (isChild
+                            ? `Registrado. Configurando los parámetros del entorno nutricional de **${pName}**.\n\n¿En qué entorno principal pasa **${pName}** sus días de mayor actividad (lunes a viernes)?`
+                            : `Registrado. Configurando los parámetros del entorno nutricional.\n\n¿Dónde acostumbra desayunar y comer en sus días de mayor actividad (lunes a viernes)?`);
 
-                    const venueOptions = isLactante
+                    const venueOptions = (isLactante || isChild)
                         ? [
                             { label: "🏠 En casa con la familia", value: "HOME" },
-                            { label: "🏫 En guardería / estancia infantil", value: "WORK" }
+                            { label: "🏫 En guardería / escuela", value: "WORK" }
                         ]
                         : [
                             { label: "🏠 En casa", value: "HOME" },
@@ -390,10 +394,23 @@ export default function Fase12_Logistica({
                     addBotMsg(venueMsg, venueOptions);
                     setInternalStep('VENUE_GATE');
                 } else {
-                    addBotMsg("Por favor, seleccione dónde adquiere los insumos principalmente:", [
-                        { label: "🏪 Farmacias / Tiendas infantiles", value: "FONDAS" },
-                        { label: "🛒 Supermercado", value: "RESTAURANTS" }
-                    ]);
+                    const defaultBuyOpts = isLactante
+                        ? [
+                            { label: "🏪 Farmacias / Tiendas infantiles", value: "FONDAS" },
+                            { label: "🛒 Supermercado", value: "RESTAURANTS" }
+                        ]
+                        : (isChild
+                            ? [
+                                { label: "🏫 Comedor escolar / Guardería", value: "FONDAS" },
+                                { label: "🛒 Supermercado / Tienda local", value: "RESTAURANTS" },
+                                { label: "🍕 Comida preparada / Externa", value: "FAST_FOOD" }
+                            ]
+                            : [
+                                { label: "🍽️ Restaurantes", value: "RESTAURANTS" },
+                                { label: "🏪 Fondas locales", value: "FONDAS" },
+                                { label: "🍕 Comida rápida / al paso", value: "FAST_FOOD" }
+                            ]);
+                    addBotMsg("Por favor, seleccione dónde adquiere los insumos principalmente:", defaultBuyOpts);
                 }
                 break;
             }
@@ -406,13 +423,15 @@ export default function Fase12_Logistica({
                     if (userMsg === 'WORK') {
                         const amenMsg = isLactante
                             ? `Entendido. Ajustando la logística para estancia/guardería.\n\n¿Con qué equipo cuenta la estancia para entibiar y almacenar biberones o papillas de **${pName}**?`
-                            : `Entendido. Ajustando la logística de empaques y alimentos.\n\n¿Con qué equipo cuenta en su lugar de trabajo para almacenar y calentar sus alimentos?`;
+                            : (isChild
+                                ? `Entendido. Ajustando la logística para la escuela o guardería.\n\n¿Con qué equipo cuenta la escuela/guardería para almacenar y calentar el lonche de **${pName}**?`
+                                : `Entendido. Ajustando la logística de empaques y alimentos.\n\n¿Con qué equipo cuenta en su lugar de trabajo para almacenar y calentar sus alimentos?`);
 
-                        const amenOptions = isLactante
+                        const amenOptions = (isLactante || isChild)
                             ? [
-                                { label: "🔥 Calentador y Refrigerador", value: "BOTH" },
+                                { label: "🔥 Horno / Calentador y Refrigerador", value: "BOTH" },
                                 { label: "❄️ Solo refrigerador", value: "FRIDGE" },
-                                { label: "🚫 Sin equipamiento", value: "NONE" }
+                                { label: "🚫 Sin equipamiento (Lonchera térmica)", value: "NONE" }
                             ]
                             : [
                                 { label: "🔥 Horno y Refrigerador", value: "BOTH" },
@@ -431,28 +450,36 @@ export default function Fase12_Logistica({
 
                         const socialMsg = isLactante
                             ? `El entorno social es clave para el desarrollo del bebé. ¿Con quién suele compartir **${pName}** las tomas o papillas habitualmente?`
-                            : `El entorno social es clave para su bienestar. ¿Con quién suele compartir sus comidas principales habitualmente?`;
+                            : (isChild
+                                ? `El entorno social es clave para el desarrollo nutricional de **${pName}**. ¿Con quién suele compartir sus comidas principales habitualmente?`
+                                : `El entorno social es clave para su bienestar. ¿Con quién suele compartir sus comidas principales habitualmente?`);
 
                         const socialOptions = isLactante
                             ? [
                                 { label: "👨‍👩‍👧 Con la familia", value: "FAMILY" },
                                 { label: "🤝 Con su cuidador/a", value: "CAREGIVER" }
                             ]
-                            : [
-                                { label: "👤 Principalmente solo", value: "ALONE" },
-                                { label: "👨‍👩‍👧 Con mi familia / Pareja", value: "FAMILY" },
-                                { label: "🤝 Con mi cuidador / Personal", value: "CAREGIVER" },
-                                { label: "👥 Compañeros / Amigos", value: "FRIENDS" }
-                            ];
+                            : (isChild
+                                ? [
+                                    { label: "👨‍👩‍👧 Con la familia", value: "FAMILY" },
+                                    { label: "🤝 Con su cuidador/a", value: "CAREGIVER" },
+                                    { label: "👥 Con compañeros en escuela / guardería", value: "FRIENDS" }
+                                ]
+                                : [
+                                    { label: "👤 Principalmente solo", value: "ALONE" },
+                                    { label: "👨‍👩‍👧 Con mi familia / Pareja", value: "FAMILY" },
+                                    { label: "🤝 Con mi cuidador / Personal", value: "CAREGIVER" },
+                                    { label: "👥 Compañeros / Amigos", value: "FRIENDS" }
+                                ]);
 
                         addBotMsg(socialMsg, socialOptions);
                         setInternalStep('SOCIAL_GATE');
                     }
                 } else {
-                    const defaultVenueOpts = isLactante
+                    const defaultVenueOpts = (isLactante || isChild)
                         ? [
                             { label: "🏠 En casa con la familia", value: "HOME" },
-                            { label: "🏫 En guardería / estancia infantil", value: "WORK" }
+                            { label: "🏫 En guardería / escuela", value: "WORK" }
                         ]
                         : [
                             { label: "🏠 En casa", value: "HOME" },
@@ -476,28 +503,43 @@ export default function Fase12_Logistica({
 
                     const socialMsg = isLactante
                         ? `El entorno social es clave para el desarrollo del bebé. ¿Con quién suele compartir **${pName}** las tomas o papillas habitualmente?`
-                        : `El entorno social es clave para su bienestar. ¿Con quién suele compartir sus comidas principales habitualmente?`;
+                        : (isChild
+                            ? `El entorno social es clave para el desarrollo nutricional de **${pName}**. ¿Con quién suele compartir sus comidas principales habitualmente?`
+                            : `El entorno social es clave para su bienestar. ¿Con quién suele compartir sus comidas principales habitualmente?`);
 
                     const socialOptions = isLactante
                         ? [
                             { label: "👨‍👩‍👧 Con la familia", value: "FAMILY" },
                             { label: "🤝 Con su cuidador/a", value: "CAREGIVER" }
                         ]
-                        : [
-                            { label: "👤 Principalmente solo", value: "ALONE" },
-                            { label: "👨‍👩‍👧 Con mi familia / Pareja", value: "FAMILY" },
-                            { label: "🤝 Con mi cuidador / Personal", value: "CAREGIVER" },
-                            { label: "👥 Compañeros / Amigos", value: "FRIENDS" }
-                        ];
+                        : (isChild
+                            ? [
+                                { label: "👨‍👩‍👧 Con la familia", value: "FAMILY" },
+                                { label: "🤝 Con su cuidador/a", value: "CAREGIVER" },
+                                { label: "👥 Con compañeros en escuela / guardería", value: "FRIENDS" }
+                            ]
+                            : [
+                                { label: "👤 Principalmente solo", value: "ALONE" },
+                                { label: "👨‍👩‍👧 Con mi familia / Pareja", value: "FAMILY" },
+                                { label: "🤝 Con mi cuidador / Personal", value: "CAREGIVER" },
+                                { label: "👥 Compañeros / Amigos", value: "FRIENDS" }
+                            ]);
 
                     addBotMsg(socialMsg, socialOptions);
                     setInternalStep('SOCIAL_GATE');
                 } else {
-                    addBotMsg("Por favor, seleccione el equipamiento disponible:", [
-                        { label: "🔥 Calentador y Refrigerador", value: "BOTH" },
-                        { label: "❄️ Solo refrigerador", value: "FRIDGE" },
-                        { label: "🚫 Sin equipamiento", value: "NONE" }
-                    ]);
+                    const amenOpts = (isLactante || isChild)
+                        ? [
+                            { label: "🔥 Horno / Calentador y Refrigerador", value: "BOTH" },
+                            { label: "❄️ Solo refrigerador", value: "FRIDGE" },
+                            { label: "🚫 Sin equipamiento (Lonchera térmica)", value: "NONE" }
+                        ]
+                        : [
+                            { label: "🔥 Horno y Refrigerador", value: "BOTH" },
+                            { label: "❄️ Solo refrigerador", value: "FRIDGE" },
+                            { label: "🚫 Sin equipamiento", value: "NONE" }
+                        ];
+                    addBotMsg("Por favor, seleccione el equipamiento disponible:", amenOpts);
                 }
                 break;
             }
@@ -520,17 +562,24 @@ export default function Fase12_Logistica({
 
                     const dynamicsMsg = isLactante
                         ? `Para estructurar el plan de lactancia y ablactación: En estas comidas compartidas, ¿consume **${pName}** preparaciones exclusivas de lactante o papillas adaptadas del menú familiar?`
-                        : `Para estructurar correctamente su lista de compras y preparaciones: En estas comidas compartidas, ¿usted consume sus propios alimentos (separado) o todos en la mesa comparten el mismo menú familiar?`;
+                        : (isChild
+                            ? `Para estructurar la logística alimentaria: En estas comidas compartidas, ¿consume **${pName}** platillos adaptados/exclusivos o todos en la mesa comparten el mismo menú familiar?`
+                            : `Para estructurar correctamente su lista de compras y preparaciones: En estas comidas compartidas, ¿usted consume sus propios alimentos (separado) o todos en la mesa comparten el mismo menú familiar?`);
 
                     const dynamicsOptions = isLactante
                         ? [
                             { label: "🍼 Preparaciones exclusivas para el bebé", value: "SEPARATE_FOOD" },
                             { label: "🍲 Papillas adaptadas del menú familiar", value: "SHARED_MENU" }
                         ]
-                        : [
-                            { label: "🍲 Compartimos el mismo menú", value: "SHARED_MENU" },
-                            { label: "🍱 Cada quien su comida", value: "SEPARATE_FOOD" }
-                        ];
+                        : (isChild
+                            ? [
+                                { label: "🍲 Compartimos el mismo menú familiar", value: "SHARED_MENU" },
+                                { label: "🍱 Alimentos adaptados/exclusivos para el niño", value: "SEPARATE_FOOD" }
+                            ]
+                            : [
+                                { label: "🍲 Compartimos el mismo menú", value: "SHARED_MENU" },
+                                { label: "🍱 Cada quien su comida", value: "SEPARATE_FOOD" }
+                            ]);
 
                     addBotMsg(dynamicsMsg, dynamicsOptions);
                     setInternalStep('SOCIAL_DYNAMICS_GATE');
@@ -540,12 +589,18 @@ export default function Fase12_Logistica({
                             { label: "👨‍👩‍👧 Con la familia", value: "FAMILY" },
                             { label: "🤝 Con su cuidador/a", value: "CAREGIVER" }
                         ]
-                        : [
-                            { label: "👤 Principalmente solo", value: "ALONE" },
-                            { label: "👨‍👩‍👧 Con mi familia / Pareja", value: "FAMILY" },
-                            { label: "🤝 Con mi cuidador / Personal", value: "CAREGIVER" },
-                            { label: "👥 Compañeros / Amigos", value: "FRIENDS" }
-                        ];
+                        : (isChild
+                            ? [
+                                { label: "👨‍👩‍👧 Con la familia", value: "FAMILY" },
+                                { label: "🤝 Con su cuidador/a", value: "CAREGIVER" },
+                                { label: "👥 Con compañeros en escuela / guardería", value: "FRIENDS" }
+                            ]
+                            : [
+                                { label: "👤 Principalmente solo", value: "ALONE" },
+                                { label: "👨‍👩‍👧 Con mi familia / Pareja", value: "FAMILY" },
+                                { label: "🤝 Con mi cuidador / Personal", value: "CAREGIVER" },
+                                { label: "👥 Compañeros / Amigos", value: "FRIENDS" }
+                            ]);
                     addBotMsg("Por favor, seleccione con quién comparte las comidas:", defaultSocialOpts);
                 }
                 break;
@@ -555,8 +610,11 @@ export default function Fase12_Logistica({
                 if (userMsg === 'SHARED_MENU') {
                     const nextLogistics = { ...logistics, sharing_dynamics: userMsg };
                     setLogistics(nextLogistics);
+                    const countMsg = (isLactante || isChild)
+                        ? `Entendido. ¿Para cuántas personas en total (incluyendo a **${pName}**) debemos calcular la lista del supermercado y las porciones familiares?`
+                        : `Entendido. ¿Para cuántas personas en total (incluyéndolo a usted) debemos calcular la lista del supermercado y las porciones?`;
                     addBotMsg(
-                        `Entendido. ¿Para cuántas personas en total (incluyéndolo a usted) debemos calcular la lista del supermercado y las porciones?`,
+                        countMsg,
                         [
                             { label: "👥 2 personas", value: "2" },
                             { label: "👪 3 personas", value: "3" },
@@ -576,10 +634,21 @@ export default function Fase12_Logistica({
                     showSummary(finalLogistics);
                     setInternalStep('REVIEW_SUMMARY');
                 } else {
-                    addBotMsg("Por favor, seleccione su dinámica de alimentos utilizando las opciones:", [
-                        { label: "🍲 Compartimos el mismo menú", value: "SHARED_MENU" },
-                        { label: "🍱 Cada quien su comida", value: "SEPARATE_FOOD" }
-                    ]);
+                    const defaultDynOpts = isLactante
+                        ? [
+                            { label: "🍼 Preparaciones exclusivas para el bebé", value: "SEPARATE_FOOD" },
+                            { label: "🍲 Papillas adaptadas del menú familiar", value: "SHARED_MENU" }
+                        ]
+                        : (isChild
+                            ? [
+                                { label: "🍲 Compartimos el mismo menú familiar", value: "SHARED_MENU" },
+                                { label: "🍱 Alimentos adaptados/exclusivos para el niño", value: "SEPARATE_FOOD" }
+                            ]
+                            : [
+                                { label: "🍲 Compartimos el mismo menú", value: "SHARED_MENU" },
+                                { label: "🍱 Cada quien su comida", value: "SEPARATE_FOOD" }
+                            ]);
+                    addBotMsg("Por favor, seleccione su dinámica de alimentos utilizando las opciones:", defaultDynOpts);
                 }
                 break;
             }
@@ -588,8 +657,11 @@ export default function Fase12_Logistica({
                 if (userMsg === '2' || userMsg === '3' || userMsg === '4' || userMsg === '5') {
                     const nextLogistics = { ...logistics, sharing_diners_count: parseInt(userMsg, 10) };
                     setLogistics(nextLogistics);
+                    const demoMsg = (isLactante || isChild)
+                        ? `Finalmente, para asegurar que el menú sea amigable para todos en el hogar, ¿hay otros niños pequeños o adultos mayores en esta mesa compartida?`
+                        : `Finalmente, para asegurar que el menú sea amigable para todos, ¿hay niños pequeños o adultos mayores en esta mesa compartida?`;
                     addBotMsg(
-                        `Finalmente, para asegurar que el menú sea amigable para todos, ¿hay niños pequeños o adultos mayores en esta mesa compartida?`,
+                        demoMsg,
                         [
                             { label: "👶 Niños", value: "KIDS" },
                             { label: "🧓 Adultos mayores", value: "ELDERLY" },
