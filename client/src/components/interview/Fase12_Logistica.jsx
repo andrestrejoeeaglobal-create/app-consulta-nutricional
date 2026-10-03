@@ -11,7 +11,8 @@ export default function Fase12_Logistica({
     setMessages,
     setIsGlobalTyping
 }) {
-    const { patientName: pName, isMinor, isLactante } = usePatientLinguistics(patientData);
+    const { patientName: pName, isMinor, isLactante, isPreescolar, isEscolar, isPediatrico } = usePatientLinguistics(patientData);
+    const isChild = isLactante || isPreescolar || isEscolar || isMinor || isPediatrico;
     const [internalStep, setInternalStep] = useState(() => {
         const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("perfil logístico y operativo"));
         const lp = patientData?.logistics_profile;
@@ -68,7 +69,9 @@ export default function Fase12_Logistica({
             hasGreeted.current = true;
             const initialMsg = isLactante
                 ? `He registrado y sellado el perfil de descanso y desarrollo de **${pName}** (su bebé).\n\nPara adaptar su plan alimentario y de lactancia a la rutina del hogar, iniciemos con la logística de preparación. ¿Quién prepara o administra habitualmente los alimentos o biberones de su bebé?`
-                : `He registrado y sellado su perfil de actividad física y descanso de manera exitosa.\n\nPara adaptar su plan a su estilo de vida, iniciemos con su logística de alimentación. ¿Quién prepara regularmente sus comidas principales?`;
+                : (isChild
+                    ? `He registrado y sellado el perfil de actividad física y descanso de **${pName}** de manera exitosa.\n\nPara adaptar el plan alimentario de **${pName}** a la rutina del hogar, iniciemos con la logística de alimentación. ¿Quién prepara regularmente las comidas principales de **${pName}**?`
+                    : `He registrado y sellado su perfil de actividad física y descanso de manera exitosa.\n\nPara adaptar su plan a su estilo de vida, iniciemos con su logística de alimentación. ¿Quién prepara regularmente sus comidas principales?`);
             
             const initialOptions = isLactante
                 ? [
@@ -76,12 +79,19 @@ export default function Fase12_Logistica({
                     { label: "👵 Familiar / Cuidador", value: "STAFF" },
                     { label: "🏫 Guardería / Estancia", value: "BUYING" }
                 ]
-                : [
-                    { label: "🧑‍🍳 Cocino yo", value: "SELF" },
-                    { label: "👪 Un familiar", value: "FAMILY" },
-                    { label: "💼 Personal de cocina", value: "STAFF" },
-                    { label: "🥡 Compro hecho", value: "BUYING" }
-                ];
+                : (isChild
+                    ? [
+                        { label: "👨‍👩‍👧 Su mamá / papá / tutor", value: "FAMILY" },
+                        { label: "👵 Un familiar (abuela, tía, etc.)", value: "SELF" },
+                        { label: "💼 Personal de cocina en casa", value: "STAFF" },
+                        { label: "🏫 Comedor escolar / Guardería", value: "BUYING" }
+                    ]
+                    : [
+                        { label: "🧑‍🍳 Cocino yo", value: "SELF" },
+                        { label: "👪 Un familiar", value: "FAMILY" },
+                        { label: "💼 Personal de cocina", value: "STAFF" },
+                        { label: "🥡 Compro hecho", value: "BUYING" }
+                    ]);
 
             setMessages(prev => [...prev, {
                 role: 'assistant',
@@ -90,7 +100,7 @@ export default function Fase12_Logistica({
                 options: initialOptions
             }]);
         }
-    }, [messages, setMessages, internalStep, isLactante, pName]);
+    }, [messages, setMessages, internalStep, isLactante, isChild, pName]);
 
 
     // Sincronización en tiempo real con el expediente global
@@ -131,25 +141,56 @@ export default function Fase12_Logistica({
         switch (internalStep) {
             case 'correct_menu': {
                 if (input === "MODIFY_COOK") {
-                    addBotMsg(
-                        `¿Quién prepara regularmente sus comidas principales?`,
-                        [
-                            { label: "🧑‍🍳 Cocino yo", value: "SELF" },
-                            { label: "👪 Un familiar", value: "FAMILY" },
-                            { label: "💼 Personal de cocina", value: "STAFF" },
-                            { label: "🥡 Compro hecho", value: "BUYING" }
+                    const cookMsg = isLactante
+                        ? `¿Quién prepara o administra habitualmente los alimentos o biberones de su bebé?`
+                        : (isChild
+                            ? `¿Quién prepara regularmente las comidas principales de **${pName}**?`
+                            : `¿Quién prepara regularmente sus comidas principales?`);
+                    const cookOpts = isLactante
+                        ? [
+                            { label: "🤱 Mamá / Papá", value: "FAMILY" },
+                            { label: "👵 Familiar / Cuidador", value: "STAFF" },
+                            { label: "🏫 Guardería / Estancia", value: "BUYING" }
                         ]
-                    );
+                        : (isChild
+                            ? [
+                                { label: "👨‍👩‍👧 Su mamá / papá / tutor", value: "FAMILY" },
+                                { label: "👵 Un familiar (abuela, tía, etc.)", value: "SELF" },
+                                { label: "💼 Personal de cocina en casa", value: "STAFF" },
+                                { label: "🏫 Comedor escolar / Guardería", value: "BUYING" }
+                            ]
+                            : [
+                                { label: "🧑‍🍳 Cocino yo", value: "SELF" },
+                                { label: "👪 Un familiar", value: "FAMILY" },
+                                { label: "💼 Personal de cocina", value: "STAFF" },
+                                { label: "🥡 Compro hecho", value: "BUYING" }
+                            ]);
+                    addBotMsg(cookMsg, cookOpts);
                     setInternalStep('COOK_GATE');
                 } else if (input === "MODIFY_BUYING") {
-                    addBotMsg(
-                        `¿Quién realiza las compras del supermercado habitualmente?`,
-                        [
-                            { label: "🧑‍🍳 Yo personalmente", value: "SELF" },
-                            { label: "👪 Un familiar o pareja", value: "FAMILY" },
-                            { label: "🛒 Aplicaciones de delivery", value: "APP" }
+                    const buyMsg = isLactante
+                        ? `¿Quién realiza habitualmente las compras de insumos para su bebé?`
+                        : (isChild
+                            ? `¿Quién realiza habitualmente las compras del supermercado para **${pName}** y la familia?`
+                            : `¿Quién realiza las compras del supermercado habitualmente?`);
+                    const buyOpts = isLactante
+                        ? [
+                            { label: "🤱 Mamá / Papá", value: "SELF" },
+                            { label: "👵 Un familiar", value: "FAMILY" },
+                            { label: "🛒 Aplicaciones / Tienda", value: "APP" }
                         ]
-                    );
+                        : (isChild
+                            ? [
+                                { label: "👨‍👩‍👧 Mamá / Papá / Tutor", value: "SELF" },
+                                { label: "👪 Un familiar", value: "FAMILY" },
+                                { label: "🛒 Aplicaciones de delivery", value: "APP" }
+                            ]
+                            : [
+                                { label: "🧑‍🍳 Yo personalmente", value: "SELF" },
+                                { label: "👪 Un familiar o pareja", value: "FAMILY" },
+                                { label: "🛒 Aplicaciones de delivery", value: "APP" }
+                            ]);
+                    addBotMsg(buyMsg, buyOpts);
                     setInternalStep('BUYING_GATE');
                 } else if (input === "CLEAR_ALL") {
                     setLogistics({
@@ -164,15 +205,31 @@ export default function Fase12_Logistica({
                         sharing_diners_count: null,
                         sharing_demographics: ''
                     });
-                    addBotMsg(
-                        `Perfil logístico reiniciado.\n\n¿Quién prepara regularmente sus comidas principales?`,
-                        [
-                            { label: "🧑‍🍳 Cocino yo", value: "SELF" },
-                            { label: "👪 Un familiar", value: "FAMILY" },
-                            { label: "💼 Personal de cocina", value: "STAFF" },
-                            { label: "🥡 Compro hecho", value: "BUYING" }
+                    const cookMsg = isLactante
+                        ? `Perfil logístico reiniciado.\n\n¿Quién prepara o administra habitualmente los alimentos o biberones de su bebé?`
+                        : (isChild
+                            ? `Perfil logístico reiniciado.\n\n¿Quién prepara regularmente las comidas principales de **${pName}**?`
+                            : `Perfil logístico reiniciado.\n\n¿Quién prepara regularmente sus comidas principales?`);
+                    const cookOpts = isLactante
+                        ? [
+                            { label: "🤱 Mamá / Papá", value: "FAMILY" },
+                            { label: "👵 Familiar / Cuidador", value: "STAFF" },
+                            { label: "🏫 Guardería / Estancia", value: "BUYING" }
                         ]
-                    );
+                        : (isChild
+                            ? [
+                                { label: "👨‍👩‍👧 Su mamá / papá / tutor", value: "FAMILY" },
+                                { label: "👵 Un familiar (abuela, tía, etc.)", value: "SELF" },
+                                { label: "💼 Personal de cocina en casa", value: "STAFF" },
+                                { label: "🏫 Comedor escolar / Guardería", value: "BUYING" }
+                            ]
+                            : [
+                                { label: "🧑‍🍳 Cocino yo", value: "SELF" },
+                                { label: "👪 Un familiar", value: "FAMILY" },
+                                { label: "💼 Personal de cocina", value: "STAFF" },
+                                { label: "🥡 Compro hecho", value: "BUYING" }
+                            ]);
+                    addBotMsg(cookMsg, cookOpts);
                     setInternalStep('COOK_GATE');
                 } else if (input === "FINISH") {
                     onPhaseComplete(logistics, messages);
@@ -185,7 +242,9 @@ export default function Fase12_Logistica({
                     setLogistics(prev => ({ ...prev, cook_type: userMsg }));
                     const timeMsg = isLactante
                         ? `Anotado. Diseñaremos pautas de alimentación acordes a la rutina del bebé.\n\n¿De cuánto tiempo se dispone habitualmente para la preparación de papillas y biberones entre semana?`
-                        : `Anotado. Diseñaremos recetas acordes a su disponibilidad.\n\n¿De cuánto tiempo dispone habitualmente para cocinar entre semana?`;
+                        : (isChild
+                            ? `Anotado. Diseñaremos recetas acordes a la rutina de **${pName}** y la familia.\n\n¿De cuánto tiempo dispone la persona encargada para cocinar entre semana?`
+                            : `Anotado. Diseñaremos recetas acordes a su disponibilidad.\n\n¿De cuánto tiempo dispone habitualmente para cocinar entre semana?`);
                     
                     const timeOptions = isLactante
                         ? [
@@ -204,12 +263,14 @@ export default function Fase12_Logistica({
                     setLogistics(prev => ({ ...prev, cook_type: userMsg, cooking_time: '' }));
                     const venueMsg = isLactante
                         ? `Entendido. Ajustando los parámetros del entorno nutricional de **${pName}**.\n\n¿En qué entorno principal pasa su bebé sus días de mayor actividad (lunes a viernes)?`
-                        : `Entendido. Ajustando los parámetros del entorno nutricional.\n\n¿Dónde acostumbra desayunar y comer en sus días de mayor actividad (lunes a viernes)?`;
+                        : (isChild
+                            ? `Entendido. Ajustando los parámetros del entorno nutricional de **${pName}**.\n\n¿En qué entorno principal pasa **${pName}** sus días de mayor actividad (lunes a viernes)?`
+                            : `Entendido. Ajustando los parámetros del entorno nutricional.\n\n¿Dónde acostumbra desayunar y comer en sus días de mayor actividad (lunes a viernes)?`);
 
-                    const venueOptions = isLactante
+                    const venueOptions = (isLactante || isChild)
                         ? [
                             { label: "🏠 En casa con la familia", value: "HOME" },
-                            { label: "🏫 En guardería / estancia infantil", value: "WORK" }
+                            { label: "🏫 En guardería / escuela", value: "WORK" }
                         ]
                         : [
                             { label: "🏠 En casa", value: "HOME" },
@@ -223,25 +284,35 @@ export default function Fase12_Logistica({
                     setLogistics(prev => ({ ...prev, cook_type: userMsg, cooking_time: '' }));
                     const buyMsg = isLactante
                         ? `Entendido. Ajustaremos la guía de fórmulas y papillas comerciales.\n\n¿Dónde acostumbra adquirir los insumos principales de su bebé?`
-                        : `Entendido. Adaptaremos la guía de equivalentes a los establecimientos que frecuenta.\n\n¿Dónde acostumbra comprar su comida principalmente?`;
+                        : (isChild
+                            ? `Entendido. Adaptaremos la guía de equivalentes y colaciones infantiles para **${pName}**.\n\n¿Dónde acostumbran comprar su comida principalmente?`
+                            : `Entendido. Adaptaremos la guía de equivalentes a los establecimientos que frecuenta.\n\n¿Dónde acostumbra comprar su comida principalmente?`);
                     
                     const buyOptions = isLactante
                         ? [
                             { label: "🏪 Farmacias / Tiendas infantiles", value: "FONDAS" },
                             { label: "🛒 Supermercado", value: "RESTAURANTS" }
                         ]
-                        : [
-                            { label: "🍽️ Restaurantes", value: "RESTAURANTS" },
-                            { label: "🏪 Fondas locales", value: "FONDAS" },
-                            { label: "🍕 Comida rápida / al paso", value: "FAST_FOOD" }
-                        ];
+                        : (isChild
+                            ? [
+                                { label: "🏫 Comedor escolar / Guardería", value: "FONDAS" },
+                                { label: "🛒 Supermercado / Tienda local", value: "RESTAURANTS" },
+                                { label: "🍕 Comida preparada / Externa", value: "FAST_FOOD" }
+                            ]
+                            : [
+                                { label: "🍽️ Restaurantes", value: "RESTAURANTS" },
+                                { label: "🏪 Fondas locales", value: "FONDAS" },
+                                { label: "🍕 Comida rápida / al paso", value: "FAST_FOOD" }
+                            ]);
 
                     addBotMsg(buyMsg, buyOptions);
                     setInternalStep('BUY_GATE');
                 } else {
                     const defaultMsg = isLactante
                         ? `Por favor, seleccione quién administra los alimentos de **${pName}**:`
-                        : "Por favor, seleccione quién prepara sus comidas utilizando las opciones:";
+                        : (isChild
+                            ? `Por favor, seleccione quién prepara las comidas de **${pName}** utilizando las opciones:`
+                            : "Por favor, seleccione quién prepara sus comidas utilizando las opciones:");
                     
                     const defaultOpts = isLactante
                         ? [
@@ -249,12 +320,19 @@ export default function Fase12_Logistica({
                             { label: "👵 Familiar / Cuidador", value: "STAFF" },
                             { label: "🏫 Guardería / Estancia", value: "BUYING" }
                         ]
-                        : [
-                            { label: "🧑‍🍳 Cocino yo", value: "SELF" },
-                            { label: "👪 Un familiar", value: "FAMILY" },
-                            { label: "💼 Personal de cocina", value: "STAFF" },
-                            { label: "🥡 Compro hecho", value: "BUYING" }
-                        ];
+                        : (isChild
+                            ? [
+                                { label: "👨‍👩‍👧 Su mamá / papá / tutor", value: "FAMILY" },
+                                { label: "👵 Un familiar (abuela, tía, etc.)", value: "SELF" },
+                                { label: "💼 Personal de cocina en casa", value: "STAFF" },
+                                { label: "🏫 Comedor escolar / Guardería", value: "BUYING" }
+                            ]
+                            : [
+                                { label: "🧑‍🍳 Cocino yo", value: "SELF" },
+                                { label: "👪 Un familiar", value: "FAMILY" },
+                                { label: "💼 Personal de cocina", value: "STAFF" },
+                                { label: "🥡 Compro hecho", value: "BUYING" }
+                            ]);
                     addBotMsg(defaultMsg, defaultOpts);
                 }
                 break;
@@ -579,19 +657,37 @@ export default function Fase12_Logistica({
                     setMessages(prev => {
                         const cutIndex = getStartIndex(prev);
                         const cleanList = prev.slice(0, cutIndex);
-                        const initialMsg = `He registrado y sellado su perfil de actividad física y descanso de manera exitosa.\n\nPara adaptar su plan a su estilo de vida, iniciemos con su logística de alimentación. ¿Quién prepara regularmente sus comidas principales?`;
+                        const initialMsg = isLactante
+                            ? `He registrado y sellado el perfil de descanso y desarrollo de **${pName}** (su bebé).\n\nPara adaptar su plan alimentario y de lactancia a la rutina del hogar, iniciemos con la logística de preparación. ¿Quién prepara o administra habitualmente los alimentos o biberones de su bebé?`
+                            : (isChild
+                                ? `He registrado y sellado el perfil de actividad física y descanso de **${pName}** de manera exitosa.\n\nPara adaptar el plan alimentario de **${pName}** a la rutina del hogar, iniciemos con la logística de alimentación. ¿Quién prepara regularmente las comidas principales de **${pName}**?`
+                                : `He registrado y sellado su perfil de actividad física y descanso de manera exitosa.\n\nPara adaptar su plan a su estilo de vida, iniciemos con su logística de alimentación. ¿Quién prepara regularmente sus comidas principales?`);
+                        const initialOpts = isLactante
+                            ? [
+                                { label: "🤱 Mamá / Papá", value: "FAMILY" },
+                                { label: "👵 Familiar / Cuidador", value: "STAFF" },
+                                { label: "🏫 Guardería / Estancia", value: "BUYING" }
+                            ]
+                            : (isChild
+                                ? [
+                                    { label: "👨‍👩‍👧 Su mamá / papá / tutor", value: "FAMILY" },
+                                    { label: "👵 Un familiar (abuela, tía, etc.)", value: "SELF" },
+                                    { label: "💼 Personal de cocina en casa", value: "STAFF" },
+                                    { label: "🏫 Comedor escolar / Guardería", value: "BUYING" }
+                                ]
+                                : [
+                                    { label: "🧑‍🍳 Cocino yo", value: "SELF" },
+                                    { label: "👪 Un familiar", value: "FAMILY" },
+                                    { label: "💼 Personal de cocina", value: "STAFF" },
+                                    { label: "🥡 Compro hecho", value: "BUYING" }
+                                ]);
                         return [
                             ...cleanList,
                             {
                                 role: 'assistant',
                                 content: initialMsg,
                                 avatar: tiloImg,
-                                options: [
-                                    { label: "🧑‍🍳 Cocino yo", value: "SELF" },
-                                    { label: "👪 Un familiar", value: "FAMILY" },
-                                    { label: "💼 Personal de cocina", value: "STAFF" },
-                                    { label: "🥡 Compro hecho", value: "BUYING" }
-                                ]
+                                options: initialOpts
                             }
                         ];
                     });
@@ -633,32 +729,45 @@ export default function Fase12_Logistica({
             FAMILY: "Mamá / Papá en el hogar",
             STAFF: "Familiar o Cuidador asignado",
             BUYING: "Guardería / Estancia infantil"
+        } : (isChild ? {
+            SELF: "Un familiar (abuela, tía, etc.)",
+            FAMILY: "Mamá / Papá / Tutor en el hogar",
+            STAFF: "Personal de Cocina en casa",
+            BUYING: "Comedor Escolar / Guardería"
         } : {
             SELF: "Cocina Propia (Yo mismo)",
             FAMILY: "Familiar Cocina",
             STAFF: "Personal de Cocina",
             BUYING: "Comprada (Restablecimientos / Fuera)"
-        };
+        });
 
         const timeMap = isLactante ? {
             LOW: "Preparación rápida / Biberones e insumos listos",
             HIGH: "Tiempo amplio para papillas caseras",
             WEEKEND_ONLY: "Preparación de fórmula / papillas en fines de semana"
+        } : (isChild ? {
+            LOW: "Tiempo Limitado (Preparación rápida)",
+            HIGH: "Tiempo Disponible (Comidas elaboradas)",
+            WEEKEND_ONLY: "Solo Fines de Semana"
         } : {
             LOW: "Tiempo Limitado (Express)",
             HIGH: "Tiempo Disponible (Estándar)",
             WEEKEND_ONLY: "Solo Fines de Semana"
-        };
+        });
 
         const venueMap = isLactante ? {
             HOME: "En Casa con la familia",
             WORK: "En Guardería / Estancia Infantil",
             STREET: "En Casa / Guardería"
+        } : (isChild ? {
+            HOME: "En Casa con la familia",
+            WORK: "En Escuela / Guardería",
+            STREET: "En la Calle / Fuera de casa"
         } : {
             HOME: "En Casa",
             WORK: "En el Trabajo / Oficina",
             STREET: "En la Calle / Al paso"
-        };
+        });
 
         const prepLabel = prepMap[data.cook_type] || "No especificado";
         const timeLabel = timeMap[data.cooking_time] || "No aplica";
@@ -668,9 +777,9 @@ export default function Fase12_Logistica({
         if (data.environment?.venue === 'WORK') {
             const reheating = data.recipe_filters?.requires_reheating;
             const refrigeration = data.recipe_filters?.requires_refrigeration;
-            if (reheating && refrigeration) amenitiesLabel = isLactante ? "Calentador y Refrigerador pediátrico" : "Refrigerador y Horno de microondas";
+            if (reheating && refrigeration) amenitiesLabel = (isLactante || isChild) ? "Horno / Calentador y Refrigerador" : "Refrigerador y Horno de microondas";
             else if (!reheating && refrigeration) amenitiesLabel = "Solo Refrigerador";
-            else amenitiesLabel = "Sin equipamiento";
+            else amenitiesLabel = (isLactante || isChild) ? "Sin equipamiento (Lonchera térmica)" : "Sin equipamiento";
         }
 
         const socialMap = isLactante ? {
@@ -678,12 +787,17 @@ export default function Fase12_Logistica({
             FAMILY: "Con la familia en el hogar",
             CAREGIVER: "Con su cuidador/a",
             FRIENDS: "Con compañeros en guardería"
+        } : (isChild ? {
+            ALONE: "Con su cuidador/a",
+            FAMILY: "Con la familia en el hogar",
+            CAREGIVER: "Con su cuidador/a",
+            FRIENDS: "Con compañeros en escuela / guardería"
         } : {
             ALONE: "Principalmente solo",
             FAMILY: "Con mi familia / Pareja",
             CAREGIVER: "Con mi cuidador / Personal",
             FRIENDS: "Compañeros / Amigos"
-        };
+        });
         const socialLabel = socialMap[data.social_company] || "No especificado";
 
         let socialSummaryLines = `- 👥 **Compañía en mesa:** ${socialLabel}\n\n`;
@@ -691,13 +805,18 @@ export default function Fase12_Logistica({
             if (data.sharing_dynamics === 'SEPARATE_FOOD') {
                 socialSummaryLines = isLactante
                     ? `- 👥 **Compañía en mesa:** ${socialLabel} (Preparaciones exclusivas de lactante)\n\n`
-                    : `- 👥 **Compañía en mesa:** ${socialLabel} (Cada quien su comida)\n\n`;
+                    : (isChild
+                        ? `- 👥 **Compañía en mesa:** ${socialLabel} (Alimentos adaptados/exclusivos para el niño)\n\n`
+                        : `- 👥 **Compañía en mesa:** ${socialLabel} (Cada quien su comida)\n\n`);
             } else if (data.sharing_dynamics === 'SHARED_MENU') {
                 const dinersText = data.sharing_diners_count ? `${data.sharing_diners_count} personas` : "No especificado";
                 socialSummaryLines = isLactante
                     ? `- 👥 **Compañía en mesa:** ${socialLabel} (Papillas adaptadas del menú familiar)\n\n`
-                    : `- 👥 **Compañía en mesa:** ${socialLabel} (Comparten mismo menú)\n` +
-                        `- 🍽️ **Porciones a calcular:** ${dinersText}\n\n`;
+                    : (isChild
+                        ? `- 👥 **Compañía en mesa:** ${socialLabel} (Comparten menú familiar)\n` +
+                            `- 🍽️ **Porciones a calcular:** ${dinersText}\n\n`
+                        : `- 👥 **Compañía en mesa:** ${socialLabel} (Comparten mismo menú)\n` +
+                            `- 🍽️ **Porciones a calcular:** ${dinersText}\n\n`);
             }
         }
  
@@ -709,13 +828,21 @@ export default function Fase12_Logistica({
                 (data.environment?.venue === 'WORK' ? `- 🍼 **Equipamiento en estancia:** ${amenitiesLabel}\n` : '') +
                 socialSummaryLines +
                 `¿Es correcta y verídica toda esta información?`
-            : `Hemos consolidado el reporte de su logística diaria en nuestro expediente digital.\n\nPara dar cumplimiento a la **NOM-004** y sellar formalmente este bloque, por favor verifique los datos registrados:\n\n` +
-                `- 🧑‍🍳 **Preparación:** ${prepLabel}\n` +
-                `- ⏰ **Tiempo disponible:** ${timeLabel}\n` +
-                `- 📍 **Lugar de consumo:** ${venueLabel}\n` +
-                `- 🍱 **Equipamiento en trabajo:** ${amenitiesLabel}\n` +
-                socialSummaryLines +
-                `¿Es correcta y verídica toda esta información?`;
+            : (isChild
+                ? `Hemos consolidado el reporte de logística alimentaria de **${pName}** en nuestro expediente digital.\n\nPara dar cumplimiento a la **NOM-004** y sellar formalmente este bloque pediátrico, por favor verifique los datos registrados:\n\n` +
+                    `- 🧑‍🍳 **Preparación de alimentos:** ${prepLabel}\n` +
+                    `- ⏰ **Tiempo disponible:** ${timeLabel}\n` +
+                    `- 📍 **Lugar de consumo:** ${venueLabel}\n` +
+                    (data.environment?.venue === 'WORK' ? `- 🎒 **Equipamiento escolar:** ${amenitiesLabel}\n` : '') +
+                    socialSummaryLines +
+                    `¿Es correcta y verídica toda esta información?`
+                : `Hemos consolidado el reporte de su logística diaria en nuestro expediente digital.\n\nPara dar cumplimiento a la **NOM-004** y sellar formalmente este bloque, por favor verifique los datos registrados:\n\n` +
+                    `- 🧑‍🍳 **Preparación:** ${prepLabel}\n` +
+                    `- ⏰ **Tiempo disponible:** ${timeLabel}\n` +
+                    `- 📍 **Lugar de consumo:** ${venueLabel}\n` +
+                    `- 🍱 **Equipamiento en trabajo:** ${amenitiesLabel}\n` +
+                    socialSummaryLines +
+                    `¿Es correcta y verídica toda esta información?`);
 
         setMessages(prev => [...prev, {
             role: 'assistant',
