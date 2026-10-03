@@ -16,8 +16,8 @@ const useCitationValidation = () => {
         setData(null);
 
         try {
-            // Updated endpoint to match implementing SAFE-ID backend
-            const response = await axios.get(`http://localhost:5000/checkCitation`, {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+            const response = await axios.get(`${apiUrl}/checkCitation`, {
                 params: { id: citationId }
             });
 
