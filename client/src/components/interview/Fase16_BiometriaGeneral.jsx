@@ -111,26 +111,6 @@ export default function Fase16_BiometriaGeneral({
         }
     }, [messages, onPhaseComplete]);
 
-    // Auto-recuperación de respuestas colgadas (dangling user messages)
-    const hasRecoveredDangling = useRef(false);
-    useEffect(() => {
-        if (hasRecoveredDangling.current) return;
-        if (!messages || messages.length < 2) return;
-
-        const lastMsg = messages[messages.length - 1];
-        const prevMsg = messages[messages.length - 2];
-
-        if (lastMsg.role === 'user' && prevMsg.role === 'assistant') {
-            hasRecoveredDangling.current = true;
-            console.log("🔄 [FASE 16 RECOVERY] Re-procesando respuesta colgada:", lastMsg.content);
-            setTimeout(() => {
-                if (handleSendRef.current) {
-                    handleSendRef.current(lastMsg.content);
-                }
-            }, 300);
-        }
-    }, [messages]);
-
     // Inicialización - Mitigación de doble render en StrictMode
     useEffect(() => {
         if (hasGreeted.current) return;
