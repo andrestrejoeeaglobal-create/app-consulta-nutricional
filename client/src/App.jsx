@@ -683,6 +683,7 @@ function App() {
     }
   }, []);
   const [hardwareStatus, setHardwareStatus] = useState({ connected: true, scanning: false, handContactDetected: true, voltage_uv: 58.42, impedance_ohms: 1410 });
+  const [isIdentityConfirmed, setIsIdentityConfirmed] = useState(false); // <--- NUEVO FLAG PARA HEADER DINÁMICO (ELEVADO TDZ FIX)
   const [timerState, setTimerState] = useState('IDLE'); // 'IDLE' | 'RUNNING' | 'FINISHED'
   const [timeLeft, setTimeLeft] = useState(30);
 
@@ -838,7 +839,7 @@ function App() {
   };
 
   // const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
-  const [isIdentityConfirmed, setIsIdentityConfirmed] = useState(false); // <--- NUEVO FLAG PARA HEADER DINÁMICO
+  // isIdentityConfirmed declación elevada arriba a línea 686 (TDZ Fix)
   // const [openSection, setOpenSection] = useState('identificacion'); // REMOVED: Managed by MedicalDashboard
   const [editMode, setEditMode] = useState(false); // V4.5 Edit Mode Flag
   const [isPhase20EditMode, setIsPhase20EditMode] = useState(false); // <--- Flag para Edición Fina de Fase 20
