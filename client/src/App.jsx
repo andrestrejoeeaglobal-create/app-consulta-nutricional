@@ -686,9 +686,9 @@ function App() {
   const [timerState, setTimerState] = useState('IDLE'); // 'IDLE' | 'RUNNING' | 'FINISHED'
   const [timeLeft, setTimeLeft] = useState(30);
 
-  // 📡 Polling continuo de estado de hardware Electret (Circuit Breaker V8 - Standalone Resistant)
+  // 📡 Polling continuo de estado de hardware Electret (Metabolismo Reactivo V8 + Identity Guarded)
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || !isIdentityConfirmed) return;
 
     let failedAttempts = 0;
     let intervalId = null;
@@ -736,7 +736,7 @@ function App() {
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, isIdentityConfirmed]);
 
   useEffect(() => {
     let interval = null;
