@@ -169,8 +169,8 @@ export const TabBiochemicals = ({
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [showOnlyAbnormalities, setShowOnlyAbnormalities] = useState(false);
 
-    const isScanned = patientData?.scan_data?.electret_scanned;
-    const electretMetrics = isScanned ? patientData?.scan_data?.electret_metrics : null;
+    const isScanned = patientData?.scan_data?.electret_scanned || genomeTelemetry?.isScanned;
+    const electretMetrics = isScanned ? (patientData?.scan_data?.electret_metrics || genomeTelemetry?.categories) : null;
 
     // Sanitización estricta NOM-004 de electretMetrics contra contaminación de expediente
     const activePatientFirstName = (patientData?.profile?.name || patientData?.identificacion?.nombre || '').trim().toLowerCase().split(' ')[0];
