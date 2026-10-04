@@ -191,17 +191,35 @@ export const TabBiochemicals = ({
 
     const genomeTelemetry = useClinicalGenome(state => state.electretTelemetry);
 
+    // INYECCIÓN ANTIGRAVITY: Rehidratación de estado global (Prevención de Amnesia F5)
+    React.useEffect(() => {
+        if (validElectretMetrics && !genomeTelemetry?.isScanned) {
+            useClinicalGenome.getState().setElectretTelemetry({
+                categories: validElectretMetrics,
+                patientName: activePatientFirstName,
+                isScanned: true
+            });
+        }
+    }, [validElectretMetrics, genomeTelemetry?.isScanned, activePatientFirstName]);
+
+    // INYECCIÓN ANTIGRAVITY: Actualización de SSOT y renderizado optimizado
     const activeMetrics = React.useMemo(() => {
         let rawSource = null;
-        if (genomeTelemetry?.isScanned && Object.keys(genomeTelemetry.categories).length > 0) {
+        
+        // 1. SSOT: Zustand manda si el escaneo está validado
+        if (genomeTelemetry?.isScanned && Object.keys(genomeTelemetry.categories || {}).length > 0) {
             rawSource = genomeTelemetry.categories;
-        } else if (validElectretMetrics) {
+        } 
+        // 2. Respaldo local
+        else if (validElectretMetrics) {
             rawSource = validElectretMetrics;
         }
 
         if (!rawSource) return {};
+        
+        // 3. Procesamiento protegido por el cortocircuito del parser
         const parsed = parseElectretData(rawSource);
-        return parsed.categories || rawSource;
+        return parsed?.categories || rawSource;
     }, [validElectretMetrics, genomeTelemetry]);
 
     const categoriesKeys = Object.keys(activeMetrics);

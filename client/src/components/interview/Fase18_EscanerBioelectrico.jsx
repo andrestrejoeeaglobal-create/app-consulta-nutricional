@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import parsedResults from '../../data/parsed_results.json';
 import { useClinicalToast } from '../../hooks/useClinicalToast';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+import { useClinicalGenome } from '../../store/useClinicalGenome';
 
 export default function Fase18_EscanerBioelectrico({
     messages,
@@ -318,6 +319,15 @@ Por favor, ejecute la prueba en el software del escáner a nombre de **"${pName}
                     }
                 }));
 
+                // INYECCIÓN ANTIGRAVITY: Despacho Global (SSOT)
+                useClinicalGenome.getState().setElectretTelemetry({
+                    categories: metricsToSet,
+                    patientName: pName,
+                    isScanned: true,
+                    totalParameters: data.totalParameters || 450,
+                    abnormalCount: data.abnormalCount || 0
+                });
+
                 setIsGlobalTyping?.(false);
                 setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
 
@@ -484,6 +494,17 @@ Para garantizar el rigor clínico y la honestidad biológica bajo la **NOM-004**
         }
 
         if (value === 'ELECTRET_CONFIRM') {
+            // INYECCIÓN ANTIGRAVITY: Despacho Global (SSOT) al confirmar
+            if (patientData?.scan_data?.electret_metrics) {
+                useClinicalGenome.getState().setElectretTelemetry({
+                    categories: patientData.scan_data.electret_metrics,
+                    patientName: pName,
+                    isScanned: true,
+                    totalParameters: 450,
+                    abnormalCount: 0
+                });
+            }
+
             setCurrentStep('OCULAR');
             const msgOcular = {
                 role: 'assistant',
