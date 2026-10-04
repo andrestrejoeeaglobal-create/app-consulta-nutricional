@@ -493,7 +493,10 @@ Para garantizar el rigor clínico y la honestidad biológica bajo la **NOM-004**
             return;
         }
 
-        if (value === 'ELECTRET_CONFIRM') {
+        const isConfirmIntent = value === 'ELECTRET_CONFIRM' || 
+                                (currentStep === 'ELECTRET' && (lowerVal.includes('proceder') || lowerVal.includes('sí') || lowerVal.includes('si') || lowerVal === 'yes'));
+
+        if (isConfirmIntent) {
             // INYECCIÓN ANTIGRAVITY: Despacho Global (SSOT) al confirmar
             if (patientData?.scan_data?.electret_metrics) {
                 useClinicalGenome.getState().setElectretTelemetry({
