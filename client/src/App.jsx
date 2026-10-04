@@ -686,15 +686,30 @@ function App() {
   const [timerState, setTimerState] = useState('IDLE'); // 'IDLE' | 'RUNNING' | 'FINISHED'
   const [timeLeft, setTimeLeft] = useState(30);
 
-  // 📡 Polling continuo de estado de hardware Electret (Metabolismo Reactivo V8)
+  // 📡 Polling continuo de estado de hardware Electret (Circuit Breaker V8 - Standalone Resistant)
   useEffect(() => {
     if (!isLoggedIn) return;
 
+    let failedAttempts = 0;
+    let intervalId = null;
+
     const checkHardware = async () => {
+      // Cortacircuito: Si ya falló 2 veces (Modo Standalone / Sin Backend en puerto 5000), detener polling
+      if (failedAttempts >= 2) {
+        if (intervalId) clearInterval(intervalId);
+        return;
+      }
+
       try {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        const res = await fetch(`${apiUrl}/api/bio/hardware-status`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+        const res = await fetch(`${apiUrl}/api/bio/hardware-status`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
         if (res.ok) {
+          failedAttempts = 0;
           const data = await res.json();
           setHardwareStatus(prev => ({
             ...prev,
@@ -703,14 +718,24 @@ function App() {
             voltage_uv: data.voltage_uv || 58.42,
             impedance_ohms: data.impedance_ohms || 1410
           }));
+        } else {
+          failedAttempts++;
         }
       } catch (err) {
-        // Silencioso
+        failedAttempts++;
+        if (failedAttempts >= 2) {
+          setHardwareStatus(prev => ({ ...prev, connected: false }));
+          if (intervalId) clearInterval(intervalId);
+        }
       }
     };
+
     checkHardware();
-    const interval = setInterval(checkHardware, 2500);
-    return () => clearInterval(interval);
+    intervalId = setInterval(checkHardware, 3000);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [isLoggedIn]);
 
   useEffect(() => {
