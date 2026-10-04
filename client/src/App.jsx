@@ -5580,10 +5580,11 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
 
       if (res.data.success) {
         setUser(res.data.user);
-        // Persistir sesión completa y Token para uso en otras funciones
+        // Persistir sesión completa y Token para uso en otras funciones (ea_token y tilo_auth_token)
         localStorage.setItem('ea_session', JSON.stringify(res.data.user));
         if (res.data.user.token) {
           localStorage.setItem('ea_token', res.data.user.token);
+          localStorage.setItem('tilo_auth_token', res.data.user.token);
         }
         setIsLoggedIn(true);    // 🔍 Entramos al Dashboard
       }
