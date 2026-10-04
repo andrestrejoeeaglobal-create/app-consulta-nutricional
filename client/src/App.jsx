@@ -686,8 +686,10 @@ function App() {
   const [timerState, setTimerState] = useState('IDLE'); // 'IDLE' | 'RUNNING' | 'FINISHED'
   const [timeLeft, setTimeLeft] = useState(30);
 
-  // 📡 Polling continuo de estado de hardware Electret
+  // 📡 Polling continuo de estado de hardware Electret (Metabolismo Reactivo V8)
   useEffect(() => {
+    if (!isLoggedIn) return;
+
     const checkHardware = async () => {
       try {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -709,7 +711,7 @@ function App() {
     checkHardware();
     const interval = setInterval(checkHardware, 2500);
     return () => clearInterval(interval);
-  }, []);
+  }, [isLoggedIn]);
 
   useEffect(() => {
     let interval = null;
