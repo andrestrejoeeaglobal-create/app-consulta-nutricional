@@ -422,7 +422,7 @@ Para garantizar el rigor clínico y la honestidad biológica bajo la **NOM-004**
         }
 
         if (value === 'ELECTRET_RETRY') {
-            // PROTOCOLO DE PURGA DE MEMORIA
+            // PROTOCOLO DE PURGA DE MEMORIA Y ESTADO GLOBAL
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
@@ -431,6 +431,9 @@ Para garantizar el rigor clínico y la honestidad biológica bajo la **NOM-004**
                     electret_scanned: false
                 }
             }));
+            if (useClinicalGenome && useClinicalGenome.getState) {
+                useClinicalGenome.getState().clearElectretTelemetry();
+            }
             setCurrentStep('ELECTRET');
 
             const retryMsg = {
