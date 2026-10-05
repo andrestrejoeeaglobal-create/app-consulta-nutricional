@@ -6,19 +6,28 @@ export const fetchZipData = async (zipCode) => {
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     let data = null;
 
-    // 1. VÍA PRIMARIA: Intento a Servidor Local / Proxy
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
-    
-    try {
-        const res = await fetch(`${apiUrl}/api/cp/${zipCode}`, { signal: controller.signal });
-        if (res.ok) {
-            data = await res.json();
+    // Detector biológico de entorno y destino de API
+    const isLocalServerTarget = apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1');
+    const isCloudEnvironment = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+    const skipPrimaryFetch = isCloudEnvironment && isLocalServerTarget;
+
+    // 1. VÍA PRIMARIA: Intento a Servidor Local / Proxy (Solo en entorno local o con backend dedicado)
+    if (!skipPrimaryFetch) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
+        
+        try {
+            const res = await fetch(`${apiUrl}/api/cp/${zipCode}`, { signal: controller.signal });
+            if (res.ok) {
+                data = await res.json();
+            }
+        } catch (e) {
+            console.warn("Isquemia local detectada (CP). Activando bypass Zippopotam...");
+        } finally {
+            clearTimeout(timeoutId); 
         }
-    } catch (e) {
-        console.warn("Isquemia local detectada (CP). Activando bypass Zippopotam...");
-    } finally {
-        clearTimeout(timeoutId); 
+    } else {
+        console.log("⚡ Entorno Nube Standalone detectado (GitHub Pages). Redirigiendo CP a Zippopotam...");
     }
 
     // 2. VÍA SECUNDARIA: Fallback Standalone Directo a Zippopotam
