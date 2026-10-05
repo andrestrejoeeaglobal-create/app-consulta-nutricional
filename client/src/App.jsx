@@ -5560,7 +5560,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
     }
   };
 
-  // --- LOGIN HANDLER ---
+  // --- LOGIN HANDLER OMNICANAL INSTITUCIONAL (CORS HABILITADO) ---
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
@@ -5570,57 +5570,37 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
     setError(""); // Limpiar errores previos
     setIsLoading(true); // Bloquear botón
 
-    // Detección proactiva de GitHub Pages / Standalone sin backend activo en puerto 5000
-    const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
-    const hasCustomApiUrl = Boolean(import.meta.env.VITE_API_URL);
-
-    if (isGitHubPages && !hasCustomApiUrl) {
-      console.warn("⚠️ Entorno GitHub Pages detectado sin backend remoto. Iniciando en Modo Standalone Standby...");
-      const fallbackUser = {
-        name: username.toUpperCase() === '101' ? 'ANDRES TREJO MALDONADO' : username.toUpperCase(),
-        role: 'Especialista',
-        urlFoto: ''
-      };
-      setUser(fallbackUser);
-      localStorage.setItem('ea_session', JSON.stringify(fallbackUser));
-      setIsLoggedIn(true);
-      setIsLoading(false);
-      return;
-    }
-
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
     try {
-      const res = await axios.post(`${apiUrl}/api/login`, {
-        username: username,
-        password: password
-      });
+      // Petición directa al Servidor Central Institucional (Access-Control-Allow-Origin: * verificado)
+      const authUrl = `https://www.equipoenaccion.app/ea_lab_login.asp?action=SINGIN&User=${encodeURIComponent(username.trim())}&Password=${encodeURIComponent(password.trim())}`;
+      const res = await fetch(authUrl);
+      const data = await res.json();
 
-      if (res.data.success) {
-        setUser(res.data.user);
-        // Persistir sesión completa y Token para uso en otras funciones (ea_token y tilo_auth_token)
-        localStorage.setItem('ea_session', JSON.stringify(res.data.user));
-        if (res.data.user.token) {
-          localStorage.setItem('ea_token', res.data.user.token);
-          localStorage.setItem('tilo_auth_token', res.data.user.token);
+      if (data && data.dataSet && data.dataSet.length > 0) {
+        const userRecord = data.dataSet[0];
+
+        if (userRecord.status === 0 && data.response?.code === 0) {
+          // ✅ ACCESO CONCEDIDO: Credenciales VÁLIDAS confirmadas por el servidor institucional
+          setUser(userRecord);
+          localStorage.setItem('ea_session', JSON.stringify(userRecord));
+          if (userRecord.token) {
+            localStorage.setItem('ea_token', userRecord.token);
+            localStorage.setItem('tilo_auth_token', userRecord.token);
+          }
+          setIsLoggedIn(true);
+        } else if (userRecord.status === 2) {
+          setError("Contraseña incorrecta.");
+        } else if (userRecord.status === 3) {
+          setError("Usuario no existente.");
+        } else {
+          setError("Acceso denegado. Verifique sus credenciales.");
         }
-        setIsLoggedIn(true);    // 🔍 Entramos al Dashboard
+      } else {
+        setError("Respuesta inválida del servidor institucional.");
       }
     } catch (err) {
-      if (err.response) {
-        setError(err.response.data.message || "Error de credenciales");
-      } else {
-        // Modo Standalone Contingente (Demostración / GitHub Pages Standalone)
-        console.warn("⚠️ Servidor backend no detectado. Iniciando en Modo Standalone Standby...");
-        const fallbackUser = {
-          name: username.toUpperCase() === '101' ? 'ANDRES TREJO MALDONADO' : username.toUpperCase(),
-          role: 'Especialista',
-          urlFoto: ''
-        };
-        setUser(fallbackUser);
-        localStorage.setItem('ea_session', JSON.stringify(fallbackUser));
-        setIsLoggedIn(true);
-      }
+      console.error("Error al autenticar:", err);
+      setError("Error de conexión con el servidor central de Equipo en Acción.");
     } finally {
       setIsLoading(false); // Liberar botón
     }
