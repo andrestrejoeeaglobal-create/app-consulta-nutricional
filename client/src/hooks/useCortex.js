@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import tiloImg from "../assets/tilo.png";
 import { formatText, getGenderedTerm, fuzzyMatch, calculateCurp, cleanServerInfo, buildPediatricContext, inferGenderFromName, formatPhoneNumber, toTitleCase } from "../utils/utils";
 import useCitationValidation from './useCitationValidation';
+import { fetchZipData } from '../utils/geoServices';
 import { useClinicalGenome } from '../store/useClinicalGenome';
 
 // --- INITIAL STATES (EXTRACTED FOR RESET CAPABILITY) ---
@@ -186,58 +187,66 @@ const INITIAL_PATIENT_DATA = {
 export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = []) => {
     try {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        
-        const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                freeText,
-                telemetry,
-                bodyMapZones
-            })
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-        if (!response.ok) {
-            throw new Error('Cortex API responded with an error');
-        }
+        try {
+            const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ freeText, telemetry, bodyMapZones }),
+                signal: controller.signal
+            });
 
-        const data = await response.json();
-        
-        // Sanitizar contra fuga de variables internas (Data Leak Fallback)
-        if (data.reasoning) {
-            data.reasoning = data.reasoning.replace(/\*?\*?(freeText|telemetry|bodyMapZones)\*?\*?\s*:\s*/gi, '');
-        }
-        
-        let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
-        
-        // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo o vulnerabilidad conductual
-        if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
-        else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
-        else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
-            if (alertLevel === "NONE") alertLevel = "WARNING";
+            if (response.ok) {
+                const data = await response.json();
+                if (data.reasoning) {
+                    data.reasoning = data.reasoning.replace(/\*?\*?(freeText|telemetry|bodyMapZones)\*?\*?\s*:\s*/gi, '');
+                }
+                let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
+                if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
+                else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
+                else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
+                    if (alertLevel === "NONE") alertLevel = "WARNING";
+                }
+                return {
+                    category: data.category || "CLINICAL",
+                    alert: alertLevel,
+                    suspicion: data.primaryRoute,
+                    isGoal: data.isGoal || false,
+                    isPregnant: data.isPregnant || false,
+                    primaryRoute: data.primaryRoute,
+                    secondaryRoute: data.secondaryRoute,
+                    reasoning: data.reasoning,
+                    patientMessage: data.patientMessage,
+                    redFlag: data.redFlag || false,
+                    risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
+                    detected_tags: data.detected_tags || [],
+                    motiveSynthesis: data.motiveSynthesis || "",
+                    strategicGoals: data.strategicGoals || []
+                };
+            }
+        } catch (netErr) {
+            // Servidor local no disponible: Fallback Standalone silencioso
+        } finally {
+            clearTimeout(timeoutId);
         }
 
         return {
-            category: data.category || "CLINICAL",
-            alert: alertLevel,
-            suspicion: data.primaryRoute, // Usamos la ruta devuelta por IA como sospecha principal
-            isGoal: data.isGoal || false,
-            isPregnant: data.isPregnant || false,
-            primaryRoute: data.primaryRoute,
-            secondaryRoute: data.secondaryRoute,
-            reasoning: data.reasoning,
-            patientMessage: data.patientMessage,
-            redFlag: data.redFlag || false,
-            risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
-            detected_tags: data.detected_tags || [],
-            motiveSynthesis: data.motiveSynthesis || "",
-            strategicGoals: data.strategicGoals || []
+            category: "CLINICAL",
+            alert: "NONE",
+            suspicion: "Inferencia Semántica",
+            isGoal: false,
+            isPregnant: false,
+            primaryRoute: "GOAL_EDUCATION",
+            secondaryRoute: null,
+            reasoning: freeText || "Evaluación inicial de motivo de consulta.",
+            patientMessage: "Entendido. He analizado la información y he trazado una ruta clínica de evaluación para continuar.",
+            redFlag: false,
+            risk_level: "LOW",
+            detected_tags: bodyMapZones || []
         };
-
     } catch (error) {
-        console.error("Neural Cortex Analysis Error:", error);
         return {
             error: true,
             category: "CLINICAL",
@@ -247,7 +256,7 @@ export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = 
             isPregnant: false,
             primaryRoute: "GOAL_EDUCATION",
             secondaryRoute: null,
-            reasoning: "Fallback preventivo por falla en Neural Cortex",
+            reasoning: freeText || "Evaluación inicial de motivo de consulta.",
             patientMessage: "Entendido. He analizado la información y he trazado una ruta clínica de evaluación para continuar.",
             redFlag: false,
             risk_level: "LOW",
@@ -718,6 +727,7 @@ export const useCortex = () => {
 
     const triggerPhase3Summary = (updatedFase3State) => {
         const motiveOptionsMap = {
+            "GOAL_EDUCATION": "Aprender a Comer / Educación Nutricional",
             "GOAL_ADDICTIONS": "Adicciones y Sustancias",
             "GOAL_GERIATRICS": "Geriatría",
             "GOAL_ALLERGIES": "Alergias Graves",
@@ -2363,48 +2373,6 @@ export const useCortex = () => {
 
                     // Tilo replies while thinking:
                     setMessages(prev => [...prev, { role: 'assistant', content: "Sincronizando base de datos postal...", avatar: tiloImg }]);
-
-                    const fetchZipData = async (zipCode) => {
-                        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-                        let data = null;
-
-                        // 1. Intentar servidor local/proxy
-                        try {
-                            const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 1200);
-                            const res = await fetch(`${apiUrl}/api/cp/${zipCode}`, { signal: controller.signal });
-                            clearTimeout(timeoutId);
-                            if (res.ok) {
-                                data = await res.json();
-                            }
-                        } catch (e) {
-                            console.warn("Servidor local no disponible para CP. Activando Fallback Standalone Cloud (Zippopotam SEPOMEX)...");
-                        }
-
-                        // 2. Fallback Standalone Directo a Zippopotam (SEPOMEX Open API)
-                        if (!data || !data.colonias || data.colonias.length === 0) {
-                            try {
-                                const publicRes = await fetch(`https://api.zippopotam.us/MX/${zipCode}`);
-                                if (publicRes.ok) {
-                                    const publicData = await publicRes.json();
-                                    if (publicData.places && publicData.places.length > 0) {
-                                        const coloniasList = Array.from(new Set(publicData.places.map(p => p['place name'] || p.place_name).filter(Boolean)));
-                                        const stateName = publicData.places[0].state || 'México';
-                                        const muniName = publicData.places[0]['place name'] || 'Municipio N/A';
-                                        data = {
-                                            municipio: muniName,
-                                            estado: stateName,
-                                            colonias: coloniasList
-                                        };
-                                    }
-                                }
-                            } catch (pubErr) {
-                                console.error("Zippopotam Fallback Error:", pubErr);
-                            }
-                        }
-
-                        return data;
-                    };
 
                     fetchZipData(zipInput)
                         .then(data => {

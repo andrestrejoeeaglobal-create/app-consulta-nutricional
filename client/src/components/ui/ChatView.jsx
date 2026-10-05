@@ -7,6 +7,7 @@ import SearchableVerticalMenu from './SearchableVerticalMenu';
 
 const routeToSpanish = (route) => {
     const map = {
+        'GOAL_EDUCATION': 'Aprender a Comer / Educación Nutricional',
         'GOAL_ADDICTIONS': 'Adicciones y Sustancias',
         'GOAL_GERIATRICS': 'Geriatría',
         'GOAL_ALLERGIES': 'Alergias Graves',

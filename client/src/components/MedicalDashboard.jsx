@@ -512,7 +512,8 @@ export const MedicalDashboard = ({
             console.log(`[Dashboard] Scrolls to: ${targetCardId}`);
             // Small delay to allow Accordion animation to start/finish
             setTimeout(() => {
-                const element = document.getElementById(targetCardId);
+                const element = document.getElementById(targetCardId) || 
+                                (targetCardId === 'card-motivo' ? document.getElementById('accordion-motivo') : null);
                 if (element) {
                     const scrollContainer = element.closest('.overflow-y-auto') || element.closest('[class*="overflow-y-auto"]');
                     if (scrollContainer) {
