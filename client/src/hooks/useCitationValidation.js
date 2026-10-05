@@ -1,39 +1,78 @@
 import { useState } from 'react';
-import axios from 'axios';
 
 /**
- * useCitationValidation Hook
- * Handles the logic for validating citations against the SAFE-ID backend.
+ * useCitationValidation Hook (V8 - SRP & Anti-Empty Array Shield)
+ * Músculo especializado de validación de citas omnicanal.
  */
 const useCitationValidation = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const [data, setData] = useState(null);
 
     const validateCitation = async (citationId) => {
         setLoading(true);
         setError(null);
-        setData(null);
 
         try {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-            const response = await axios.get(`${apiUrl}/checkCitation`, {
-                params: { id: citationId }
-            });
+            const authUrl = `https://www.equipoenaccion.app/ea_lab_login.asp?action=CITA_AG&dateId=${encodeURIComponent(citationId)}`;
+            const res = await fetch(authUrl);
+            const json = await res.json();
 
-            // The backend returns { response: { code: 0, message: "ok" }, dataSet: [...] } 
-            // OR { response: { code: 404... }, dataSet: [] }
+            // 🛡️ SANITIZACIÓN ANTE EL SÍNDROME DEL ARREGLO VACÍO (NOM-004)
+            const hasData = json && json.response?.code === 0 && Array.isArray(json.dataSet) && json.dataSet.length > 0;
 
-            // const { response: meta, dataSet } = response.data; // Unused
+            if (!hasData) {
+                return {
+                    isValid: false,
+                    status: 'ESTUDIO_NO_ENCONTRADO',
+                    message: '⛔ **Cita No Encontrada.**\n\n---\n\nNo se encontró información para el número de cita ingresado. Verifique el número e intente nuevamente.',
+                    patientData: null
+                };
+            }
 
-            // V7.3: Pasamos la respuesta cruda para que la lógica de negocio (App.jsx)
-            // decida qué hacer con estatus USED o NOT_FOUND.
-            return response.data;
+            const rawRecord = json.dataSet[0];
+            const estatus = String(rawRecord?.estatus || '').trim().toUpperCase();
+
+            // 🛡️ CLASIFICACIÓN SRP DE ESTADOS CLÍNICOS
+            if (estatus === 'ESTUDIO_PENDIENTE') {
+                return {
+                    isValid: true,
+                    status: 'ESTUDIO_PENDIENTE',
+                    message: 'OK',
+                    patientData: rawRecord,
+                    rawResponse: json
+                };
+            } else if (estatus === 'ESTUDIO_REALIZADO') {
+                return {
+                    isValid: false,
+                    status: 'ESTUDIO_REALIZADO',
+                    message: '⛔ **Cita No Disponible.**\n\n---\n\nLa cita ingresada ya no está disponible (Falta por realizar el estudio). Consulte en recepción.',
+                    patientData: null
+                };
+            } else if (estatus === 'ESTUDIO_COMPLETO') {
+                return {
+                    isValid: false,
+                    status: 'ESTUDIO_COMPLETO',
+                    message: '⛔ **Estudio Previamente Completado.**\n\n---\n\nLa cita ingresada ya ha sido procesada y el estudio clínico fue completado anteriormente.',
+                    patientData: null
+                };
+            } else {
+                return {
+                    isValid: false,
+                    status: 'ESTUDIO_NO_ENCONTRADO',
+                    message: '⛔ **Número de Cita Inválido.**\n\n---\n\nEl número de cita proporcionado no es válido para realizar un estudio.',
+                    patientData: null
+                };
+            }
 
         } catch (err) {
             console.error("Validation Hook Error:", err);
             setError({ type: 'NETWORK', message: 'Error de conexión.' });
-            return null;
+            return {
+                isValid: false,
+                status: 'ERROR_RED',
+                message: '⛔ **Fallo de Sincronización.**\n\n---\n\nNo fue posible establecer conexión con la Red Institucional. Verifique su acceso e intente nuevamente.',
+                patientData: null
+            };
         } finally {
             setLoading(false);
         }
@@ -42,8 +81,7 @@ const useCitationValidation = () => {
     return {
         validateCitation,
         loading,
-        error,
-        data
+        error
     };
 };
 

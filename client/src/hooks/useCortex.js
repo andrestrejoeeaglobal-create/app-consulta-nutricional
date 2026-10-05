@@ -1024,89 +1024,8 @@ export const useCortex = () => {
                 case 'PHASE_0_AUTH':
                     // Mock Authentication Logic
                     if (/^\d+$/.test(text)) {
-                        const apiResponse = await validateCitation(text);
-                        if (!apiResponse) {
-                            setMessages(prev => [...prev, { role: "assistant", content: "⛔ **Fallo de Sincronización.**\n\n---\n\nNo fue posible establecer conexión con la Red Institucional. Por favor, verifique su acceso e intente nuevamente." }]);
-                            return;
-                        }
-
-                        const citaData = apiResponse.dataSet && apiResponse.dataSet[0];
-                        const status = citaData ? citaData.estatus : 'ERROR_NET';
-
-                        if (status === "ESTUDIO_PENDIENTE") {
-                            // Extract and format info
-                            const formattedInfo = cleanServerInfo(citaData.info);
-
-                            // Prioritize the full string extracted from the info field ONLY if it matches the base name
-                            let extractedName = citaData.name || citaData.paciente || "";
-                            if (formattedInfo.patientName) {
-                                if (extractedName) {
-                                    const firstWord = extractedName.trim().split(' ')[0].toLowerCase();
-                                    if (formattedInfo.patientName.toLowerCase().includes(firstWord)) {
-                                        extractedName = formattedInfo.patientName;
-                                    }
-                                } else {
-                                    extractedName = formattedInfo.patientName;
-                                }
-                            }
-
-                            // Saneamiento estricto para eliminar la "Coma Fantasma" y espacios dobles
-                            extractedName = extractedName.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
-
-                            // Purga quirúrgica preventiva síncrona de Genoma Clínico y Almacenamiento al validar nueva cita
-                            if (typeof window !== 'undefined' && window.sessionStorage) {
-                                window.sessionStorage.clear();
-                            }
-                            window.localStorage.removeItem('tilo_session_data');
-                            if (useClinicalGenome && useClinicalGenome.getState) {
-                                useClinicalGenome.getState().resetGenome();
-                                console.log("🧹 Genoma Clínico y Caché de Sesión purgados al autenticar Cita ID:", citaData.idCita || citaData.cita);
-                            }
-
-                            // Save context for fuzzy match and checkpoints
-                            const activeCitationStr = String(citaData.cita || citaData.idCita || citaData.folio || '');
-                            setApiContext({
-                                rawName: extractedName,
-                                userId: citaData.userId,
-                                idCita: citaData.idCita, // internal citation ID
-                                citaId: citaData.cita || citaData.folio, // visual citation ID
-                                sucursal: formattedInfo.sede
-                            });
-
-                            // Vincular datos inmediatos de identidad y cita activa sobre plantilla virgen (Deep Clone)
-                            const cleanPatientTemplate = JSON.parse(JSON.stringify(INITIAL_PATIENT_DATA));
-                            setPatientData({
-                                ...cleanPatientTemplate,
-                                profile: {
-                                    ...cleanPatientTemplate.profile,
-                                    name: extractedName,
-                                    first_name: extractedName.split(' ')[0],
-                                    citationId: activeCitationStr
-                                },
-                                identificacion: {
-                                    ...cleanPatientTemplate.identificacion,
-                                    nombre: extractedName.split(' ')[0],
-                                    idCita: activeCitationStr,
-                                    citaId: activeCitationStr
-                                }
-                            });
-
-                            const titularName = formatText(extractedName);
-
-                            setAuthAttempts(0); // Reset on success
-
-                            setMessages(prev => [...prev, {
-                                role: 'assistant',
-                                content: `Validación de Credencial Exitosa.\n\n---\n\n👤 **Titular:** ${titularName}\n📍 **Sede:** ${formattedInfo.sede}\n📅 **Agenda:** ${formattedInfo.display}\n\nPara iniciar la recolección clínica bajo los estándares de confidencialidad y seguridad:\n**¿Es usted el paciente titular mencionado arriba?**`,
-                                avatar: tiloImg,
-                                inputType: 'strict_select',
-                                options: [
-                                    { label: '✅ SÍ, SOY YO', value: 'yes' },
-                                    { label: '❌ NO, ES UN ERROR', value: 'no' }
-                                ]
-                            }]);
-                            setCurrentPhase('PHASE_0_IDENTITY_CHECK');
-                        } else {
+                        const result = await validateCitation(text);
+                        if (!result || !result.isValid) {
                             const newAttempts = authAttempts + 1;
                             setAuthAttempts(newAttempts);
 
@@ -1115,43 +1034,87 @@ export const useCortex = () => {
                                     role: 'assistant',
                                     content: "⛔ **Cierre de Sesión Normativo.**\n\n---\n\nSe ha superado el número máximo de intentos permitidos. Para proteger la integridad de los datos de la red de pacientes, el acceso ha sido suspendido temporalmente.\n\nPor favor, acuda a recepción para validar su identidad presencialmente.",
                                     avatar: tiloImg,
-                                    inputType: 'none' // Bloquea el input
+                                    inputType: 'none'
                                 }]);
                                 return;
                             }
 
-                            if (status === "ESTUDIO_REALIZADO" || status === "ESTUDIO_COMPLETO") {
-                                const formattedInfoErr = cleanServerInfo(citaData.info);
+                            setMessages(prev => [...prev, {
+                                role: "assistant",
+                                content: `${result?.message || "⛔ **Fallo de Sincronización.**\n\n---\n\nNo fue posible establecer conexión con la Red Institucional."}\n\nLe quedan **${3 - newAttempts} intento(s)**. Por favor, verifique el número e intente nuevamente:`,
+                                avatar: tiloImg,
+                                inputType: 'number'
+                            }]);
+                            return;
+                        }
 
-                                let extractedNameErr = citaData.name || citaData.paciente || "";
-                                if (formattedInfoErr.patientName) {
-                                    if (extractedNameErr) {
-                                        const firstWordErr = extractedNameErr.trim().split(' ')[0].toLowerCase();
-                                        if (formattedInfoErr.patientName.toLowerCase().includes(firstWordErr)) {
-                                            extractedNameErr = formattedInfoErr.patientName;
-                                        }
-                                    } else {
-                                        extractedNameErr = formattedInfoErr.patientName;
-                                    }
+                        // 🎯 ACCESO VALIDADO: ESTUDIO_PENDIENTE
+                        const citaData = result.patientData;
+                        const formattedInfo = cleanServerInfo(citaData.info);
+
+                        let extractedName = citaData.name || citaData.paciente || "";
+                        if (formattedInfo.patientName) {
+                            if (extractedName) {
+                                const firstWord = extractedName.trim().split(' ')[0].toLowerCase();
+                                if (formattedInfo.patientName.toLowerCase().includes(firstWord)) {
+                                    extractedName = formattedInfo.patientName;
                                 }
-
-                                const titularName = formatText(extractedNameErr);
-
-                                setMessages(prev => [...prev, {
-                                    role: 'assistant',
-                                    content: `⛔ **Protección contra Duplicidad de Expediente.**\n\n---\n\nEl sistema indica que este folio ya fue procesado y cerrado previamente por el titular **${titularName}**.\n\nLe quedan **${3 - newAttempts} intento(s)**. Por favor, asegúrese de ingresar un folio de cita vigente:`,
-                                    avatar: tiloImg,
-                                    inputType: 'number'
-                                }]);
                             } else {
-                                setMessages(prev => [...prev, {
-                                    role: 'assistant',
-                                    content: `⛔ **Credencial Clínica No Reconocida.**\n\n---\n\nEl folio ingresado no se encuentra activo en nuestros registros o no está programado para el día de hoy.\n\nLe quedan **${3 - newAttempts} intento(s)**. Por favor, verifique el número e intente nuevamente:`,
-                                    avatar: tiloImg,
-                                    inputType: 'number'
-                                }]);
+                                extractedName = formattedInfo.patientName;
                             }
                         }
+
+                        extractedName = extractedName.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+
+                        if (typeof window !== 'undefined' && window.sessionStorage) {
+                            window.sessionStorage.clear();
+                        }
+                        window.localStorage.removeItem('tilo_session_data');
+                        if (useClinicalGenome && useClinicalGenome.getState) {
+                            useClinicalGenome.getState().resetGenome();
+                            console.log("🧹 Genoma Clínico y Caché de Sesión purgados al autenticar Cita ID:", citaData.idCita || citaData.cita);
+                        }
+
+                        const activeCitationStr = String(citaData.cita || citaData.idCita || citaData.folio || '');
+                        setApiContext({
+                            rawName: extractedName,
+                            userId: citaData.userId,
+                            idCita: citaData.idCita,
+                            citaId: citaData.cita || citaData.folio,
+                            sucursal: formattedInfo.sede
+                        });
+
+                        const cleanPatientTemplate = JSON.parse(JSON.stringify(INITIAL_PATIENT_DATA));
+                        setPatientData({
+                            ...cleanPatientTemplate,
+                            profile: {
+                                ...cleanPatientTemplate.profile,
+                                name: extractedName,
+                                first_name: extractedName.split(' ')[0],
+                                citationId: activeCitationStr
+                            },
+                            identificacion: {
+                                ...cleanPatientTemplate.identificacion,
+                                nombre: extractedName.split(' ')[0],
+                                idCita: activeCitationStr,
+                                citaId: activeCitationStr
+                            }
+                        });
+
+                        const titularName = formatText(extractedName);
+                        setAuthAttempts(0);
+
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: `Validación de Credencial Exitosa.\n\n---\n\n👤 **Titular:** ${titularName}\n📍 **Sede:** ${formattedInfo.sede}\n📅 **Agenda:** ${formattedInfo.display}\n\nPara iniciar la recolección clínica bajo los estándares de confidencialidad y seguridad:\n**¿Es usted el paciente titular mencionado arriba?**`,
+                            avatar: tiloImg,
+                            inputType: 'strict_select',
+                            options: [
+                                { label: '✅ SÍ, SOY YO', value: 'yes' },
+                                { label: '❌ NO, ES UN ERROR', value: 'no' }
+                            ]
+                        }]);
+                        setCurrentPhase('PHASE_0_IDENTITY_CHECK');
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
