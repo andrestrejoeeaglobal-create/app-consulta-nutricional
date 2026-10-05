@@ -687,57 +687,7 @@ function App() {
   const [timerState, setTimerState] = useState('IDLE'); // 'IDLE' | 'RUNNING' | 'FINISHED'
   const [timeLeft, setTimeLeft] = useState(30);
 
-  // 📡 Polling continuo de estado de hardware Electret (Metabolismo Reactivo V8 + Identity Guarded)
-  useEffect(() => {
-    if (!isLoggedIn || !isIdentityConfirmed) return;
 
-    let failedAttempts = 0;
-    let intervalId = null;
-
-    const checkHardware = async () => {
-      // Cortacircuito: Si ya falló 2 veces (Modo Standalone / Sin Backend en puerto 5000), detener polling
-      if (failedAttempts >= 2) {
-        if (intervalId) clearInterval(intervalId);
-        return;
-      }
-
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500);
-
-        const res = await fetch(`${apiUrl}/api/bio/hardware-status`, { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (res.ok) {
-          failedAttempts = 0;
-          const data = await res.json();
-          setHardwareStatus(prev => ({
-            ...prev,
-            connected: data.connected !== undefined ? data.connected : true,
-            handContactDetected: data.handContactDetected !== undefined ? data.handContactDetected : true,
-            voltage_uv: data.voltage_uv || 58.42,
-            impedance_ohms: data.impedance_ohms || 1410
-          }));
-        } else {
-          failedAttempts++;
-        }
-      } catch (err) {
-        failedAttempts++;
-        if (failedAttempts >= 2) {
-          setHardwareStatus(prev => ({ ...prev, connected: false }));
-          if (intervalId) clearInterval(intervalId);
-        }
-      }
-    };
-
-    checkHardware();
-    intervalId = setInterval(checkHardware, 3000);
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [isLoggedIn, isIdentityConfirmed]);
 
   useEffect(() => {
     let interval = null;
@@ -829,6 +779,67 @@ function App() {
   // 1. Estado para controlar el flujo de la conversación (Legacy, to be replaced by currentPhase)
   const [interviewStep, setInterviewStep] = useState("appointment");
   const citationId = apiContext?.citaId || apiContext?.idCita || patientData?.citaId || sessionMetadata?.citation || '15000';
+
+  // 🛡️ ENMIENDA V8: Bandera booleana memoizada (Exclusividad Telemétrica de Fase 18 - Cero Churn & Cero TDZ)
+  const isPhase18Active = React.useMemo(() => {
+    if (!currentPhase) return false;
+    const phaseStr = String(currentPhase).toUpperCase();
+    return phaseStr.startsWith('PHASE_18') || 
+           phaseStr === 'PHASE_18_ELECTRET' || 
+           phaseStr === 'PHASE_18_BIOCHEMICALS' ||
+           interviewStep === 'phase_18';
+  }, [currentPhase, interviewStep]);
+
+  // 📡 Polling de estado de hardware Electret (Exclusivo para Fase 18)
+  useEffect(() => {
+    if (!isLoggedIn || !isIdentityConfirmed || !isPhase18Active) return;
+
+    let failedAttempts = 0;
+    let intervalId = null;
+
+    const checkHardware = async () => {
+      if (failedAttempts >= 2) {
+        if (intervalId) clearInterval(intervalId);
+        return;
+      }
+
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+        const res = await fetch(`${apiUrl}/api/bio/hardware-status`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          failedAttempts = 0;
+          const data = await res.json();
+          setHardwareStatus(prev => ({
+            ...prev,
+            connected: data.connected !== undefined ? data.connected : true,
+            handContactDetected: data.handContactDetected !== undefined ? data.handContactDetected : true,
+            voltage_uv: data.voltage_uv || 58.42,
+            impedance_ohms: data.impedance_ohms || 1410
+          }));
+        } else {
+          failedAttempts++;
+        }
+      } catch (err) {
+        failedAttempts++;
+        if (failedAttempts >= 2) {
+          setHardwareStatus(prev => ({ ...prev, connected: false }));
+          if (intervalId) clearInterval(intervalId);
+        }
+      }
+    };
+
+    checkHardware();
+    intervalId = setInterval(checkHardware, 3000);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isLoggedIn, isIdentityConfirmed, isPhase18Active]);
 
   const [isEditing, setIsEditing] = useState(false);
   const [activeField, setActiveField] = useState(null);
