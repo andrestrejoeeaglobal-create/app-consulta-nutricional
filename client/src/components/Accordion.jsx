@@ -24,7 +24,7 @@ const Accordion = ({ title, id, isOpen, onToggle, children, variant = 'default',
         : "w-4 h-4 text-tilo-primary";
 
     return (
-        <div className={containerClasses}>
+        <div id={id} className={containerClasses}>
             <button
                 type="button"
                 className={buttonClasses}

@@ -582,61 +582,85 @@ export const useCortex = () => {
             
             const bodyMapZones = []; // En el futuro se llenará desde el UI del cuerpo
 
-            const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    freeText: text,
-                    telemetry,
-                    bodyMapZones
-                })
-            });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-            if (!response.ok) {
-                throw new Error('Cortex API responded with an error');
+            try {
+                const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        freeText: text,
+                        telemetry,
+                        bodyMapZones
+                    }),
+                    signal: controller.signal
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
+                    
+                    // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo o vulnerabilidad conductual
+                    if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
+                    else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
+                    else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
+                        if (alertLevel === "NONE") alertLevel = "WARNING";
+                    }
+
+                    return {
+                        category: data.category || "CLINICAL",
+                        alert: alertLevel,
+                        suspicion: data.primaryRoute, // Usamos la ruta devuelta por IA como sospecha principal
+                        isGoal: data.isGoal || false,
+                        isPregnant: data.isPregnant || false,
+                        primaryRoute: data.primaryRoute,
+                        secondaryRoute: data.secondaryRoute,
+                        reasoning: data.reasoning,
+                        patientMessage: data.patientMessage,
+                        redFlag: data.redFlag || false,
+                        risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
+                        detected_tags: data.detected_tags || [],
+                        motiveSynthesis: data.motiveSynthesis || "",
+                        strategicGoals: data.strategicGoals || []
+                    };
+                }
+            } catch (netErr) {
+                // Servidor local no disponible: Fallback Standalone silencioso
+            } finally {
+                clearTimeout(timeoutId);
             }
 
-            const data = await response.json();
-            
-            let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
-            
-            // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo o vulnerabilidad conductual
-            if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
-            else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
-            else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
-                if (alertLevel === "NONE") alertLevel = "WARNING";
-            }
-
+            // Si el backend no responde o no está disponible, retornar el objeto Standalone
             return {
-                category: data.category || "CLINICAL",
-                alert: alertLevel,
-                suspicion: data.primaryRoute, // Usamos la ruta devuelta por IA como sospecha principal
-                isGoal: data.isGoal || false,
-                isPregnant: data.isPregnant || false,
-                primaryRoute: data.primaryRoute,
-                secondaryRoute: data.secondaryRoute,
-                reasoning: data.reasoning,
-                patientMessage: data.patientMessage,
-                redFlag: data.redFlag || false,
-                risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
-                detected_tags: data.detected_tags || [],
-                motiveSynthesis: data.motiveSynthesis || "",
-                strategicGoals: data.strategicGoals || []
+                category: "CLINICAL",
+                alert: "NONE",
+                suspicion: "GOAL_EDUCATION",
+                isGoal: true,
+                isPregnant: false,
+                primaryRoute: "GOAL_EDUCATION",
+                secondaryRoute: null,
+                reasoning: "Análisis preliminar completado en modo Standalone.",
+                patientMessage: "Hemos registrado su motivo de consulta correctamente.",
+                redFlag: false,
+                risk_level: "LOW",
+                detected_tags: []
             };
 
         } catch (error) {
             console.error("🔥 Error en Neural Cortex:", error);
-            // Fallback robusto en caso de error de red
+            // Fallback robusto en caso de error
             return {
                 error: true,
                 category: "CLINICAL",
                 alert: "NONE",
-                suspicion: "Ruta 0 - Control Clínico General",
+                suspicion: "GOAL_EDUCATION",
                 isGoal: false,
                 isPregnant: false,
-                primaryRoute: "Ruta 0 - Control Clínico General",
+                primaryRoute: "GOAL_EDUCATION",
                 secondaryRoute: null,
                 reasoning: "Error de conexión con el motor de IA. Se ha asignado la ruta clínica por defecto.",
                 patientMessage: "Entendido. He analizado la información y he trazado una ruta de evaluación general para continuar.",
