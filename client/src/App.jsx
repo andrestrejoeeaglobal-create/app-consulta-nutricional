@@ -16,6 +16,7 @@ import { FooterLoader } from "./components/FooterLoader"; // V15.6 Footer Aislad
 import { generateSecurityConstraints } from "./ClinicalRules"; // <--- Motor de Seguridad Cultural
 import { cleanServerInfo, formatText, strictBooleanValidator, formatDateLong, cleanBinaryGateMessage } from "./utils/utils"; // <--- SAFE-ID Utils
 import { formatPlanForClipboard } from "./utils/formatPlanForClipboard";
+import { fetchZipData } from "./utils/geoServices";
 import useCitationValidation from "./hooks/useCitationValidation"; // <--- SAFE-ID Hook
 import AntigravityCanvas from "./components/AntigravityCanvas"; // <--- Antigravity Physics Engine (Old)
 import { AntigravityBlobs } from "./components/AntigravityBlobs"; // V15.6 Glow Blobs
@@ -2691,19 +2692,17 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
         try {
           // INDICADOR DE CARGA (Opcional, pero buena UX)
           // Aquí hacemos el fetch real
-          const response = await fetch(`http://localhost:5000/api/cp/${cpInput}`).catch(() => null);
+          const data = await fetchZipData(cpInput);
 
-          if (!response.ok) {
+          if (!data || !data.colonias || data.colonias.length === 0) {
             // Caso B: CP NO EXISTE (HOTFIX V2.5 - Retry Loop)
-            if (response.status === 404) {
+
               setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ El código postal ${cpInput} no aparece en la base de datos nacional. ¿Podría verificarlo e intentarlo nuevamente?` }]);
-            } else {
-              setMessages((prev) => [...prev, { role: "assistant", content: "Error al consultar la base de datos. ¿Podría intentarlo nuevamente?" }]);
-            }
+
             return; // Se mantiene en 'address_zip' para reintento
           }
 
-          const data = await response.json();
+
           // data = { municipio, estado, ciudad, colonias: [] }
 
           // Guardamos datos geográficos base y CP validado
