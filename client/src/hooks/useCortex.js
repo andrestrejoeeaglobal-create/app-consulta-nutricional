@@ -2364,11 +2364,51 @@ export const useCortex = () => {
                     // Tilo replies while thinking:
                     setMessages(prev => [...prev, { role: 'assistant', content: "Sincronizando base de datos postal...", avatar: tiloImg }]);
 
-                    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-                    fetch(`${apiUrl}/api/cp/${zipInput}`)
-                        .then(res => res.json())
+                    const fetchZipData = async (zipCode) => {
+                        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                        let data = null;
+
+                        // 1. Intentar servidor local/proxy
+                        try {
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 1200);
+                            const res = await fetch(`${apiUrl}/api/cp/${zipCode}`, { signal: controller.signal });
+                            clearTimeout(timeoutId);
+                            if (res.ok) {
+                                data = await res.json();
+                            }
+                        } catch (e) {
+                            console.warn("Servidor local no disponible para CP. Activando Fallback Standalone Cloud (Zippopotam SEPOMEX)...");
+                        }
+
+                        // 2. Fallback Standalone Directo a Zippopotam (SEPOMEX Open API)
+                        if (!data || !data.colonias || data.colonias.length === 0) {
+                            try {
+                                const publicRes = await fetch(`https://api.zippopotam.us/MX/${zipCode}`);
+                                if (publicRes.ok) {
+                                    const publicData = await publicRes.json();
+                                    if (publicData.places && publicData.places.length > 0) {
+                                        const coloniasList = Array.from(new Set(publicData.places.map(p => p['place name'] || p.place_name).filter(Boolean)));
+                                        const stateName = publicData.places[0].state || 'México';
+                                        const muniName = publicData.places[0]['place name'] || 'Municipio N/A';
+                                        data = {
+                                            municipio: muniName,
+                                            estado: stateName,
+                                            colonias: coloniasList
+                                        };
+                                    }
+                                }
+                            } catch (pubErr) {
+                                console.error("Zippopotam Fallback Error:", pubErr);
+                            }
+                        }
+
+                        return data;
+                    };
+
+                    fetchZipData(zipInput)
                         .then(data => {
-                            if (!data.colonias || data.colonias.length === 0) {
+                            if (!data || !data.colonias || data.colonias.length === 0) {
                                 throw new Error("No colonies found");
                             }
 

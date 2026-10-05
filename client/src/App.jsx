@@ -2690,7 +2690,7 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
         try {
           // INDICADOR DE CARGA (Opcional, pero buena UX)
           // Aquí hacemos el fetch real
-          const response = await fetch(`http://localhost:5000/api/cp/${cpInput}`);
+          const response = await fetch(`http://localhost:5000/api/cp/${cpInput}`).catch(() => null);
 
           if (!response.ok) {
             // Caso B: CP NO EXISTE (HOTFIX V2.5 - Retry Loop)
@@ -5111,7 +5111,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
 
       setTimeout(async () => {
         try {
-          const response = await fetch(`http://localhost:3000/api/cp/${cpInput}`);
+          const response = await fetch(`http://localhost:3000/api/cp/${cpInput}`).catch(() => null);
           if (!response.ok) {
             setMessages((prev) => [...prev, { role: "assistant", content: "No encontré ese Código Postal. Verifíquelo e intente de nuevo." }]);
             return;
