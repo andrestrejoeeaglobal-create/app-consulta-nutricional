@@ -5570,6 +5570,24 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
     setError(""); // Limpiar errores previos
     setIsLoading(true); // Bloquear botón
 
+    // Detección proactiva de GitHub Pages / Standalone sin backend activo en puerto 5000
+    const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+    const hasCustomApiUrl = Boolean(import.meta.env.VITE_API_URL);
+
+    if (isGitHubPages && !hasCustomApiUrl) {
+      console.warn("⚠️ Entorno GitHub Pages detectado sin backend remoto. Iniciando en Modo Standalone Standby...");
+      const fallbackUser = {
+        name: username.toUpperCase() === '101' ? 'ANDRES TREJO MALDONADO' : username.toUpperCase(),
+        role: 'Especialista',
+        urlFoto: ''
+      };
+      setUser(fallbackUser);
+      localStorage.setItem('ea_session', JSON.stringify(fallbackUser));
+      setIsLoggedIn(true);
+      setIsLoading(false);
+      return;
+    }
+
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
     try {
