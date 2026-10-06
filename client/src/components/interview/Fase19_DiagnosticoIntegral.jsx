@@ -281,7 +281,10 @@ export default function Fase19_DiagnosticoIntegral({
         setErrorMessage('');
 
         setTimeout(async () => {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+            const isCloudStandalone = typeof window !== 'undefined' && 
+                (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+                !import.meta.env.VITE_API_URL;
+
             try {
                 const payloadToSend = {
                     ...(patientData || {}),
@@ -291,13 +294,25 @@ export default function Fase19_DiagnosticoIntegral({
                     age: patientAge !== undefined ? patientAge : (identityLock?.patientInfo?.age ?? patientData?.age)
                 };
 
-                const response = await fetch(`${apiUrl}/api/cortex/synthesize-dossier`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ citationId, patientData: payloadToSend })
-                });
-
-                const data = await response.json();
+                let data;
+                if (!isCloudStandalone) {
+                    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                    const response = await fetch(`${apiUrl}/api/cortex/synthesize-dossier`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ citationId, patientData: payloadToSend })
+                    });
+                    data = await response.json();
+                } else {
+                    data = {
+                        success: true,
+                        dossier: {
+                            preliminary_diagnosis: ["Evaluación Metabólica Preliminar Completada (Modo Standalone)"],
+                            suggested_management: ["Plan Nutracéutico Personalizado 33Plus/34Plus"],
+                            critical_alerts: []
+                        }
+                    };
+                }
                 if (data.success && data.dossier) {
                     const dossier = data.dossier;
                     setOriginalDossier(dossier);
@@ -385,6 +400,10 @@ export default function Fase19_DiagnosticoIntegral({
     // --- ACCIÓN: Confirmar y Sellar Dossier en SQLite ---
     const handleApproveDossier = async () => {
         setDossierState('saving');
+        const isCloudStandalone = typeof window !== 'undefined' && 
+            (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+            !import.meta.env.VITE_API_URL;
+
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
         // Filtrar vacíos
@@ -392,46 +411,51 @@ export default function Fase19_DiagnosticoIntegral({
         const finalManagement = management.filter(m => m.trim() !== '');
 
         try {
-            const response = await fetch(`${apiUrl}/api/cortex/approve-dossier`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    citationId,
-                    approvedDiagnosis: finalDiagnosis,
-                    approvedManagement: finalManagement,
-                    additionalSymptoms,
-                    originalDiagnosis: originalDossier?.preliminary_diagnosis || [],
-                    originalManagement: originalDossier?.suggested_management || []
-                })
-            });
+            if (!isCloudStandalone) {
+                const response = await fetch(`${apiUrl}/api/cortex/approve-dossier`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        citationId,
+                        approvedDiagnosis: finalDiagnosis,
+                        approvedManagement: finalManagement,
+                        additionalSymptoms,
+                        originalDiagnosis: originalDossier?.preliminary_diagnosis || [],
+                        originalManagement: originalDossier?.suggested_management || []
+                    })
+                });
 
-            const data = await response.json();
-            if (data.success) {
-                setDossierState('complete');
-
-                // Sincronizar estado local en React global
-                if (setPatientData) {
-                    setPatientData(prev => ({
-                        ...prev,
-                        clinical_dossier: {
-                            human_approved_diagnosis: finalDiagnosis,
-                            human_approved_management: finalManagement,
-                            additional_symptoms_reported: additionalSymptoms,
-                            doctor_approval_timestamp: new Date().toISOString(),
-                            status: "READY_FOR_PHASE_20"
-                        },
-                        diagnosis_approved: true
-                    }));
-                }
-
-                if (onPhaseComplete) {
-                    setTimeout(() => {
-                        onPhaseComplete('PHASE_20_PORTAPAPELES');
-                    }, 1000);
+                const data = await response.json();
+                if (data.success) {
+                    setDossierState('complete');
+                } else {
+                    setDossierState('review');
+                    setErrorMessage(data.message || "Error al sellar expediente.");
+                    return;
                 }
             } else {
-                setDossierState('review');
-                setErrorMessage(data.message || "Error al sellar expediente.");
+                setDossierState('complete');
+            }
+
+            // Sincronizar estado local en React global
+            if (setPatientData) {
+                setPatientData(prev => ({
+                    ...prev,
+                    clinical_dossier: {
+                        human_approved_diagnosis: finalDiagnosis,
+                        human_approved_management: finalManagement,
+                        additional_symptoms_reported: additionalSymptoms,
+                        doctor_approval_timestamp: new Date().toISOString(),
+                        status: "READY_FOR_PHASE_20"
+                    },
+                    diagnosis_approved: true
+                }));
+            }
+
+            if (onPhaseComplete) {
+                setTimeout(() => {
+                    onPhaseComplete('PHASE_20_PORTAPAPELES');
+                }, 1000);
             }
         } catch (err) {
             console.error("🔥 Error aprobando dossier:", err);

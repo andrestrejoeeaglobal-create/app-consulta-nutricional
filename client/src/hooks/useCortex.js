@@ -186,50 +186,56 @@ const INITIAL_PATIENT_DATA = {
 
 export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = []) => {
     try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1200);
+        const isCloudStandalone = typeof window !== 'undefined' && 
+            (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+            !import.meta.env.VITE_API_URL;
 
-        try {
-            const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ freeText, telemetry, bodyMapZones }),
-                signal: controller.signal
-            });
+        if (!isCloudStandalone) {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-            if (response.ok) {
-                const data = await response.json();
-                if (data.reasoning) {
-                    data.reasoning = data.reasoning.replace(/\*?\*?(freeText|telemetry|bodyMapZones)\*?\*?\s*:\s*/gi, '');
+            try {
+                const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ freeText, telemetry, bodyMapZones }),
+                    signal: controller.signal
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.reasoning) {
+                        data.reasoning = data.reasoning.replace(/\*?\*?(freeText|telemetry|bodyMapZones)\*?\*?\s*:\s*/gi, '');
+                    }
+                    let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
+                    if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
+                    else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
+                    else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
+                        if (alertLevel === "NONE") alertLevel = "WARNING";
+                    }
+                    return {
+                        category: data.category || "CLINICAL",
+                        alert: alertLevel,
+                        suspicion: data.primaryRoute,
+                        isGoal: data.isGoal || false,
+                        isPregnant: data.isPregnant || false,
+                        primaryRoute: data.primaryRoute,
+                        secondaryRoute: data.secondaryRoute,
+                        reasoning: data.reasoning,
+                        patientMessage: data.patientMessage,
+                        redFlag: data.redFlag || false,
+                        risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
+                        detected_tags: data.detected_tags || [],
+                        motiveSynthesis: data.motiveSynthesis || "",
+                        strategicGoals: data.strategicGoals || []
+                    };
                 }
-                let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
-                if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
-                else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
-                else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
-                    if (alertLevel === "NONE") alertLevel = "WARNING";
-                }
-                return {
-                    category: data.category || "CLINICAL",
-                    alert: alertLevel,
-                    suspicion: data.primaryRoute,
-                    isGoal: data.isGoal || false,
-                    isPregnant: data.isPregnant || false,
-                    primaryRoute: data.primaryRoute,
-                    secondaryRoute: data.secondaryRoute,
-                    reasoning: data.reasoning,
-                    patientMessage: data.patientMessage,
-                    redFlag: data.redFlag || false,
-                    risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
-                    detected_tags: data.detected_tags || [],
-                    motiveSynthesis: data.motiveSynthesis || "",
-                    strategicGoals: data.strategicGoals || []
-                };
+            } catch (netErr) {
+                // Servidor local no disponible: Fallback Standalone silencioso
+            } finally {
+                clearTimeout(timeoutId);
             }
-        } catch (netErr) {
-            // Servidor local no disponible: Fallback Standalone silencioso
-        } finally {
-            clearTimeout(timeoutId);
         }
 
         return {
@@ -533,7 +539,11 @@ export const useCortex = () => {
     const clearSession = async (citationId = null) => {
         try {
             const activeCitation = citationId || apiContext?.citaId || apiContext?.idCita || patientData?.identificacion?.idCita || patientData?.identificacion?.citaId;
-            if (activeCitation) {
+            const isCloudStandalone = typeof window !== 'undefined' && 
+                (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+                !import.meta.env.VITE_API_URL;
+
+            if (activeCitation && !isCloudStandalone) {
                 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
                 try {
                     await fetch(`${apiUrl}/api/citations/${activeCitation}/progress`, {
@@ -569,69 +579,75 @@ export const useCortex = () => {
     // --- MOTOR CORTEX: PROCESAMIENTO DE RESPUESTAS FASE 3 ---
     const analyzeWithNeuralCortex = async (text) => {
         try {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-            
-            // Construir telemetría para el LLM
-            const telemetry = {
-                firstName: patientData.profile.first_name || '',
-                age: patientData.profile.age,
-                sex: patientData.profile.sex,
-                location: `${patientData.profile.address?.municipality || ''}, ${patientData.profile.address?.state || ''}`,
-                occupation: patientData.profile.occupation
-            };
-            
-            const bodyMapZones = []; // En el futuro se llenará desde el UI del cuerpo
+            const isCloudStandalone = typeof window !== 'undefined' && 
+                (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+                !import.meta.env.VITE_API_URL;
 
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 1200);
+            if (!isCloudStandalone) {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                
+                // Construir telemetría para el LLM
+                const telemetry = {
+                    firstName: patientData.profile.first_name || '',
+                    age: patientData.profile.age,
+                    sex: patientData.profile.sex,
+                    location: `${patientData.profile.address?.municipality || ''}, ${patientData.profile.address?.state || ''}`,
+                    occupation: patientData.profile.occupation
+                };
+                
+                const bodyMapZones = []; // En el futuro se llenará desde el UI del cuerpo
 
-            try {
-                const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        freeText: text,
-                        telemetry,
-                        bodyMapZones
-                    }),
-                    signal: controller.signal
-                });
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
-                    
-                    // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo o vulnerabilidad conductual
-                    if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
-                    else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
-                    else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
-                        if (alertLevel === "NONE") alertLevel = "WARNING";
+                try {
+                    const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            freeText: text,
+                            telemetry,
+                            bodyMapZones
+                        }),
+                        signal: controller.signal
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        let alertLevel = data.redFlag ? "CRITICAL" : "NONE";
+                        
+                        // Escalar alertas de forma estructural si el motor IA detecta categorías de alto riesgo o vulnerabilidad conductual
+                        if (data.category === "ONCOLOGY") alertLevel = "CRITICAL";
+                        else if (data.category === "SURGICAL" && alertLevel === "NONE") alertLevel = "WARNING";
+                        else if (data.risk_level === "HIGH" || (data.detected_tags && data.detected_tags.includes("HIGH_VULNERABILITY"))) {
+                            if (alertLevel === "NONE") alertLevel = "WARNING";
+                        }
+
+                        return {
+                            category: data.category || "CLINICAL",
+                            alert: alertLevel,
+                            suspicion: data.primaryRoute, // Usamos la ruta devuelta por IA como sospecha principal
+                            isGoal: data.isGoal || false,
+                            isPregnant: data.isPregnant || false,
+                            primaryRoute: data.primaryRoute,
+                            secondaryRoute: data.secondaryRoute,
+                            reasoning: data.reasoning,
+                            patientMessage: data.patientMessage,
+                            redFlag: data.redFlag || false,
+                            risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
+                            detected_tags: data.detected_tags || [],
+                            motiveSynthesis: data.motiveSynthesis || "",
+                            strategicGoals: data.strategicGoals || []
+                        };
                     }
-
-                    return {
-                        category: data.category || "CLINICAL",
-                        alert: alertLevel,
-                        suspicion: data.primaryRoute, // Usamos la ruta devuelta por IA como sospecha principal
-                        isGoal: data.isGoal || false,
-                        isPregnant: data.isPregnant || false,
-                        primaryRoute: data.primaryRoute,
-                        secondaryRoute: data.secondaryRoute,
-                        reasoning: data.reasoning,
-                        patientMessage: data.patientMessage,
-                        redFlag: data.redFlag || false,
-                        risk_level: data.risk_level || (data.redFlag ? "SEVERE" : "LOW"),
-                        detected_tags: data.detected_tags || [],
-                        motiveSynthesis: data.motiveSynthesis || "",
-                        strategicGoals: data.strategicGoals || []
-                    };
+                } catch (netErr) {
+                    // Servidor local no disponible: Fallback Standalone silencioso
+                } finally {
+                    clearTimeout(timeoutId);
                 }
-            } catch (netErr) {
-                // Servidor local no disponible: Fallback Standalone silencioso
-            } finally {
-                clearTimeout(timeoutId);
             }
 
             // Si el backend no responde o no está disponible, retornar el objeto Standalone

@@ -198,6 +198,14 @@ const Fase6_Farmacologia = ({
          try {
              if (setIsGlobalTyping) setIsGlobalTyping(true);
  
+             const isCloudStandalone = typeof window !== 'undefined' && 
+                 (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+                 !import.meta.env.VITE_API_URL;
+
+             if (isCloudStandalone) {
+                 return localFallback;
+             }
+
              const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
              
              // Timeout de 1000ms

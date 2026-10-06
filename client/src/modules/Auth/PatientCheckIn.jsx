@@ -31,11 +31,21 @@ const PatientCheckIn = ({ onValidationSuccess }) => {
         setHistoryData(null); // Limpiar datos previos
 
         try {
-            const response = await axios.post('http://localhost:5000/api/clinical/validate-appointment', {
-                appointmentId
-            });
+            const isCloudStandalone = typeof window !== 'undefined' && 
+                (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+                !import.meta.env.VITE_API_URL;
 
-            const data = response.data;
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+            let data;
+
+            if (isCloudStandalone) {
+                data = { valid: true, patientData: { appointmentId } };
+            } else {
+                const response = await axios.post(`${apiUrl}/api/clinical/validate-appointment`, {
+                    appointmentId
+                });
+                data = response.data;
+            }
 
             if (data.valid) {
                 // ✅ ÉXITO
