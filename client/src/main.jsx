@@ -48,6 +48,17 @@ if (!GOOGLE_MAPS_KEY) {
 const libraries = ['places'];
 
 export const RootComponent = () => {
+  const hasKey = Boolean(GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY.trim().length > 5);
+
+  if (!hasKey) {
+    return (
+      <StrictMode>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </StrictMode>
+    );
+  }
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: GOOGLE_MAPS_KEY,

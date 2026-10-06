@@ -239,6 +239,39 @@ export const AddressMap = ({ coordinates, domicilio, setPatientData }) => {
 
   const zoomLevel = coordinates ? 18 : 14;
 
+  const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+  const hasValidGoogleKey = Boolean(GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY.trim().length > 5);
+
+  if (!hasValidGoogleKey) {
+    const bboxDelta = 0.008;
+    const bbox = `${localCoords.lng - bboxDelta},${localCoords.lat - bboxDelta},${localCoords.lng + bboxDelta},${localCoords.lat + bboxDelta}`;
+    const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${localCoords.lat},${localCoords.lng}`;
+
+    return (
+      <div className="w-full rounded-xl overflow-hidden border border-emerald-100 shadow-sm relative">
+        <iframe
+          title="Mapa Cartográfico Standalone"
+          width="100%"
+          height="250"
+          frameBorder="0"
+          scrolling="no"
+          marginHeight="0"
+          marginWidth="0"
+          src={osmUrl}
+          className="rounded-xl w-full h-[250px]"
+        />
+        <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-sm border border-emerald-100/50 flex flex-col items-end gap-0.5 pointer-events-none z-10">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+            Precisión Cartográfica (Nube Standalone)
+          </span>
+          <span className="text-xs font-mono font-medium text-emerald-600 leading-none">
+            {localCoords.lat.toFixed(5)}, {localCoords.lng.toFixed(5)}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full rounded-xl overflow-hidden border border-emerald-100 shadow-sm relative">
       <GoogleMap
@@ -251,15 +284,15 @@ export const AddressMap = ({ coordinates, domicilio, setPatientData }) => {
           position={localCoords} 
           draggable={true}
           onDragEnd={onMarkerDragEnd}
-          animation={window.google.maps.Animation.DROP}
-          icon={{
+          animation={window.google?.maps?.Animation?.DROP}
+          icon={window.google?.maps?.SymbolPath ? {
              path: window.google.maps.SymbolPath.CIRCLE,
              fillColor: '#10b981',
              fillOpacity: 1,
              strokeColor: '#059669',
              strokeWeight: 2,
              scale: 8
-          }}
+          } : undefined}
         />
       </GoogleMap>
       <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-sm border border-emerald-100/50 flex flex-col items-end gap-0.5 pointer-events-none">
