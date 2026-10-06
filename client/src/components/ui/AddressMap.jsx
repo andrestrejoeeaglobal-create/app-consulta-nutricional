@@ -22,12 +22,37 @@ export const AddressMap = ({ coordinates, domicilio, setPatientData }) => {
   // If coordinates are null, geocode the macro address (colonia, municipio, estado)
   useEffect(() => {
     if (!coordinates && domicilio) {
+      if (domicilio.coordinates) {
+        setLocalCoords(domicilio.coordinates);
+        return;
+      }
+
       const { colonia, municipio, estado } = domicilio;
       if (estado || municipio || colonia) {
         const macroAddress = `${colonia || ''}, ${municipio || ''}, ${estado || ''}, México`;
-        
+        const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+
+        const fetchFallbackCoords = async (addressStr) => {
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressStr)}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.length > 0) {
+                setLocalCoords({
+                  lat: parseFloat(data[0].lat),
+                  lng: parseFloat(data[0].lon)
+                });
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn("Fallback nominatim error:", e.message);
+          }
+          setLocalCoords({ lat: 20.588056, lng: -100.388056 });
+        };
+
         const doGeocode = () => {
-          if (window.google && window.google.maps && window.google.maps.Geocoder) {
+          if (GOOGLE_MAPS_KEY && window.google && window.google.maps && window.google.maps.Geocoder) {
             const geocoder = new window.google.maps.Geocoder();
             geocoder.geocode(
               { address: macroAddress, componentRestrictions: { country: 'MX' } },
@@ -37,23 +62,19 @@ export const AddressMap = ({ coordinates, domicilio, setPatientData }) => {
                   const lng = results[0].geometry.location.lng();
                   setLocalCoords({ lat, lng });
                 } else {
-                  console.warn("Geocoding failed for macro address:", macroAddress, status);
+                  fetchFallbackCoords(macroAddress);
                 }
               }
             );
+          } else {
+            fetchFallbackCoords(macroAddress);
           }
         };
 
         if (window.google && window.google.maps) {
           doGeocode();
         } else {
-          const interval = setInterval(() => {
-            if (window.google && window.google.maps) {
-              clearInterval(interval);
-              doGeocode();
-            }
-          }, 500);
-          return () => clearInterval(interval);
+          fetchFallbackCoords(macroAddress);
         }
       }
     }
