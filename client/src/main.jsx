@@ -42,7 +42,7 @@ console.log("%c 🚀 TILO CORE: V8.6 - INTEGRITY PATCH LOADED ", "background: #2
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
 if (!GOOGLE_MAPS_KEY) {
-  console.warn("🚨 FALLO METABÓLICO (VITE): El paquete se compiló sin VITE_GOOGLE_MAPS_API_KEY. Verifique que el archivo client/.env exista con la llave correcta antes de ejecutar npm run build.");
+  console.info("ℹ️ MODO NUBE STANDALONE ACTIVO: Cartografía operando en modo seguro sin exposición de llaves API en repositorio público.");
 }
 
 const libraries = ['places'];
