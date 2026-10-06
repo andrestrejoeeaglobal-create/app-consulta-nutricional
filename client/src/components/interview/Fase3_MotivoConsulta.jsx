@@ -672,15 +672,26 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
 
                 case 'clinica_triage_review': {
                     const cleanUpper = String(userMsg || '').toUpperCase();
-                    const isConfirmation = cleanUpper.includes('CONFIRM') || cleanUpper.includes('SI') || cleanUpper.includes('SÍ') || cleanUpper.includes('EVALUACION') || cleanUpper.includes('EVALUACIÓN') || cleanUpper.includes('CORRECTO') || cleanUpper.includes('DATOS');
-                    const isRejection = cleanUpper.includes('NO') || cleanUpper.includes('CORREGIR') || cleanUpper.includes('CAMBIAR');
+                    const isConfirmation = userMsg === 'CONFIRM_DATA' || cleanUpper === 'CONFIRM_DATA' || (cleanUpper.includes('CONFIRM') && !cleanUpper.includes('CORRECT_DATA'));
+                    const isRejection = userMsg === 'CORRECT_DATA' || cleanUpper.includes('CORRECT_DATA') || cleanUpper.includes('CORREGIR') || cleanUpper.includes('CAMBIAR') || cleanUpper.startsWith('NO');
 
-                    if (isConfirmation && !isRejection) {
+                    if (isConfirmation) {
                         setMessages(prev => [
                             ...prev,
                             { role: "assistant", content: "Excelente. Transfiriendo su información al historial clínico..." }
                         ]);
                         setTimeout(() => completePhase3(), 1000);
+                        return;
+                    } else if (isRejection) {
+                        setStep('clinica_triage_start');
+                        setMessages(prev => [
+                            ...prev,
+                            {
+                                role: "assistant",
+                                content: "Entendido. Vamos a reevaluar su motivo de consulta.\n\n---\n\nPor favor seleccione o describa nuevamente su **Ruta Primaria** o Motivo de Consulta principal:",
+                                options: filteredMotiveOptions
+                            }
+                        ]);
                         return;
                     } else {
                         responseMsg = "De acuerdo, ¿qué más le gustaría agregar o corregir sobre su motivo de consulta?";
