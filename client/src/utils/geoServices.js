@@ -39,10 +39,20 @@ export const fetchZipData = async (zipCode) => {
                 if (publicData.places && publicData.places.length > 0) {
                     const coloniasList = Array.from(new Set(publicData.places.map(p => p['place name'] || p.place_name).filter(Boolean)));
                     
+                    const firstPlace = publicData.places[0];
+                    let coordinates = null;
+                    if (firstPlace && firstPlace.latitude && firstPlace.longitude) {
+                        coordinates = {
+                            lat: parseFloat(firstPlace.latitude),
+                            lng: parseFloat(firstPlace.longitude)
+                        };
+                    }
+
                     data = {
-                        municipio: publicData.places[0]['place name'] || 'Municipio N/A',
-                        estado: publicData.places[0].state || 'México',
-                        colonias: coloniasList
+                        municipio: firstPlace['place name'] || 'Municipio N/A',
+                        estado: firstPlace.state || 'México',
+                        colonias: coloniasList,
+                        coordinates: coordinates
                     };
                 }
             }

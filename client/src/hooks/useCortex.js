@@ -2428,14 +2428,16 @@ export const useCortex = () => {
                                         ...prev.profile.address,
                                         zip_code: zipInput,
                                         municipality: data.municipio,
-                                        state: data.estado
+                                        state: data.estado,
+                                        coordinates: data.coordinates || prev.profile?.address?.coordinates
                                     }
                                 },
                                 domicilio: {
                                     ...prev.domicilio,
                                     cp: zipInput,
                                     municipio: data.municipio, // Legacy support
-                                    estado: data.estado
+                                    estado: data.estado,
+                                    coordinates: data.coordinates || prev.domicilio?.coordinates
                                 }
                             }));
 
@@ -2546,9 +2548,31 @@ export const useCortex = () => {
                     try {
                         const geocodeAsync = (address) => {
                             return new Promise((resolve, reject) => {
-                                if (!window.google || !window.google.maps || !window.google.maps.Geocoder) {
-                                    return reject(new Error("Google Maps API no disponible."));
+                                const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+                                const existingCoords = patientData.domicilio?.coordinates || patientData.profile?.address?.coordinates;
+
+                                if (!GOOGLE_MAPS_KEY || !window.google || !window.google.maps || !window.google.maps.Geocoder) {
+                                    if (existingCoords) {
+                                        return resolve([{
+                                            geometry: { location: { lat: () => existingCoords.lat, lng: () => existingCoords.lng } },
+                                            formatted_address: address
+                                        }]);
+                                    }
+                                    return fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+                                        .then(res => res.json())
+                                        .then(nomData => {
+                                            if (nomData && nomData.length > 0) {
+                                                resolve([{
+                                                    geometry: { location: { lat: () => parseFloat(nomData[0].lat), lng: () => parseFloat(nomData[0].lon) } },
+                                                    formatted_address: nomData[0].display_name
+                                                }]);
+                                            } else {
+                                                reject(new Error("Nominatim fallback sin resultados."));
+                                            }
+                                        })
+                                        .catch(err => reject(err));
                                 }
+
                                 const geocoder = new window.google.maps.Geocoder();
                                 const request = { address };
                                 const cp = patientData.domicilio?.cp;
@@ -2565,6 +2589,11 @@ export const useCortex = () => {
                                 geocoder.geocode(request, (results, status) => {
                                     if (status === 'OK' && results && results.length > 0) {
                                         resolve(results);
+                                    } else if (existingCoords) {
+                                        resolve([{
+                                            geometry: { location: { lat: () => existingCoords.lat, lng: () => existingCoords.lng } },
+                                            formatted_address: address
+                                        }]);
                                     } else {
                                         reject(new Error("Geocode status: " + status));
                                     }
