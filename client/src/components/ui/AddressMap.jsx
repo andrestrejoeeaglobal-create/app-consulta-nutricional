@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { GoogleMap, MarkerF } from '@react-google-maps/api';
+import { fetchMexicanCoordinates } from '../../utils/geoServices';
 
 const mapContainerStyle = {
   width: '100%',
@@ -10,73 +11,25 @@ const mapContainerStyle = {
 export const AddressMap = ({ coordinates, domicilio, setPatientData }) => {
   const [localCoords, setLocalCoords] = useState(coordinates);
 
-  // Sync with coordinates prop from parent
+  // Sync con coordenadas prop o calcular via motor mexicano
   useEffect(() => {
     if (coordinates) {
       setLocalCoords(coordinates);
-    } else {
-      setLocalCoords(null);
-    }
-  }, [coordinates]);
-
-  // If coordinates are null, geocode the macro address (colonia, municipio, estado)
-  useEffect(() => {
-    if (!coordinates && domicilio) {
+    } else if (domicilio) {
       if (domicilio.coordinates) {
         setLocalCoords(domicilio.coordinates);
-        return;
-      }
-
-      const { colonia, municipio, estado } = domicilio;
-      if (estado || municipio || colonia) {
-        const macroAddress = `${colonia || ''}, ${municipio || ''}, ${estado || ''}, México`;
-        const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
-
-        const fetchFallbackCoords = async (addressStr) => {
-          try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressStr)}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data && data.length > 0) {
-                setLocalCoords({
-                  lat: parseFloat(data[0].lat),
-                  lng: parseFloat(data[0].lon)
-                });
-                return;
-              }
-            }
-          } catch (e) {
-            console.warn("Fallback nominatim error:", e.message);
+      } else if (domicilio.estado || domicilio.municipio || domicilio.colonia || domicilio.calle) {
+        fetchMexicanCoordinates(domicilio).then(res => {
+          if (res && res.lat && res.lng) {
+            setLocalCoords({ lat: res.lat, lng: res.lng });
           }
-          setLocalCoords({ lat: 20.588056, lng: -100.388056 });
-        };
-
-        const doGeocode = () => {
-          if (GOOGLE_MAPS_KEY && window.google && window.google.maps && window.google.maps.Geocoder) {
-            const geocoder = new window.google.maps.Geocoder();
-            geocoder.geocode(
-              { address: macroAddress, componentRestrictions: { country: 'MX' } },
-              (results, status) => {
-                if (status === 'OK' && results && results.length > 0) {
-                  const lat = results[0].geometry.location.lat();
-                  const lng = results[0].geometry.location.lng();
-                  setLocalCoords({ lat, lng });
-                } else {
-                  fetchFallbackCoords(macroAddress);
-                }
-              }
-            );
-          } else {
-            fetchFallbackCoords(macroAddress);
-          }
-        };
-
-        if (window.google && window.google.maps) {
-          doGeocode();
-        } else {
-          fetchFallbackCoords(macroAddress);
-        }
+        }).catch(err => {
+          console.warn("Error en fetchMexicanCoordinates:", err);
+          setLocalCoords({ lat: 19.4326, lng: -99.1332 });
+        });
       }
+    } else {
+      setLocalCoords(null);
     }
   }, [coordinates, domicilio]);
 

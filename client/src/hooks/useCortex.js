@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import tiloImg from "../assets/tilo.png";
 import { formatText, getGenderedTerm, fuzzyMatch, calculateCurp, cleanServerInfo, buildPediatricContext, inferGenderFromName, formatPhoneNumber, toTitleCase } from "../utils/utils";
 import useCitationValidation from './useCitationValidation';
-import { fetchZipData } from '../utils/geoServices';
+import { fetchZipData, fetchMexicanCoordinates } from '../utils/geoServices';
 import { useClinicalGenome } from '../store/useClinicalGenome';
 
 // --- INITIAL STATES (EXTRACTED FOR RESET CAPABILITY) ---
@@ -2546,76 +2546,16 @@ export const useCortex = () => {
 
                     // V37.6 Auto-Geocoding with Cartographic Validation Gate
                     try {
-                        const geocodeAsync = (address) => {
-                            return new Promise((resolve, reject) => {
-                                const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
-                                const existingCoords = patientData.domicilio?.coordinates || patientData.profile?.address?.coordinates;
-
-                                if (!GOOGLE_MAPS_KEY || !window.google || !window.google.maps || !window.google.maps.Geocoder) {
-                                    if (existingCoords) {
-                                        return resolve([{
-                                            geometry: { location: { lat: () => existingCoords.lat, lng: () => existingCoords.lng } },
-                                            formatted_address: address
-                                        }]);
-                                    }
-                                    return fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
-                                        .then(res => res.json())
-                                        .then(nomData => {
-                                            if (nomData && nomData.length > 0) {
-                                                resolve([{
-                                                    geometry: { location: { lat: () => parseFloat(nomData[0].lat), lng: () => parseFloat(nomData[0].lon) } },
-                                                    formatted_address: nomData[0].display_name
-                                                }]);
-                                            } else {
-                                                reject(new Error("Nominatim fallback sin resultados."));
-                                            }
-                                        })
-                                        .catch(err => reject(err));
-                                }
-
-                                const geocoder = new window.google.maps.Geocoder();
-                                const request = { address };
-                                const cp = patientData.domicilio?.cp;
-                                if (cp) {
-                                    request.componentRestrictions = {
-                                        country: 'MX',
-                                        postalCode: cp
-                                    };
-                                } else {
-                                    request.componentRestrictions = {
-                                        country: 'MX'
-                                    };
-                                }
-                                geocoder.geocode(request, (results, status) => {
-                                    if (status === 'OK' && results && results.length > 0) {
-                                        resolve(results);
-                                    } else if (existingCoords) {
-                                        resolve([{
-                                            geometry: { location: { lat: () => existingCoords.lat, lng: () => existingCoords.lng } },
-                                            formatted_address: address
-                                        }]);
-                                    } else {
-                                        reject(new Error("Geocode status: " + status));
-                                    }
-                                });
-                            });
-                        };
-
-                        // Race contra timeout de 4 segundos para evitar freeze si Google Maps no responde
-                        const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error("Geocoding timeout - La API tardó demasiado")), 4000)
-                        );
-
-                        const results = await Promise.race([
-                            geocodeAsync(fullAddressToSearch),
-                            timeoutPromise
-                        ]);
+                        const geoResult = await fetchMexicanCoordinates({
+                            calle: cleanStreet,
+                            colonia: patientData.domicilio?.colonia || patientData.profile?.address?.colony || '',
+                            municipio: patientData.domicilio?.municipio || patientData.profile?.address?.municipality || '',
+                            estado: patientData.domicilio?.estado || patientData.profile?.address?.state || '',
+                            cp: patientData.domicilio?.cp || patientData.profile?.address?.zip_code || ''
+                        });
                         
-                        console.log("📍 [Córtex Geocoder] Resolve results:", results);
-                        const lat = results[0].geometry.location.lat();
-                        const lng = results[0].geometry.location.lng();
-                        const coords = { lat, lng };
-                        const formattedAddress = results[0].formatted_address.replace('Mexico', 'México');
+                        const coords = { lat: geoResult.lat, lng: geoResult.lng };
+                        const formattedAddress = (geoResult.formattedAddress || fullAddressToSearch).replace('Mexico', 'México');
 
                         setPatientData(prev => ({
                             ...prev,
