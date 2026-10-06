@@ -806,23 +806,29 @@ function App() {
       }
 
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500);
+        const isCloudStandalone = typeof window !== 'undefined' && 
+          (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+          !import.meta.env.VITE_API_URL;
 
-        const res = await fetch(`${apiUrl}/api/bio/hardware-status`, { signal: controller.signal });
-        clearTimeout(timeoutId);
+        if (!isCloudStandalone) {
+          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1500);
 
-        if (res.ok) {
-          failedAttempts = 0;
-          const data = await res.json();
-          setHardwareStatus(prev => ({
-            ...prev,
-            connected: data.connected !== undefined ? data.connected : true,
-            handContactDetected: data.handContactDetected !== undefined ? data.handContactDetected : true,
-            voltage_uv: data.voltage_uv || 58.42,
-            impedance_ohms: data.impedance_ohms || 1410
-          }));
+          const res = await fetch(`${apiUrl}/api/bio/hardware-status`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (res.ok) {
+            failedAttempts = 0;
+            const data = await res.json();
+            setHardwareStatus(prev => ({
+              ...prev,
+              connected: data.connected !== undefined ? data.connected : true,
+              handContactDetected: data.handContactDetected !== undefined ? data.handContactDetected : true,
+              voltage_uv: data.voltage_uv || 58.42,
+              impedance_ohms: data.impedance_ohms || 1410
+            }));
+          }
         } else {
           failedAttempts++;
         }
@@ -1259,18 +1265,25 @@ function App() {
 
     try {
       console.log(`💾 Auto-Save Triggered: Phase ${phase} | Block ${block}`);
-      const response = await axios.patch(`http://localhost:5000/api/citations/${activeCitation}/progress`, {
-        phase,
-        block,
-        patientData: updatedPatientData,
-        is_completed: isCompleted
-      });
-      
-      if (response.data && response.data.patientData) {
-        const serverScores = response.data.patientData.lifestyle_scores;
-        const localScores = patientData.lifestyle_scores;
-        if (JSON.stringify(serverScores) !== JSON.stringify(localScores)) {
-          setPatientData(response.data.patientData);
+      const isCloudStandalone = typeof window !== 'undefined' && 
+        (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+        !import.meta.env.VITE_API_URL;
+
+      if (!isCloudStandalone) {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        const response = await axios.patch(`${apiUrl}/api/citations/${activeCitation}/progress`, {
+          phase,
+          block,
+          patientData: updatedPatientData,
+          is_completed: isCompleted
+        });
+        
+        if (response.data && response.data.patientData) {
+          const serverScores = response.data.patientData.lifestyle_scores;
+          const localScores = patientData.lifestyle_scores;
+          if (JSON.stringify(serverScores) !== JSON.stringify(localScores)) {
+            setPatientData(response.data.patientData);
+          }
         }
       }
     } catch (err) {

@@ -37,11 +37,19 @@ const SearchableVerticalMenu = ({
         setIsLoading(true);
         const timer = setTimeout(async () => {
             try {
-                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-                const res = await fetch(`${apiUrl}/api/cortex/searchMedication?q=${encodeURIComponent(trimmed)}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setAsyncOptions(data);
+                const isCloudStandalone = typeof window !== 'undefined' && 
+                    (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+                    !import.meta.env.VITE_API_URL;
+
+                if (!isCloudStandalone) {
+                    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                    const res = await fetch(`${apiUrl}/api/cortex/searchMedication?q=${encodeURIComponent(trimmed)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setAsyncOptions(data);
+                    } else {
+                        setAsyncOptions([]);
+                    }
                 } else {
                     setAsyncOptions([]);
                 }
