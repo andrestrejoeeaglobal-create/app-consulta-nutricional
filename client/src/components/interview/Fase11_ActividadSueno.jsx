@@ -294,25 +294,6 @@ const Fase11_ActividadSueno = ({
         }
     }, [messages, lifeStyle.activity]);
 
-    // Auto-recuperación de respuestas colgadas (dangling user messages)
-    const hasRecoveredDangling = useRef(false);
-    useEffect(() => {
-        if (hasRecoveredDangling.current) return;
-        if (!messages || messages.length < 2) return;
-
-        const lastMsg = messages[messages.length - 1];
-        const prevMsg = messages[messages.length - 2];
-
-        if (lastMsg.role === 'user' && prevMsg.role === 'assistant') {
-            hasRecoveredDangling.current = true;
-            console.log("🔄 [FASE 11 RECOVERY] Re-procesando respuesta colgada:", lastMsg.content);
-            setTimeout(() => {
-                if (handleSendRef.current) {
-                    handleSendRef.current(lastMsg.content);
-                }
-            }, 300);
-        }
-    }, [messages]);
 
     // Inicialización del mensaje de bienvenida (Compuerta de Ejercicio y NEAT)
     useEffect(() => {
