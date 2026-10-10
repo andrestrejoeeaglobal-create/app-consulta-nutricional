@@ -24,30 +24,54 @@ export const fetchMexicanCoordinates = async ({ calle, colonia, municipio, estad
     const cleanMuni = (municipio || '').trim();
     const cleanEstado = (estado || '').replace(/Distrito Federal/i, 'Ciudad de México').trim();
 
-    // Queries por nivel de especificidad (Multinivel Tiered Geocoding)
+    // SINTAXIS DE ANCLAJE ABSOLUTO (Siempre combina Calle, Colonia, CP, Municipio y Estado)
+    const anchorParts = [
+        cleanStreet,
+        cleanColonia ? `Col. ${cleanColonia}` : '',
+        cp && cleanMuni ? `${cp} ${cleanMuni}` : (cleanMuni || cp),
+        cleanEstado,
+        'México'
+    ].filter(Boolean);
+
+    const anchorQuery = anchorParts.join(', ');
+
+    // 1. CAPA PRIMARIA: ArcGIS World Geocoder REST API (Geocodificación Milimétrica a Nivel Predio/Puerta)
+    try {
+        const arcUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&singleLine=${encodeURIComponent(anchorQuery)}&maxLocations=1`;
+        const resArc = await fetch(arcUrl);
+        if (resArc.ok) {
+            const dataArc = await resArc.json();
+            if (dataArc && dataArc.candidates && dataArc.candidates.length > 0 && dataArc.candidates[0].score > 50) {
+                const candidate = dataArc.candidates[0];
+                console.log("📍 [ArcGIS Geocoder] Coordenadas prediales encontradas con éxito:", candidate.address, candidate.location);
+                return {
+                    lat: parseFloat(candidate.location.y),
+                    lng: parseFloat(candidate.location.x),
+                    formattedAddress: candidate.address
+                };
+            }
+        }
+    } catch (e) {
+        console.warn("📌 [ArcGIS Geocoder] Fallback activado a Nominatim:", e.message);
+    }
+
+    // 2. CAPA SECUNDARIA: Nominatim con Anclaje Obligatorio de Municipio y Estado
     const queries = [];
-
-    // Nivel 1: Calle Normalizada + Colonia + Estado + México
     if (cleanStreet && cleanColonia) {
-        queries.push(`${cleanStreet}, ${cleanColonia}, ${cleanEstado}, México`);
+        queries.push(`${cleanStreet}, ${cleanColonia}, ${cleanMuni || cleanEstado}, ${cleanEstado}, México`);
     } else if (cleanStreet) {
-        queries.push(`${cleanStreet}, ${cleanMuni || cleanEstado}, México`);
+        queries.push(`${cleanStreet}, ${cleanMuni || cleanEstado}, ${cleanEstado}, México`);
     }
-
-    // Nivel 2: Colonia + CP / Municipio + Estado
     if (cleanColonia) {
-        if (cp) queries.push(`${cleanColonia}, ${cp}, México`);
-        queries.push(`${cleanColonia}, ${cleanMuni || cleanEstado}, México`);
-    }
-
-    // Nivel 3: Municipio / Alcaldía + Estado
-    if (cleanMuni || cleanEstado) {
-        queries.push(`${cleanMuni}, ${cleanEstado}, México`);
+        if (cp) queries.push(`${cleanColonia}, ${cp} ${cleanMuni}, ${cleanEstado}, México`);
+        queries.push(`${cleanColonia}, ${cleanMuni || cleanEstado}, ${cleanEstado}, México`);
     }
 
     for (const q of queries) {
         try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=mx`);
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=mx`, {
+                headers: { 'User-Agent': 'TILO-NutriApp/1.0' }
+            });
             if (res.ok) {
                 const data = await res.json();
                 if (data && data.length > 0) {
