@@ -684,14 +684,23 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                         return;
                     } else if (isRejection) {
                         setStep('clinica_triage_start');
-                        setMessages(prev => [
-                            ...prev,
-                            {
-                                role: "assistant",
-                                content: "Entendido. Vamos a reevaluar su motivo de consulta.\n\n---\n\nPor favor seleccione o describa nuevamente su **Ruta Primaria** o Motivo de Consulta principal:",
-                                options: filteredMotiveOptions
-                            }
-                        ]);
+                        updateClinicalContext({
+                            primary_motive: "",
+                            goal: "",
+                            secondary_motives: [],
+                            ai_analysis: {}
+                        });
+                        setMessages(prev => {
+                            const cleaned = (prev || []).filter(msg => !msg.isAiAnalysisResult && (!msg.options || !msg.options.some(o => o.value === 'CONFIRM_DATA')));
+                            return [
+                                ...cleaned,
+                                {
+                                    role: "assistant",
+                                    content: "Entendido. Vamos a reevaluar su motivo de consulta.\n\n---\n\nPor favor seleccione o describa nuevamente su **Ruta Primaria** o Motivo de Consulta principal:",
+                                    options: filteredMotiveOptions
+                                }
+                            ];
+                        });
                         return;
                     } else {
                         responseMsg = "De acuerdo, ¿qué más le gustaría agregar o corregir sobre su motivo de consulta?";

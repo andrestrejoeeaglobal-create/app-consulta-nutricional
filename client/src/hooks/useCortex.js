@@ -3601,9 +3601,9 @@ export const useCortex = () => {
 
                 // =============== SUMMARY CONFIRMATIONS (PHASES 3 - 6) ===============
                 case 'PHASE_3_SUMMARY_CONFIRM': {
-                    if (text === 'yes') {
+                    if (text === 'yes' || text === 'CONFIRM_DATA') {
                         setCurrentPhase('PHASE_4_FAMILY_HISTORY');
-                    } else if (text === 'no') {
+                    } else if (text === 'no' || text === 'CORRECT_DATA') {
                         // Reset Motivo Consulta State
                         setFase3State({
                             patient_quote: "",
@@ -3618,11 +3618,11 @@ export const useCortex = () => {
 
                         // Slice messages starting from the first Motivo Consulta greeting
                         setMessages(prev => {
-                            const idx = prev.findIndex(msg => msg.role === 'assistant' && (msg.content.includes('Para diseñar el plan clínico') || msg.content.includes('Para comenzar a diseñar')));
+                            const idx = prev.findIndex(msg => msg.role === 'assistant' && (msg.content.includes('Para diseñar el plan clínico') || msg.content.includes('Para comenzar a diseñar') || msg.content.includes('Ruta Primaria') || msg.content.includes('Motivo de Consulta')));
                             if (idx !== -1) {
                                 return prev.slice(0, idx);
                             }
-                            return prev;
+                            return prev.filter(m => !m.isAiAnalysisResult);
                         });
 
                         setCurrentPhase('PHASE_3_MOTIVO_CONSULTA');
