@@ -193,7 +193,7 @@ export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = 
         if (!isCloudStandalone) {
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 1200);
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
 
             try {
                 const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {
@@ -598,7 +598,7 @@ export const useCortex = () => {
                 const bodyMapZones = []; // En el futuro se llenará desde el UI del cuerpo
 
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 1200);
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
 
                 try {
                     const response = await fetch(`${apiUrl}/api/cortex/analyzeMotive`, {

@@ -212,27 +212,30 @@ Analiza este caso y devuelve el JSON correspondiente.
 
         let jsonResponse = null;
         let lastError = null;
-        const maxRetries = 3;
+        const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+        for (const targetModel of candidateModels) {
+            if (jsonResponse) break;
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    console.log(`🤖 [Model ${targetModel} | Attempt ${attempt}] Calling Gemini to analyze motive...`);
+                    const response = await ai.models.generateContent({
+                        model: targetModel,
+                        contents: prompt,
+                        config: {
+                            systemInstruction: SYSTEM_PROMPT,
+                            responseMimeType: "application/json",
+                        }
+                    });
 
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                console.log(`🤖 [Attempt ${attempt}/${maxRetries}] Calling Gemini to analyze motive...`);
-                const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: prompt,
-                    config: {
-                        systemInstruction: SYSTEM_PROMPT,
-                        responseMimeType: "application/json",
-                    }
-                });
-
-                const rawText = response.text;
-                const sanitizedText = sanitizeJsonString(rawText);
-                jsonResponse = JSON.parse(sanitizedText);
-                break;
-            } catch (err) {
-                console.warn(`⚠️ [Attempt ${attempt}/${maxRetries}] Failed to generate/parse Gemini response:`, err.message);
-                lastError = err;
+                    const rawText = response.text;
+                    const sanitizedText = sanitizeJsonString(rawText);
+                    jsonResponse = JSON.parse(sanitizedText);
+                    console.log(`✅ [Gemini Success] Motivo analizado con éxito usando ${targetModel}`);
+                    break;
+                } catch (err) {
+                    console.warn(`⚠️ [Model ${targetModel} | Attempt ${attempt}] Failed:`, err.message);
+                    lastError = err;
+                }
             }
         }
 
