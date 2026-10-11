@@ -169,6 +169,8 @@ export const TabBiochemicals = ({
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [showOnlyAbnormalities, setShowOnlyAbnormalities] = useState(false);
 
+    const genomeTelemetry = useClinicalGenome(state => state.electretTelemetry);
+
     const isScanned = patientData?.scan_data?.electret_scanned || genomeTelemetry?.isScanned;
     const electretMetrics = isScanned ? (patientData?.scan_data?.electret_metrics || genomeTelemetry?.categories) : null;
 
@@ -188,8 +190,6 @@ export const TabBiochemicals = ({
     }, [electretMetrics, activePatientFirstName]);
 
     const validElectretMetrics = isElectretValidForCurrentPatient ? electretMetrics : null;
-
-    const genomeTelemetry = useClinicalGenome(state => state.electretTelemetry);
 
     // INYECCIÓN ANTIGRAVITY: Rehidratación de estado global (Prevención de Amnesia F5)
     React.useEffect(() => {
