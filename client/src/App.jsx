@@ -6770,7 +6770,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                   messagesList.length > 0 && (messagesList[messagesList.length - 1].inputType === 'number' || messagesList[messagesList.length - 1].inputType === 'respiratory_timer' || messagesList[messagesList.length - 1].inputType === 'bp') ? 'decimal' : 'text'
                                 }
                                 value={input}
-                                disabled={patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA' || (isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options)}
+                                disabled={patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA' || (isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options && messagesList[messagesList.length - 1].inputType !== 'number' && messagesList[messagesList.length - 1].inputType !== 'text' && messagesList[messagesList.length - 1].inputType !== 'bp')}
                                 onChange={(e) => {
                                   if (patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') return;
                                   if (messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'tel') {
@@ -6810,17 +6810,18 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                 }}
                                 placeholder={
                                   (patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') ? "🔒 Consulta médica finalizada. Expediente sellado bajo la NOM-004." :
-                                  isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options ? "Entrada bloqueada temporalmente." :
+                                  isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options && messagesList[messagesList.length - 1].inputType !== 'number' && messagesList[messagesList.length - 1].inputType !== 'text' && messagesList[messagesList.length - 1].inputType !== 'bp' ? "Entrada bloqueada temporalmente." :
                                   messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'bp' ? "Ej. 120/80" :
+                                  messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'number' ? (messagesList[messagesList.length - 1].options ? "Ingrese valor en mg/dL (o seleccione Omitir)..." : "Ingrese un número...") :
                                   "Escriba su respuesta..."
                                 }
-                                className={`flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2 ${(patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA' || (isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options)) ? "cursor-not-allowed opacity-50 select-none" : ""}`}
+                                className={`flex-1 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 text-sm h-10 px-2 ${(patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA' || (isIdentityConfirmed && messagesList.length > 0 && messagesList[messagesList.length - 1].role === 'assistant' && !!messagesList[messagesList.length - 1].options && messagesList[messagesList.length - 1].inputType !== 'number' && messagesList[messagesList.length - 1].inputType !== 'text' && messagesList[messagesList.length - 1].inputType !== 'bp')) ? "cursor-not-allowed opacity-50 select-none" : ""}`}
                               />
                             </>
                           )}
                           {/* V8.2 END */}
 
-                          {messagesList.length === 0 || !isIdentityConfirmed || (messagesList[messagesList.length - 1].inputType !== 'strict_select' && !(messagesList[messagesList.length - 1].role === 'assistant' && messagesList[messagesList.length - 1].options)) ? (
+                          {messagesList.length === 0 || !isIdentityConfirmed || (messagesList[messagesList.length - 1].inputType !== 'strict_select' && !(messagesList[messagesList.length - 1].role === 'assistant' && messagesList[messagesList.length - 1].options && messagesList[messagesList.length - 1].inputType !== 'number' && messagesList[messagesList.length - 1].inputType !== 'text' && messagesList[messagesList.length - 1].inputType !== 'bp')) ? (
                             <button
                               type="button"
                               disabled={patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA'}
