@@ -392,11 +392,20 @@ router.post('/electret/sterilize', (req, res) => {
 });
 
 /**
- * GET /api/bio/scan/electret/sync
+ * POST & GET /api/bio/scan/electret/sync
  * Sincronización síncrona con el hardware Electret vía puente nativo read_electret.exe con Triple Blindaje NOM-004
+ * 🛡️ SUTURA 1: Inmune a la trombosis de caché en V8 / Chromium (POST + Cabeceras anti-caché)
  */
-router.get('/electret/sync', (req, res) => {
-    const targetPatientName = (req.query.patientName || req.query.name || '').trim();
+const handleElectretSync = (req, res) => {
+    // 🛡️ SUTURA 1: Inyección de cabeceras agresivas anti-caché
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
+    });
+
+    const targetPatientName = (req.body?.patientName || req.body?.name || req.query?.patientName || req.query?.name || '').trim();
     console.log(`🔄 [ODBC SYNC v4.1] Petición de sincronización para paciente: "${targetPatientName}"`);
 
     const { execFile } = require('child_process');
@@ -528,7 +537,10 @@ router.get('/electret/sync', (req, res) => {
             });
         }
     });
-});
+};
+
+router.post('/electret/sync', handleElectretSync);
+router.get('/electret/sync', handleElectretSync);
 
 /**
  * POST /api/bio/scan/binocular-ocular-scan
