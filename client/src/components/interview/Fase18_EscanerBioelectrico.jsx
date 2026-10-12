@@ -425,29 +425,27 @@ El procesamiento y lectura de la base de datos Access ha concluido de forma exit
                 setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
 
                 const errCode = err?.data?.error;
-                let errorTitle = '⚠️ Hardware Electret No Conectado / No Detectado';
-                let errorBody = err?.message || 'No se detectó el escáner bioeléctrico por USB ni lecturas físicas activas en la base de datos de Electret.exe.';
+                let errorTitle = '📡 Hardware Electret en Espera (NOM-004)';
+                let errorBody = `No se detectaron bioseñales recientes en el escáner (ventana de frescura requerida: 5 minutos).\n\n* Si va a realizar la prueba física: Conecte al paciente **${pName}** al sensor, ejecute el test en el software Electret y presione **"🔄 Sincronizar Hardware"**.\n* Si no dispone del equipo en este momento: Puede avanzar con la consulta seleccionando **"⏩ Continuar sin Escáner Electret"**.`;
 
                 if (errCode === 'CROSS_PATIENT_CONTAMINATION_PREVENTED') {
                     errorTitle = '🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB';
-                    errorBody = `${err.data.message}\n\nPor favor, **genere un estudio nuevo en este momento** en el software Electret a nombre de **"${pName}"** y presione el botón a continuación para reintentar la sincronización.`;
-                } else if (errCode === 'SCAN_EXPIRED_OR_OBSOLETE') {
-                    errorTitle = '⏱️ Alerta Temporal NOM-004: Estudio Obsoleto o Caducado';
-                    errorBody = `${err.data.message}\n\nPor favor, **genere un escaneo nuevo en este momento** en el software Electret para **"${pName}"** con el paciente conectado a los sensores y presione el botón a continuación.`;
+                    errorBody = err?.data?.message || `El escaneo reciente detectado no corresponde al titular del expediente actual (${pName}). Por favor verifique el nombre en el software Electret y reintente.`;
+                } else if (errCode === 'NO_RECENT_SCAN' || errCode === 'SCAN_EXPIRED_OR_OBSOLETE') {
+                    errorTitle = '📡 Hardware Electret en Espera (NOM-004)';
+                    errorBody = `No se detectaron bioseñales recientes en el escáner (ventana de frescura requerida: 5 minutos).\n\n* Si va a realizar la prueba física: Conecte al paciente **${pName}** al sensor, ejecute el test en el software Electret y presione **"🔄 Sincronizar Hardware"**.\n* Si no dispone del equipo en este momento: Puede avanzar con la consulta seleccionando **"⏩ Continuar sin Escáner Electret"**.`;
                 }
 
                 const errorMsg = {
                     role: 'assistant',
                     content: `### ${errorTitle}
 
-${errorBody}
-
-Para garantizar el rigor clínico y la honestidad biológica bajo la **NOM-004**, seleccione una opción:`,
+${errorBody}`,
                     actions: [
                         {
                             id: 'btn_retry_sync',
-                            label: '🔄 Reintentar Sincronización USB',
-                            style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all',
+                            label: '🔄 Sincronizar Hardware',
+                            style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
                             value: 'SYNC_ELECTRET_HARDWARE'
                         },
                         {
@@ -458,7 +456,7 @@ Para garantizar el rigor clínico y la honestidad biológica bajo la **NOM-004**
                         }
                     ],
                     options: [
-                        { label: "🔄 Reintentar Sincronización USB", value: "SYNC_ELECTRET_HARDWARE" },
+                        { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
                         { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                     ]
                 };
