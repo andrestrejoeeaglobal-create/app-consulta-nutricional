@@ -124,8 +124,7 @@ export default function Fase18_EscanerBioelectrico({
                 useClinicalGenome.getState().clearElectretTelemetry();
             }
         }
-        // Esterilización preventiva inmediata de archivos residuales en disco
-        fetch(`${apiUrl}/api/bio/scan/electret/sterilize`, { method: 'POST' }).catch(() => {});
+        // Freno Clínico: Supresión absoluta de sondeos automáticos al montar la fase.
 
         if (isLactante) {
             setPatientData(prev => ({
@@ -176,29 +175,39 @@ Si dispone de estudios de laboratorio recientes para **${pName}** (PDF de Quími
             return;
         }
 
-        // Si el chat no tiene mensaje de la Fase 18, emitir mensaje inicial con Párrafos de Poder T.I.LO.
-        const hasPhase18Message = messages?.some(m => m.content?.includes("Fase 18: Inicialización de Telemetría Multimodal") || m.content?.includes("FASE 18: Escáner Bioeléctrico"));
+        // Si el chat no tiene mensaje de la Fase 18, emitir mensaje inicial con la Compuerta de Generación Activa Estricta
+        const hasPhase18Message = messages?.some(m => m.content?.includes("Fase 18: Telemetría Bioeléctrica Cuántica") || m.content?.includes("Fase 18: Inicialización de Telemetría Multimodal") || m.content?.includes("FASE 18: Escáner Bioeléctrico"));
         if (!hasPhase18Message) {
             const saludoEstructurado = {
                 role: 'assistant',
-                content: `### 📡 Fase 18: Inicialización de Telemetría Multimodal
+                content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
 
-Bienvenido a la etapa de **Síntesis Biométrica Aumentada**. A partir de este momento, realizaremos un mapeo integral de sus sistemas biológicos para consolidar su expediente clínico bajo los lineamientos de la **NOM-004-SSA3-2012**. 
+Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el software Electret original del consultorio.
 
-A través de este flujo interactivo, evaluaremos de forma secuencial su conductancia molecular, microcirculación foveal y estado tisular lingual. Toda la información se transmitirá en tiempo real hacia su **Dashboard de Ingeniería de la Salud** en el panel derecho.
+1. Verifique que el paciente en el software Electret esté registrado como **"${pName}"**.
+2. Pídale al paciente que sujete firmemente los electrodos cilíndricos del sensor.
+3. Ejecute el escaneo de conductancia celular y espere a que el software complete el reporte.
+4. Al concluir la toma física en el software original, presione el botón **"🔄 Sincronizar Hardware"** a continuación.
 
-Por favor presione el botón a continuación para iniciar la toma de bioseñales.`,
+*El sistema T.I.L.O. validará la correspondencia estricta de identidad y una ventana de frescura biométrica en tiempo real.*`,
                 inputType: 'electret_scan_widget',
                 actions: [
                     {
-                        id: 'btn_start_electret',
-                        label: '⚡ Iniciar Escaneo Electret',
+                        id: 'btn_sync_electret',
+                        label: '🔄 Sincronizar Hardware',
                         style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
-                        value: 'START_ELECTRET_SCAN'
+                        value: 'SYNC_ELECTRET_HARDWARE'
+                    },
+                    {
+                        id: 'btn_skip_electret',
+                        label: '⏩ Continuar sin Escáner Electret',
+                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
+                        value: 'ELECTRET_SKIP'
                     }
                 ],
                 options: [
-                    { label: "⚡ Iniciar Escaneo Electret", value: "START_ELECTRET_SCAN" }
+                    { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
             setMessages(prev => [...prev, saludoEstructurado]);
@@ -244,12 +253,9 @@ Por favor presione el botón a continuación para iniciar la toma de bioseñales
         // ETAPA 1: ELECTRET (BIOELÉCTRICO)
         // ----------------------------------------------------------------------
         if (value === 'START_ELECTRET_SCAN') {
-            // 🛡️ NOM-004: Esterilización física inmediata de archivos residuales en disco
-            fetch(`${apiUrl}/api/bio/scan/electret/sterilize`, { method: 'POST' }).catch(() => {});
-
             const instrMsg = {
                 role: 'assistant',
-                content: `### 📡 Mandato de Telemetría Física Electret (NOM-004)
+                content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
                 
 Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el software Electret original instalado en el equipo de consultorio. 
 
@@ -258,17 +264,24 @@ Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el s
 3. Ejecute el escaneo de conductancia celular y espere a que el software complete el reporte.
 4. Al concluir la toma física en el software original, presione el botón **"🔄 Sincronizar Hardware"** a continuación.
 
-*El sistema T.I.L.O. validará la correspondencia estricta de identidad del paciente y una ventana de frescura biométrica menor a 5 minutos.*`,
+*El sistema T.I.L.O. validará la correspondencia estricta de identidad del paciente y una ventana de frescura biométrica en tiempo real.*`,
                 actions: [
                     {
                         id: 'btn_sync_electret',
                         label: '🔄 Sincronizar Hardware',
                         style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
                         value: 'SYNC_ELECTRET_HARDWARE'
+                    },
+                    {
+                        id: 'btn_skip_electret',
+                        label: '⏩ Continuar sin Escáner Electret',
+                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
+                        value: 'ELECTRET_SKIP'
                     }
                 ],
                 options: [
-                    { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" }
+                    { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
             setMessages(prev => [...prev, instrMsg]);
@@ -425,15 +438,15 @@ El procesamiento y lectura de la base de datos Access ha concluido de forma exit
                 setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
 
                 const errCode = err?.data?.error;
-                let errorTitle = '📡 Hardware Electret en Espera (NOM-004)';
-                let errorBody = `No se detectaron bioseñales recientes en el escáner (ventana de frescura requerida: 5 minutos).\n\n* Si va a realizar la prueba física: Conecte al paciente **${pName}** al sensor, ejecute el test en el software Electret y presione **"🔄 Sincronizar Hardware"**.\n* Si no dispone del equipo en este momento: Puede avanzar con la consulta seleccionando **"⏩ Continuar sin Escáner Electret"**.`;
+                let errorTitle = '📡 Compuerta en Espera (NOM-004)';
+                let errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Conecte al paciente **${pName}** al sensor, ejecute el test en el software Electret y presione **"🔄 Sincronizar Hardware"**.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
 
                 if (errCode === 'CROSS_PATIENT_CONTAMINATION_PREVENTED') {
                     errorTitle = '🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB';
                     errorBody = err?.data?.message || `El escaneo reciente detectado no corresponde al titular del expediente actual (${pName}). Por favor verifique el nombre en el software Electret y reintente.`;
-                } else if (errCode === 'NO_RECENT_SCAN' || errCode === 'SCAN_EXPIRED_OR_OBSOLETE') {
-                    errorTitle = '📡 Hardware Electret en Espera (NOM-004)';
-                    errorBody = `No se detectaron bioseñales recientes en el escáner (ventana de frescura requerida: 5 minutos).\n\n* Si va a realizar la prueba física: Conecte al paciente **${pName}** al sensor, ejecute el test en el software Electret y presione **"🔄 Sincronizar Hardware"**.\n* Si no dispone del equipo en este momento: Puede avanzar con la consulta seleccionando **"⏩ Continuar sin Escáner Electret"**.`;
+                } else if (errCode === 'NO_ACTIVE_STUDY' || errCode === 'NO_RECENT_SCAN' || errCode === 'SCAN_EXPIRED_OR_OBSOLETE') {
+                    errorTitle = '📡 Compuerta en Espera (NOM-004)';
+                    errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Conecte al paciente **${pName}** al sensor, ejecute el test en el software Electret y presione **"🔄 Sincronizar Hardware"**.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
                 }
 
                 const errorMsg = {
