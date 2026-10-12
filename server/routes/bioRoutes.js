@@ -7,7 +7,51 @@ const multer = require('multer');
 const sharp = require('sharp');
 const { db } = require('../db');
 const { GoogleGenAI } = require('@google/genai');
-const { parseElectretHTML, parseElectretJSON } = require('../utils/electretParser');
+const { parseElectretHTML, parseElectretJSON, normalizeClinicalName, parseLocalDate } = require('../utils/electretParser');
+
+/**
+ * Esteriliza el entorno físico de escaneo eliminando el informe previo de ResultOne.htm
+ * Protegido con try/catch para evitar EPERM si Windows restringe permisos en Program Files (Sutura 1).
+ */
+function sterilizeElectretReport() {
+    const candidatePaths = [
+        "C:\\Program Files (x86)\\Sistema Cuántico Bio-Eléctrico (4)\\ResultOne.htm",
+        "C:\\Program Files (x86)\\Sistema Cuántico Bio-Eléctrico\\ResultOne.htm",
+        "C:\\Program Files (x86)\\Electret\\ResultOne.htm",
+        "C:\\TILO\\DataBase\\ResultOne.htm"
+    ];
+
+    let purgedCount = 0;
+    for (const p of candidatePaths) {
+        try {
+            if (fs.existsSync(p)) {
+                fs.unlinkSync(p);
+                purgedCount++;
+                console.log(`🧹 [ESTERILIZACIÓN NOM-004] Archivo residual ${p} eliminado físicamente con éxito.`);
+            }
+        } catch (uacErr) {
+            console.warn(`🛡️ [ESTERILIZACIÓN NOM-004] Windows UAC impidió la eliminación física de ${p} (${uacErr.code || uacErr.message}). La protección se delega al Candado Biométrico y Temporal de Capa 2.`);
+        }
+    }
+    return purgedCount;
+}
+
+/**
+ * Función de cotejo biométrico NOM-004 entre paciente de cita y paciente del reporte (Sutura 2).
+ */
+function checkPatientMatch(activePatientName, scanPatientName) {
+    const normActive = normalizeClinicalName(activePatientName);
+    const normScan = normalizeClinicalName(scanPatientName);
+    if (!normActive || !normScan) return false;
+    if (normActive === normScan) return true;
+    
+    // Tokens significativos (>2 caracteres)
+    const activeTokens = normActive.split(' ').filter(t => t.length > 2);
+    const scanTokens = normScan.split(' ').filter(t => t.length > 2);
+    
+    const matchingTokens = activeTokens.filter(t => scanTokens.includes(t));
+    return matchingTokens.length >= 2 || (activeTokens.length === 1 && matchingTokens.length === 1);
+}
 
 function fileToGenerativePart(filePath, mimeType) {
     if (!fs.existsSync(filePath)) return null;
@@ -335,11 +379,26 @@ router.get('/status', (req, res) => {
 });
 
 /**
+ * POST /api/bio/scan/electret/sterilize
+ * Apoptosis física de archivos residuales del escáner previo (Sutura 1: try/catch defensivo contra EPERM)
+ */
+router.post('/electret/sterilize', (req, res) => {
+    const purged = sterilizeElectretReport();
+    res.json({
+        success: true,
+        purgedFiles: purged,
+        message: "Sala de escaneo esterilizada físicamente."
+    });
+});
+
+/**
  * GET /api/bio/scan/electret/sync
- * Sincronización síncrona con la base de datos local Electret vía puente nativo read_electret.exe (v4.1 x86)
+ * Sincronización síncrona con el hardware Electret vía puente nativo read_electret.exe con Triple Blindaje NOM-004
  */
 router.get('/electret/sync', (req, res) => {
-    console.log("🔄 [ODBC SYNC v4.1] Iniciando petición de sincronización con ejecutable nativo x86...");
+    const targetPatientName = (req.query.patientName || req.query.name || '').trim();
+    console.log(`🔄 [ODBC SYNC v4.1] Petición de sincronización para paciente: "${targetPatientName}"`);
+
     const { execFile } = require('child_process');
     const path = require('path');
     const fs = require('fs');
@@ -377,49 +436,86 @@ router.get('/electret/sync', (req, res) => {
             const details = rawData.details || [];
             console.log(`📡 [ODBC SYNC v4.1] Escaneo extraído con éxito. ID=${rawData.record_id}, Hora=${rawTestTime}, Biomarcadores=${details.length}`);
 
-            // 1. Filtro Antifraude de 5 minutos con normalización de huso horario (UTC vs Local)
-            let testDate = null;
-            if (rawTestTime) {
-                const dateStr = String(rawTestTime).trim().replace(' ', 'T');
-                testDate = new Date(dateStr);
-                if (isNaN(testDate.getTime())) {
-                    testDate = new Date(rawTestTime);
-                }
-            }
-
-            const now = new Date();
-            let timeDiffMinutes = 999;
-            if (testDate && !isNaN(testDate.getTime())) {
-                const diffDirect = Math.abs(now.getTime() - testDate.getTime());
-                const tzOffsetMs = Math.abs(now.getTimezoneOffset() * 60 * 1000);
-                const diffWithTzAdjust = Math.abs(diffDirect - tzOffsetMs);
-                const effectiveDiffMs = Math.min(diffDirect, diffWithTzAdjust);
-                timeDiffMinutes = effectiveDiffMs / (1000 * 60);
-            }
-
-            console.log(`⏱️ [ODBC SYNC v4.1] Hora Servidor: ${now.toISOString()}, Hora Escáner: ${testDate ? testDate.toISOString() : 'NULL'}, Diferencia: ${timeDiffMinutes.toFixed(2)} min`);
-
-            if (!testDate || isNaN(testDate.getTime())) {
-                console.warn(`⚠️ [ODBC SYNC v4.1] Advertencia de fecha en lectura (Fecha no válida). Procediendo con sincronización de lectura disponible.`);
-            } else if (timeDiffMinutes > 45000.0) {
-                console.log(`ℹ️ [ODBC SYNC v4.1] Lectura con timestamp anterior (${timeDiffMinutes.toFixed(2)} min). Aceptada bajo validación directa de hardware MDB.`);
-            }
-
-            // 2. Normalizar y mapear biomarcadores extraídos por read_electret.exe con el motor universal electretParser
+            // 1. Parseo universal con extracción de metadatos de paciente (NOM-004)
             if (rawData.schema === 'modern' && rawData.html_content) {
-                console.log("🧬 [ODBC SYNC v4.1] Detectado esquema moderno. Ejecutando Motor Universal electretParser v3.0...");
+                console.log("🧬 [ODBC SYNC v4.1] Detectado esquema moderno. Ejecutando Motor Universal electretParser...");
                 const parsedResult = parseElectretHTML(rawData.html_content);
                 
-                if (parsedResult.success && Object.keys(parsedResult.categories).length > 0) {
-                    console.log(`🧬 [ODBC SYNC v4.1] Parseo v3.0 completado. Se extrajeron ${Object.keys(parsedResult.categories).length} categorías telemétricas homogenizadas (${parsedResult.totalParameters} parámetros, ${parsedResult.abnormalCount} alertas).`);
-                    return res.json({
-                        success: true,
-                        electret_metrics: parsedResult.categories,
-                        totalParameters: parsedResult.totalParameters,
-                        abnormalCount: parsedResult.abnormalCount,
-                        electret_scanned: true
+                if (!parsedResult.success || Object.keys(parsedResult.categories).length === 0) {
+                    return res.status(404).json({
+                        success: false,
+                        error: "NO_METRICS_PARSED",
+                        message: "No se pudieron estructurar biomarcadores del informe HTML."
                     });
                 }
+
+                const { patientMetadata } = parsedResult;
+
+                // 2. CANDADO BIOMÉTRICO (Sutura 2: Inmunidad contra mutaciones textuales)
+                if (targetPatientName && patientMetadata?.name) {
+                    const isMatch = checkPatientMatch(targetPatientName, patientMetadata.name);
+                    if (!isMatch) {
+                        console.error(`🛑 [NOM-004 ALERTA CRÍTICA] Contaminación cruzada prevenida: el reporte pertenece a "${patientMetadata.name}" y la cita activa es de "${targetPatientName}".`);
+                        return res.status(403).json({
+                            success: false,
+                            error: "CROSS_PATIENT_CONTAMINATION_PREVENTED",
+                            message: `⚠️ NOM-004: El estudio detectado en el hardware pertenece a ${patientMetadata.name} (Fecha: ${patientMetadata.scanDate}). Se requiere generar un nuevo estudio para ${targetPatientName}.`,
+                            detectedPatient: patientMetadata.name,
+                            targetPatient: targetPatientName,
+                            scanDate: patientMetadata.scanDate
+                        });
+                    }
+                }
+
+                // 3. CANDADO TEMPORAL ESTRICTO DE 5 MINUTOS (Sutura 3: Normalización de zona horaria local)
+                let scanLocalDate = patientMetadata?.parsedLocalDate ? new Date(patientMetadata.parsedLocalDate) : null;
+                if (!scanLocalDate && rawTestTime) {
+                    scanLocalDate = parseLocalDate(rawTestTime);
+                }
+
+                const now = new Date();
+                let timeDiffMinutes = 999;
+                if (scanLocalDate && !isNaN(scanLocalDate.getTime())) {
+                    const diffDirect = Math.abs(now.getTime() - scanLocalDate.getTime());
+                    const tzOffsetMs = Math.abs(now.getTimezoneOffset() * 60 * 1000);
+                    const diffWithTzAdjust = Math.abs(diffDirect - tzOffsetMs);
+                    const effectiveDiffMs = Math.min(diffDirect, diffWithTzAdjust);
+                    timeDiffMinutes = effectiveDiffMs / (1000 * 60);
+                }
+
+                console.log(`⏱️ [ODBC SYNC v4.1] Hora Local Servidor: ${now.toISOString()}, Hora Escáner: ${scanLocalDate ? scanLocalDate.toISOString() : 'NULL'}, Diferencia: ${timeDiffMinutes.toFixed(2)} min`);
+
+                const MAX_ALLOWED_MINUTES = 5.0; // Ventana estricta de 5 minutos
+                if (timeDiffMinutes > MAX_ALLOWED_MINUTES) {
+                    console.warn(`🛑 [NOM-004 ALERTA TEMPORAL] Estudio obsoleto detectado (${timeDiffMinutes.toFixed(1)} min de antigüedad > ${MAX_ALLOWED_MINUTES} min).`);
+                    return res.status(400).json({
+                        success: false,
+                        error: "SCAN_EXPIRED_OR_OBSOLETE",
+                        message: `⚠️ NOM-004: El estudio detectado en el hardware tiene ${timeDiffMinutes.toFixed(0)} minutos de antigüedad. Por favor, conecte al paciente y genere un escaneo nuevo en este momento.`,
+                        diffMinutes: timeDiffMinutes,
+                        scanDate: patientMetadata?.scanDate || rawTestTime
+                    });
+                }
+
+                console.log(`🧬 [ODBC SYNC v4.1] Validación de Identidad y Tiempo Superada para "${patientMetadata.name}". Se extrajeron ${Object.keys(parsedResult.categories).length} categorías telemétricas (${parsedResult.totalParameters} parámetros).`);
+
+                // Esterilización post-consumo protegida (Apoptosis física defensiva)
+                sterilizeElectretReport();
+
+                return res.json({
+                    success: true,
+                    patientMetadata,
+                    electret_metrics: parsedResult.categories,
+                    totalParameters: parsedResult.totalParameters,
+                    abnormalCount: parsedResult.abnormalCount,
+                    electret_scanned: true
+                });
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    error: "UNSUPPORTED_SCHEMA",
+                    message: "Esquema de hardware no compatible con informe de alta fidelidad."
+                });
             }
 
         } catch (err) {

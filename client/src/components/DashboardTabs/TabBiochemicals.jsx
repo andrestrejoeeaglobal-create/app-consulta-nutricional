@@ -24,6 +24,37 @@ const handleImageError = (e) => {
     e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
 };
 
+/**
+ * Normaliza nombres clínicos para cotejo biométrico NOM-004.
+ */
+const normalizeClinicalName = (name) => {
+    if (!name) return '';
+    return String(name)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
+/**
+ * Valida correspondencia de identidad de paciente (NOM-004-SSA3-2012).
+ */
+const checkPatientMatch = (targetName, scannedName) => {
+    if (!targetName) return true;
+    if (!scannedName) return false;
+    const normTarget = normalizeClinicalName(targetName);
+    const normScan = normalizeClinicalName(scannedName);
+    if (!normTarget || !normScan) return true;
+    if (normTarget === normScan || normScan.includes(normTarget) || normTarget.includes(normScan)) return true;
+    
+    const targetTokens = normTarget.split(' ').filter(t => t.length > 2);
+    const scanTokens = normScan.split(' ').filter(t => t.length > 2);
+    const matchingTokens = targetTokens.filter(t => scanTokens.includes(t));
+    return matchingTokens.length >= 2 || (targetTokens.length === 1 && matchingTokens.length === 1);
+};
+
 export const TabBiochemicals = ({
     isProcessing,
     displayData,
@@ -171,42 +202,78 @@ export const TabBiochemicals = ({
 
     const genomeTelemetry = useClinicalGenome(state => state.electretTelemetry);
 
-    const isScanned = patientData?.scan_data?.electret_scanned || genomeTelemetry?.isScanned;
-    const electretMetrics = isScanned ? (patientData?.scan_data?.electret_metrics || genomeTelemetry?.categories) : null;
+    const activePatientFullName = (patientData?.profile?.name || patientData?.identificacion?.nombre || patientData?.name || '').trim();
+    const activePatientFirstName = activePatientFullName.split(' ')[0] || '';
 
     // Sanitización estricta NOM-004 de electretMetrics contra contaminación de expediente
-    const activePatientFirstName = (patientData?.profile?.name || patientData?.identificacion?.nombre || '').trim().toLowerCase().split(' ')[0];
-    
     const isElectretValidForCurrentPatient = React.useMemo(() => {
-        if (!electretMetrics) return false;
-        const jsonStr = JSON.stringify(electretMetrics).toLowerCase();
-        if (jsonStr.includes('nombre:')) {
-            if (activePatientFirstName && !jsonStr.includes(activePatientFirstName)) {
-                console.warn(`🛡️ NOM-004: Descartando electretMetrics de folio previo que no corresponden a ${activePatientFirstName}`);
+        // 1. Evaluar si Zustand contiene datos de otro paciente
+        if (genomeTelemetry?.patientName && activePatientFullName) {
+            if (!checkPatientMatch(activePatientFullName, genomeTelemetry.patientName)) {
+                console.warn(`🛡️ NOM-004: Telemetría en Zustand (${genomeTelemetry.patientName}) no corresponde al paciente actual (${activePatientFullName}). Bloqueando.`);
+                return false;
+            }
+        }
+
+        const metricsToCheck = patientData?.scan_data?.electret_metrics || (genomeTelemetry?.isScanned ? genomeTelemetry?.categories : null);
+        if (!metricsToCheck) return false;
+
+        // 2. Extraer nombre del paciente desde metadatos parseados o payload
+        let scannedName = null;
+        if (metricsToCheck?.patient_metadata?.name) {
+            scannedName = metricsToCheck.patient_metadata.name;
+        } else if (metricsToCheck?.patient_name) {
+            scannedName = metricsToCheck.patient_name;
+        } else if (genomeTelemetry?.patientName) {
+            scannedName = genomeTelemetry.patientName;
+        } else {
+            // Intento de extracción por expresiones regulares en JSON
+            const jsonStr = JSON.stringify(metricsToCheck);
+            const match = jsonStr.match(/"(?:nombre|paciente|name)"\s*:\s*"([^"]+)"/i) || 
+                          jsonStr.match(/(?:nombre|paciente|name):\s*([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)/i);
+            if (match && match[1]) {
+                scannedName = match[1].trim();
+            }
+        }
+
+        if (scannedName && activePatientFullName) {
+            const matches = checkPatientMatch(activePatientFullName, scannedName);
+            if (!matches) {
+                console.warn(`🛡️ NOM-004: Descartando telemetría de "${scannedName}" porque no corresponde al paciente activo "${activePatientFullName}"`);
                 return false;
             }
         }
         return true;
-    }, [electretMetrics, activePatientFirstName]);
+    }, [patientData?.scan_data?.electret_metrics, genomeTelemetry, activePatientFullName]);
 
-    const validElectretMetrics = isElectretValidForCurrentPatient ? electretMetrics : null;
+    // Purga activa en Zustand si se detecta contaminación cruzada
+    React.useEffect(() => {
+        if (genomeTelemetry?.isScanned && !isElectretValidForCurrentPatient) {
+            console.warn("🛡️ NOM-004: Purgando electretTelemetry en Zustand por incongruencia de paciente.");
+            useClinicalGenome.getState().clearElectretTelemetry();
+        }
+    }, [isElectretValidForCurrentPatient, genomeTelemetry?.isScanned]);
+
+    const isScanned = (patientData?.scan_data?.electret_scanned || genomeTelemetry?.isScanned) && isElectretValidForCurrentPatient;
+    const validElectretMetrics = isScanned ? (patientData?.scan_data?.electret_metrics || genomeTelemetry?.categories) : null;
 
     // INYECCIÓN ANTIGRAVITY: Rehidratación de estado global (Prevención de Amnesia F5)
     React.useEffect(() => {
-        if (validElectretMetrics && !genomeTelemetry?.isScanned) {
+        if (validElectretMetrics && !genomeTelemetry?.isScanned && isElectretValidForCurrentPatient) {
             useClinicalGenome.getState().setElectretTelemetry({
                 categories: validElectretMetrics,
-                patientName: activePatientFirstName,
+                patientName: activePatientFullName,
                 isScanned: true
             });
         }
-    }, [validElectretMetrics, genomeTelemetry?.isScanned, activePatientFirstName]);
+    }, [validElectretMetrics, genomeTelemetry?.isScanned, activePatientFullName, isElectretValidForCurrentPatient]);
 
     // INYECCIÓN ANTIGRAVITY: Actualización de SSOT y renderizado optimizado
     const activeMetrics = React.useMemo(() => {
+        if (!isElectretValidForCurrentPatient) return {};
         let rawSource = null;
         
-        // 1. SSOT: Zustand manda si el escaneo está validado
+        // 1. SSOT: Zustand manda si el escaneo está validado y pertenece al paciente
         if (genomeTelemetry?.isScanned && Object.keys(genomeTelemetry.categories || {}).length > 0) {
             rawSource = genomeTelemetry.categories;
         } 
@@ -220,7 +287,7 @@ export const TabBiochemicals = ({
         // 3. Procesamiento protegido por el cortocircuito del parser
         const parsed = parseElectretData(rawSource);
         return parsed?.categories || rawSource;
-    }, [validElectretMetrics, genomeTelemetry]);
+    }, [validElectretMetrics, genomeTelemetry, isElectretValidForCurrentPatient]);
 
     const categoriesKeys = Object.keys(activeMetrics);
     const activeCategory = selectedCategory || (categoriesKeys.length > 0 ? categoriesKeys[0] : null);
@@ -491,8 +558,8 @@ export const TabBiochemicals = ({
                                     Escáner Bioeléctrico y Biorresonancia (Electret) Pendiente
                                 </h4>
                                 <p className="text-slate-500 text-xs max-w-md mx-auto leading-relaxed">
-                                    {activePatientFirstName ? (
-                                        <>Para procesar y desplegar la telemetría en tiempo real de <strong className="text-slate-700">{patientData?.profile?.name || patientData?.identificacion?.nombre || 'Paciente Activo'}</strong>, inicie la toma de bioseñales presionando el botón <strong>"⚡ Iniciar Escaneo Electret"</strong> en la <strong>Fase 18</strong> del panel izquierdo.</>
+                                    {activePatientFullName ? (
+                                        <>Genere un estudio nuevo en este momento para <strong className="text-slate-700">{activePatientFullName}</strong> en el software Electret original. Al concluir la toma física de bioseñales, presione <strong>"🔄 Sincronizar Hardware"</strong> en la <strong>Fase 18</strong> del panel izquierdo. El sistema validará la correspondencia de identidad y tiempo bajo la NOM-004-SSA3-2012.</>
                                     ) : (
                                         <>Para procesar y desplegar la telemetría en tiempo real, inicie la toma de bioseñales presionando el botón <strong>"⚡ Iniciar Escaneo Electret"</strong> en la <strong>Fase 18</strong> del panel izquierdo.</>
                                     )}
