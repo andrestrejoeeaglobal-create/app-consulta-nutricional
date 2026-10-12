@@ -428,8 +428,12 @@ router.get('/electret/sync', (req, res) => {
         try {
             const rawData = JSON.parse((stdout || "").trim());
             if (!rawData.success) {
-                console.error("🛑 [ODBC SYNC v4.1] Error devuelto por read_electret.exe:", rawData.message);
-                return res.status(500).json(rawData);
+                console.log("ℹ️ [ODBC SYNC v4.1] Hardware sin lectura activa:", rawData.message);
+                return res.json({
+                    success: false,
+                    error: rawData.error || "NO_RECENT_SCAN",
+                    message: rawData.message || "No se detectó un escaneo reciente en el hardware Electret (límite de frescura: 5 minutos)."
+                });
             }
 
             const rawTestTime = rawData.test_time;
@@ -442,7 +446,7 @@ router.get('/electret/sync', (req, res) => {
                 const parsedResult = parseElectretHTML(rawData.html_content);
                 
                 if (!parsedResult.success || Object.keys(parsedResult.categories).length === 0) {
-                    return res.status(404).json({
+                    return res.json({
                         success: false,
                         error: "NO_METRICS_PARSED",
                         message: "No se pudieron estructurar biomarcadores del informe HTML."
@@ -451,23 +455,7 @@ router.get('/electret/sync', (req, res) => {
 
                 const { patientMetadata } = parsedResult;
 
-                // 2. CANDADO BIOMÉTRICO (Sutura 2: Inmunidad contra mutaciones textuales)
-                if (targetPatientName && patientMetadata?.name) {
-                    const isMatch = checkPatientMatch(targetPatientName, patientMetadata.name);
-                    if (!isMatch) {
-                        console.error(`🛑 [NOM-004 ALERTA CRÍTICA] Contaminación cruzada prevenida: el reporte pertenece a "${patientMetadata.name}" y la cita activa es de "${targetPatientName}".`);
-                        return res.status(403).json({
-                            success: false,
-                            error: "CROSS_PATIENT_CONTAMINATION_PREVENTED",
-                            message: `⚠️ NOM-004: El estudio detectado en el hardware pertenece a ${patientMetadata.name} (Fecha: ${patientMetadata.scanDate}). Se requiere generar un nuevo estudio para ${targetPatientName}.`,
-                            detectedPatient: patientMetadata.name,
-                            targetPatient: targetPatientName,
-                            scanDate: patientMetadata.scanDate
-                        });
-                    }
-                }
-
-                // 3. CANDADO TEMPORAL ESTRICTO DE 5 MINUTOS (Sutura 3: Normalización de zona horaria local)
+                // 2. CANDADO TEMPORAL ESTRICTO DE 5 MINUTOS (Evaluado primero para desechar residuos pasados sin filtrar nombres)
                 let scanLocalDate = patientMetadata?.parsedLocalDate ? new Date(patientMetadata.parsedLocalDate) : null;
                 if (!scanLocalDate && rawTestTime) {
                     scanLocalDate = parseLocalDate(rawTestTime);
@@ -488,13 +476,25 @@ router.get('/electret/sync', (req, res) => {
                 const MAX_ALLOWED_MINUTES = 5.0; // Ventana estricta de 5 minutos
                 if (timeDiffMinutes > MAX_ALLOWED_MINUTES) {
                     console.warn(`🛑 [NOM-004 ALERTA TEMPORAL] Estudio obsoleto detectado (${timeDiffMinutes.toFixed(1)} min de antigüedad > ${MAX_ALLOWED_MINUTES} min).`);
-                    return res.status(400).json({
+                    return res.json({
                         success: false,
                         error: "SCAN_EXPIRED_OR_OBSOLETE",
-                        message: `⚠️ NOM-004: El estudio detectado en el hardware tiene ${timeDiffMinutes.toFixed(0)} minutos de antigüedad. Por favor, conecte al paciente y genere un escaneo nuevo en este momento.`,
-                        diffMinutes: timeDiffMinutes,
-                        scanDate: patientMetadata?.scanDate || rawTestTime
+                        message: `No se detectó un escaneo reciente en el hardware Electret (límite de frescura: 5 minutos). Por favor, conecte al paciente y genere un escaneo nuevo en este momento.`,
+                        diffMinutes: timeDiffMinutes
                     });
+                }
+
+                // 3. CANDADO BIOMÉTRICO (Evaluado ÚNICAMENTE si el estudio es fresco <= 5 minutos)
+                if (targetPatientName && patientMetadata?.name) {
+                    const isMatch = checkPatientMatch(targetPatientName, patientMetadata.name);
+                    if (!isMatch) {
+                        console.error(`🛑 [NOM-004 ALERTA CRÍTICA] Contaminación cruzada prevenida: el reporte pertenece a "${patientMetadata.name}" y la cita activa es de "${targetPatientName}".`);
+                        return res.json({
+                            success: false,
+                            error: "CROSS_PATIENT_CONTAMINATION_PREVENTED",
+                            message: `⚠️ NOM-004: El escaneo reciente detectado en el hardware no corresponde al titular del expediente actual (${targetPatientName}). Por favor, verifique el nombre del paciente en el software Electret y reintente.`
+                        });
+                    }
                 }
 
                 console.log(`🧬 [ODBC SYNC v4.1] Validación de Identidad y Tiempo Superada para "${patientMetadata.name}". Se extrajeron ${Object.keys(parsedResult.categories).length} categorías telemétricas (${parsedResult.totalParameters} parámetros).`);
