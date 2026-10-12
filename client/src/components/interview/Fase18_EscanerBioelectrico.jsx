@@ -37,6 +37,32 @@ export default function Fase18_EscanerBioelectrico({
 
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+    // 🛡️ SUTURA 5: Centinela Auto-Sync Reactivo con AbortController y setTimeout encadenado
+    const [isAutoSyncActive, setIsAutoSyncActive] = useState(false);
+    const autoSyncAbortControllerRef = useRef(null);
+    const autoSyncTimeoutRef = useRef(null);
+    const isAutoSyncActiveRef = useRef(false);
+
+    const stopAutoSync = () => {
+        isAutoSyncActiveRef.current = false;
+        setIsAutoSyncActive(false);
+        if (autoSyncTimeoutRef.current) {
+            clearTimeout(autoSyncTimeoutRef.current);
+            autoSyncTimeoutRef.current = null;
+        }
+        if (autoSyncAbortControllerRef.current) {
+            try { autoSyncAbortControllerRef.current.abort(); } catch {}
+            autoSyncAbortControllerRef.current = null;
+        }
+    };
+
+    // Desconexión absoluta del centinela al desmontar componente
+    useEffect(() => {
+        return () => {
+            stopAutoSync();
+        };
+    }, []);
+
     // 📡 Sincronización del sub-paso activo en patientData para auto-scroll del Dashboard
     useEffect(() => {
         setPatientData(prev => ({
@@ -182,20 +208,26 @@ Si dispone de estudios de laboratorio recientes para **${pName}** (PDF de Quími
                 role: 'assistant',
                 content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
 
-Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el software Electret original del consultorio.
+Para iniciar la toma con **${pName}**, puede abrir el software de consultorio directamente o sincronizar de forma manual:
 
-1. Verifique que el paciente en el software Electret esté registrado como **"${pName}"**.
-2. Pídale al paciente que sujete firmemente los electrodos cilíndricos del sensor.
-3. Ejecute el escaneo de conductancia celular y espere a que el software complete el reporte.
-4. Al concluir la toma física en el software original, presione el botón **"🔄 Sincronizar Hardware"** a continuación.
+1. Presione **"🚀 Abrir Software Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
+2. Pídale a **${pName}** que sujete firmemente los electrodos cilíndricos del sensor.
+3. Ejecute la prueba (60s) en Electret, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
+4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*
 
-*El sistema T.I.L.O. validará la correspondencia estricta de identidad y una ventana de frescura biométrica en tiempo real.*`,
+*(Si ya tiene el software abierto y el informe listo, presione "🔄 Sincronizar Hardware").*`,
                 inputType: 'electret_scan_widget',
                 actions: [
                     {
+                        id: 'btn_launch_electret',
+                        label: '🚀 Abrir Software Electret',
+                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                        value: 'LAUNCH_ELECTRET_APP'
+                    },
+                    {
                         id: 'btn_sync_electret',
                         label: '🔄 Sincronizar Hardware',
-                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                        style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
                         value: 'SYNC_ELECTRET_HARDWARE'
                     },
                     {
@@ -206,6 +238,7 @@ Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el s
                     }
                 ],
                 options: [
+                    { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
                     { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
                     { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
@@ -239,6 +272,234 @@ Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el s
     };
 
     // ==========================================================================
+    // 🧬 PROCESAMIENTO CENTRAL DE TELEMETRÍA ELECTRET (NOM-004)
+    // ==========================================================================
+    const processTelemetryData = (data) => {
+        if (!data?.electret_metrics || !data?.success) {
+            throw new Error(data?.message || "No se detectaron métricas reales en el hardware escáner USB.");
+        }
+        const metricsToSet = data.electret_metrics;
+
+        // Doble Candado Defensivo de Identidad NOM-004 en Cliente
+        const scannedNameFound = data?.patient_metadata?.name || data?.electret_metrics?.patient_metadata?.name || null;
+        if (scannedNameFound && pName) {
+            const normActive = pName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+            const normScan = scannedNameFound.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+            const activeTokens = normActive.split(' ').filter(t => t.length > 2);
+            const scanTokens = normScan.split(' ').filter(t => t.length > 2);
+            const matches = activeTokens.filter(t => scanTokens.includes(t));
+            const isMatch = (matches.length >= 2) || (activeTokens.length === 1 && matches.length === 1) || normActive === normScan || normScan.includes(normActive) || normActive.includes(normScan);
+
+            if (!isMatch) {
+                setIsGlobalTyping?.(false);
+                setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
+
+                const mismatchMsg = {
+                    role: 'assistant',
+                    content: `### 🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB
+
+Se detectó una lectura en el hardware a nombre de **"${scannedNameFound}"**, la cual **no corresponde** al paciente activo en este expediente (**"${pName}"**).
+
+Para prevenir la contaminación cruzada de datos clínicos entre pacientes, esta lectura ha sido bloqueada automáticamente.
+
+Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pName}"** y presione el botón a continuación para sincronizar.`,
+                    actions: [
+                        { id: 'btn_launch_electret', label: '🚀 Abrir Software Electret', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
+                        { id: 'btn_retry_sync', label: '🔄 Reintentar Sincronización USB', style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
+                        { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
+                    ],
+                    options: [
+                        { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
+                        { label: "🔄 Reintentar Sincronización USB", value: "SYNC_ELECTRET_HARDWARE" },
+                        { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
+                    ]
+                };
+                setMessages(prev => [...prev, mismatchMsg]);
+                return;
+            }
+        }
+
+        setPatientData(prev => ({
+            ...prev,
+            scan_data: {
+                ...(prev?.scan_data || {}),
+                electret_metrics: metricsToSet,
+                electret_scanned: true
+            }
+        }));
+
+        // INYECCIÓN ANTIGRAVITY: Despacho Global (SSOT)
+        useClinicalGenome.getState().setElectretTelemetry({
+            categories: metricsToSet,
+            patientName: pName,
+            isScanned: true,
+            totalParameters: data.totalParameters || 450,
+            abnormalCount: data.abnormalCount || 0
+        });
+
+        setIsGlobalTyping?.(false);
+        setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
+
+        // Búsqueda dinámica flexible por subcadena para chat summary indestructible
+        const cardioKey = Object.keys(metricsToSet || {}).find(k => k.toLowerCase().includes('cardio'));
+        const gastroKey = Object.keys(metricsToSet || {}).find(k => k.toLowerCase().includes('gastro') || k.toLowerCase().includes('digestiv'));
+
+        const getMetricValue = (catObj, metricSearch) => {
+            if (!catObj) return null;
+            let items = [];
+            if (Array.isArray(catObj.items)) items = catObj.items;
+            else if (Array.isArray(catObj)) items = catObj;
+            else if (typeof catObj === 'object') items = Object.values(catObj);
+            
+            return items.find(i => i && typeof i === 'object' && i.name && i.name.toLowerCase().includes(metricSearch.toLowerCase())) || null;
+        };
+
+        const cardioData = metricsToSet[cardioKey];
+        const gastroData = metricsToSet[gastroKey];
+
+        const viscItem = getMetricValue(cardioData, 'viscosidad');
+        const resistItem = getMetricValue(cardioData, 'resistencia');
+        const pepsinItem = getMetricValue(gastroData, 'pepsina') || getMetricValue(gastroData, 'absorci');
+        const peristItem = getMetricValue(gastroData, 'peristalt');
+
+        const viscVal = viscItem ? (viscItem.val || viscItem.value || '4.8 cp') : '4.8 cp';
+        const viscStatus = viscItem ? (viscItem.status || 'Normal') : 'Normal';
+        const resistVal = resistItem ? (resistItem.val || resistItem.value || '1.25') : '1.25';
+        const resistStatus = resistItem ? (resistItem.status || 'Normal') : 'Normal';
+        const pepsinVal = pepsinItem ? (pepsinItem.val || pepsinItem.value || '62.55') : '62.55';
+        const pepsinStatus = pepsinItem ? (pepsinItem.status || 'Normal') : 'Normal';
+        const peristVal = peristItem ? (peristItem.val || peristItem.value || '55.92') : '55.92';
+        const peristStatus = peristItem ? (peristItem.status || 'Normal') : 'Normal';
+
+        const gateMsg = {
+            role: 'assistant',
+            content: `### ⚡ Resumen de Bioseñales Electret Sincronizadas (Datos Reales 100%)
+            
+El procesamiento y lectura de la base de datos Access ha concluido de forma exitosa. Métricas clínicas extraídas del hardware:
+
+* **Viscosidad Sanguínea**: ${viscVal} — *Estado: ${viscStatus}*
+* **Resistencia Vascular**: ${resistVal} — *Estado: ${resistStatus}*
+* **Secreción / Absorción Intestinal**: ${pepsinVal} — *Estado: ${pepsinStatus}*
+* **Peristaltismo Gástrico**: ${peristVal} — *Estado: ${peristStatus}*
+
+*Los resultados de todos los sistemas biológicos se han cargado en el expediente y se visualizan en tiempo real en el Dashboard.*
+
+---
+
+¿Confirma que la extracción del dispositivo es correcta y procedemos con el análisis?`,
+            options: [
+                { label: "✅ Sí, proceder", value: "ELECTRET_CONFIRM" },
+                { label: "❌ Reevaluar Electret", value: "ELECTRET_RETRY" }
+            ]
+        };
+        setMessages(prev => [...prev, gateMsg]);
+    };
+
+    // ==========================================================================
+    // 🛡️ SUTURA 5: CENTINELA AUTO-SYNC REACTIVO (POLLING ENCADENADO + ABORTCONTROLLER)
+    // ==========================================================================
+    const startAutoSyncSentinel = () => {
+        stopAutoSync();
+        isAutoSyncActiveRef.current = true;
+        setIsAutoSyncActive(true);
+
+        const targetPatientParam = encodeURIComponent(pName || '');
+        let pollCount = 0;
+        const maxPolls = 70; // ~4 minutos
+
+        const executePollCycle = async () => {
+            if (!isAutoSyncActiveRef.current) return;
+            pollCount++;
+
+            if (pollCount > maxPolls) {
+                stopAutoSync();
+                setIsGlobalTyping?.(false);
+                setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
+
+                const timeoutMsg = {
+                    role: 'assistant',
+                    content: `### ⏱️ Centinela en Pausa (Ventana de 4 minutos completada)
+
+No se detectó la finalización del reporte en el software Electret durante el periodo de vigilancia activa.
+
+* **Si aún está realizando la prueba física:** Al concluir en Electret y hacer clic en *"Obtener Informe"*, presione **"🔄 Sincronizar Hardware"**.
+* **O bien:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"**.`,
+                    actions: [
+                        { id: 'btn_launch_electret', label: '🚀 Reactivar Vigilancia', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
+                        { id: 'btn_sync_electret', label: '🔄 Sincronizar Hardware', style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
+                        { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
+                    ],
+                    options: [
+                        { label: "🚀 Reactivar Vigilancia", value: "LAUNCH_ELECTRET_APP" },
+                        { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
+                        { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
+                    ]
+                };
+                setMessages(prev => [...prev, timeoutMsg]);
+                return;
+            }
+
+            const abortController = new AbortController();
+            autoSyncAbortControllerRef.current = abortController;
+
+            try {
+                const res = await fetch(`${apiUrl}/api/bio/scan/electret/sync?patientName=${targetPatientParam}&_t=${Date.now()}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache'
+                    },
+                    body: JSON.stringify({ patientName: pName || '' }),
+                    signal: abortController.signal
+                });
+
+                const data = await res.json().catch(() => null);
+
+                if (!isAutoSyncActiveRef.current) return;
+
+                if (data?.success && data?.electret_metrics) {
+                    stopAutoSync();
+                    processTelemetryData(data);
+                    return;
+                } else if (data?.error === 'CROSS_PATIENT_CONTAMINATION_PREVENTED') {
+                    stopAutoSync();
+                    setIsGlobalTyping?.(false);
+                    setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
+
+                    const mismatchMsg = {
+                        role: 'assistant',
+                        content: `### 🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB
+
+${data.message || `El escaneo detectado no corresponde al titular del expediente actual (${pName}). Por favor verifique el nombre en el software Electret y reintente.`}`,
+                        actions: [
+                            { id: 'btn_launch_electret', label: '🚀 Abrir Software Electret', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
+                            { id: 'btn_retry_sync', label: '🔄 Reintentar Sincronización USB', style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
+                            { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
+                        ],
+                        options: [
+                            { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
+                            { label: "🔄 Reintentar Sincronización USB", value: "SYNC_ELECTRET_HARDWARE" },
+                            { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
+                        ]
+                    };
+                    setMessages(prev => [...prev, mismatchMsg]);
+                    return;
+                }
+            } catch (err) {
+                if (err.name === 'AbortError') return;
+                console.warn("⚠️ Centinela ciclo I/O transitorio:", err.message);
+            } finally {
+                if (isAutoSyncActiveRef.current) {
+                    autoSyncTimeoutRef.current = setTimeout(executePollCycle, 3500);
+                }
+            }
+        };
+
+        autoSyncTimeoutRef.current = setTimeout(executePollCycle, 1500);
+    };
+
+    // ==========================================================================
     // 🔌 MANEJADOR CENTRAL DE OPCIONES Y COMPUERTAS BINARIAS
     // ==========================================================================
     const handleOptionInput = (inputValue) => {
@@ -252,24 +513,33 @@ Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el s
         // ----------------------------------------------------------------------
         // ETAPA 1: ELECTRET (BIOELÉCTRICO)
         // ----------------------------------------------------------------------
-        if (value === 'START_ELECTRET_SCAN') {
-            const instrMsg = {
+        if (value === 'LAUNCH_ELECTRET_APP') {
+            setIsGlobalTyping?.(true);
+
+            // Iniciar apertura asistida en Windows vía Shell
+            fetch(`${apiUrl}/api/bio/scan/electret/launch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }).catch(err => console.warn("Launch notice:", err.message));
+
+            const launchMsg = {
                 role: 'assistant',
-                content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
-                
-Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el software Electret original instalado en el equipo de consultorio. 
+                content: `### 🚀 Software Electret Iniciado — Centinela Auto-Sync Activo (NOM-004)
 
-1. Verifique que el paciente en el software Electret esté registrado como **"${pName}"**.
-2. Pídale al paciente que sostenga firmemente los electrodos cilíndricos del sensor.
-3. Ejecute el escaneo de conductancia celular y espere a que el software complete el reporte.
-4. Al concluir la toma física en el software original, presione el botón **"🔄 Sincronizar Hardware"** a continuación.
+Se ha emitido la orden de apertura para **"Sistema Cuántico Bio-Eléctrico"** en pantalla.
 
-*El sistema T.I.L.O. validará la correspondencia estricta de identidad del paciente y una ventana de frescura biométrica en tiempo real.*`,
+1. Si Windows solicita confirmación de Administrador (UAC), presione **"Sí"**.
+2. Verifique que el paciente en el software esté seleccionado o registrado como **"${pName}"**.
+3. Pídale a **${pName}** que sostenga firmemente los electrodos cilíndricos y haga clic en **"Iniciar Prueba"** en Electret (60 segundos).
+4. Al terminar el escaneo físico, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
+
+*📡 T.I.L.O. está vigilando el disco de forma reactiva en segundo plano. En cuanto el informe sea generado, los 450+ biomarcadores se sincronizarán e inyectarán automáticamente en su Dashboard.*`,
+                inputType: 'status_progress',
                 actions: [
                     {
                         id: 'btn_sync_electret',
-                        label: '🔄 Sincronizar Hardware',
-                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                        label: '🔄 Sincronizar Manualmente',
+                        style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
                         value: 'SYNC_ELECTRET_HARDWARE'
                     },
                     {
@@ -280,6 +550,52 @@ Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el s
                     }
                 ],
                 options: [
+                    { label: "🔄 Sincronizar Manualmente", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
+                ]
+            };
+            setMessages(prev => [...prev, launchMsg]);
+
+            // Encender el centinela auto-sync reactivo encadenado (Sutura 5)
+            startAutoSyncSentinel();
+            return;
+        }
+
+        if (value === 'START_ELECTRET_SCAN') {
+            const instrMsg = {
+                role: 'assistant',
+                content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
+
+Para iniciar la toma con **${pName}**, puede abrir el software de consultorio directamente o sincronizar de forma manual:
+
+1. Presione **"🚀 Abrir Software Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
+2. Pídale a **${pName}** que sujete firmemente los electrodos cilíndricos del sensor.
+3. Ejecute la prueba (60s) en Electret, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
+4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*
+
+*(Si ya tiene el software abierto y el informe listo, presione "🔄 Sincronizar Hardware").*`,
+                actions: [
+                    {
+                        id: 'btn_launch_electret',
+                        label: '🚀 Abrir Software Electret',
+                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                        value: 'LAUNCH_ELECTRET_APP'
+                    },
+                    {
+                        id: 'btn_sync_electret',
+                        label: '🔄 Sincronizar Hardware',
+                        style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
+                        value: 'SYNC_ELECTRET_HARDWARE'
+                    },
+                    {
+                        id: 'btn_skip_electret',
+                        label: '⏩ Continuar sin Escáner Electret',
+                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
+                        value: 'ELECTRET_SKIP'
+                    }
+                ],
+                options: [
+                    { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
                     { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
                     { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
@@ -289,6 +605,7 @@ Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el s
         }
 
         if (value === 'SYNC_ELECTRET_HARDWARE') {
+            stopAutoSync();
             setIsGlobalTyping?.(true);
 
             // 1. Iniciar estado de progreso de sincronización física
@@ -321,122 +638,7 @@ Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el s
                 return data;
             })
             .then(data => {
-                if (!data?.electret_metrics || !data?.success) {
-                    throw new Error(data?.message || "No se detectaron métricas reales en el hardware escáner USB.");
-                }
-                const metricsToSet = data.electret_metrics;
-
-                // Doble Candado Defensivo de Identidad NOM-004 en Cliente
-                const scannedNameFound = data?.patient_metadata?.name || data?.electret_metrics?.patient_metadata?.name || null;
-                if (scannedNameFound && pName) {
-                    const normActive = pName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-                    const normScan = scannedNameFound.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-                    const activeTokens = normActive.split(' ').filter(t => t.length > 2);
-                    const scanTokens = normScan.split(' ').filter(t => t.length > 2);
-                    const matches = activeTokens.filter(t => scanTokens.includes(t));
-                    const isMatch = (matches.length >= 2) || (activeTokens.length === 1 && matches.length === 1) || normActive === normScan || normScan.includes(normActive) || normActive.includes(normScan);
-
-                    if (!isMatch) {
-                        setIsGlobalTyping?.(false);
-                        setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
-
-                        const mismatchMsg = {
-                            role: 'assistant',
-                            content: `### 🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB
-
-Se detectó una lectura en el hardware a nombre de **"${scannedNameFound}"**, la cual **no corresponde** al paciente activo en este expediente (**"${pName}"**).
-
-Para prevenir la contaminación cruzada de datos clínicos entre pacientes, esta lectura ha sido bloqueada automáticamente.
-
-Por favor, **genere un estudio nuevo en este momento** en el software Electret a nombre de **"${pName}"** y presione el botón a continuación para reintentar la sincronización.`,
-                            actions: [
-                                { id: 'btn_retry_sync', label: '🔄 Reintentar Sincronización USB', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
-                                { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
-                            ],
-                            options: [
-                                { label: "🔄 Reintentar Sincronización USB", value: "SYNC_ELECTRET_HARDWARE" },
-                                { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
-                            ]
-                        };
-                        setMessages(prev => [...prev, mismatchMsg]);
-                        return;
-                    }
-                }
-
-                setPatientData(prev => ({
-                    ...prev,
-                    scan_data: {
-                        ...(prev?.scan_data || {}),
-                        electret_metrics: metricsToSet,
-                        electret_scanned: true
-                    }
-                }));
-
-                // INYECCIÓN ANTIGRAVITY: Despacho Global (SSOT)
-                useClinicalGenome.getState().setElectretTelemetry({
-                    categories: metricsToSet,
-                    patientName: pName,
-                    isScanned: true,
-                    totalParameters: data.totalParameters || 450,
-                    abnormalCount: data.abnormalCount || 0
-                });
-
-                setIsGlobalTyping?.(false);
-                setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
-
-                // Búsqueda dinámica flexible por subcadena para chat summary indestructible
-                const cardioKey = Object.keys(metricsToSet || {}).find(k => k.toLowerCase().includes('cardio'));
-                const gastroKey = Object.keys(metricsToSet || {}).find(k => k.toLowerCase().includes('gastro') || k.toLowerCase().includes('digestiv'));
-
-                const getMetricValue = (catObj, metricSearch) => {
-                    if (!catObj) return null;
-                    let items = [];
-                    if (Array.isArray(catObj.items)) items = catObj.items;
-                    else if (Array.isArray(catObj)) items = catObj;
-                    else if (typeof catObj === 'object') items = Object.values(catObj);
-                    
-                    return items.find(i => i && typeof i === 'object' && i.name && i.name.toLowerCase().includes(metricSearch.toLowerCase())) || null;
-                };
-
-                const cardioData = metricsToSet[cardioKey];
-                const gastroData = metricsToSet[gastroKey];
-
-                const viscItem = getMetricValue(cardioData, 'viscosidad');
-                const resistItem = getMetricValue(cardioData, 'resistencia');
-                const pepsinItem = getMetricValue(gastroData, 'pepsina') || getMetricValue(gastroData, 'absorci');
-                const peristItem = getMetricValue(gastroData, 'peristalt');
-
-                const viscVal = viscItem ? (viscItem.val || viscItem.value || '4.8 cp') : '4.8 cp';
-                const viscStatus = viscItem ? (viscItem.status || 'Normal') : 'Normal';
-                const resistVal = resistItem ? (resistItem.val || resistItem.value || '1.25') : '1.25';
-                const resistStatus = resistItem ? (resistItem.status || 'Normal') : 'Normal';
-                const pepsinVal = pepsinItem ? (pepsinItem.val || pepsinItem.value || '62.55') : '62.55';
-                const pepsinStatus = pepsinItem ? (pepsinItem.status || 'Normal') : 'Normal';
-                const peristVal = peristItem ? (peristItem.val || peristItem.value || '55.92') : '55.92';
-                const peristStatus = peristItem ? (peristItem.status || 'Normal') : 'Normal';
-
-                const gateMsg = {
-                    role: 'assistant',
-                    content: `### ⚡ Resumen de Bioseñales Electret Sincronizadas (Datos Reales 100%)
-                    
-El procesamiento y lectura de la base de datos Access ha concluido de forma exitosa. Métricas clínicas extraídas del hardware:
-
-* **Viscosidad Sanguínea**: ${viscVal} — *Estado: ${viscStatus}*
-* **Resistencia Vascular**: ${resistVal} — *Estado: ${resistStatus}*
-* **Secreción / Absorción Intestinal**: ${pepsinVal} — *Estado: ${pepsinStatus}*
-* **Peristaltismo Gástrico**: ${peristVal} — *Estado: ${peristStatus}*
-
-*Los resultados de todos los sistemas biológicos se han cargado en el expediente y se visualizan en tiempo real en el Dashboard.*
-
----
-
-¿Confirma que la extracción del dispositivo es correcta y procedemos con el análisis?`,
-                    options: [
-                        { label: "✅ Sí, proceder", value: "ELECTRET_CONFIRM" },
-                        { label: "❌ Reevaluar Electret", value: "ELECTRET_RETRY" }
-                    ]
-                };
-                setMessages(prev => [...prev, gateMsg]);
+                processTelemetryData(data);
             })
             .catch(err => {
                 setIsGlobalTyping?.(false);
@@ -444,14 +646,14 @@ El procesamiento y lectura de la base de datos Access ha concluido de forma exit
 
                 const errCode = err?.data?.error;
                 let errorTitle = '📡 Compuerta en Espera (NOM-004)';
-                let errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Conecte al paciente **${pName}** al sensor, ejecute el test en el software Electret y presione **"🔄 Sincronizar Hardware"**.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
+                let errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Presione **"🚀 Abrir Software Electret"**, realice el test con el paciente sujetando los electrodos y haga clic en *"Obtener Informe"*.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
 
                 if (errCode === 'CROSS_PATIENT_CONTAMINATION_PREVENTED') {
                     errorTitle = '🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB';
                     errorBody = err?.data?.message || `El escaneo reciente detectado no corresponde al titular del expediente actual (${pName}). Por favor verifique el nombre en el software Electret y reintente.`;
                 } else if (errCode === 'NO_ACTIVE_STUDY' || errCode === 'NO_RECENT_SCAN' || errCode === 'SCAN_EXPIRED_OR_OBSOLETE') {
                     errorTitle = '📡 Compuerta en Espera (NOM-004)';
-                    errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Conecte al paciente **${pName}** al sensor, ejecute el test en el software Electret y presione **"🔄 Sincronizar Hardware"**.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
+                    errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Presione **"🚀 Abrir Software Electret"**, realice el test con el paciente sujetando los electrodos y haga clic en *"Obtener Informe"*.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
                 }
 
                 const errorMsg = {
@@ -461,9 +663,15 @@ El procesamiento y lectura de la base de datos Access ha concluido de forma exit
 ${errorBody}`,
                     actions: [
                         {
+                            id: 'btn_launch_electret',
+                            label: '🚀 Abrir Software Electret',
+                            style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                            value: 'LAUNCH_ELECTRET_APP'
+                        },
+                        {
                             id: 'btn_retry_sync',
                             label: '🔄 Sincronizar Hardware',
-                            style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                            style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
                             value: 'SYNC_ELECTRET_HARDWARE'
                         },
                         {
@@ -474,6 +682,7 @@ ${errorBody}`,
                         }
                     ],
                     options: [
+                        { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
                         { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
                         { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                     ]
@@ -485,6 +694,7 @@ ${errorBody}`,
         }
 
         if (value === 'ELECTRET_RETRY') {
+            stopAutoSync();
             // PROTOCOLO DE PURGA DE MEMORIA Y ESTADO GLOBAL
             setPatientData(prev => ({
                 ...prev,
@@ -504,18 +714,32 @@ ${errorBody}`,
 
             const retryMsg = {
                 role: 'assistant',
-                content: `🔄 *Escáner Electret vaciado de memoria y listo para reevaluación.* Presione nuevamente el botón a continuación para reiniciar la toma de bioseñales.`,
+                content: `🔄 *Escáner Electret vaciado de memoria y listo para reevaluación.* Puede abrir el software asistido o forzar sincronización:`,
                 inputType: 'electret_scan_widget',
                 actions: [
                     {
-                        id: 'btn_start_electret',
-                        label: '⚡ Iniciar Escaneo Electret',
+                        id: 'btn_launch_electret',
+                        label: '🚀 Abrir Software Electret',
                         style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
-                        value: 'START_ELECTRET_SCAN'
+                        value: 'LAUNCH_ELECTRET_APP'
+                    },
+                    {
+                        id: 'btn_retry_sync',
+                        label: '🔄 Sincronizar Hardware',
+                        style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
+                        value: 'SYNC_ELECTRET_HARDWARE'
+                    },
+                    {
+                        id: 'btn_skip_electret',
+                        label: '⏩ Continuar sin Escáner Electret',
+                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
+                        value: 'ELECTRET_SKIP'
                     }
                 ],
                 options: [
-                    { label: "⚡ Iniciar Escaneo Electret", value: "START_ELECTRET_SCAN" }
+                    { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
+                    { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
             setMessages(prev => [...prev, retryMsg]);
@@ -523,6 +747,7 @@ ${errorBody}`,
         }
 
         if (value === 'ELECTRET_SKIP') {
+            stopAutoSync();
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
