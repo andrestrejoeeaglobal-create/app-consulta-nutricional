@@ -379,6 +379,52 @@ router.get('/status', (req, res) => {
 });
 
 /**
+ * POST /api/bio/scan/electret/launch
+ * Lanzamiento asistido del software original Electret vía Windows Shell (start "")
+ * Bypass de restricciones UIPI delegando la elevación gráfica al explorador del sistema operativo
+ */
+router.post('/electret/launch', (req, res) => {
+    const { exec } = require('child_process');
+    const fs = require('fs');
+
+    const candidatePaths = [
+        "C:\\Program Files (x86)\\Sistema Cuántico Bio-Eléctrico (4)\\Electret.exe",
+        "C:\\Program Files (x86)\\Electret\\Electret.exe",
+        "C:\\Program Files (x86)\\Sistema Cuántico Bio-Eléctrico\\Electret.exe"
+    ];
+
+    const exePath = candidatePaths.find(p => fs.existsSync(p));
+
+    if (!exePath) {
+        console.warn("⚠️ [LAUNCH ELECTRET] No se encontró el ejecutable de Electret en las rutas esperadas.");
+        return res.status(404).json({
+            success: false,
+            error: "APP_NOT_FOUND",
+            message: "No se encontró el software 'Sistema Cuántico Bio-Eléctrico' instalado en el equipo."
+        });
+    }
+
+    console.log(`🚀 [LAUNCH ELECTRET] Lanzando software asistido: ${exePath}`);
+    // 'start "" "<exePath>"' delega la apertura a Windows Explorer / Shell para manejar la interfaz de elevación gráfica UAC
+    exec(`start "" "${exePath}"`, { windowsHide: false }, (err) => {
+        if (err) {
+            console.error("🔥 [LAUNCH ELECTRET] Error al invocar start en Windows Shell:", err.message);
+            return res.json({
+                success: false,
+                error: "LAUNCH_FAILED",
+                message: "No se pudo iniciar el software automáticamente. Puede abrirlo manualmente desde su acceso directo.",
+                detail: err.message
+            });
+        }
+        return res.json({
+            success: true,
+            message: "Software Electret lanzado en pantalla con éxito.",
+            path: exePath
+        });
+    });
+});
+
+/**
  * POST /api/bio/scan/electret/sterilize
  * Apoptosis física de archivos residuales del escáner previo (Sutura 1: try/catch defensivo contra EPERM)
  */
