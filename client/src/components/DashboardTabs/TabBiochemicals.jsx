@@ -554,14 +554,14 @@ export const TabBiochemicals = ({
                                 <div className="w-14 h-14 rounded-2xl bg-[#1C75BC]/10 text-[#1C75BC] flex items-center justify-center mx-auto mb-3 text-2xl shadow-sm">
                                     ⚡
                                 </div>
-                                <h4 className="font-bold text-slate-800 text-sm mb-1">
-                                    Escáner Bioeléctrico y Biorresonancia (Electret) Pendiente
+                                <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm mb-1">
+                                    Compuerta de Telemetría en Espera (NOM-004)
                                 </h4>
-                                <p className="text-slate-500 text-xs max-w-md mx-auto leading-relaxed">
+                                <p className="text-slate-500 dark:text-slate-400 text-xs max-w-md mx-auto leading-relaxed">
                                     {activePatientFullName ? (
-                                        <>Genere un estudio nuevo en este momento para <strong className="text-slate-700">{activePatientFullName}</strong> en el software Electret original. Al concluir la toma física de bioseñales, presione <strong>"🔄 Sincronizar Hardware"</strong> en la <strong>Fase 18</strong> del panel izquierdo. El sistema validará la correspondencia de identidad y tiempo bajo la NOM-004-SSA3-2012.</>
+                                        <>Aguardando sincronización de estudio vivo para <strong className="text-slate-700 dark:text-slate-200">{activePatientFullName}</strong>. Realice el escaneo en el software Electret y presione <strong>"🔄 Sincronizar Hardware"</strong> en la <strong>Fase 18</strong> del panel izquierdo.</>
                                     ) : (
-                                        <>Para procesar y desplegar la telemetría en tiempo real, inicie la toma de bioseñales presionando el botón <strong>"⚡ Iniciar Escaneo Electret"</strong> en la <strong>Fase 18</strong> del panel izquierdo.</>
+                                        <>Aguardando sincronización de estudio vivo desde la <strong>Fase 18</strong> del panel izquierdo.</>
                                     )}
                                 </p>
                             </div>

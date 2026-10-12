@@ -428,11 +428,11 @@ router.get('/electret/sync', (req, res) => {
         try {
             const rawData = JSON.parse((stdout || "").trim());
             if (!rawData.success) {
-                console.log("ℹ️ [ODBC SYNC v4.1] Hardware sin lectura activa:", rawData.message);
+                console.log("ℹ️ [ODBC SYNC v4.1] Compuerta inerte - Sin estudio activo:", rawData.message);
                 return res.json({
                     success: false,
-                    error: rawData.error || "NO_RECENT_SCAN",
-                    message: rawData.message || "No se detectó un escaneo reciente en el hardware Electret (límite de frescura: 5 minutos)."
+                    error: rawData.error || "NO_ACTIVE_STUDY",
+                    message: rawData.message || "No se detectó un estudio generado en este momento en el software Electret."
                 });
             }
 
@@ -475,11 +475,11 @@ router.get('/electret/sync', (req, res) => {
 
                 const MAX_ALLOWED_MINUTES = 5.0; // Ventana estricta de 5 minutos
                 if (timeDiffMinutes > MAX_ALLOWED_MINUTES) {
-                    console.warn(`🛑 [NOM-004 ALERTA TEMPORAL] Estudio obsoleto detectado (${timeDiffMinutes.toFixed(1)} min de antigüedad > ${MAX_ALLOWED_MINUTES} min).`);
+                    console.warn(`🛑 [NOM-004 ALERTA TEMPORAL] Estudio no generado en este momento (${timeDiffMinutes.toFixed(1)} min de antigüedad > ${MAX_ALLOWED_MINUTES} min).`);
                     return res.json({
                         success: false,
-                        error: "SCAN_EXPIRED_OR_OBSOLETE",
-                        message: `No se detectó un escaneo reciente en el hardware Electret (límite de frescura: 5 minutos). Por favor, conecte al paciente y genere un escaneo nuevo en este momento.`,
+                        error: "NO_ACTIVE_STUDY",
+                        message: `No se detectó un estudio generado en este momento para ${targetPatientName || 'el paciente'}. Conecte al paciente y genere un nuevo estudio en el software Electret.`,
                         diffMinutes: timeDiffMinutes
                     });
                 }
