@@ -301,10 +301,15 @@ Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el s
 
             const targetPatientParam = encodeURIComponent(pName || '');
 
-            // 2. Intentar la sincronización real con el endpoint protegido
-            fetch(`${apiUrl}/api/bio/scan/electret/sync?patientName=${targetPatientParam}`, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
+            // 2. Intentar la sincronización real con el endpoint protegido (Sutura 1: POST + Cache-Buster + Headers anti-caché)
+            fetch(`${apiUrl}/api/bio/scan/electret/sync?patientName=${targetPatientParam}&_t=${Date.now()}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                },
+                body: JSON.stringify({ patientName: pName || '' })
             })
             .then(async (res) => {
                 const data = await res.json().catch(() => null);
