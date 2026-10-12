@@ -25,6 +25,51 @@ function normalizeKey(str) {
 }
 
 /**
+ * Normaliza nombres clínicos para cotejo biométrico NOM-004.
+ * Convierte a minúsculas, elimina acentos y diacríticos, y limpia espacios extras.
+ */
+function normalizeClinicalName(name) {
+    if (!name) return '';
+    return String(name)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Parsea fecha local en formato DD/MM/YYYY HH:mm o ISO asegurando correspondencia de tiempo local.
+ */
+function parseLocalDate(dateStr) {
+    if (!dateStr) return null;
+    const parts = String(dateStr).trim().split(/[\sT]+/);
+    if (parts.length >= 2) {
+        const dParts = parts[0].split(/[/.-]/);
+        const tParts = parts[1].split(':');
+        if (dParts.length === 3 && tParts.length >= 2) {
+            let day, month, year;
+            if (dParts[0].length === 4) {
+                year = parseInt(dParts[0], 10);
+                month = parseInt(dParts[1], 10) - 1;
+                day = parseInt(dParts[2], 10);
+            } else {
+                day = parseInt(dParts[0], 10);
+                month = parseInt(dParts[1], 10) - 1;
+                year = parseInt(dParts[2], 10);
+            }
+            const hours = parseInt(tParts[0], 10);
+            const minutes = parseInt(tParts[1], 10);
+            const seconds = tParts[2] ? parseInt(tParts[2], 10) : 0;
+            return new Date(year, month, day, hours, minutes, seconds);
+        }
+    }
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+/**
  * Convierte cualquier representación de número a float puro.
  * Reemplaza comas por puntos, maneja nulos, undefined y cadenas corruptas.
  * @param {any} val 
@@ -141,6 +186,26 @@ function parseElectretHTML(htmlContent) {
         return { success: false, categories: {}, totalParameters: 0, abnormalCount: 0 };
     }
 
+    // Extracción de metadatos clínicos del paciente desde el HTML (NOM-004)
+    const nameMatch = htmlContent.match(/Nombre:\s*([^<&]+)/i);
+    const sexMatch = htmlContent.match(/Sexo:\s*([^<&]+)/i);
+    const ageMatch = htmlContent.match(/Edad:\s*([^<&]+)/i);
+    const dateMatch = htmlContent.match(/Fecha y Hora del An[aá]lisis:\s*([^<&]+)/i);
+
+    const rawPatientName = nameMatch ? nameMatch[1].trim() : null;
+    const normalizedPatientName = normalizeClinicalName(rawPatientName);
+    const rawScanDate = dateMatch ? dateMatch[1].trim() : null;
+    const parsedLocalDate = parseLocalDate(rawScanDate);
+
+    const patientMetadata = {
+        name: rawPatientName,
+        normalizedName: normalizedPatientName,
+        sex: sexMatch ? sexMatch[1].trim() : null,
+        age: ageMatch ? ageMatch[1].trim() : null,
+        scanDate: rawScanDate,
+        parsedLocalDate: parsedLocalDate ? parsedLocalDate.toISOString() : null
+    };
+
     const $ = cheerio.load(htmlContent);
     const resultCategories = {};
     let currentCategoryRaw = "General";
@@ -241,6 +306,7 @@ function parseElectretHTML(htmlContent) {
 
     return {
         success: true,
+        patientMetadata,
         categories: resultCategories,
         totalParameters: totalParams,
         abnormalCount: abnormalCount,
@@ -326,6 +392,8 @@ function parseElectretJSON(rawJson) {
 
 module.exports = {
     normalizeKey,
+    normalizeClinicalName,
+    parseLocalDate,
     cleanFloat,
     evalParamStatus,
     parseElectretHTML,

@@ -112,6 +112,21 @@ export default function Fase18_EscanerBioelectrico({
         if (hasInitialized.current) return;
         hasInitialized.current = true;
 
+        // 🛡️ NOM-004: Purga preventiva de memoria si la telemetría en Zustand pertenece a otro paciente
+        const currentGenomeTelemetry = useClinicalGenome.getState().electretTelemetry;
+        if (currentGenomeTelemetry?.patientName && pName) {
+            const normP = pName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+            const normG = currentGenomeTelemetry.patientName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+            const pFirst = normP.split(' ')[0];
+            const gFirst = normG.split(' ')[0];
+            if (pFirst && gFirst && pFirst !== gFirst) {
+                console.warn(`🛡️ NOM-004: Purgando telemetría previa en Zustand (${currentGenomeTelemetry.patientName}) para iniciar expediente de ${pName}`);
+                useClinicalGenome.getState().clearElectretTelemetry();
+            }
+        }
+        // Esterilización preventiva inmediata de archivos residuales en disco
+        fetch(`${apiUrl}/api/bio/scan/electret/sterilize`, { method: 'POST' }).catch(() => {});
+
         if (isLactante) {
             setPatientData(prev => ({
                 ...prev,
@@ -229,13 +244,29 @@ Por favor presione el botón a continuación para iniciar la toma de bioseñales
         // ETAPA 1: ELECTRET (BIOELÉCTRICO)
         // ----------------------------------------------------------------------
         if (value === 'START_ELECTRET_SCAN') {
+            // 🛡️ NOM-004: Esterilización física inmediata de archivos residuales en disco
+            fetch(`${apiUrl}/api/bio/scan/electret/sterilize`, { method: 'POST' }).catch(() => {});
+
             const instrMsg = {
                 role: 'assistant',
-                content: `### 📡 Instrucciones de Telemetría Física Electret
+                content: `### 📡 Mandato de Telemetría Física Electret (NOM-004)
                 
-Por favor, **ejecute el escaneo físico** en el software Electret original instalado en el equipo de consultorio. 
+Por favor, **genere un estudio nuevo en este momento** para **${pName}** en el software Electret original instalado en el equipo de consultorio. 
 
-Pídale al paciente que coloque la mano en los electrodos del sensor y complete el análisis de conductancia. Al finalizar el proceso en el software original, presione el botón **Sincronizar Hardware** a continuación.`,
+1. Verifique que el paciente en el software Electret esté registrado como **"${pName}"**.
+2. Pídale al paciente que sostenga firmemente los electrodos cilíndricos del sensor.
+3. Ejecute el escaneo de conductancia celular y espere a que el software complete el reporte.
+4. Al concluir la toma física en el software original, presione el botón **"🔄 Sincronizar Hardware"** a continuación.
+
+*El sistema T.I.L.O. validará la correspondencia estricta de identidad del paciente y una ventana de frescura biométrica menor a 5 minutos.*`,
+                actions: [
+                    {
+                        id: 'btn_sync_electret',
+                        label: '🔄 Sincronizar Hardware',
+                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                        value: 'SYNC_ELECTRET_HARDWARE'
+                    }
+                ],
                 options: [
                     { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" }
                 ]
@@ -244,31 +275,32 @@ Pídale al paciente que coloque la mano en los electrodos del sensor y complete 
             return;
         }
 
-
-
         if (value === 'SYNC_ELECTRET_HARDWARE') {
             setIsGlobalTyping?.(true);
 
             // 1. Iniciar estado de progreso de sincronización física
             const syncingMsg = {
                 role: 'assistant',
-                content: `🔄 *Consultando base de datos de Electret.exe y aplicando filtros de telemetría...*`,
+                content: `🔄 *Consultando base de datos de Electret.exe y aplicando validación biométrica NOM-004...*`,
                 inputType: 'status_progress'
             };
             setMessages(prev => [...prev, syncingMsg]);
 
-            // 2. Intentar la sincronización real con la base de datos MDB
-            fetch(`${apiUrl}/api/bio/scan/electret/sync`, {
+            const targetPatientParam = encodeURIComponent(pName || '');
+
+            // 2. Intentar la sincronización real con el endpoint protegido
+            fetch(`${apiUrl}/api/bio/scan/electret/sync?patientName=${targetPatientParam}`, {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' }
             })
-            .then(res => {
-                if (!res.ok) {
-                    return res.json().then(errData => {
-                        throw new Error(errData.message || "Error al sincronizar");
-                    });
+            .then(async (res) => {
+                const data = await res.json().catch(() => null);
+                if (!res.ok || !data?.success) {
+                    const err = new Error(data?.message || "Error al sincronizar con el hardware escáner USB.");
+                    err.data = data;
+                    throw err;
                 }
-                return res.json();
+                return data;
             })
             .then(data => {
                 if (!data?.electret_metrics || !data?.success) {
@@ -276,38 +308,41 @@ Pídale al paciente que coloque la mano en los electrodos del sensor y complete 
                 }
                 const metricsToSet = data.electret_metrics;
 
-                // Validación de Identidad NOM-004 contra lecturas huérfanas de otros pacientes
-                const activeFirstName = (pName || '').trim().toLowerCase().split(' ')[0];
-                let scannedNameFound = null;
-                const nameMatch = JSON.stringify(metricsToSet).match(/nombre:\s*([^,\r\n\"\}]+)/i);
-                if (nameMatch && nameMatch[1]) {
-                    scannedNameFound = nameMatch[1].trim();
-                }
+                // Doble Candado Defensivo de Identidad NOM-004 en Cliente
+                const scannedNameFound = data?.patient_metadata?.name || data?.electret_metrics?.patient_metadata?.name || null;
+                if (scannedNameFound && pName) {
+                    const normActive = pName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+                    const normScan = scannedNameFound.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+                    const activeTokens = normActive.split(' ').filter(t => t.length > 2);
+                    const scanTokens = normScan.split(' ').filter(t => t.length > 2);
+                    const matches = activeTokens.filter(t => scanTokens.includes(t));
+                    const isMatch = (matches.length >= 2) || (activeTokens.length === 1 && matches.length === 1) || normActive === normScan || normScan.includes(normActive) || normActive.includes(normScan);
 
-                if (activeFirstName && scannedNameFound && !scannedNameFound.toLowerCase().includes(activeFirstName)) {
-                    setIsGlobalTyping?.(false);
-                    setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
+                    if (!isMatch) {
+                        setIsGlobalTyping?.(false);
+                        setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
 
-                    const mismatchMsg = {
-                        role: 'assistant',
-                        content: `### 🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB
+                        const mismatchMsg = {
+                            role: 'assistant',
+                            content: `### 🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB
 
-Se detectó una lectura en la base de datos del escáner a nombre de **"${scannedNameFound}"**, la cual **no corresponde** al paciente activo en este expediente (**"${pName}"**).
+Se detectó una lectura en el hardware a nombre de **"${scannedNameFound}"**, la cual **no corresponde** al paciente activo en este expediente (**"${pName}"**).
 
 Para prevenir la contaminación cruzada de datos clínicos entre pacientes, esta lectura ha sido bloqueada automáticamente.
 
-Por favor, ejecute la prueba en el software del escáner a nombre de **"${pName}"** y presione el botón a continuación para reintentar la sincronización.`,
-                        actions: [
-                            { id: 'btn_retry_sync', label: '🔄 Reintentar Sincronización USB', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
-                            { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
-                        ],
-                        options: [
-                            { label: "🔄 Reintentar Sincronización USB", value: "SYNC_ELECTRET_HARDWARE" },
-                            { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
-                        ]
-                    };
-                    setMessages(prev => [...prev, mismatchMsg]);
-                    return;
+Por favor, **genere un estudio nuevo en este momento** en el software Electret a nombre de **"${pName}"** y presione el botón a continuación para reintentar la sincronización.`,
+                            actions: [
+                                { id: 'btn_retry_sync', label: '🔄 Reintentar Sincronización USB', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
+                                { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
+                            ],
+                            options: [
+                                { label: "🔄 Reintentar Sincronización USB", value: "SYNC_ELECTRET_HARDWARE" },
+                                { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
+                            ]
+                        };
+                        setMessages(prev => [...prev, mismatchMsg]);
+                        return;
+                    }
                 }
 
                 setPatientData(prev => ({
@@ -389,11 +424,23 @@ El procesamiento y lectura de la base de datos Access ha concluido de forma exit
                 setIsGlobalTyping?.(false);
                 setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
 
+                const errCode = err?.data?.error;
+                let errorTitle = '⚠️ Hardware Electret No Conectado / No Detectado';
+                let errorBody = err?.message || 'No se detectó el escáner bioeléctrico por USB ni lecturas físicas activas en la base de datos de Electret.exe.';
+
+                if (errCode === 'CROSS_PATIENT_CONTAMINATION_PREVENTED') {
+                    errorTitle = '🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB';
+                    errorBody = `${err.data.message}\n\nPor favor, **genere un estudio nuevo en este momento** en el software Electret a nombre de **"${pName}"** y presione el botón a continuación para reintentar la sincronización.`;
+                } else if (errCode === 'SCAN_EXPIRED_OR_OBSOLETE') {
+                    errorTitle = '⏱️ Alerta Temporal NOM-004: Estudio Obsoleto o Caducado';
+                    errorBody = `${err.data.message}\n\nPor favor, **genere un escaneo nuevo en este momento** en el software Electret para **"${pName}"** con el paciente conectado a los sensores y presione el botón a continuación.`;
+                }
+
                 const errorMsg = {
                     role: 'assistant',
-                    content: `### ⚠️ Hardware Electret No Conectado / No Detectado
+                    content: `### ${errorTitle}
 
-No se detectó el escáner bioeléctrico por USB ni lecturas físicas activas en la base de datos de **Electret.exe**. 
+${errorBody}
 
 Para garantizar el rigor clínico y la honestidad biológica bajo la **NOM-004**, seleccione una opción:`,
                     actions: [
@@ -434,6 +481,9 @@ Para garantizar el rigor clínico y la honestidad biológica bajo la **NOM-004**
             if (useClinicalGenome && useClinicalGenome.getState) {
                 useClinicalGenome.getState().clearElectretTelemetry();
             }
+            // 🛡️ NOM-004: Esterilización física inmediata de archivos residuales en disco
+            fetch(`${apiUrl}/api/bio/scan/electret/sterilize`, { method: 'POST' }).catch(() => {});
+
             setCurrentStep('ELECTRET');
 
             const retryMsg = {
