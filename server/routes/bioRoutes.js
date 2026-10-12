@@ -405,23 +405,29 @@ router.post('/electret/launch', (req, res) => {
     }
 
     console.log(`🚀 [LAUNCH ELECTRET] Lanzando software asistido: ${exePath}`);
-    // 'start "" "<exePath>"' delega la apertura a Windows Explorer / Shell para manejar la interfaz de elevación gráfica UAC
-    exec(`start "" "${exePath}"`, { windowsHide: false }, (err) => {
-        if (err) {
-            console.error("🔥 [LAUNCH ELECTRET] Error al invocar start en Windows Shell:", err.message);
-            return res.json({
-                success: false,
-                error: "LAUNCH_FAILED",
-                message: "No se pudo iniciar el software automáticamente. Puede abrirlo manualmente desde su acceso directo.",
-                detail: err.message
-            });
-        }
+    try {
+        const { spawn } = require('child_process');
+        const child = spawn('cmd.exe', ['/c', 'start', '""', exePath], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: false
+        });
+        child.unref();
+
         return res.json({
             success: true,
             message: "Software Electret lanzado en pantalla con éxito.",
             path: exePath
         });
-    });
+    } catch (launchErr) {
+        console.error("🔥 [LAUNCH ELECTRET] Excepción al lanzar software:", launchErr.message);
+        return res.json({
+            success: false,
+            error: "LAUNCH_FAILED",
+            message: "No se pudo iniciar el software automáticamente. Puede abrirlo manualmente desde su acceso directo.",
+            detail: launchErr.message
+        });
+    }
 });
 
 /**
