@@ -285,14 +285,23 @@ const Fase11_ActividadSueno = ({
                     content: "Para continuar, elija una de las siguientes opciones para su Actividad Diaria (NEAT):",
                     options: [
                         { label: "🏋️ Cargar Archivo Device (.TCX)", value: "NEAT_TCX_LOAD" },
-                        { label: "📝 Declaración Manual", value: "NEAT_MANUAL" },
-                        { label: "❌ No aplica / Sin registro", value: "NEAT_NONE" }
+                        { label: "📝 Declaración Manual", value: "NEAT_MANUAL" }
                     ]
                 }]);
                 setCurrentStep('AWAITING_NEAT_TCX_FILE');
+            } else if (!lifeStyle.circadian?.sleepHours) {
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "Para continuar, elija una de las siguientes opciones para su Patrón de Sueño:",
+                    options: [
+                        { label: "🏋️ Cargar Archivo Device (.TCX)", value: "SLEEP_TCX_LOAD" },
+                        { label: "📝 Declaración Manual", value: "SLEEP_MANUAL" }
+                    ]
+                }]);
+                setCurrentStep('AWAITING_SLEEP_TCX_FILE');
             }
         }
-    }, [messages, lifeStyle.activity]);
+    }, [messages, lifeStyle.activity, lifeStyle.circadian]);
 
 
     // Inicialización del mensaje de bienvenida (Compuerta de Ejercicio y NEAT)
@@ -637,7 +646,8 @@ const Fase11_ActividadSueno = ({
                         },
                         circadian: {
                             ...lifeStyle.circadian,
-                            sleepHours: sleepHoursCalculated
+                            sleepHours: sleepHoursCalculated,
+                            quality: sleepQualityCalculated
                         }
                     };
                     setLifeStyle(updatedLife);
@@ -767,17 +777,22 @@ const Fase11_ActividadSueno = ({
                 setIsAnalyzing(false);
             } catch (err) {
                 console.error("❌ [Fase11] Error en pipeline de ingesta:", err);
-                const retryStep = currentStep === 'AWAITING_NEAT_TCX_FILE' ? 'NEAT_GATE' : 'ACTIVITY_GATE';
+                const retryStep = currentStep === 'AWAITING_NEAT_TCX_FILE' 
+                    ? 'NEAT_GATE' 
+                    : (currentStep === 'AWAITING_SLEEP_TCX_FILE' ? 'SLEEP_GATE' : 'ACTIVITY_GATE');
                 setMessages(prev => [...prev, {
                     role: 'assistant',
                     content: `⚠️ **Falla en el Pipeline de Ingesta:**\n\n${err.message}\n\nPor favor, asegúrese de adjuntar únicamente archivos \`.tcx\` de wearables válidos o realice una declaración manual.`,
                     options: currentStep === 'AWAITING_NEAT_TCX_FILE' ? [
                         { label: "🏋️ Reintentar cargar archivos", value: "NEAT_TCX_LOAD" },
                         { label: "📝 Declaración Manual", value: "NEAT_MANUAL" }
+                    ] : (currentStep === 'AWAITING_SLEEP_TCX_FILE' ? [
+                        { label: "🏋️ Reintentar cargar archivos", value: "SLEEP_TCX_LOAD" },
+                        { label: "📝 Declaración Manual", value: "SLEEP_MANUAL" }
                     ] : [
                         { label: "🏋️ Reintentar cargar archivos", value: "TCX_LOAD" },
                         { label: "📝 Declaración Manual", value: "Sí" }
-                    ]
+                    ])
                 }]);
                 setCurrentStep(retryStep);
                 setIsAnalyzing(false);
@@ -814,8 +829,16 @@ const Fase11_ActividadSueno = ({
                     content: "Para continuar, elija una de las siguientes opciones para su Actividad Diaria (NEAT):",
                     options: [
                         { label: "🏋️ Cargar Archivo Device (.TCX)", value: "NEAT_TCX_LOAD" },
-                        { label: "📝 Declaración Manual", value: "NEAT_MANUAL" },
-                        { label: "❌ No aplica / Sin registro", value: "NEAT_NONE" }
+                        { label: "📝 Declaración Manual", value: "NEAT_MANUAL" }
+                    ]
+                }]);
+            } else if (currentStep === 'AWAITING_SLEEP_TCX_FILE') {
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "Para continuar, elija una de las siguientes opciones para su Patrón de Sueño:",
+                    options: [
+                        { label: "🏋️ Cargar Archivo Device (.TCX)", value: "SLEEP_TCX_LOAD" },
+                        { label: "📝 Declaración Manual", value: "SLEEP_MANUAL" }
                     ]
                 }]);
             }
@@ -829,9 +852,12 @@ const Fase11_ActividadSueno = ({
         if (textToProcess === "FINISH") userLabel = "❌ Cancelar (Volver al resumen)";
         if (textToProcess === "NEAT_TCX_LOAD") userLabel = "🏋️ Cargar Archivo Device (.TCX)";
         if (textToProcess === "NEAT_MANUAL") userLabel = "📝 Declaración Manual";
-        if (textToProcess === "NEAT_NONE") userLabel = "❌ No aplica / Sin registro";
+        if (textToProcess === "SLEEP_TCX_LOAD") userLabel = "🏋️ Cargar Archivo Device (.TCX)";
+        if (textToProcess === "SLEEP_MANUAL") userLabel = "📝 Declaración Manual";
         if (textToProcess.startsWith("CONFIRM_NEAT_TELEMETRY_")) userLabel = "Sí, es correcto";
         if (textToProcess === "CORRECT_NEAT_TELEMETRY") userLabel = "No, prefiero declarar manualmente";
+        if (textToProcess.startsWith("CONFIRM_SLEEP_TELEMETRY")) userLabel = "Sí, es correcto";
+        if (textToProcess === "CORRECT_SLEEP_TELEMETRY") userLabel = "No, prefiero declarar manualmente";
         if (currentStep === 'NEAT' || currentStep === 'NEAT_MANUAL_SELECT') {
             if (textToProcess === "SEDENTARY") userLabel = isLactante ? "Tranquilo / Acostado la mayor parte del tiempo" : (isPreescolar || isEscolar || isMinor ? "Sedentario (Juego tranquilo / Sentado la mayor parte del tiempo)" : "Sedentario (Todo el día sentado)");
             if (textToProcess === "LIGHT") userLabel = isLactante ? "Gateo inicial / Juego sentado" : (isPreescolar || isEscolar || isMinor ? "Ligero (Caminata tranquila / Juego suave en casa o escuela)" : "Ligero (De pie o caminando poco)");
@@ -1151,15 +1177,15 @@ const Fase11_ActividadSueno = ({
                     break;
                 }
 
-                // --- 6. COMPUERTA TRIPARTITA NEAT (Q34e_gate) ---
+                // --- 6. COMPUERTA BINARIA RESTRINGIDA NEAT (Q34e_gate) ---
                 case 'NEAT_GATE': {
-                    if (textToProcess === "NEAT_TCX_LOAD") {
+                    if (textToProcess === "NEAT_TCX_LOAD" || lower.includes("tcx") || lower.includes("archivo")) {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
                             content: "Entendido. Por favor, **haga clic en el botón de adjuntar (clip 📎) en la parte inferior** de la pantalla y seleccione su archivo de actividad diaria general `.tcx`."
                         }]);
                         setCurrentStep('AWAITING_NEAT_TCX_FILE');
-                    } else if (textToProcess === "NEAT_MANUAL") {
+                    } else {
                         const neatMsg = `Independientemente del ejercicio programado, ¿cómo describiría su actividad diaria habitual (trabajo, oficina o casa)?`;
                         const neatOptions = [
                             { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
@@ -1173,13 +1199,6 @@ const Fase11_ActividadSueno = ({
                             options: neatOptions
                         }]);
                         setCurrentStep('NEAT_MANUAL_SELECT');
-                    } else if (textToProcess === "NEAT_NONE") {
-                        const updatedLife = { 
-                            ...lifeStyle, 
-                            activity: { ...lifeStyle.activity, neat_level: 'SEDENTARY' } 
-                        };
-                        setLifeStyle(updatedLife);
-                        askSleepQuestion(updatedLife);
                     }
                     break;
                 }
@@ -1190,6 +1209,20 @@ const Fase11_ActividadSueno = ({
                             role: 'assistant',
                             content: "Por favor, seleccione el archivo `.tcx` de actividad diaria habitual utilizando el botón de clip 📎."
                         }]);
+                    } else if (textToProcess === "NEAT_MANUAL" || lower.includes("manual")) {
+                        const neatMsg = `Independientemente del ejercicio programado, ¿cómo describiría su actividad diaria habitual (trabajo, oficina o casa)?`;
+                        const neatOptions = [
+                            { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
+                            { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
+                            { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
+                            { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
+                        ];
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: neatMsg,
+                            options: neatOptions
+                        }]);
+                        setCurrentStep('NEAT_MANUAL_SELECT');
                     }
                     break;
                 }
@@ -1267,6 +1300,7 @@ const Fase11_ActividadSueno = ({
                     break;
                 }
 
+                // --- 6b. COMPUERTA BINARIA RESTRINGIDA SUEÑO (SLEEP_GATE) ---
                 case 'SLEEP_GATE': {
                     if (textToProcess === "SLEEP_TCX_LOAD" || lower.includes("tcx") || lower.includes("archivo")) {
                         setMessages(prev => [...prev, {
@@ -1274,15 +1308,6 @@ const Fase11_ActividadSueno = ({
                             content: "Entendido. Por favor, **haga clic en el botón de adjuntar (clip 📎) en la parte inferior** de la pantalla y seleccione su archivo de descanso/sueño `.tcx` / wearable."
                         }]);
                         setCurrentStep('AWAITING_SLEEP_TCX_FILE');
-                    } else if (textToProcess === "SLEEP_MANUAL" || lower.includes("manual")) {
-                        triggerManualSleepQuestions(lifeStyle);
-                    } else if (textToProcess === "SLEEP_NONE" || lower.includes("no aplica") || lower.includes("sin registro") || lower.includes("omitir")) {
-                        const updatedLife = { 
-                            ...lifeStyle, 
-                            sleep: { ...lifeStyle.sleep, hours_avg: isLactante ? 14 : 7, quality: 'GOOD' } 
-                        };
-                        setLifeStyle(updatedLife);
-                        askStressQuestion(updatedLife);
                     } else {
                         triggerManualSleepQuestions(lifeStyle);
                     }
@@ -1295,6 +1320,8 @@ const Fase11_ActividadSueno = ({
                             role: 'assistant',
                             content: "Por favor, seleccione el archivo `.tcx` de descanso utilizando el botón de clip 📎."
                         }]);
+                    } else if (textToProcess === "SLEEP_MANUAL" || lower.includes("manual")) {
+                        triggerManualSleepQuestions(lifeStyle);
                     }
                     break;
                 }
@@ -1572,12 +1599,11 @@ const Fase11_ActividadSueno = ({
             }]);
             setCurrentStep('NEAT');
         } else {
-            // Compuerta Tripartita para Adultos
+            // Compuerta Binaria Restringida para Adultos (NEAT es fisiológicamente obligatorio)
             const neatMsg = `Independientemente del ejercicio programado: **¿Cómo registrará su actividad o movimiento diario habitual (NEAT)?**`;
             const neatOptions = [
                 { label: "🏋️ Cargar Archivo Device (.TCX)", value: "NEAT_TCX_LOAD" },
-                { label: "📝 Declaración Manual", value: "NEAT_MANUAL" },
-                { label: "❌ No aplica / Sin registro", value: "NEAT_NONE" }
+                { label: "📝 Declaración Manual", value: "NEAT_MANUAL" }
             ];
 
             setMessages(prev => [...prev, {
@@ -1630,20 +1656,17 @@ const Fase11_ActividadSueno = ({
     };
 
     const askSleepQuestion = (state) => {
-        const sleepMsg = isMinor
-            ? `Entendido. Evaluemos el descanso de **${pName}**. ¿Desea cargar los datos de descanso de su dispositivo o realizar una declaración manual?`
-            : `Entendido. Pasemos al descanso. **¿Desea registrar su patrón de sueño cargando un archivo de su dispositivo wearable (.TCX / .GPX) o prefiere una declaración manual?**`;
-        
-        const sleepOptions = isMinor
-            ? [
-                { label: "📝 Declaración Manual", value: "SLEEP_MANUAL" },
-                { label: "❌ No aplica / Sin registro", value: "SLEEP_NONE" }
-            ]
-            : [
-                { label: "🏋️ Cargar Archivo Device (.TCX)", value: "SLEEP_TCX_LOAD" },
-                { label: "📝 Declaración Manual", value: "SLEEP_MANUAL" },
-                { label: "❌ No aplica / Sin registro", value: "SLEEP_NONE" }
-            ];
+        if (isMinor) {
+            triggerManualSleepQuestions(state);
+            return;
+        }
+
+        // Compuerta Binaria Restringida para Adultos (El sueño es metabólicamente obligatorio)
+        const sleepMsg = `Entendido. Pasemos al descanso. **¿Desea registrar su patrón de sueño cargando un archivo de su dispositivo wearable (.TCX / .GPX) o prefiere una declaración manual?**`;
+        const sleepOptions = [
+            { label: "🏋️ Cargar Archivo Device (.TCX)", value: "SLEEP_TCX_LOAD" },
+            { label: "📝 Declaración Manual", value: "SLEEP_MANUAL" }
+        ];
 
         setMessages(prev => [...prev, {
             role: 'assistant',
