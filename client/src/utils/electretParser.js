@@ -38,10 +38,15 @@ export function cleanFloat(val) {
 export function evalParamStatus(imgSrc, val, ref) {
     if (imgSrc) {
         const s = String(imgSrc).toLowerCase();
-        if (s.includes('yc07') || s.includes('yc08') || s.includes('+++')) return 'ANORMAL SEVERO';
-        if (s.includes('yc05') || s.includes('yc06') || s.includes('++')) return 'ANORMAL MODERADO';
-        if (s.includes('yc03') || s.includes('yc04') || s.includes('+')) return 'ANORMAL LEVE';
-        if (s.includes('yc01') || s.includes('yc02') || s.includes('normal')) return 'NORMAL';
+        // Mapeo canónico del semáforo cuántico Electret:
+        // YC01 / YC07: Extremos (- - - / + + +) -> ANORMAL SEVERO
+        // YC02 / YC06: Medios (- - / + +) -> ANORMAL MODERADO
+        // YC03 / YC05 / YC09: Ligeros (- / +) -> ANORMAL LEVE
+        // YC04 / YC08: Centro verde (Dentro de rango / Normal) -> NORMAL
+        if (s.includes('yc01') || s.includes('yc07') || s.includes('ycmark1') || s.includes('+++')) return 'ANORMAL SEVERO';
+        if (s.includes('yc02') || s.includes('yc06') || s.includes('ycmark2') || s.includes('++')) return 'ANORMAL MODERADO';
+        if (s.includes('yc03') || s.includes('yc05') || s.includes('yc09') || s.includes('ycmark3') || s.includes('+')) return 'ANORMAL LEVE';
+        if (s.includes('yc04') || s.includes('yc08') || s.includes('ycmark4') || s.includes('normal')) return 'NORMAL';
     }
 
     if (ref && String(ref).includes('-')) {
@@ -64,6 +69,7 @@ export function evalParamStatus(imgSrc, val, ref) {
 }
 
 export const CATEGORY_MAP = {
+    'cardiovasculares_y_cerebrovasculares': 'cardiovascular',
     'cardiovascular_y_cerebrovascular': 'cardiovascular',
     'cardiovascular_y_cerebrovasculares': 'cardiovascular',
     'cardiovascular': 'cardiovascular',
@@ -80,7 +86,7 @@ export const CATEGORY_MAP = {
     'gallbladder': 'gallbladder',
     'funcion_pancreatica': 'pancreas',
     'pancreatica': 'pancreas',
-    'pancreas': 'pancreas',
+    'pancreatica': 'pancreas',
     'funcion_renal': 'renal',
     'renal': 'renal',
     'funcion_pulmonar': 'pulmonary',
@@ -91,28 +97,38 @@ export const CATEGORY_MAP = {
     'densidad_mineral_osea': 'bone_density',
     'enfermedad_de_hueso_reumatoide': 'rheumatoid',
     'indice_de_crecimiento_oseo': 'bone_growth',
-    'glucosa_en_la_sangre': 'blood_sugar',
+    'glucosa_en_la_sangre': 'blood_glucose',
+    'oligoelementos': 'trace_elements',
     'oligoelementos_y_minerales': 'trace_elements',
-    'minerales': 'trace_elements',
+    'vitamina': 'vitamins',
     'vitaminas': 'vitamins',
     'aminoacidos': 'amino_acids',
+    'coenzima': 'coenzymes',
     'coenzimas': 'coenzymes',
+    'acido_graso': 'fatty_acids',
+    'acidos_grasos': 'fatty_acids',
     'sistema_endocrino': 'endocrine',
     'sistema_inmunologico': 'immune',
     'tiroides': 'thyroid',
+    'toxina_humana': 'toxins',
     'toxinas_humanas': 'toxins',
     'metales_pesados': 'heavy_metals',
-    'condicion_fisica_basica': 'physical',
+    'condicion_fisica_basica': 'basic_physical',
     'alergias': 'allergies',
-    'obesidad_y_composicion_fatmass': 'obesity',
-    'piel_y_tejido_cutaneo': 'skin',
-    'ojo_y_funcion_visual': 'eye',
+    'obesidad': 'obesity',
+    'piel': 'skin',
+    'ojo': 'eye',
     'colageno': 'collagen',
+    'meridianos_o_canales_de_acupuntura': 'meridians',
     'meridianos_bioenergetica': 'meridians',
-    'pulso_y_ritmo_cardiaco': 'pulse',
-    'lipidos_sanguineos': 'lipids',
+    'pulso_cerebro_y_corazon': 'pulso_cerebro_y_corazon',
+    'lipidos_sanguineos': 'blood_lipids',
+    'ginecologia': 'gynecology',
+    'senos': 'breasts',
+    'cyclo_menstrual': 'menstrual_cycle',
+    'elementos_humanos': 'body_composition',
     'prostata': 'prostate',
-    'esperma_y_semen': 'sperm',
+    'esperma_y_semen': 'sperm_semen',
     'funcion_sexual_masculina': 'male_sexual'
 };
 
