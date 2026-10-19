@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import parsedResults from '../../data/parsed_results.json';
 import { useClinicalToast } from '../../hooks/useClinicalToast';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
@@ -11,11 +10,9 @@ export default function Fase18_EscanerBioelectrico({
     patientData,
     setPatientData,
     setIsGlobalTyping,
-    hardwareStatus,
-    setHardwareStatus,
     onPhaseComplete
 }) {
-    const { patientName: pName, isLactante, isPediatrico } = usePatientLinguistics(patientData);
+    const { patientName: pName, isLactante } = usePatientLinguistics(patientData);
     const showToast = useClinicalToast(state => state.showToast);
     const [currentStep, setCurrentStep] = useState('ELECTRET');
     const hasInitialized = useRef(false);
@@ -26,10 +23,14 @@ export default function Fase18_EscanerBioelectrico({
     const [leftEyePreview, setLeftEyePreview] = useState(null);
     const [lingualFile, setLingualFile] = useState(null);
     const [lingualPreview, setLingualPreview] = useState(null);
+    const [ventralFile, setVentralFile] = useState(null);
+    const [ventralPreview, setVentralPreview] = useState(null);
+    const [lingualActiveTab, setLingualActiveTab] = useState('dorsal'); // 'dorsal' | 'ventral'
     const [pdfFiles, setPdfFiles] = useState([]); // Arreglo de múltiples archivos PDF/Imágenes
     const [somaticFile, setSomaticFile] = useState(null);
     const [somaticPreview, setSomaticPreview] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [telemetryProgressMsg, setTelemetryProgressMsg] = useState('');
     const [useLiveCamera, setUseLiveCamera] = useState(false);
     const [mediaStream, setMediaStream] = useState(null);
     const [cameraError, setCameraError] = useState(null);
@@ -38,7 +39,7 @@ export default function Fase18_EscanerBioelectrico({
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
     // 🛡️ SUTURA 5: Centinela Auto-Sync Reactivo con AbortController y setTimeout encadenado
-    const [isAutoSyncActive, setIsAutoSyncActive] = useState(false);
+    const [, setIsAutoSyncActive] = useState(false);
     const autoSyncAbortControllerRef = useRef(null);
     const autoSyncTimeoutRef = useRef(null);
     const isAutoSyncActiveRef = useRef(false);
@@ -51,7 +52,11 @@ export default function Fase18_EscanerBioelectrico({
             autoSyncTimeoutRef.current = null;
         }
         if (autoSyncAbortControllerRef.current) {
-            try { autoSyncAbortControllerRef.current.abort(); } catch {}
+            try { 
+                autoSyncAbortControllerRef.current.abort(); 
+            } catch {
+                autoSyncAbortControllerRef.current = null;
+            }
             autoSyncAbortControllerRef.current = null;
         }
     };
@@ -245,7 +250,7 @@ Para iniciar la toma con **${pName}**, puede abrir el software de consultorio di
             };
             setMessages(prev => [...prev, saludoEstructurado]);
         }
-    }, [isLactante, pName, setMessages, setPatientData]);
+    }, [isLactante, pName, setMessages, setPatientData, messages]);
 
 
     const getDerivedSubstep = (messagesList) => {
@@ -271,6 +276,14 @@ Para iniciar la toma con **${pName}**, puede abrir el software de consultorio di
         return 'ELECTRET';
     };
 
+    // 📡 Sincronización reactiva de currentStep con el estado de mensajes
+    useEffect(() => {
+        const derived = getDerivedSubstep(messages);
+        if (derived && derived !== currentStep) {
+            setCurrentStep(derived);
+        }
+    }, [messages, currentStep]);
+
     // ==========================================================================
     // 🧬 PROCESAMIENTO CENTRAL DE TELEMETRÍA ELECTRET (NOM-004)
     // ==========================================================================
@@ -281,7 +294,7 @@ Para iniciar la toma con **${pName}**, puede abrir el software de consultorio di
         const metricsToSet = data.electret_metrics;
 
         // Doble Candado Defensivo de Identidad NOM-004 en Cliente
-        const scannedNameFound = data?.patient_metadata?.name || data?.electret_metrics?.patient_metadata?.name || null;
+        const scannedNameFound = data?.patientMetadata?.name || data?.patient_metadata?.name || data?.electret_metrics?.patient_metadata?.name || null;
         if (scannedNameFound && pName) {
             const normActive = pName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
             const normScan = scannedNameFound.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -324,6 +337,7 @@ Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pNam
             scan_data: {
                 ...(prev?.scan_data || {}),
                 electret_metrics: metricsToSet,
+                electret_patient_name: scannedNameFound || pName,
                 electret_scanned: true
             }
         }));
@@ -331,9 +345,9 @@ Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pNam
         // INYECCIÓN ANTIGRAVITY: Despacho Global (SSOT)
         useClinicalGenome.getState().setElectretTelemetry({
             categories: metricsToSet,
-            patientName: pName,
+            patientName: scannedNameFound || pName,
             isScanned: true,
-            totalParameters: data.totalParameters || 450,
+            totalParameters: data.totalParameters || 253,
             abnormalCount: data.abnormalCount || 0
         });
 
@@ -788,7 +802,7 @@ ${errorBody}`,
         }
 
         const isConfirmIntent = value === 'ELECTRET_CONFIRM' || 
-                                (currentStep === 'ELECTRET' && (lowerVal.includes('proceder') || lowerVal.includes('sí') || lowerVal.includes('si') || lowerVal === 'yes'));
+                                (activeStep === 'ELECTRET' && (lowerVal === 'sí' || lowerVal === 'si' || lowerVal === 'yes' || lowerVal.includes('proceder')));
 
         if (isConfirmIntent) {
             // INYECCIÓN ANTIGRAVITY: Despacho Global (SSOT) al confirmar
@@ -840,12 +854,12 @@ Por favor presione el botón a continuación para abrir el sensor óptico del **
         // ----------------------------------------------------------------------
         // ETAPA 2A: CAPTURA OJO DERECHO Y OJO IZQUIERDO (BINOCULAR)
         // ----------------------------------------------------------------------
-        if (value === 'START_RIGHT_EYE') {
+        if (value === 'START_RIGHT_EYE' || lowerVal.includes('capturar ojo derecho')) {
             setActiveModal('OCULAR_RIGHT');
             return;
         }
 
-        if (value === 'START_LEFT_EYE') {
+        if (value === 'START_LEFT_EYE' || lowerVal.includes('capturar ojo izquierdo')) {
             setActiveModal('OCULAR_LEFT');
             return;
         }
@@ -893,7 +907,7 @@ Por favor presione el botón para capturar o seleccionar la fotografía de la su
             return;
         }
 
-        if (value === 'OCULAR_RETRY') {
+        if (value === 'OCULAR_RETRY' || (activeStep === 'OCULAR' && (lowerVal.includes('re-capturar ojos') || lowerVal.includes('recapturar ojos')))) {
             // PROTOCOLO DE PURGA DE MEMORIA
             setRightEyeFile(null);
             setLeftEyeFile(null);
@@ -922,7 +936,7 @@ Por favor presione el botón para capturar o seleccionar la fotografía de la su
             return;
         }
 
-        if (value === 'OCULAR_CONFIRM') {
+        if (value === 'OCULAR_CONFIRM' || (activeStep === 'OCULAR' && (lowerVal.includes('sí, es correcta') || lowerVal.includes('si, es correcta') || lowerVal.includes('confirmar telemetría ocular')))) {
             setCurrentStep('LINGUAL');
             const msgLingual = {
                 role: 'assistant',
@@ -959,12 +973,12 @@ Por favor presione el botón para capturar o seleccionar la fotografía de la su
         // ----------------------------------------------------------------------
         // ETAPA 3: LENGUA (CYTOS)
         // ----------------------------------------------------------------------
-        if (value === 'START_LINGUAL_SCAN') {
+        if (value === 'START_LINGUAL_SCAN' || lowerVal.includes('capturar superficie lingual') || lowerVal.includes('capturar lengua')) {
             setActiveModal('LINGUAL');
             return;
         }
 
-        if (value === 'LINGUAL_SKIP' || (currentStep === 'LINGUAL' && (value.toLowerCase().includes('omitir') || value === 'No'))) {
+        if (value === 'LINGUAL_SKIP' || (activeStep === 'LINGUAL' && (lowerVal.includes('omitir') || lowerVal === 'no'))) {
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
@@ -1006,8 +1020,11 @@ Entramos a la fase de **Validación Bioquímica Exógena**. Si dispone de estudi
             return;
         }
 
-        if (value === 'LINGUAL_RETRY') {
+        if (value === 'LINGUAL_RETRY' || (activeStep === 'LINGUAL' && (lowerVal.includes('re-capturar lengua') || lowerVal.includes('recapturar lengua')))) {
             setLingualFile(null);
+            setLingualPreview(null);
+            setVentralFile(null);
+            setVentralPreview(null);
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
@@ -1030,7 +1047,7 @@ Entramos a la fase de **Validación Bioquímica Exógena**. Si dispone de estudi
             return;
         }
 
-        if (value === 'LINGUAL_CONFIRM') {
+        if (value === 'LINGUAL_CONFIRM' || (activeStep === 'LINGUAL' && (lowerVal.includes('confirmar telemetría lingual') || lowerVal.includes('confirmar lengua')))) {
             setCurrentStep('EXTERNAL');
             const msgEstudios = {
                 role: 'assistant',
@@ -1256,13 +1273,82 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
     // ==========================================================================
     // 🌐 HANDLERS DE SUBIDA MULTIPART A BACKEND (DATOS REALES & GEMINI VISION)
     // ==========================================================================
+    // 🛡️ TROMBOSIS DE RED PREVENTIVA: Compresión ligera en HTML5 Canvas antes del envío (< 1.5MB por foto)
+    const compressImageForTelemetry = (file, maxWidth = 1600, maxHeight = 1600, quality = 0.85) => {
+        return new Promise((resolve) => {
+            if (!file || !file.type || !file.type.startsWith('image/')) return resolve(file);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxWidth || height > maxHeight) {
+                        if (width > height) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        } else {
+                            width = Math.round((width * maxHeight) / height);
+                            height = maxHeight;
+                        }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            const compressed = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+                                type: 'image/jpeg',
+                                lastModified: Date.now()
+                            });
+                            resolve(compressed);
+                        } else {
+                            resolve(file);
+                        }
+                    }, 'image/jpeg', quality);
+                };
+                img.onerror = () => resolve(file);
+                img.src = e.target.result;
+            };
+            reader.onerror = () => resolve(file);
+            reader.readAsDataURL(file);
+        });
+    };
+
     const submitBinocularOcular = async () => {
         if (!rightEyeFile && !leftEyeFile) return;
         setIsUploading(true);
+
+        const progressMessages = [
+            "👁️ Analizando microvasculatura conjuntival y epiescleral...",
+            "🩸 Evaluando espectrometría tarsal y hemoglobina tisular...",
+            "🫀 Mapeando calibre arteriolar, cruces vasculares y arco senil...",
+            "🔬 Evaluando biomarcadores glucémicos y microangiopatía...",
+            "⏳ Calculando reloj de edad biológica ocular y senescencia...",
+            "🌊 Inspeccionando edema infraorbitario y cromatismo escleral...",
+            "🛡️ Integrando síntesis de salud estructural y correlación binocular..."
+        ];
+        let msgIdx = 0;
+        setTelemetryProgressMsg(progressMessages[0]);
+        const progressInterval = setInterval(() => {
+            msgIdx = (msgIdx + 1) % progressMessages.length;
+            setTelemetryProgressMsg(progressMessages[msgIdx]);
+        }, 2800);
+
         try {
             const formData = new FormData();
-            if (rightEyeFile) formData.append('rightEye', rightEyeFile);
-            if (leftEyeFile) formData.append('leftEye', leftEyeFile);
+            if (rightEyeFile) {
+                const compRight = await compressImageForTelemetry(rightEyeFile);
+                formData.append('rightEye', compRight);
+            }
+            if (leftEyeFile) {
+                const compLeft = await compressImageForTelemetry(leftEyeFile);
+                formData.append('leftEye', compLeft);
+            }
+            formData.append('age', patientData?.demographics?.age || 60);
+            formData.append('sex', patientData?.demographics?.gender || 'M');
 
             const response = await fetch(`${apiUrl}/api/bio/scan/binocular-ocular-scan`, {
                 method: 'POST',
@@ -1271,35 +1357,36 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
 
             const data = await response.json();
 
+            if (!data.success) {
+                throw new Error(data.error || "Falla en la inferencia óptica");
+            }
+
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
                     ...(prev?.scan_data || {}),
-                    ocular_metrics: data.ocular_audit ? {
-                        right_eye_url: data.rightEyeUrl,
-                        left_eye_url: data.leftEyeUrl,
-                        ...data.ocular_audit
-                    } : {
-                        right_eye_url: data.rightEyeUrl,
-                        left_eye_url: data.leftEyeUrl,
-                        predictions: data.predictions,
-                        asymmetry_findings: data.asymmetry_findings
-                    },
+                    ocular_metrics: data.ocular_metrics || data.ocular_audit,
                     correlacion_multimodal: data.correlacion_multimodal || prev?.scan_data?.correlacion_multimodal
                 }
             }));
 
+            const p = data.pilares || {};
             const gateMsg = {
                 role: 'assistant',
-                content: `### 👁️ Resumen de Auditoría Visual Ocular Binocular (Gemini 2.5 Flash)
+                content: `### 👁️ Auditoría Visual Ocular Binocular Multidimensional (Gemini 2.5 Flash Vision)
 
-* **Palidez Conjuntival**: ${data.predictions?.hemoglobin?.value || 'Sin palidez patológica'}.
-* **Microcirculación Foveal**: ${data.predictions?.foveal_microcirculation?.value || 'Irrigación conservada'}.
-* **Asimetría Vascular**: ${data.asymmetry_findings || 'Bilateral Simétrica'}.
+* 🩸 **Diabetes y Control de Glucosa**: Riesgo ${p.diabetes_glucosa?.riesgo || 'Bajo'} (HbA1c est.: ${p.diabetes_glucosa?.hba1c_estimada || '< 6.0%'}). ${p.diabetes_glucosa?.hallazgos || ''}
+* 🫀 **Salud Cardiovascular y Lípidos**: Riesgo ${p.cardiovascular_lipidos?.riesgo_cardiovascular || 'Bajo'}. Arco Senil: ${p.cardiovascular_lipidos?.arco_senil_corneal || 'Negativo'}. ${p.cardiovascular_lipidos?.hallazgos || ''}
+* 💉 **Conteo Sanguíneo y Anemia**: Hb ${p.conteo_sanguineo_anemia?.hemoglobina_estimada_gdl || '14.0 g/dL'} (${p.conteo_sanguineo_anemia?.estado_anemia || 'Normal'}). ${p.conteo_sanguineo_anemia?.palidez_conjuntival_tarsal || ''}
+* 🌊 **Función Renal y Hepática**: Edema: ${p.funcion_renal_hepatica?.edema_infraorbitario_renal || 'Normal'}. Esclera: ${p.funcion_renal_hepatica?.ictericia_escleral_hepatica || 'Blanco Fisiológico'}.
+* ⏳ **Reloj de Edad Biológica Ocular**: ${p.edad_biologica_longevidad?.edad_biologica_ocular || '60'} años (Age Gap: ${p.edad_biologica_longevidad?.retinal_age_gap || '0 años'}). Senescencia: ${p.edad_biologica_longevidad?.estado_senescencia || 'Acorde'}.
+* 👁️ **Salud Visual Estructural**: Cristalino: ${p.salud_visual_estructural?.cristalino_cataratas || 'Claro'}. Asimetría: ${p.salud_visual_estructural?.asimetria_binocular || 'Bilateral simétrica'}.
 
 ---
 
-¿Confirma que la evaluación visual ocular binocular es correcta?`,
+*Síntesis Fisiopatológica*: ${data.sintesis_fisiopatologica || data.ocular_audit?.sintesis_fisiopatologica || 'Telemetría ocular en rangos fisiológicos estables.'}
+
+¿Confirma que la evaluación visual ocular binocular es correcta para avanzar a la evaluación lingual?`,
                 options: [
                     { label: "✅ Sí, es correcta", value: "OCULAR_CONFIRM" },
                     { label: "❌ Re-capturar Ojos", value: "OCULAR_RETRY" }
@@ -1309,17 +1396,47 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
             setActiveModal(null);
         } catch (err) {
             console.error("Error enviando fotos oculares:", err);
+            showToast(`Error al procesar fotos oculares: ${err.message}`, "error");
         } finally {
+            clearInterval(progressInterval);
             setIsUploading(false);
+            setTelemetryProgressMsg('');
         }
     };
 
-    const submitLingualScan = async (file) => {
-        if (!file) return;
+    const submitLingualScan = async () => {
+        if (!lingualFile && !ventralFile) {
+            showToast("Adjunte o capture al menos una toma lingual (Dorsal o Ventral)", "warning");
+            return;
+        }
         setIsUploading(true);
+        setTelemetryProgressMsg('Iniciando biometría glosómica de alta resolución...');
+
+        const progressMessages = [
+            'Analizando biopelícula y microbiota de saburra...',
+            'Examinando integridad de papilas y micro-fisuras...',
+            'Mapeando angioarquitectura y venas sublinguales...',
+            'Calculando reloj de edad biológica mucosal...',
+            'Integrando fenotipo funcional con Gemini Vision...'
+        ];
+        let msgIdx = 0;
+        const progressInterval = setInterval(() => {
+            msgIdx = (msgIdx + 1) % progressMessages.length;
+            setTelemetryProgressMsg(progressMessages[msgIdx]);
+        }, 2800);
+
         try {
             const formData = new FormData();
-            formData.append('lingualImage', file);
+            if (lingualFile) {
+                const compDorsal = await compressImageForTelemetry(lingualFile);
+                formData.append('dorsalImage', compDorsal);
+            }
+            if (ventralFile) {
+                const compVentral = await compressImageForTelemetry(ventralFile);
+                formData.append('ventralImage', compVentral);
+            }
+            formData.append('age', patientData?.demographics?.age || 60);
+            formData.append('sex', patientData?.demographics?.gender || 'M');
 
             const response = await fetch(`${apiUrl}/api/bio/scan/lingual-scan`, {
                 method: 'POST',
@@ -1328,34 +1445,60 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
 
             const data = await response.json();
 
+            if (!data.success) {
+                throw new Error(data.error || "Falla en la inferencia glosómica");
+            }
+
+            // SUTURA DE CALIDAD ÓPTICA: RECHAZO AMIGABLE ANTE SOBREEXPOSICIÓN POR FLASH O DESENFOQUE
+            if (data.requiere_recaptura || data.tipo_toma === "Calidad Insuficiente") {
+                const qualityAdvisoryMsg = {
+                    role: 'assistant',
+                    content: `⚠️ **Calidad Óptica Insuficiente en la Captura Lingual**
+                    
+*Diagnóstico del Sensor Óptico*: ${data.motivo_rechazo_optico || "La reflectancia del flash directo o la falta de nitidez impiden evaluar con rigor la saburra y el sustrato microvascular."}
+
+Para evitar falsos positivos en disbiosis, anemia o congestión, por favor realice una nueva toma siguiendo estas recomendaciones:
+1. 💡 **Desactive el flash directo** de la cámara.
+2. 🪟 Utilice **luz natural o ambiental difusa** frontal.
+3. 🎯 Asegúrese de enfocar la superficie lingual a una distancia de 15 a 20 cm.`,
+                    options: [
+                        { label: "📸 Re-capturar Lengua sin Flash", value: "START_LINGUAL_SCAN" },
+                        { label: "⏩ Omitir esta prueba", value: "LINGUAL_SKIP" }
+                    ]
+                };
+                setMessages(prev => [...prev, qualityAdvisoryMsg]);
+                setActiveModal(null);
+                return;
+            }
+
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
                     ...(prev?.scan_data || {}),
-                    lingual_metrics: data.lingual_topography ? {
-                        imageUrl: data.imageUrl,
-                        ...data.lingual_topography
-                    } : {
-                        imageUrl: data.imageUrl,
-                        saburra_thickness: data.predictions?.glycemic_alteration?.value || "Normal (Capa delgada blanca)",
-                        epithelial_hydration: "Adecuada"
-                    },
+                    lingual_metrics: data.lingual_metrics || data.lingual_topography,
                     correlacion_multimodal: data.correlacion_multimodal || prev?.scan_data?.correlacion_multimodal
                 }
             }));
 
+            const p = data.pilares || {};
             const gateMsg = {
                 role: 'assistant',
-                content: `### 👅 Resumen de Análisis Lingual (CYTOS & Gemini Vision)
+                content: `### 👅 Auditoría de Topografía Lingual Multidimensional (Gemini Vision)
 
-* **Saburra Lingual**: ${data.predictions?.glycemic_alteration?.value || 'Capa delgada fisiológica blanca'}.
-* **Hidratación Epitelial**: Perfusión hídrica adecuada.
+* 🍞 **Salud Gastrointestinal y Microbioma**: Saburra ${p.gastrointestinal_microbioma?.saburra_grosor || 'Delgada'} (${p.gastrointestinal_microbioma?.saburra_color || 'Blanquecina'}). Fisuras: ${p.gastrointestinal_microbioma?.fisuras_grietas || 'Ausentes'}. Disbiosis: ${p.gastrointestinal_microbioma?.sospecha_disbiosis || 'Baja'}. ${p.gastrointestinal_microbioma?.hallazgos || ''}
+* 🫀 **Sistema Cardiovascular y Oxigenación**: Estasis Ranina: ${p.cardiovascular_oxigenacion?.estasis_venosa_sublingual || 'Fisiológica'}. Cianosis: ${p.cardiovascular_oxigenacion?.cianosis_periferica || 'Ausente'}. Riesgo Vascular: ${p.cardiovascular_oxigenacion?.riesgo_vascular_congestivo || 'Bajo'}.
+* 💉 **Conteo Sanguíneo y Nutrición**: Sustrato: ${p.conteo_sanguineo_nutricion?.palidez_sustrato || 'Normocrómica'}. Glositis/Atrofia Papilar: ${p.conteo_sanguineo_nutricion?.atrofia_papilar_glositis || 'Ausente'}. Deficiencia: ${p.conteo_sanguineo_nutricion?.sospecha_deficiencia_nutricional || 'Baja'}.
+* 🌊 **Función Hepática, Renal e Hidratación**: Festoneado/Marcas: ${p.funcion_hepatica_renal_hidratacion?.marcas_dentales_festoneado || 'Ausentes'}. Tinte Amarillo: ${p.funcion_hepatica_renal_hidratacion?.tinte_amarillo_base || 'Ausente'}. Hidratación: ${p.funcion_hepatica_renal_hidratacion?.estado_hidratacion_salival || 'Normo-hidratada'}.
+* 🛡️ **Sistema Inmune e Inflamación**: Lengua Geográfica: ${p.inmune_inflamacion?.lengua_geografica || 'Ausente'}. Petequias/Puntos Rojos: ${p.inmune_inflamacion?.petequias_papilas_eritematosas || 'Ausentes'}. Nivel Inflamatorio: ${p.inmune_inflamacion?.nivel_inflamacion_mucosa || 'Bajo / Fisiológico'}.
+* ⏳ **Edad Biológica Mucosal y Senescencia**: Edad Mucosal: ${p.edad_biologica_mucosal?.edad_mucosal_estimada || 60} años. Trofismo: ${p.edad_biologica_mucosal?.trofismo_muscular || 'Eutrófico'}. Temblores: ${p.edad_biologica_mucosal?.temblores_fasciculaciones || 'Ausentes'}.
 
 ---
 
-¿Confirma la evaluación de la saburra lingual?`,
+*Síntesis Fisiopatológica*: ${data.sintesis_fisiopatologica || data.lingual_topography?.sintesis_fisiopatologica || 'Telemetría de mucosa lingual y microbioma en rangos fisiológicos estables.'}
+
+¿Confirma que la evaluación de la topografía lingual es correcta para avanzar a la validación de estudios de laboratorio?`,
                 options: [
-                    { label: "✅ Sí, es correcta", value: "LINGUAL_CONFIRM" },
+                    { label: "✅ Confirmar Telemetría Lingual", value: "LINGUAL_CONFIRM" },
                     { label: "❌ Re-capturar Lengua", value: "LINGUAL_RETRY" }
                 ]
             };
@@ -1363,8 +1506,11 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
             setActiveModal(null);
         } catch (err) {
             console.error("Error enviando foto lingual:", err);
+            showToast(`Error al procesar telemetría lingual: ${err.message}`, "error");
         } finally {
+            clearInterval(progressInterval);
             setIsUploading(false);
+            setTelemetryProgressMsg('');
         }
     };
 
@@ -1551,8 +1697,14 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
                                                     setLeftEyePreview(URL.createObjectURL(file));
                                                     setActiveModal('OCULAR_BINOCULAR_PREVIEW');
                                                 } else if (activeModal === 'LINGUAL') {
-                                                    setLingualFile(file);
-                                                    setLingualPreview(URL.createObjectURL(file));
+                                                    if (lingualActiveTab === 'ventral') {
+                                                        setVentralFile(file);
+                                                        setVentralPreview(URL.createObjectURL(file));
+                                                    } else {
+                                                        setLingualFile(file);
+                                                        setLingualPreview(URL.createObjectURL(file));
+                                                    }
+                                                    stopLiveCamera();
                                                 } else if (activeModal === 'VISUAL_SOMATIC') {
                                                     setSomaticFile(file);
                                                     setSomaticPreview(URL.createObjectURL(file));
@@ -1652,55 +1804,203 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
                                         </div>
                                     )}
                                 </div>
+
+                                {isUploading && (
+                                    <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-left space-y-2 animate-in fade-in">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3.5 h-3.5 border-2 border-[#1C75BC] border-t-transparent rounded-full animate-spin"></div>
+                                            <span className="text-xs font-bold text-blue-900 dark:text-blue-200">Inferencia Oculómica en Curso (Gemini 2.5 Flash)</span>
+                                        </div>
+                                        <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium">
+                                            {telemetryProgressMsg || 'Iniciando escaneo óptico multimodal...'}
+                                        </p>
+                                        <div className="w-full bg-blue-100 dark:bg-blue-900/60 rounded-full h-1 overflow-hidden">
+                                            <div className="bg-[#1C75BC] h-1 rounded-full animate-pulse w-4/5"></div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <button 
                                     onClick={submitBinocularOcular}
                                     disabled={isUploading}
-                                    className="w-full py-2.5 bg-[#1C75BC] text-white font-bold rounded-xl text-xs hover:bg-[#155d96] transition-all shadow-md flex items-center justify-center gap-2"
+                                    className="w-full py-2.5 bg-[#1C75BC] text-white font-bold rounded-xl text-xs hover:bg-[#155d96] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex items-center justify-center gap-2"
                                 >
-                                    {isUploading ? '⚡ Procesando con Gemini Vision...' : '🔬 Analizar Ambos Ojos'}
+                                    {isUploading ? (
+                                        <>
+                                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            <span>Procesando Oculómica de 6 Ejes...</span>
+                                        </>
+                                    ) : '🔬 Iniciar Análisis Oculómico de 6 Ejes'}
                                 </button>
                             </div>
                         )}
 
-                        {/* CONTENIDO MODAL LENGUA (OPCIONES DUALES - SIGHTED BLUE LOOK & FEEL) */}
+                        {/* CONTENIDO MODAL LENGUA (DUAL GLOSÓMICA: DORSAL & VENTRAL CON SUTURA ÓPTICA) */}
                         {activeModal === 'LINGUAL' && !useLiveCamera && (
-                            <div className="space-y-4 text-center">
-                                <p className="text-xs text-slate-600">Seleccione el método de captura para la superficie lingual expuesta.</p>
-                                <div className="grid grid-cols-1 gap-2.5">
+                            <div className="space-y-4">
+                                <div className="text-center space-y-1">
+                                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                        Auditoría Glosómica de 6 Ejes (Cara Dorsal & Ventral Sublingual)
+                                    </p>
+                                    <p className="text-[11px] text-slate-500">
+                                        Capture o adjunte la superficie superior (saburra) y/o la cara inferior (venas sublinguales).
+                                    </p>
+                                </div>
+
+                                {/* AVISO DE SUTURA PREVENTIVA DE CALIDAD ÓPTICA */}
+                                <div className="bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 p-2.5 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                                    <span className="text-base shrink-0">💡</span>
+                                    <p className="leading-snug">
+                                        <strong>Inmunidad Óptica:</strong> Desactive el flash directo para evitar que el brillo de la saliva simule saburra o altere el color. Use luz natural difusa.
+                                    </p>
+                                </div>
+
+                                {/* SELECTOR DE PESTAÑAS DORSAL / VENTRAL */}
+                                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl gap-1">
                                     <button 
-                                        onClick={startLiveCamera}
-                                        className="w-full py-3 bg-[#1C75BC] text-white text-xs font-bold rounded-xl hover:bg-[#155d96] transition-all shadow-sm flex items-center justify-center gap-2"
+                                        type="button"
+                                        onClick={() => setLingualActiveTab('dorsal')}
+                                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                            lingualActiveTab === 'dorsal'
+                                                ? 'bg-white dark:bg-slate-700 text-[#1C75BC] dark:text-blue-300 shadow-xs'
+                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                        }`}
                                     >
-                                        📷 Usar Cámara en Vivo (WebRTC)
+                                        <span>👅 Cara Dorsal</span>
+                                        {lingualFile && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
                                     </button>
-                                    <div className="relative border border-slate-200 rounded-xl p-3 bg-slate-50 hover:bg-slate-100 transition-all text-left">
-                                        <label className="text-[10px] font-bold text-slate-500 block uppercase mb-1">📁 O seleccionar archivo de disco/galería</label>
-                                        <input 
-                                            type="file" 
-                                            accept="image/*" 
-                                            onChange={(e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    setLingualFile(file);
-                                                    setLingualPreview(URL.createObjectURL(file));
-                                                }
-                                            }}
-                                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-[#1C75BC] hover:file:bg-blue-100 cursor-pointer"
-                                        />
+                                    <button 
+                                        type="button"
+                                        onClick={() => setLingualActiveTab('ventral')}
+                                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                            lingualActiveTab === 'ventral'
+                                                ? 'bg-white dark:bg-slate-700 text-[#1C75BC] dark:text-blue-300 shadow-xs'
+                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                        }`}
+                                    >
+                                        <span>🔬 Cara Ventral (Venas)</span>
+                                        {ventralFile && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
+                                    </button>
+                                </div>
+
+                                {/* ÁREA DE CAPTURA SEGÚN PESTAÑA ACTIVA */}
+                                <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-3 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                                            {lingualActiveTab === 'dorsal' ? 'Dorso (Saburra, Fisuras & Papilas)' : 'Ventral (Venas Raninas & Estasis)'}
+                                        </span>
+                                        {(lingualActiveTab === 'dorsal' ? lingualFile : ventralFile) && (
+                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                                                ✓ Capturada
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button 
+                                            type="button"
+                                            onClick={startLiveCamera}
+                                            className="py-2.5 px-3 bg-[#1C75BC] hover:bg-[#155d96] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5"
+                                        >
+                                            📷 Cámara WebRTC
+                                        </button>
+                                        <label className="py-2.5 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                                            <span>📁 Archivo</span>
+                                            <input 
+                                                type="file" 
+                                                accept="image/*" 
+                                                onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        if (lingualActiveTab === 'ventral') {
+                                                            setVentralFile(file);
+                                                            setVentralPreview(URL.createObjectURL(file));
+                                                        } else {
+                                                            setLingualFile(file);
+                                                            setLingualPreview(URL.createObjectURL(file));
+                                                        }
+                                                    }
+                                                }}
+                                                className="hidden"
+                                            />
+                                        </label>
                                     </div>
                                 </div>
-                                {lingualPreview && (
-                                    <div className="flex flex-col items-center gap-2 pt-2 border-t border-slate-100">
-                                        <img src={lingualPreview} alt="Lengua" className="w-24 h-24 object-cover rounded-xl border border-slate-200 shadow-xs" />
-                                        <button 
-                                            onClick={() => submitLingualScan(lingualFile)}
-                                            disabled={isUploading}
-                                            className="w-full py-2.5 bg-[#1C75BC] text-white font-bold rounded-xl text-xs hover:bg-[#155d96] transition-all shadow-md"
-                                        >
-                                            {isUploading ? '⚡ Analizando Lengua...' : '🔬 Procesar Foto Lingual'}
-                                        </button>
+
+                                {/* PREVIEW DUAL DE AMBAS TOMAS */}
+                                {(lingualPreview || ventralPreview) && (
+                                    <div className="grid grid-cols-2 gap-3 pt-1">
+                                        <div className="flex flex-col items-center gap-1 p-2 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700">
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase">Dorsal (Saburra)</span>
+                                            {lingualPreview ? (
+                                                <div className="relative group">
+                                                    <img src={lingualPreview} alt="Dorsal" className="w-20 h-20 object-cover rounded-lg border border-slate-300 dark:border-slate-600 shadow-xs" />
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => { setLingualFile(null); setLingualPreview(null); }}
+                                                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="w-20 h-20 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg flex items-center justify-center text-[10px] text-slate-400 text-center px-1">
+                                                    Sin captura
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="flex flex-col items-center gap-1 p-2 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700">
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase">Ventral (Venas)</span>
+                                            {ventralPreview ? (
+                                                <div className="relative group">
+                                                    <img src={ventralPreview} alt="Ventral" className="w-20 h-20 object-cover rounded-lg border border-slate-300 dark:border-slate-600 shadow-xs" />
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => { setVentralFile(null); setVentralPreview(null); }}
+                                                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="w-20 h-20 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg flex items-center justify-center text-[10px] text-slate-400 text-center px-1">
+                                                    Opcional
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
+
+                                {/* TICKER DINÁMICO DE PROGRESO */}
+                                {isUploading && (
+                                    <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-xl space-y-1.5 animate-in fade-in">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2.5 h-2.5 rounded-full bg-[#1C75BC] animate-ping"></div>
+                                            <span className="text-xs font-bold text-blue-900 dark:text-blue-200">Inferencia Glosómica en Curso (Gemini Vision)</span>
+                                        </div>
+                                        <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium">
+                                            {telemetryProgressMsg || 'Iniciando glosodiagnóstico funcional...'}
+                                        </p>
+                                        <div className="w-full bg-blue-100 dark:bg-blue-900/60 rounded-full h-1 overflow-hidden">
+                                            <div className="bg-[#1C75BC] h-1 rounded-full animate-pulse w-4/5"></div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <button 
+                                    type="button"
+                                    onClick={submitLingualScan}
+                                    disabled={isUploading || (!lingualFile && !ventralFile)}
+                                    className="w-full py-2.5 bg-[#1C75BC] text-white font-bold rounded-xl text-xs hover:bg-[#155d96] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex items-center justify-center gap-2"
+                                >
+                                    {isUploading ? (
+                                        <>
+                                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            <span>Procesando Glosómica de 6 Ejes...</span>
+                                        </>
+                                    ) : '🔬 Iniciar Análisis Glosómico de 6 Ejes'}
+                                </button>
                             </div>
                         )}
 

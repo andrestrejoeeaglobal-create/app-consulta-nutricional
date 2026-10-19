@@ -14,26 +14,9 @@ const { parseElectretHTML, parseElectretJSON, normalizeClinicalName, parseLocalD
  * Protegido con try/catch para evitar EPERM si Windows restringe permisos en Program Files (Sutura 1).
  */
 function sterilizeElectretReport() {
-    const candidatePaths = [
-        "C:\\Program Files (x86)\\Sistema Cuántico Bio-Eléctrico (4)\\ResultOne.htm",
-        "C:\\Program Files (x86)\\Sistema Cuántico Bio-Eléctrico\\ResultOne.htm",
-        "C:\\Program Files (x86)\\Electret\\ResultOne.htm",
-        "C:\\TILO\\DataBase\\ResultOne.htm"
-    ];
-
-    let purgedCount = 0;
-    for (const p of candidatePaths) {
-        try {
-            if (fs.existsSync(p)) {
-                fs.unlinkSync(p);
-                purgedCount++;
-                console.log(`🧹 [ESTERILIZACIÓN NOM-004] Archivo residual ${p} eliminado físicamente con éxito.`);
-            }
-        } catch (uacErr) {
-            console.warn(`🛡️ [ESTERILIZACIÓN NOM-004] Windows UAC impidió la eliminación física de ${p} (${uacErr.code || uacErr.message}). La protección se delega al Candado Biométrico y Temporal de Capa 2.`);
-        }
-    }
-    return purgedCount;
+    // 🛡️ NOM-004: Conservación del reporte consolidado ResultOne.htm en disco.
+    // La protección contra contaminación cruzada se realiza mediante el Candado Biométrico (checkPatientMatch).
+    return 0;
 }
 
 /**
