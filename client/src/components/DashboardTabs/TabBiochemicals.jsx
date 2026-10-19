@@ -202,25 +202,21 @@ export const TabBiochemicals = ({
             }
         }
 
-        const metricsToCheck = patientData?.scan_data?.electret_metrics || (genomeTelemetry?.isScanned ? genomeTelemetry?.categories : null);
+        const metricsToCheck = (genomeTelemetry?.isScanned && Object.keys(genomeTelemetry?.categories || {}).length > 0)
+            ? genomeTelemetry.categories
+            : patientData?.scan_data?.electret_metrics;
         if (!metricsToCheck) return false;
 
-        // 2. Extraer nombre del paciente desde metadatos parseados o payload
+        // 2. Extraer nombre del paciente únicamente desde metadatos explícitos de paciente (NUNCA usar regex sobre "name" general porque coincide con el nombre de cada biomarcador como "Viscosidad de la Sangre")
         let scannedName = null;
         if (metricsToCheck?.patient_metadata?.name) {
             scannedName = metricsToCheck.patient_metadata.name;
         } else if (metricsToCheck?.patient_name) {
             scannedName = metricsToCheck.patient_name;
+        } else if (patientData?.scan_data?.electret_patient_name) {
+            scannedName = patientData.scan_data.electret_patient_name;
         } else if (genomeTelemetry?.patientName) {
             scannedName = genomeTelemetry.patientName;
-        } else {
-            // Intento de extracción por expresiones regulares en JSON
-            const jsonStr = JSON.stringify(metricsToCheck);
-            const match = jsonStr.match(/"(?:nombre|paciente|name)"\s*:\s*"([^"]+)"/i) || 
-                          jsonStr.match(/(?:nombre|paciente|name):\s*([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)/i);
-            if (match && match[1]) {
-                scannedName = match[1].trim();
-            }
         }
 
         if (scannedName && activePatientFullName) {
@@ -231,7 +227,7 @@ export const TabBiochemicals = ({
             }
         }
         return true;
-    }, [patientData?.scan_data?.electret_metrics, genomeTelemetry, activePatientFullName]);
+    }, [patientData?.scan_data?.electret_metrics, patientData?.scan_data?.electret_patient_name, genomeTelemetry, activePatientFullName]);
 
     // Purga activa en Zustand si se detecta contaminación cruzada
     React.useEffect(() => {
@@ -242,7 +238,11 @@ export const TabBiochemicals = ({
     }, [isElectretValidForCurrentPatient, genomeTelemetry?.isScanned]);
 
     const isScanned = (patientData?.scan_data?.electret_scanned || genomeTelemetry?.isScanned) && isElectretValidForCurrentPatient;
-    const validElectretMetrics = isScanned ? (patientData?.scan_data?.electret_metrics || genomeTelemetry?.categories) : null;
+    const validElectretMetrics = isScanned
+        ? ((genomeTelemetry?.isScanned && Object.keys(genomeTelemetry?.categories || {}).length >= Object.keys(patientData?.scan_data?.electret_metrics || {}).length)
+            ? genomeTelemetry.categories
+            : (patientData?.scan_data?.electret_metrics || genomeTelemetry?.categories))
+        : null;
 
     // INYECCIÓN ANTIGRAVITY: Rehidratación de estado global (Prevención de Amnesia F5)
     React.useEffect(() => {
@@ -260,23 +260,60 @@ export const TabBiochemicals = ({
         if (!isElectretValidForCurrentPatient) return {};
         let rawSource = null;
         
-        // 1. SSOT: Zustand manda si el escaneo está validado y pertenece al paciente
-        if (genomeTelemetry?.isScanned && Object.keys(genomeTelemetry.categories || {}).length > 0) {
-            rawSource = genomeTelemetry.categories;
-        } 
-        // 2. Respaldo local
-        else if (validElectretMetrics) {
-            rawSource = validElectretMetrics;
+        const zustandCats = genomeTelemetry?.categories || {};
+        const localCats = validElectretMetrics || {};
+
+        // Priorizar la fuente que tenga el reporte completo (37 categorías vs 1 categoría parcial)
+        if (genomeTelemetry?.isScanned && Object.keys(zustandCats).length >= Object.keys(localCats).length && Object.keys(zustandCats).length > 0) {
+            rawSource = zustandCats;
+        } else if (Object.keys(localCats).length > 0) {
+            rawSource = localCats;
         }
 
         if (!rawSource) return {};
         
-        // 3. Procesamiento protegido por el cortocircuito del parser
+        // Procesamiento protegido por el cortocircuito del parser
         const parsed = parseElectretData(rawSource);
         return parsed?.categories || rawSource;
     }, [validElectretMetrics, genomeTelemetry, isElectretValidForCurrentPatient]);
 
     const categoriesKeys = Object.keys(activeMetrics);
+
+    // 🔄 Auto-Rescate de Reporte Consolidado Completo (37 Categorías):
+    // Si el expediente tiene telemetría incompleta (< 10 categorías, ej. solo Cardiovascular por caché previa) o acaba de recargar F5 en Fase 18, sincronizar automáticamente con ResultOne.htm
+    const hasAutoUpgradedRef = React.useRef(false);
+    React.useEffect(() => {
+        if (!activePatientFullName) return;
+        if (categoriesKeys.length >= 20) return;
+        if (hasAutoUpgradedRef.current) return;
+
+        hasAutoUpgradedRef.current = true;
+        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+        fetch(`${cleanBase}/api/bio/scan/electret/sync?patientName=${encodeURIComponent(activePatientFullName)}&_t=${Date.now()}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            },
+            body: JSON.stringify({ patientName: activePatientFullName })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data?.success && data?.electret_metrics && Object.keys(data.electret_metrics).length > 0) {
+                    useClinicalGenome.getState().setElectretTelemetry({
+                        categories: data.electret_metrics,
+                        patientName: data?.patientMetadata?.name || activePatientFullName,
+                        isScanned: true,
+                        totalParameters: data.totalParameters || 253,
+                        abnormalCount: data.abnormalCount || 0
+                    });
+                }
+            })
+            .catch(err => console.warn("⚠️ Auto-upgrade Electret:", err.message));
+    }, [activePatientFullName, categoriesKeys.length]);
+
     const activeCategory = selectedCategory || (categoriesKeys.length > 0 ? categoriesKeys[0] : null);
 
     const CATEGORIAS_CLINICAS = {
