@@ -95,10 +95,15 @@ function cleanFloat(val) {
 function evalParamStatus(imgSrc, val, ref) {
     if (imgSrc) {
         const s = String(imgSrc).toLowerCase();
-        if (s.includes('yc07') || s.includes('yc08') || s.includes('+++')) return 'ANORMAL SEVERO';
-        if (s.includes('yc05') || s.includes('yc06') || s.includes('++')) return 'ANORMAL MODERADO';
-        if (s.includes('yc03') || s.includes('yc04') || s.includes('+')) return 'ANORMAL LEVE';
-        if (s.includes('yc01') || s.includes('yc02') || s.includes('normal')) return 'NORMAL';
+        // Mapeo canónico del semáforo cuántico Electret:
+        // YC01 / YC07: Extremos (- - - / + + +) -> ANORMAL SEVERO
+        // YC02 / YC06: Medios (- - / + +) -> ANORMAL MODERADO
+        // YC03 / YC05 / YC09: Ligeros (- / +) -> ANORMAL LEVE
+        // YC04 / YC08: Centro verde (Dentro de rango / Normal) -> NORMAL
+        if (s.includes('yc01') || s.includes('yc07') || s.includes('ycmark1') || s.includes('+++')) return 'ANORMAL SEVERO';
+        if (s.includes('yc02') || s.includes('yc06') || s.includes('ycmark2') || s.includes('++')) return 'ANORMAL MODERADO';
+        if (s.includes('yc03') || s.includes('yc05') || s.includes('yc09') || s.includes('ycmark3') || s.includes('+')) return 'ANORMAL LEVE';
+        if (s.includes('yc04') || s.includes('yc08') || s.includes('ycmark4') || s.includes('normal')) return 'NORMAL';
     }
 
     if (ref && String(ref).includes('-')) {
@@ -124,6 +129,7 @@ function evalParamStatus(imgSrc, val, ref) {
  * Mapeo canónico de categorías para garantizar consistencia entre reportes heterogéneos
  */
 const CATEGORY_MAP = {
+    'cardiovasculares_y_cerebrovasculares': 'cardiovascular',
     'cardiovascular_y_cerebrovascular': 'cardiovascular',
     'cardiovascular_y_cerebrovasculares': 'cardiovascular',
     'cardiovascular': 'cardiovascular',
@@ -152,27 +158,37 @@ const CATEGORY_MAP = {
     'enfermedad_de_hueso_reumatoide': 'rheumatoid',
     'indice_de_crecimiento_oseo': 'bone_growth',
     'glucosa_en_la_sangre': 'blood_sugar',
+    'oligoelementos': 'trace_elements',
     'oligoelementos_y_minerales': 'trace_elements',
-    'minerales': 'trace_elements',
+    'vitamina': 'vitamins',
     'vitaminas': 'vitamins',
     'aminoacidos': 'amino_acids',
+    'coenzima': 'coenzymes',
     'coenzimas': 'coenzymes',
+    'acido_graso': 'fatty_acids',
+    'acidos_grasos': 'fatty_acids',
     'sistema_endocrino': 'endocrine',
     'sistema_inmunologico': 'immune',
     'tiroides': 'thyroid',
+    'toxina_humana': 'toxins',
     'toxinas_humanas': 'toxins',
     'metales_pesados': 'heavy_metals',
-    'condicion_fisica_basica': 'physical',
+    'condicion_fisica_basica': 'basic_physical',
     'alergias': 'allergies',
-    'obesidad_y_composicion_fatmass': 'obesity',
-    'piel_y_tejido_cutaneo': 'skin',
-    'ojo_y_funcion_visual': 'eye',
+    'obesidad': 'obesity',
+    'piel': 'skin',
+    'ojo': 'eye',
     'colageno': 'collagen',
+    'meridianos_o_canales_de_acupuntura': 'meridians',
     'meridianos_bioenergetica': 'meridians',
-    'pulso_y_ritmo_cardiaco': 'pulse',
-    'lipidos_sanguineos': 'lipids',
+    'pulso_cerebro_y_corazon': 'pulso_cerebro_y_corazon',
+    'lipidos_sanguineos': 'blood_lipids',
+    'ginecologia': 'gynecology',
+    'senos': 'breasts',
+    'cyclo_menstrual': 'menstrual_cycle',
+    'elementos_humanos': 'body_composition',
     'prostata': 'prostate',
-    'esperma_y_semen': 'sperm',
+    'esperma_y_semen': 'sperm_semen',
     'funcion_sexual_masculina': 'male_sexual'
 };
 
@@ -208,100 +224,96 @@ function parseElectretHTML(htmlContent) {
 
     const $ = cheerio.load(htmlContent);
     const resultCategories = {};
-    let currentCategoryRaw = "General";
-    let currentCategoryKey = "general";
     let totalParams = 0;
     let abnormalCount = 0;
 
-    $('body, div, table').find('h1, h2, h3, h4, .title, table').each((_, el) => {
-        const $el = $(el);
-        const tag = el.name ? el.name.toLowerCase() : '';
+    // Iteración canónica sobre cada encabezado de categoría clínica
+    $('font[size="6"]').each(function() {
+        const rawHeading = $(this).text().trim();
+        // Exclusión obligatoria de informes de síntesis/resumen para prevenir colisiones y duplicaciones
+        const lowerHeading = rawHeading.toLowerCase();
+        if (lowerHeading.includes('análisis de expertos') || 
+            lowerHeading.includes('análisis de la mano') || 
+            lowerHeading.includes('síntesis') || 
+            lowerHeading.includes('resumen')) {
+            return;
+        }
 
-        if (['h1', 'h2', 'h3', 'h4'].includes(tag) || $el.hasClass('title')) {
-            const titleText = $el.text().trim();
-            if (titleText && titleText.length > 2 && titleText.length < 120 && !titleText.toLowerCase().includes('informe')) {
-                currentCategoryRaw = titleText;
-                const normalized = normalizeKey(titleText);
-                currentCategoryKey = CATEGORY_MAP[normalized] || normalized;
+        // Extracción de categoría: ej. "(Cardiovasculares y Cerebrovasculares)Informe del Análisis" -> "Cardiovasculares y Cerebrovasculares"
+        const catMatch = rawHeading.match(/\((.*?)\)/);
+        const catTitle = catMatch ? catMatch[1].trim() : rawHeading.replace(/informe.*$/i, '').trim();
+        if (!catTitle) return;
 
-                if (!resultCategories[currentCategoryKey]) {
-                    resultCategories[currentCategoryKey] = {
-                        title: currentCategoryRaw,
-                        key: currentCategoryKey,
-                        total: 0,
-                        abnormalCount: 0,
-                        items: [],
-                        itemsDict: {}
-                    };
+        const normKey = normalizeKey(catTitle);
+        const catKey = CATEGORY_MAP[normKey] || normKey;
+
+        // Contenedor delimitado de la página
+        const container = $(this).closest('div[style*="page-break"]').length 
+            ? $(this).closest('div[style*="page-break"]')
+            : $(this).closest('table').parent();
+
+        // Localizar exclusivamente la tabla principal de resultados de este bloque
+        const targetTable = container.find('table.table').first();
+        if (!targetTable.length) return;
+
+        if (!resultCategories[catKey]) {
+            resultCategories[catKey] = {
+                title: catTitle,
+                key: catKey,
+                total: 0,
+                abnormalCount: 0,
+                items: [],
+                itemsDict: {}
+            };
+        }
+
+        targetTable.find('tr').each(function() {
+            const tds = $(this).find('td');
+            if (tds.length < 3) return;
+
+            let name = $(tds[0]).text().trim();
+            let ref = $(tds[1]).text().trim();
+            let val = $(tds[2]).text().trim();
+            let imgSrc = $(tds[3]).find('img, image').attr('src') || $(this).find('img, image').attr('src') || '';
+
+            // Filtrado defensivo estricto contra filas de encabezado o metadatos
+            const lowerName = name.toLowerCase();
+            if (lowerName.includes('objeto') || lowerName.includes('examinado') || lowerName.includes('analizado') || lowerName.includes('rango normal') || lowerName.includes('parámetro')) {
+                return;
+            }
+            if (name.includes(':') && (lowerName.includes('nombre') || lowerName.includes('complexión') || lowerName.includes('sexo') || lowerName.includes('edad'))) {
+                return;
+            }
+
+            const paramKey = normalizeKey(name);
+            const cleanValNum = cleanFloat(val);
+            const status = evalParamStatus(imgSrc, val, ref);
+
+            const paramObj = {
+                name,
+                key: paramKey,
+                value: String(val),
+                val: String(val),
+                raw_value: String(val),
+                numeric_value: cleanValNum,
+                reference: String(ref),
+                ref: String(ref),
+                status
+            };
+
+            // Inserción garantizada libre de duplicados
+            if (!resultCategories[catKey].itemsDict[paramKey]) {
+                resultCategories[catKey].itemsDict[paramKey] = paramObj;
+                resultCategories[catKey].items.push(paramObj);
+                resultCategories[catKey].total += 1;
+                totalParams += 1;
+
+                if (status !== 'NORMAL' && status !== 'NORMAL (-)' && status !== '-') {
+                    resultCategories[catKey].abnormalCount += 1;
+                    abnormalCount += 1;
                 }
             }
-        } else if (tag === 'table') {
-            $el.find('tr').each((_, tr) => {
-                const $tr = $(tr);
-                const tds = $tr.find('td');
-
-                let name = "";
-                let ref = "";
-                let val = "";
-                let imgSrc = "";
-
-                tds.each((_, td) => {
-                    const $img = $(td).find('img');
-                    if ($img.length > 0) {
-                        imgSrc = $img.attr('src') || "";
-                    }
-                });
-
-                if (tds.length >= 4) {
-                    name = $(tds[1]).text().trim();
-                    ref = $(tds[2]).text().trim();
-                    val = $(tds[3]).text().trim();
-                } else if (tds.length === 3) {
-                    name = $(tds[0]).text().trim();
-                    ref = $(tds[1]).text().trim();
-                    val = $(tds[2]).text().trim();
-                }
-
-                if (name && val && ref && !name.toLowerCase().includes('objeto analizado') && !name.toLowerCase().includes('parametro') && !name.toLowerCase().includes('clasificac')) {
-                    if (!resultCategories[currentCategoryKey]) {
-                        resultCategories[currentCategoryKey] = {
-                            title: currentCategoryRaw,
-                            key: currentCategoryKey,
-                            total: 0,
-                            abnormalCount: 0,
-                            items: [],
-                            itemsDict: {}
-                        };
-                    }
-
-                    const paramKey = normalizeKey(name);
-                    const cleanValNum = cleanFloat(val);
-                    const status = evalParamStatus(imgSrc, val, ref);
-
-                    const paramObj = {
-                        name,
-                        key: paramKey,
-                        value: String(val),
-                        val: String(val),
-                        raw_value: String(val),
-                        numeric_value: cleanValNum,
-                        reference: String(ref),
-                        ref: String(ref),
-                        status
-                    };
-
-                    resultCategories[currentCategoryKey].itemsDict[paramKey] = paramObj;
-                    resultCategories[currentCategoryKey].items.push(paramObj);
-                    resultCategories[currentCategoryKey].total += 1;
-                    totalParams += 1;
-
-                    if (status !== 'NORMAL' && status !== 'NORMAL (-)' && status !== '-') {
-                        resultCategories[currentCategoryKey].abnormalCount += 1;
-                        abnormalCount += 1;
-                    }
-                }
-            });
-        }
+        });
     });
 
     return {
