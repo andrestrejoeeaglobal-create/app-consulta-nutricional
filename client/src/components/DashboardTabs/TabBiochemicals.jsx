@@ -363,6 +363,9 @@ export const TabBiochemicals = ({
         informe_de_anlisis_de_la_mano: "Informe de Análisis de la Mano"
     };
 
+    const [showAllSystemsMenu, setShowAllSystemsMenu] = useState(false);
+    const [systemSearchQuery, setSystemSearchQuery] = useState('');
+
     const getCategoryItems = (catData) => {
         if (!catData) return [];
         if (Array.isArray(catData)) return catData;
@@ -383,6 +386,9 @@ export const TabBiochemicals = ({
         if (!status || typeof status !== 'string') {
             return {
                 bg: "bg-slate-100 text-slate-700 border-slate-200",
+                borderLeft: "border-l-slate-400",
+                calloutBg: "bg-slate-600 text-white",
+                calloutArrow: "border-b-slate-600",
                 label: "Informativo / Métrica Base",
                 icon: <span className="text-slate-400 text-xs">📊</span>
             };
@@ -390,31 +396,46 @@ export const TabBiochemicals = ({
         const s = status.toUpperCase().trim();
         if (s.includes('SEVERO') || s === 'CRITICAL' || s === '+++') {
             return {
-                bg: "bg-red-50 text-red-700 border-red-200 font-extrabold",
-                label: "Anormal Severo (+++)",
-                icon: <AlertTriangle size={12} className="text-red-500 animate-pulse" />
+                bg: "bg-red-50 text-[#E30613] border-red-200 font-extrabold",
+                borderLeft: "border-l-[#E30613]",
+                calloutBg: "bg-[#E30613] text-white",
+                calloutArrow: "border-b-[#E30613]",
+                label: "ANORMAL SEVERO (+++)",
+                icon: <AlertTriangle size={12} className="text-[#E30613] animate-pulse" />
             };
         } else if (s.includes('MODERADO') || s === 'WARNING' || s === '++') {
             return {
                 bg: "bg-orange-50 text-orange-700 border-orange-200 font-bold",
-                label: "Anormal Moderado (++)",
-                icon: <AlertTriangle size={12} className="text-orange-500" />
+                borderLeft: "border-l-orange-500",
+                calloutBg: "bg-orange-600 text-white",
+                calloutArrow: "border-b-orange-600",
+                label: "ANORMAL MODERADO (++)",
+                icon: <AlertTriangle size={12} className="text-orange-600" />
             };
         } else if (s.includes('LEVE') || s === '+') {
             return {
-                bg: "bg-amber-50 text-amber-700 border-amber-200",
-                label: "Anormal Leve (+)",
-                icon: <span className="text-amber-500 text-xs">⚠️</span>
+                bg: "bg-amber-50 text-amber-700 border-amber-200 font-bold",
+                borderLeft: "border-l-amber-500",
+                calloutBg: "bg-amber-600 text-white",
+                calloutArrow: "border-b-amber-600",
+                label: "ANORMAL LEVE (+)",
+                icon: <AlertTriangle size={12} className="text-amber-600" />
             };
         } else if (s.includes('NORMAL') || s === '-') {
             return {
-                bg: "bg-green-50 text-green-700 border-green-200",
-                label: "Normal (-)",
-                icon: <CheckCircle2 size={12} className="text-green-500" />
+                bg: "bg-green-50 text-[#3AAA35] border-green-200 font-bold",
+                borderLeft: "border-l-[#3AAA35]",
+                calloutBg: "bg-[#3AAA35] text-white",
+                calloutArrow: "border-b-[#3AAA35]",
+                label: "NORMAL (-)",
+                icon: <CheckCircle2 size={12} className="text-[#3AAA35]" />
             };
         }
         return {
             bg: "bg-slate-100 text-slate-700 border-slate-200",
+            borderLeft: "border-l-slate-400",
+            calloutBg: "bg-slate-600 text-white",
+            calloutArrow: "border-b-slate-600",
             label: status,
             icon: <span className="text-slate-400 text-xs">⚪</span>
         };
@@ -430,6 +451,148 @@ export const TabBiochemicals = ({
             }
             return acc;
         }, 0);
+    };
+
+    /**
+     * 📐 Motor Matemático del Espectro Fisiológico (La Barra Termodinámica)
+     * Blindado contra comas decimales europeas, rangos invertidos (ej. 0,796 - 0,433) y valores no numéricos.
+     */
+    const computeThermodynamicSpectrum = (valRaw, refRaw) => {
+        if (valRaw === null || valRaw === undefined || refRaw === null || refRaw === undefined) {
+            return { isRenderable: false };
+        }
+        const refStr = String(refRaw).trim();
+        const valStr = String(valRaw).trim();
+
+        // Excluir rangos descriptivos o porcentuales compuestos (ej. "Sin Dirección", "+", "< u 0,2", "Mediciones")
+        if (!refStr.includes('-') || refStr.includes('<') || refStr.includes('>') || refStr.includes('%')) {
+            return { isRenderable: false };
+        }
+
+        const rangeMatch = refStr.match(/^\s*(-?\d+(?:[.,]\d+)?)\s*-\s*(-?\d+(?:[.,]\d+)?)\s*$/);
+        if (!rangeMatch) {
+            return { isRenderable: false };
+        }
+
+        const numA = parseFloat(rangeMatch[1].replace(',', '.'));
+        const numB = parseFloat(rangeMatch[2].replace(',', '.'));
+        const numVal = parseFloat(valStr.replace(',', '.'));
+
+        if (isNaN(numA) || isNaN(numB) || isNaN(numVal) || numA === numB) {
+            return { isRenderable: false };
+        }
+
+        // Blindaje contra rangos invertidos de fábrica en ResultOne.htm (ej. Densidad Mineral Ósea: 0,796 - 0,433)
+        const min = Math.min(numA, numB);
+        const max = Math.max(numA, numB);
+        const span = max - min;
+
+        let rawPct = 50;
+        let zone = 'OPTIMAL';
+        let calloutText = `${valStr} (Dentro de límite)`;
+
+        const formatDelta = (n) => Number(n.toFixed(3)).toString();
+
+        if (numVal < min) {
+            zone = 'LOW';
+            const deficitRatio = Math.min((min - numVal) / (span || 1), 1.5) / 1.5;
+            rawPct = 33.33 - (deficitRatio * 25.33);
+            calloutText = `${valStr} (Déficit -${formatDelta(min - numVal)})`;
+        } else if (numVal > max) {
+            zone = 'HIGH';
+            const excessRatio = Math.min((numVal - max) / (span || 1), 1.5) / 1.5;
+            rawPct = 66.67 + (excessRatio * 25.33);
+            calloutText = `${valStr} (Excede +${formatDelta(numVal - max)})`;
+        } else {
+            zone = 'OPTIMAL';
+            const optRatio = (numVal - min) / span;
+            rawPct = 33.33 + (optRatio * 33.34);
+            calloutText = `${valStr} (Dentro de límite)`;
+        }
+
+        const positionPct = Math.max(8, Math.min(92, Number(rawPct.toFixed(2))));
+
+        return {
+            isRenderable: true,
+            min,
+            max,
+            numVal,
+            zone,
+            positionPct,
+            calloutText,
+            cleanRangeLabel: `${min} – ${max}`
+        };
+    };
+
+    const getSystemMeta = (catKey) => {
+        const key = String(catKey || '').toLowerCase();
+        if (['cardiovascular', 'pulso_cerebro_y_corazon', 'blood_lipids'].includes(key)) {
+            return {
+                domain: 'SISTEMA CARDIOVASCULAR Y HEMODINÁMICO',
+                desc: 'Evaluación bioeléctrica de perfusión tisular, resistencia vascular, elasticidad endotelial y reología sanguínea.'
+            };
+        }
+        if (['gastrointestinal', 'colon', 'liver', 'gallbladder', 'pancreas'].includes(key)) {
+            return {
+                domain: 'SISTEMA DIGESTIVO Y HEPATOBILIAR',
+                desc: 'Mapeo de motilidad peristáltica, absorción enterocitaria, biotransformación hepática y cinética enzimática.'
+            };
+        }
+        if (['bone_disease', 'bone_density', 'rheumatoid', 'bone_growth'].includes(key)) {
+            return {
+                domain: 'SISTEMA OSTEOARTICULAR Y ESTRUCTURAL',
+                desc: 'Evaluación polarimétrica de micro-calcificaciones, densidad trabecular, recambio óseo e inflamación tisular.'
+            };
+        }
+        if (['trace_elements', 'vitamins', 'amino_acids', 'coenzymes', 'fatty_acids'].includes(key)) {
+            return {
+                domain: 'RESERVA MICRONUTRICIONAL Y COENZIMÁTICA',
+                desc: 'Cuantificación biosemántica de cofactores catalíticos celulares, oligoelementos, vitaminas y sustratos esenciales.'
+            };
+        }
+        if (['endocrine', 'thyroid', 'blood_sugar', 'blood_glucose', 'obesity'].includes(key)) {
+            return {
+                domain: 'EJE ENDOCRINO-METABÓLICO',
+                desc: 'Análisis de señalización hormonal, sensibilidad insulínica, tasa metabólica tiroidea y oxidación lipídica.'
+            };
+        }
+        if (['immune', 'allergies', 'toxins', 'heavy_metals'].includes(key)) {
+            return {
+                domain: 'INMUNOLOGÍA Y CARGA XENOBIÓTICA',
+                desc: 'Tamizaje de reactividad inmunológica mucosa, hipersensibilidad ambiental y retención de metales pesados.'
+            };
+        }
+        if (['skin', 'eye', 'collagen'].includes(key)) {
+            return {
+                domain: 'MATRIZ EXTRACELULAR Y TEGUMENTOS',
+                desc: 'Integridad de fibras de colágeno estructural, hidratación epidérmica y microcirculación neuro-ocular.'
+            };
+        }
+        return {
+            domain: 'TELEMETRÍA SISTÉMICA FUNCIONAL',
+            desc: 'Evaluación electromagnética celular no invasiva y mapeo de reactividad bioeléctrica de precisión.'
+        };
+    };
+
+    const getBiosemanticInference = (marker, spectrum) => {
+        if (marker?.translation) return marker.translation;
+        if (marker?.description) return marker.description;
+
+        const name = marker?.name || 'Parámetro biológico';
+        const s = String(marker?.status || 'NORMAL').toUpperCase();
+
+        if (s.includes('NORMAL') || s === '-') {
+            return `${name} en equilibrio fisiológico compatible con homeostasis celular y adecuada respuesta metabólica.`;
+        }
+        if (spectrum?.isRenderable) {
+            if (spectrum.zone === 'HIGH') {
+                return `Elevación bioeléctrica en ${name} por encima del umbral óptimo (${spectrum.max}). Sugiere sobrecarga funcional o demanda adaptativa tisular que requiere modulación nutricional.`;
+            }
+            if (spectrum.zone === 'LOW') {
+                return `Disminución bioeléctrica en ${name} por debajo del umbral fisiológico (${spectrum.min}). Sugiere depleción de reserva funcional o requerimiento de soporte celular dirigido.`;
+            }
+        }
+        return `Variación biosemántica detectada en ${name} (${marker?.status}). Se recomienda correlación clínica integral dentro del protocolo personalizado.`;
     };
 
     const activeSubstep = patientData?.scan_data?.active_substep;
@@ -627,38 +790,150 @@ export const TabBiochemicals = ({
                                 </p>
                             </div>
                         ) : (
-                            <div className="flex flex-col md:flex-row h-[750px] divide-y md:divide-y-0 md:divide-x divide-slate-150">
-                                {/* Sidebar Left: Categories */}
-                                <div className="w-full md:w-1/3 overflow-y-auto p-3 bg-slate-50 space-y-1 custom-scrollbar">
-                                    {categoriesKeys.map(catKey => {
-                                        const title = CATEGORIAS_CLINICAS[catKey] || catKey.replace(/_/g, ' ');
-                                        const abnormalCount = getCategoryAbnormalCount(catKey);
-                                        const isSelected = catKey === activeCategory;
-                                        
-                                        return (
+                            <div className="flex flex-col bg-[#FAFAFA] dark:bg-slate-900">
+                                {/* 🧭 1. NAVEGACIÓN ANATÓMICA HORIZONTAL + MENÚ BUSCABLE DE 37 CATEGORÍAS */}
+                                <div className="relative bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-3">
+                                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                                        <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 shrink-0 mr-1">
+                                            <span className="text-[#1C75BC]">❖</span> SISTEMAS:
+                                        </span>
+
+                                        {(() => {
+                                            // Garantizar que la categoría activa siempre sea visible en la tira rápida superior (primeros 5 lugares)
+                                            const baseSlice = categoriesKeys.slice(0, 5);
+                                            const visiblePills = activeCategory && !baseSlice.includes(activeCategory)
+                                                ? [activeCategory, ...categoriesKeys.filter(k => k !== activeCategory).slice(0, 4)]
+                                                : baseSlice;
+
+                                            return visiblePills.map(catKey => {
+                                                const title = CATEGORIAS_CLINICAS[catKey] || catKey.replace(/_/g, ' ');
+                                                const abnormalCount = getCategoryAbnormalCount(catKey);
+                                                const isSelected = catKey === activeCategory;
+
+                                                return (
+                                                    <button
+                                                        key={catKey}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedCategory(catKey);
+                                                            setShowAllSystemsMenu(false);
+                                                        }}
+                                                        className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer border ${
+                                                            isSelected
+                                                                ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm'
+                                                                : 'bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:bg-slate-200/70'
+                                                        }`}
+                                                    >
+                                                        <span className="truncate max-w-[180px]">{title}</span>
+                                                        {abnormalCount > 0 ? (
+                                                            <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                                                                isSelected
+                                                                    ? 'bg-[#E30613] text-white ring-1 ring-white/80'
+                                                                    : 'bg-[#E30613] text-white'
+                                                            }`}>
+                                                                {abnormalCount}
+                                                            </span>
+                                                        ) : (
+                                                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                                                                isSelected
+                                                                    ? 'bg-white/20 text-white'
+                                                                    : 'bg-[#3AAA35]/15 text-[#3AAA35]'
+                                                            }`}>
+                                                                OK
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            });
+                                        })()}
+
+                                        {categoriesKeys.length > 5 && (
                                             <button
-                                                key={catKey}
                                                 type="button"
-                                                onClick={() => setSelectedCategory(catKey)}
-                                                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${
-                                                    isSelected 
-                                                        ? 'bg-[#1C75BC]/10 text-[#1C75BC] shadow-sm border-l-4 border-[#1C75BC]' 
-                                                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-4 border-transparent'
+                                                onClick={() => setShowAllSystemsMenu(prev => !prev)}
+                                                className={`ml-auto flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-extrabold border transition-all shrink-0 cursor-pointer ${
+                                                    showAllSystemsMenu
+                                                        ? 'bg-slate-800 text-white border-slate-800'
+                                                        : 'bg-white dark:bg-slate-800 text-[#1C75BC] border-[#1C75BC]/30 hover:bg-[#1C75BC]/5'
                                                 }`}
                                             >
-                                                <span className="truncate">{title}</span>
-                                                {abnormalCount > 0 && (
-                                                    <span className="bg-[#E30613] text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-sm ml-2 shrink-0">
-                                                        {abnormalCount}
-                                                    </span>
-                                                )}
+                                                <span>Más ({categoriesKeys.length - 5})</span>
+                                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showAllSystemsMenu ? 'rotate-180' : ''}`} />
                                             </button>
-                                        );
-                                    })}
+                                        )}
+                                    </div>
+
+                                    {/* Panel Desplegable Buscable para las 37 Categorías Completas */}
+                                    {showAllSystemsMenu && (
+                                        <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg animate-in fade-in duration-150">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
+                                                <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                                                    Directorio Completo de Sistemas Biológicos ({categoriesKeys.length} Categorías)
+                                                </span>
+                                                <input
+                                                    type="text"
+                                                    value={systemSearchQuery}
+                                                    onChange={(e) => setSystemSearchQuery(e.target.value)}
+                                                    placeholder="🔍 Filtrar sistema (ej. Oligoelementos, Tiroides, Hígado)..."
+                                                    className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 w-full sm:w-72 focus:outline-none focus:border-[#1C75BC]"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                                                {categoriesKeys
+                                                    .filter(catKey => {
+                                                        if (!systemSearchQuery.trim()) return true;
+                                                        const q = systemSearchQuery.toLowerCase().trim();
+                                                        const label = (CATEGORIAS_CLINICAS[catKey] || catKey).toLowerCase();
+                                                        return label.includes(q) || catKey.toLowerCase().includes(q);
+                                                    })
+                                                    .map((catKey, index) => {
+                                                        const title = CATEGORIAS_CLINICAS[catKey] || catKey.replace(/_/g, ' ');
+                                                        const abnormalCount = getCategoryAbnormalCount(catKey);
+                                                        const isSelected = catKey === activeCategory;
+                                                        return (
+                                                            <button
+                                                                key={catKey}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSelectedCategory(catKey);
+                                                                    setShowAllSystemsMenu(false);
+                                                                    setSystemSearchQuery('');
+                                                                }}
+                                                                className={`flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs font-bold transition-all cursor-pointer border ${
+                                                                    isSelected
+                                                                        ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-xs'
+                                                                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:border-[#1C75BC]/50'
+                                                                }`}
+                                                            >
+                                                                <span className="truncate pr-2">
+                                                                    <span className={`font-mono text-[10px] mr-1.5 ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
+                                                                        {index + 1}.
+                                                                    </span>
+                                                                    {title}
+                                                                </span>
+                                                                {abnormalCount > 0 ? (
+                                                                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                                                                        isSelected ? 'bg-[#E30613] text-white ring-1 ring-white/80' : 'bg-[#E30613] text-white'
+                                                                    }`}>
+                                                                        {abnormalCount}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full shrink-0 ${
+                                                                        isSelected ? 'bg-white/20 text-white' : 'bg-[#3AAA35]/15 text-[#3AAA35]'
+                                                                    }`}>
+                                                                        OK
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* Content Right: Parameters list */}
-                                <div className="flex-1 overflow-y-auto p-6 bg-white custom-scrollbar">
+                                {/* 🏥 2. CABECERA DE TRIAGE SISTÉMICO + BENTO CARDS TERMODINÁMICAS */}
+                                <div className="p-5 max-h-[760px] overflow-y-auto space-y-4 custom-scrollbar">
                                     {activeCategory && activeMetrics[activeCategory] ? (() => {
                                         const categoryItems = getCategoryItems(activeMetrics[activeCategory]);
                                         const displayedItems = categoryItems.filter(marker => {
@@ -667,54 +942,195 @@ export const TabBiochemicals = ({
                                             return s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-' && s !== 'INFORMATIVO';
                                         });
                                         const categoryTitle = CATEGORIAS_CLINICAS[activeCategory] || activeCategory.replace(/_/g, ' ');
+                                        const totalCount = categoryItems.length;
+                                        const abnormalTotal = getCategoryAbnormalCount(activeCategory);
+                                        const normalTotal = Math.max(0, totalCount - abnormalTotal);
+                                        const riskPct = totalCount > 0 ? Math.round((abnormalTotal / totalCount) * 100) : 0;
+                                        const sysMeta = getSystemMeta(activeCategory);
+                                        const catIndex = Math.max(0, categoriesKeys.indexOf(activeCategory));
+                                        const readingCode = `#B-${9001 + catIndex}`;
+
+                                        let globalRiskLabel = `Homeostasis Óptima (${riskPct}%)`;
+                                        let globalRiskColor = 'text-[#3AAA35]';
+                                        let globalRiskBadgeBg = 'bg-[#3AAA35]/10 text-[#3AAA35] border-[#3AAA35]/30';
+                                        if (abnormalTotal > 0) {
+                                            if (riskPct >= 60) {
+                                                globalRiskLabel = `Alerta Prioritaria (${riskPct}%)`;
+                                                globalRiskColor = 'text-[#E30613]';
+                                                globalRiskBadgeBg = 'bg-red-50 text-[#E30613] border-red-200';
+                                            } else if (riskPct >= 30) {
+                                                globalRiskLabel = `Riesgo Moderado (${riskPct}%)`;
+                                                globalRiskColor = 'text-orange-600';
+                                                globalRiskBadgeBg = 'bg-orange-50 text-orange-700 border-orange-200';
+                                            } else {
+                                                globalRiskLabel = `Vigilancia Preventiva (${riskPct}%)`;
+                                                globalRiskColor = 'text-amber-600';
+                                                globalRiskBadgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
+                                            }
+                                        }
 
                                         return (
                                             <div className="space-y-4">
-                                                <h5 className="font-extrabold text-slate-800 text-sm border-b border-slate-100 pb-2 flex items-center justify-between uppercase tracking-wide">
-                                                    <span>{categoryTitle}</span>
-                                                    <span className="text-xs text-slate-400 font-medium font-mono">{categoryItems.length} Parámetros</span>
-                                                </h5>
-                                                
-                                                <div className="grid grid-cols-1 gap-3">
+                                                {/* Cabecera de Triage Sistémico */}
+                                                <div className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/90 dark:border-slate-700 p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="px-2.5 py-0.5 rounded-md bg-[#1C75BC]/10 text-[#1C75BC] text-[10px] font-extrabold uppercase tracking-wider">
+                                                                {sysMeta.domain}
+                                                            </span>
+                                                            <span className="text-[11px] text-slate-400 font-medium">
+                                                                Lectura bioeléctrica {readingCode}
+                                                            </span>
+                                                            <span className="px-2.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-bold border border-slate-200 dark:border-slate-600">
+                                                                {totalCount} Parámetros: {normalTotal} Normales / {abnormalTotal} Alertas
+                                                            </span>
+                                                        </div>
+                                                        <h5 className="text-lg font-extrabold text-slate-900 dark:text-white uppercase tracking-tight">
+                                                            {categoryTitle}
+                                                        </h5>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                            {sysMeta.desc}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Widget de Estado Clínico Global */}
+                                                    <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 shrink-0 self-start lg:self-center">
+                                                        <div className="text-right">
+                                                            <div className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest">
+                                                                Estado Clínico Global
+                                                            </div>
+                                                            <div className={`text-xs font-extrabold flex items-center justify-end gap-1 mt-0.5 ${globalRiskColor}`}>
+                                                                {abnormalTotal > 0 ? <AlertTriangle size={13} /> : <CheckCircle2 size={13} />}
+                                                                <span>{globalRiskLabel}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className={`px-2.5 py-1.5 rounded-lg border text-xs font-extrabold font-mono ${globalRiskBadgeBg}`}>
+                                                            {abnormalTotal}/{totalCount}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* 🌡️ 3. BENTO CARDS TERMODINÁMICAS */}
+                                                <div className="grid grid-cols-1 gap-4">
                                                     {displayedItems.map((marker, idx) => {
                                                         const badge = getBadgeStyle(marker.status);
                                                         const valText = marker.val !== undefined ? marker.val : (marker.value !== undefined ? marker.value : '-');
                                                         const refText = marker.ref !== undefined ? marker.ref : (marker.reference !== undefined ? marker.reference : '-');
+                                                        const spectrum = computeThermodynamicSpectrum(valText, refText);
+                                                        const inferenceText = getBiosemanticInference(marker, spectrum);
+
                                                         return (
-                                                            <div key={`${activeCategory}-${marker.key || marker.name || 'param'}-${idx}`} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-[#1C75BC]/40 transition-colors font-sans">
-                                                                <div className="flex-1">
-                                                                    <div className="flex items-center gap-2 mb-1">
-                                                                        <span className="text-xs font-bold text-slate-700">{marker.name}</span>
+                                                            <div
+                                                                key={`${activeCategory}-${marker.key || marker.name || 'param'}-${idx}`}
+                                                                className={`bg-white dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700 border-l-4 ${badge.borderLeft} rounded-xl p-5 shadow-xs hover:shadow-md transition-all font-sans space-y-4`}
+                                                            >
+                                                                {/* Encabezado de la Bento Card */}
+                                                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                                                                    <div>
+                                                                        <div className="flex flex-wrap items-baseline gap-2">
+                                                                            <h6 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">
+                                                                                {marker.name}
+                                                                            </h6>
+                                                                            <span className="text-[11px] text-slate-400 font-medium">
+                                                                                (Bio-impedancia Cuántica)
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex flex-wrap items-baseline gap-2 mt-1">
+                                                                            <span className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                                                                                {valText}
+                                                                            </span>
+                                                                            <span className="text-xs text-slate-500 font-medium">
+                                                                                Valor obtenido
+                                                                            </span>
+                                                                            <span className="text-slate-300">•</span>
+                                                                            <span className="text-xs text-slate-500">
+                                                                                Rango Clínico de Referencia:{' '}
+                                                                                <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                                                                                    {spectrum.isRenderable ? spectrum.cleanRangeLabel : refText}
+                                                                                </strong>
+                                                                            </span>
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="flex items-baseline gap-2">
-                                                                        <span className="text-base font-extrabold text-slate-900">{valText}</span>
-                                                                        <span className="text-[10px] text-slate-400 font-mono">Ref: {refText}</span>
+
+                                                                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] uppercase tracking-wider shrink-0 self-start ${badge.bg}`}>
+                                                                        {badge.icon}
+                                                                        <span>{badge.label}</span>
                                                                     </div>
                                                                 </div>
-                                                                <div className="flex items-center gap-2 self-start md:self-center">
-                                                                    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider ${badge.bg}`}>
-                                                                        {badge.icon}
-                                                                        {badge.label}
+
+                                                                {/* Barra Termodinámica Tripartita (con Regla de Inmunidad si ref no es numérico) */}
+                                                                {spectrum.isRenderable && (
+                                                                    <div className="pt-1 pb-2">
+                                                                        {/* Etiquetas de los 3 tercios */}
+                                                                        <div className="grid grid-cols-3 text-[10px] font-extrabold uppercase tracking-wider mb-1.5">
+                                                                            <div className={`text-left ${spectrum.zone === 'LOW' ? 'text-amber-700 font-extrabold' : 'text-slate-400'}`}>
+                                                                                DEFICIENCIA (&lt;{spectrum.min})
+                                                                            </div>
+                                                                            <div className="text-center text-[#3AAA35]">
+                                                                                ZONA ÓPTIMA FISIOLÓGICA ({spectrum.min} — {spectrum.max})
+                                                                            </div>
+                                                                            <div className={`text-right ${spectrum.zone === 'HIGH' ? 'text-orange-600 font-extrabold' : 'text-slate-400'}`}>
+                                                                                EXCESO (&gt;{spectrum.max})
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Pista Termodinámica 3 Tercios */}
+                                                                        <div className="h-4 w-full rounded-full overflow-hidden flex border border-slate-200/80 dark:border-slate-700">
+                                                                            <div className={`w-1/3 h-full transition-colors ${spectrum.zone === 'LOW' ? 'bg-amber-100/80' : 'bg-slate-100 dark:bg-slate-800'}`} />
+                                                                            <div className="w-1/3 h-full bg-[#3AAA35]/15 border-x border-[#3AAA35]/30 flex items-center justify-center">
+                                                                                <span className="text-[9px] font-extrabold text-[#3AAA35] uppercase tracking-widest truncate px-1">
+                                                                                    RANGO FISIOLÓGICO NORMAL
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className={`w-1/3 h-full transition-colors ${spectrum.zone === 'HIGH' ? 'bg-orange-100/80' : 'bg-slate-100 dark:bg-slate-800'}`} />
+                                                                        </div>
+
+                                                                        {/* Marcador Flotante Dinámico */}
+                                                                        <div className="relative h-7 mt-1 w-full">
+                                                                            <div
+                                                                                className="absolute top-0 -translate-x-1/2 flex flex-col items-center transition-all duration-300"
+                                                                                style={{ left: `${spectrum.positionPct}%` }}
+                                                                            >
+                                                                                <div className={`w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[5px] ${badge.calloutArrow}`} />
+                                                                                <div className={`px-2.5 py-0.5 rounded-md text-[10px] font-extrabold whitespace-nowrap shadow-xs ${badge.calloutBg}`}>
+                                                                                    {spectrum.calloutText}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
+                                                                )}
+
+                                                                {/* 5. Inyección Biosemántica en Base de Tarjeta */}
+                                                                <div className="pt-2.5 border-t border-slate-100 dark:border-slate-700/70 flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+                                                                    <div className="flex items-start gap-2">
+                                                                        <span className="text-[#1C75BC] font-bold shrink-0">ⓘ</span>
+                                                                        <span className="leading-relaxed">{inferenceText}</span>
+                                                                    </div>
+                                                                    {spectrum.zone !== 'OPTIMAL' && (
+                                                                        <span className="text-[11px] font-bold text-[#1C75BC] shrink-0 hidden sm:inline">
+                                                                            Correlación Córtex →
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         );
                                                     })}
+
                                                     {showOnlyAbnormalities && displayedItems.length === 0 && (
-                                                        <div className="py-12 text-center text-slate-400">
+                                                        <div className="py-12 text-center bg-white rounded-2xl border border-slate-200/80 text-slate-400">
                                                             <CheckCircle2 size={36} className="text-[#3AAA35] mx-auto mb-2 opacity-80" />
-                                                            <p className="text-sm font-bold text-slate-500">¡Perfecto estado metabólico en esta área!</p>
-                                                            <p className="text-xs">Todos los parámetros se encuentran dentro del rango fisiológico normal.</p>
+                                                            <p className="text-sm font-bold text-slate-600">¡Homeostasis fisiológica en este sistema!</p>
+                                                            <p className="text-xs text-slate-400 mt-0.5">Todos los parámetros evaluados se encuentran dentro del rango clínico normal.</p>
                                                         </div>
                                                     )}
                                                 </div>
                                             </div>
                                         );
                                     })() : (
-                                        <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                        <div className="py-16 flex flex-col items-center justify-center text-slate-400">
                                             <span className="text-4xl mb-2">🧬</span>
                                             <p className="text-sm font-bold">Seleccione un sistema biológico</p>
-                                            <p className="text-xs">Elija una categoría de la columna izquierda para explorar la telemetría.</p>
+                                            <p className="text-xs">Elija una categoría en la barra superior para explorar sus Bento Cards Termodinámicas.</p>
                                         </div>
                                     )}
                                 </div>
