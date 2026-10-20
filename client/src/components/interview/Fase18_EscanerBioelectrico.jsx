@@ -276,10 +276,10 @@ Para iniciar la toma con **${pName}**, puede abrir el software de consultorio di
             if (content.includes("Paso 4: Carga de Estudios") || content.includes("Validación Bioquímica Exógena")) {
                 return 'EXTERNAL';
             }
-            if (content.includes("Paso 3: Evaluación Lingual") || content.includes("Topografía CYTOS") || content.includes("Saburra Tisular")) {
+            if (content.includes("Paso 3: Evaluación Lingual") || content.includes("Telemetría Lingual Integrada") || content.includes("Topografía CYTOS") || content.includes("Saburra Tisular")) {
                 return 'LINGUAL';
             }
-            if (content.includes("Paso 2: Auditoría Visual Ocular") || content.includes("Gemini Vision") || content.includes("Microcirculación Foveal")) {
+            if (content.includes("Paso 2: Auditoría Visual Ocular") || content.includes("Telemetría Ocular Binocular") || content.includes("Gemini Vision") || content.includes("Microcirculación Foveal")) {
                 return 'OCULAR';
             }
             if (content.includes("Escáner Bioeléctrico") || content.includes("Telemetría Multimodal") || content.includes("Electret")) {
@@ -288,6 +288,40 @@ Para iniciar la toma con **${pName}**, puede abrir el software de consultorio di
         }
         return 'ELECTRET';
     };
+
+    // 🧹 Saneamiento Reactivo en Vivo: Elimina redundancia en mensajes ya presentes en sesión (Chat vs Dashboard)
+    useEffect(() => {
+        if (!Array.isArray(messages) || messages.length === 0) return;
+        const hasRedundantMsg = messages.some(m =>
+            m?.content?.includes("Auditoría Visual Ocular Binocular Multidimensional") ||
+            m?.content?.includes("Auditoría de Topografía Lingual Multidimensional") ||
+            (m?.content?.includes("Resumen de Bioseñales Electret Sincronizadas") && m?.content?.includes("Viscosidad Sanguínea"))
+        );
+        if (!hasRedundantMsg) return;
+
+        setMessages(prev => prev.map(m => {
+            if (!m?.content) return m;
+            if (m.content.includes("Auditoría Visual Ocular Binocular Multidimensional")) {
+                return {
+                    ...m,
+                    content: `### 👁️ Telemetría Ocular Binocular Integrada en Dashboard\n\n✅ **6 Biomarcadores Oculómicos Cuantitativos** y el **Reloj Ocular** han sido desplegados en el panel derecho (**Auditoría Visual Ocular Binocular**).\n\nRevise las tarjetas termodinámicas en su Dashboard. ¿Confirma los hallazgos para avanzar a la Evaluación Lingual?`
+                };
+            }
+            if (m.content.includes("Auditoría de Topografía Lingual Multidimensional")) {
+                return {
+                    ...m,
+                    content: `### 👅 Telemetría Lingual Integrada en Dashboard\n\n✅ **6 Ejes Glosómicos (Dorsal y Sublingual)** han sido desplegados en el panel derecho (**Evaluación Lingual CYTOS**).\n\n¿Confirma los hallazgos en el Dashboard para avanzar a Estudios de Laboratorio?`
+                };
+            }
+            if (m.content.includes("Resumen de Bioseñales Electret Sincronizadas") && m.content.includes("Viscosidad Sanguínea")) {
+                return {
+                    ...m,
+                    content: `### ⚡ Bioseñales Electret Integradas en Dashboard\n\n✅ **37 Sistemas Biológicos (253 parámetros)** sincronizados y desplegados en las **Bento Cards Termodinámicas** del panel derecho.\n\n¿Confirma la sincronización para avanzar a la Auditoría Ocular?`
+                };
+            }
+            return m;
+        }));
+    }, [messages, setMessages]);
 
     // 📡 Sincronización reactiva de currentStep con el estado de mensajes
     useEffect(() => {
@@ -367,53 +401,16 @@ Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pNam
         setIsGlobalTyping?.(false);
         setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
 
-        // Búsqueda dinámica flexible por subcadena para chat summary indestructible
-        const cardioKey = Object.keys(metricsToSet || {}).find(k => k.toLowerCase().includes('cardio'));
-        const gastroKey = Object.keys(metricsToSet || {}).find(k => k.toLowerCase().includes('gastro') || k.toLowerCase().includes('digestiv'));
-
-        const getMetricValue = (catObj, metricSearch) => {
-            if (!catObj) return null;
-            let items = [];
-            if (Array.isArray(catObj.items)) items = catObj.items;
-            else if (Array.isArray(catObj)) items = catObj;
-            else if (typeof catObj === 'object') items = Object.values(catObj);
-            
-            return items.find(i => i && typeof i === 'object' && i.name && i.name.toLowerCase().includes(metricSearch.toLowerCase())) || null;
-        };
-
-        const cardioData = metricsToSet[cardioKey];
-        const gastroData = metricsToSet[gastroKey];
-
-        const viscItem = getMetricValue(cardioData, 'viscosidad');
-        const resistItem = getMetricValue(cardioData, 'resistencia');
-        const pepsinItem = getMetricValue(gastroData, 'pepsina') || getMetricValue(gastroData, 'absorci');
-        const peristItem = getMetricValue(gastroData, 'peristalt');
-
-        const viscVal = viscItem ? (viscItem.val || viscItem.value || '4.8 cp') : '4.8 cp';
-        const viscStatus = viscItem ? (viscItem.status || 'Normal') : 'Normal';
-        const resistVal = resistItem ? (resistItem.val || resistItem.value || '1.25') : '1.25';
-        const resistStatus = resistItem ? (resistItem.status || 'Normal') : 'Normal';
-        const pepsinVal = pepsinItem ? (pepsinItem.val || pepsinItem.value || '62.55') : '62.55';
-        const pepsinStatus = pepsinItem ? (pepsinItem.status || 'Normal') : 'Normal';
-        const peristVal = peristItem ? (peristItem.val || peristItem.value || '55.92') : '55.92';
-        const peristStatus = peristItem ? (peristItem.status || 'Normal') : 'Normal';
+        const totalSys = Object.keys(metricsToSet || {}).length || 37;
+        const totalParams = data.totalParameters || 253;
 
         const gateMsg = {
             role: 'assistant',
-            content: `### ⚡ Resumen de Bioseñales Electret Sincronizadas (Datos Reales 100%)
-            
-El procesamiento y lectura de la base de datos Access ha concluido de forma exitosa. Métricas clínicas extraídas del hardware:
+            content: `### ⚡ Bioseñales Electret Integradas en Dashboard
 
-* **Viscosidad Sanguínea**: ${viscVal} — *Estado: ${viscStatus}*
-* **Resistencia Vascular**: ${resistVal} — *Estado: ${resistStatus}*
-* **Secreción / Absorción Intestinal**: ${pepsinVal} — *Estado: ${pepsinStatus}*
-* **Peristaltismo Gástrico**: ${peristVal} — *Estado: ${peristStatus}*
+✅ **${totalSys} Sistemas Biológicos (${totalParams} parámetros)** sincronizados y desplegados en las **Bento Cards Termodinámicas** del panel derecho.
 
-*Los resultados de todos los sistemas biológicos se han cargado en el expediente y se visualizan en tiempo real en el Dashboard.*
-
----
-
-¿Confirma que la extracción del dispositivo es correcta y procedemos con el análisis?`,
+¿Confirma la sincronización para avanzar a la Auditoría Ocular?`,
             options: [
                 { label: "✅ Sí, proceder", value: "ELECTRET_CONFIRM" },
                 { label: "❌ Reevaluar Electret", value: "ELECTRET_RETRY" }
@@ -1490,23 +1487,13 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                 }
             }));
 
-            const p = data.pilares || {};
             const gateMsg = {
                 role: 'assistant',
-                content: `### 👅 Auditoría de Topografía Lingual Multidimensional (Gemini Vision)
+                content: `### 👅 Telemetría Lingual Integrada en Dashboard
 
-* 🍞 **Salud Gastrointestinal y Microbioma**: Saburra ${p.gastrointestinal_microbioma?.saburra_grosor || 'Delgada'} (${p.gastrointestinal_microbioma?.saburra_color || 'Blanquecina'}). Fisuras: ${p.gastrointestinal_microbioma?.fisuras_grietas || 'Ausentes'}. Disbiosis: ${p.gastrointestinal_microbioma?.sospecha_disbiosis || 'Baja'}. ${p.gastrointestinal_microbioma?.hallazgos || ''}
-* 🫀 **Sistema Cardiovascular y Oxigenación**: Estasis Ranina: ${p.cardiovascular_oxigenacion?.estasis_venosa_sublingual || 'Fisiológica'}. Cianosis: ${p.cardiovascular_oxigenacion?.cianosis_periferica || 'Ausente'}. Riesgo Vascular: ${p.cardiovascular_oxigenacion?.riesgo_vascular_congestivo || 'Bajo'}.
-* 💉 **Conteo Sanguíneo y Nutrición**: Sustrato: ${p.conteo_sanguineo_nutricion?.palidez_sustrato || 'Normocrómica'}. Glositis/Atrofia Papilar: ${p.conteo_sanguineo_nutricion?.atrofia_papilar_glositis || 'Ausente'}. Deficiencia: ${p.conteo_sanguineo_nutricion?.sospecha_deficiencia_nutricional || 'Baja'}.
-* 🌊 **Función Hepática, Renal e Hidratación**: Festoneado/Marcas: ${p.funcion_hepatica_renal_hidratacion?.marcas_dentales_festoneado || 'Ausentes'}. Tinte Amarillo: ${p.funcion_hepatica_renal_hidratacion?.tinte_amarillo_base || 'Ausente'}. Hidratación: ${p.funcion_hepatica_renal_hidratacion?.estado_hidratacion_salival || 'Normo-hidratada'}.
-* 🛡️ **Sistema Inmune e Inflamación**: Lengua Geográfica: ${p.inmune_inflamacion?.lengua_geografica || 'Ausente'}. Petequias/Puntos Rojos: ${p.inmune_inflamacion?.petequias_papilas_eritematosas || 'Ausentes'}. Nivel Inflamatorio: ${p.inmune_inflamacion?.nivel_inflamacion_mucosa || 'Bajo / Fisiológico'}.
-* ⏳ **Edad Biológica Mucosal y Senescencia**: Edad Mucosal: ${p.edad_biologica_mucosal?.edad_mucosal_estimada || 60} años. Trofismo: ${p.edad_biologica_mucosal?.trofismo_muscular || 'Eutrófico'}. Temblores: ${p.edad_biologica_mucosal?.temblores_fasciculaciones || 'Ausentes'}.
+✅ **6 Ejes Glosómicos (Dorsal y Sublingual)** han sido desplegados en el panel derecho (**Evaluación Lingual CYTOS**).
 
----
-
-*Síntesis Fisiopatológica*: ${data.sintesis_fisiopatologica || data.lingual_topography?.sintesis_fisiopatologica || 'Telemetría de mucosa lingual y microbioma en rangos fisiológicos estables.'}
-
-¿Confirma que la evaluación de la topografía lingual es correcta para avanzar a la validación de estudios de laboratorio?`,
+¿Confirma los hallazgos en el Dashboard para avanzar a Estudios de Laboratorio?`,
                 options: [
                     { label: "✅ Confirmar Telemetría Lingual", value: "LINGUAL_CONFIRM" },
                     { label: "❌ Re-capturar Lengua", value: "LINGUAL_RETRY" }
