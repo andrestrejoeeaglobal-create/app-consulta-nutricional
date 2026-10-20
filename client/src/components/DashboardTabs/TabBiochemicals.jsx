@@ -1324,8 +1324,10 @@ export const TabBiochemicals = ({
 
                                                         <div className="text-xs space-y-2.5">
                                                             <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                                HbA1c est.: <span className="font-mono text-[#3AAA35] font-extrabold">{ocularAudit.pilares.diabetes_glucosa.hba1c_estimada || '< 6.0%'}</span>{' '}
-                                                                <span className="text-[11px] font-normal text-slate-500">({isElevado ? 'Vigilancia Glucémica' : 'Control Fisiológico'})</span>
+                                                                HbA1c est.: <span className="font-mono text-[#3AAA35] font-extrabold">{ocularAudit.pilares.diabetes_glucosa.hba1c_estimada || '< 6.0%'}</span>
+                                                                {!String(ocularAudit.pilares.diabetes_glucosa.hba1c_estimada || '').includes('(') && (
+                                                                    <span className="text-[11px] font-normal text-slate-500 ml-1">({isElevado ? 'Vigilancia Glucémica' : 'Control Fisiológico'})</span>
+                                                                )}
                                                             </p>
 
                                                             {/* Barra Termodinámica Oculómica */}
@@ -1436,8 +1438,10 @@ export const TabBiochemicals = ({
                                                     </div>
                                                     <div className="text-xs space-y-1.5">
                                                         <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Hb Estimada: <span className="font-mono text-slate-900 dark:text-white font-extrabold">{ocularAudit.pilares.conteo_sanguineo_anemia.hemoglobina_estimada_gdl || '13.5 - 15.5 g/dL'}</span>{' '}
-                                                            <span className="text-[11px] font-normal text-slate-400">(Rango estimado)</span>
+                                                            Hb Estimada: <span className="font-mono text-slate-900 dark:text-white font-extrabold">{ocularAudit.pilares.conteo_sanguineo_anemia.hemoglobina_estimada_gdl || '13.5 - 15.5 g/dL'}</span>
+                                                            {!String(ocularAudit.pilares.conteo_sanguineo_anemia.hemoglobina_estimada_gdl || '').includes('(') && (
+                                                                <span className="text-[11px] font-normal text-slate-400 ml-1">(Rango estimado)</span>
+                                                            )}
                                                         </p>
                                                         <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
                                                             {ocularAudit.pilares.conteo_sanguineo_anemia.palidez_conjuntival_tarsal || ocularAudit.pilares.conteo_sanguineo_anemia.hallazgos || 'Palidez conjuntival descartada. Se observa perfusión microvascular de lecho escleral conservada.'}
