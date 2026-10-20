@@ -868,6 +868,10 @@ Por favor presione el botón a continuación para abrir el sensor óptico del **
         // ETAPA 2A: CAPTURA OJO DERECHO Y OJO IZQUIERDO (BINOCULAR)
         // ----------------------------------------------------------------------
         if (value === 'START_RIGHT_EYE' || lowerVal.includes('capturar ojo derecho')) {
+            setRightEyeFile(null);
+            setRightEyePreview(null);
+            setLeftEyeFile(null);
+            setLeftEyePreview(null);
             setActiveModal('OCULAR_RIGHT');
             return;
         }
@@ -1742,7 +1746,10 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                         {/* CONTENIDO MODAL OJO DERECHO (OPCIONES DUALES) */}
                         {activeModal === 'OCULAR_RIGHT' && !useLiveCamera && (
                             <div className="space-y-4 text-center">
-                                <p className="text-xs text-slate-600">Seleccione el método de captura para la conjuntiva del **Ojo Derecho**.</p>
+                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#1C75BC] text-[10px] font-black uppercase tracking-wider">
+                                    <span>👁️ Paso 1 de 2: Ojo Derecho</span>
+                                </div>
+                                <p className="text-xs text-slate-600">Seleccione el método de captura para la conjuntiva del <strong className="text-slate-800">Ojo Derecho</strong>.</p>
                                 <div className="grid grid-cols-1 gap-2.5">
                                     <button 
                                         onClick={startLiveCamera}
@@ -1751,12 +1758,14 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                         📷 Usar Cámara en Vivo (WebRTC)
                                     </button>
                                     <div className="relative border border-slate-200 rounded-xl p-3 bg-slate-50 hover:bg-slate-100 transition-all text-left">
-                                        <label className="text-[10px] font-bold text-slate-500 block uppercase mb-1">📁 O seleccionar archivo de disco/galería</label>
+                                        <label className="text-[10px] font-bold text-slate-500 block uppercase mb-1">📁 O seleccionar archivo de disco/galería (Ojo Derecho)</label>
                                         <input 
+                                            key="input-ocular-right"
                                             type="file" 
                                             accept="image/*" 
+                                            onClick={(e) => { e.target.value = ''; }}
                                             onChange={(e) => {
-                                                const file = e.target.files[0];
+                                                const file = e.target.files?.[0];
                                                 if (file) {
                                                     setRightEyeFile(file);
                                                     setRightEyePreview(URL.createObjectURL(file));
@@ -1772,8 +1781,29 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
 
                         {/* CONTENIDO MODAL OJO IZQUIERDO (OPCIONES DUALES) */}
                         {activeModal === 'OCULAR_LEFT' && !useLiveCamera && (
-                            <div className="space-y-4 text-center">
-                                <p className="text-xs text-slate-600">Seleccione el método de captura para la conjuntiva del **Ojo Izquierdo**.</p>
+                            <div className="space-y-4 text-center animate-in fade-in duration-200">
+                                {rightEyePreview && (
+                                    <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-left">
+                                        <div className="flex items-center gap-2.5">
+                                            <img src={rightEyePreview} alt="Ojo Derecho" className="w-11 h-11 rounded-lg object-cover border border-emerald-300 shadow-xs shrink-0" />
+                                            <div>
+                                                <p className="text-[11px] font-black text-emerald-800 uppercase tracking-wide">✅ Paso 1 Listo: Ojo Derecho Cargado</p>
+                                                <p className="text-[10px] text-emerald-700 font-medium">Ahora falta únicamente el Ojo Izquierdo.</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveModal('OCULAR_RIGHT')}
+                                            className="px-2 py-1 text-[10px] font-bold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-all shrink-0"
+                                        >
+                                            🔄 Cambiar
+                                        </button>
+                                    </div>
+                                )}
+                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#1C75BC] text-[10px] font-black uppercase tracking-wider">
+                                    <span>👁️ Paso 2 de 2: Ojo Izquierdo</span>
+                                </div>
+                                <p className="text-xs text-slate-600">Seleccione el método de captura para la conjuntiva del <strong className="text-slate-800">Ojo Izquierdo</strong>.</p>
                                 <div className="grid grid-cols-1 gap-2.5">
                                     <button 
                                         onClick={startLiveCamera}
@@ -1781,20 +1811,22 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                     >
                                         📷 Usar Cámara en Vivo (WebRTC)
                                     </button>
-                                    <div className="relative border border-slate-200 rounded-xl p-3 bg-slate-50 hover:bg-slate-100 transition-all text-left">
-                                        <label className="text-[10px] font-bold text-slate-500 block uppercase mb-1">📁 O seleccionar archivo de disco/galería</label>
+                                    <div className="relative border border-blue-200 rounded-xl p-3 bg-blue-50/40 hover:bg-blue-50/80 transition-all text-left">
+                                        <label className="text-[10px] font-bold text-[#1C75BC] block uppercase mb-1">📁 O seleccionar archivo de disco/galería (Ojo Izquierdo)</label>
                                         <input 
+                                            key="input-ocular-left"
                                             type="file" 
                                             accept="image/*" 
+                                            onClick={(e) => { e.target.value = ''; }}
                                             onChange={(e) => {
-                                                const file = e.target.files[0];
+                                                const file = e.target.files?.[0];
                                                 if (file) {
                                                     setLeftEyeFile(file);
                                                     setLeftEyePreview(URL.createObjectURL(file));
                                                     setActiveModal('OCULAR_BINOCULAR_PREVIEW');
                                                 }
                                             }}
-                                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-[#1C75BC] hover:file:bg-blue-100 cursor-pointer"
+                                            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#1C75BC] file:text-white hover:file:bg-[#155d96] cursor-pointer"
                                         />
                                     </div>
                                 </div>
