@@ -1201,214 +1201,351 @@ export const TabBiochemicals = ({
                             ) : ocularAudit ? (
                                 ocularAudit.pilares ? (
                                     <div className="space-y-4">
-                                        {/* CABECERA: FOTOGRAFÍAS OD/OI + BADGES DE TOMA Y SÍNTESIS GLOBAL */}
-                                        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50/80 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
-                                            <div className="flex items-center gap-3">
-                                                {ocularAudit.right_eye_url && (
-                                                    <div className="flex flex-col items-center gap-0.5">
-                                                        <img 
-                                                            src={getValidImageUrl(ocularAudit.right_eye_url)} 
-                                                            onError={handleImageError}
-                                                            alt="Ojo Derecho" 
-                                                            className="w-12 h-12 object-cover rounded-lg border border-slate-300 dark:border-slate-700 shadow-2xs" 
-                                                        />
-                                                        <span className="text-[8px] font-bold text-slate-500 uppercase">OD</span>
-                                                    </div>
-                                                )}
-                                                {ocularAudit.left_eye_url && (
-                                                    <div className="flex flex-col items-center gap-0.5">
-                                                        <img 
-                                                            src={getValidImageUrl(ocularAudit.left_eye_url)} 
-                                                            onError={handleImageError}
-                                                            alt="Ojo Izquierdo" 
-                                                            className="w-12 h-12 object-cover rounded-lg border border-slate-300 dark:border-slate-700 shadow-2xs" 
-                                                        />
-                                                        <span className="text-[8px] font-bold text-slate-500 uppercase">OI</span>
-                                                    </div>
-                                                )}
-                                                <div className="space-y-0.5">
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-100/80 text-[#1C75BC] dark:bg-blue-950 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800 uppercase">
-                                                            {ocularAudit.tipo_toma || 'Segmento Anterior'}
-                                                        </span>
-                                                        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                                                            Resolución: {ocularAudit.calidad_optica || 'Óptima'}
-                                                        </span>
-                                                    </div>
-                                                    {ocularAudit.sintesis_fisiopatologica && (
-                                                        <p className="text-[11px] text-slate-600 dark:text-slate-300 italic max-w-xl leading-snug">
-                                                            "{ocularAudit.sintesis_fisiopatologica}"
-                                                        </p>
+                                        {/* CABECERA SEGMENTO ANTERIOR: BADGES + FOTOS R-SCAN/L-SCAN + SÍNTESIS + RELOJ OCULAR */}
+                                        <div className="bg-slate-50/70 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-4">
+                                            <div className="space-y-1">
+                                                <span className="inline-block text-[10px] font-black px-2.5 py-1 rounded-md bg-blue-100/80 text-[#1C75BC] dark:bg-blue-950 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800 uppercase tracking-wide">
+                                                    {ocularAudit.tipo_toma || 'SEGMENTO ANTERIOR (SUPERFICIE OCULAR EXTERNA)'}
+                                                </span>
+                                                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 pl-0.5">
+                                                    Resolución: <span className="font-bold text-[#3AAA35]">{ocularAudit.calidad_optica || 'Óptima'}</span>
+                                                </p>
+                                            </div>
+
+                                            {/* Fotografías Binoculares Centradas R-SCAN / L-SCAN */}
+                                            {(ocularAudit.right_eye_url || ocularAudit.left_eye_url) && (
+                                                <div className="flex items-center justify-center gap-5 py-1">
+                                                    {ocularAudit.right_eye_url && (
+                                                        <div className="flex flex-col items-center gap-1.5">
+                                                            <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-white dark:border-slate-700 shadow-sm bg-slate-900">
+                                                                <img
+                                                                    src={getValidImageUrl(ocularAudit.right_eye_url)}
+                                                                    onError={handleImageError}
+                                                                    alt="Ojo Derecho"
+                                                                    className="w-full h-full object-cover"
+                                                                />
+                                                                <span className="absolute bottom-0 inset-x-0 bg-slate-900/75 text-white text-[8px] font-black text-center py-0.5 tracking-widest uppercase">
+                                                                    R-SCAN
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 uppercase">OD</span>
+                                                        </div>
+                                                    )}
+                                                    {ocularAudit.left_eye_url && (
+                                                        <div className="flex flex-col items-center gap-1.5">
+                                                            <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-white dark:border-slate-700 shadow-sm bg-slate-900">
+                                                                <img
+                                                                    src={getValidImageUrl(ocularAudit.left_eye_url)}
+                                                                    onError={handleImageError}
+                                                                    alt="Ojo Izquierdo"
+                                                                    className="w-full h-full object-cover"
+                                                                />
+                                                                <span className="absolute bottom-0 inset-x-0 bg-slate-900/75 text-white text-[8px] font-black text-center py-0.5 tracking-widest uppercase">
+                                                                    L-SCAN
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 uppercase">OI</span>
+                                                        </div>
                                                     )}
                                                 </div>
-                                            </div>
+                                            )}
+
+                                            {/* Síntesis Fisiopatológica en Caja Blanca */}
+                                            {ocularAudit.sintesis_fisiopatologica && (
+                                                <div className="bg-white dark:bg-slate-900/90 p-3.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs">
+                                                    <p className="text-xs text-slate-600 dark:text-slate-300 italic leading-relaxed">
+                                                        "{ocularAudit.sintesis_fisiopatologica}"
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Barra Inferior de Reloj Ocular */}
                                             {ocularAudit.pilares.edad_biologica_longevidad && (
-                                                <div className="text-right px-3 py-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xs">
-                                                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Reloj Ocular</span>
-                                                    <span className="text-xs font-black text-slate-800 dark:text-slate-100">
-                                                        {ocularAudit.pilares.edad_biologica_longevidad.edad_biologica_ocular || patientData?.demographics?.age || 60} años
-                                                    </span>
-                                                    <span className={`text-[9px] font-bold block ${ocularAudit.pilares.edad_biologica_longevidad.retinal_age_gap?.includes('+') ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                                                        Gap: {ocularAudit.pilares.edad_biologica_longevidad.retinal_age_gap || '0 años'}
-                                                    </span>
+                                                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/70">
+                                                    <div className="flex items-baseline gap-2">
+                                                        <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Reloj Ocular</span>
+                                                        <span className="text-sm font-black text-slate-900 dark:text-white">
+                                                            {ocularAudit.pilares.edad_biologica_longevidad.edad_biologica_ocular || patientData?.demographics?.age || 60} años
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                                            Cronológica: <strong className="text-slate-700 dark:text-slate-200">{patientData?.demographics?.age || 60}a</strong>
+                                                        </span>
+                                                        <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-md border ${
+                                                            ocularAudit.pilares.edad_biologica_longevidad.retinal_age_gap?.includes('+')
+                                                                ? 'bg-amber-100/80 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                                                : 'bg-emerald-50 text-[#3AAA35] border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                                                        }`}>
+                                                            Gap: {ocularAudit.pilares.edad_biologica_longevidad.retinal_age_gap || '0 años'}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* 🏛️ BENTO GRID DE 6 PILARES OCULÓMICOS */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {/* TÍTULO DE SECCIÓN: BIOMARCADORES OCULÓMICOS CUANTITATIVOS */}
+                                        <div className="flex items-center justify-between px-1 pt-1">
+                                            <h5 className="text-[11px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                                                Biomarcadores Oculómicos Cuantitativos
+                                            </h5>
+                                            <span className="text-[11px] font-medium text-slate-400">
+                                                6 parámetros validados
+                                            </span>
+                                        </div>
+
+                                        {/* 🏛️ STACK VERTICAL DE 6 BENTO CARDS TERMODINÁMICAS OCULÓMICAS */}
+                                        <div className="flex flex-col gap-3.5">
                                             {/* PILAR 1: DIABETES Y GLUCOSA */}
-                                            {ocularAudit.pilares.diabetes_glucosa && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                                            <span>🩸</span> Diabetes & Glucosa
-                                                        </span>
-                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${
-                                                            ocularAudit.pilares.diabetes_glucosa.riesgo === 'ELEVADO' 
-                                                                ? 'bg-red-50 text-[#E30613] dark:text-[#F85A5A] border-red-200 dark:border-red-900/50 dark:bg-red-950/30' 
-                                                                : ocularAudit.pilares.diabetes_glucosa.riesgo === 'MODERADO'
-                                                                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800'
-                                                                : 'bg-emerald-50 text-[#3AAA35] dark:text-[#76D773] border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                                                        }`}>
-                                                            Riesgo {ocularAudit.pilares.diabetes_glucosa.riesgo || 'Bajo'}
-                                                        </span>
+                                            {ocularAudit.pilares.diabetes_glucosa && (() => {
+                                                const riesgo = (ocularAudit.pilares.diabetes_glucosa.riesgo || 'BAJO').toUpperCase();
+                                                const isElevado = riesgo.includes('ELEVADO') || riesgo.includes('ALTO');
+                                                const isModerado = riesgo.includes('MODERADO');
+                                                const nodePos = isElevado ? 84 : isModerado ? 62 : 31;
+                                                const nodeBorder = isElevado ? 'border-[#E30613]' : isModerado ? 'border-amber-500' : 'border-[#3AAA35]';
+                                                const cardBorder = isElevado ? 'border-red-200/90 bg-red-50/10' : isModerado ? 'border-amber-200/90 bg-amber-50/10' : 'border-slate-200/90 bg-white';
+
+                                                return (
+                                                    <div className={`p-4 rounded-2xl border ${cardBorder} dark:bg-slate-800/40 dark:border-slate-700 shadow-2xs space-y-3 transition-all`}>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                                <span>🩸</span> Diabetes & Glucosa
+                                                            </span>
+                                                            <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase border ${
+                                                                isElevado
+                                                                    ? 'bg-red-50 text-[#E30613] border-red-200'
+                                                                    : isModerado
+                                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                    : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                                                            }`}>
+                                                                Riesgo {ocularAudit.pilares.diabetes_glucosa.riesgo || 'Bajo'}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="text-xs space-y-2.5">
+                                                            <p className="font-semibold text-slate-700 dark:text-slate-300">
+                                                                HbA1c est.: <span className="font-mono text-[#3AAA35] font-extrabold">{ocularAudit.pilares.diabetes_glucosa.hba1c_estimada || '< 6.0%'}</span>{' '}
+                                                                <span className="text-[11px] font-normal text-slate-500">({isElevado ? 'Vigilancia Glucémica' : 'Control Fisiológico'})</span>
+                                                            </p>
+
+                                                            {/* Barra Termodinámica Oculómica */}
+                                                            <div className="pt-1 pb-0.5">
+                                                                <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-sky-200 via-emerald-400 to-rose-300">
+                                                                    <div
+                                                                        className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 ${nodeBorder} shadow-xs transition-all duration-300`}
+                                                                        style={{ left: `${nodePos}%` }}
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-wider mt-1.5">
+                                                                    <span className="text-slate-400">Deficiencia</span>
+                                                                    <span className="text-[#3AAA35]">Óptimo (Fisiológico)</span>
+                                                                    <span className="text-slate-400">Exceso</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
+                                                                {ocularAudit.pilares.diabetes_glucosa.hallazgos || ocularAudit.pilares.diabetes_glucosa.retinopatia_microangiopatia || 'No se aprecian signos evidentes de microangiopatía diabética ni exudados lipídicos en polo anterior.'}
+                                                            </p>
+                                                        </div>
+
+                                                        <div className="flex justify-end pt-1">
+                                                            <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                                Correlación Córtex →
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            HbA1c est.: <span className="font-mono text-slate-900 dark:text-white font-bold">{ocularAudit.pilares.diabetes_glucosa.hba1c_estimada || '< 6.0%'}</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {ocularAudit.pilares.diabetes_glucosa.hallazgos || ocularAudit.pilares.diabetes_glucosa.retinopatia_microangiopatia || 'Sin microangiopatía diabética observable.'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
 
                                             {/* PILAR 2: CARDIOVASCULAR Y LÍPIDOS */}
-                                            {ocularAudit.pilares.cardiovascular_lipidos && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                                            <span>🫀</span> Cardiovascular & Lípidos
-                                                        </span>
-                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${
-                                                            ocularAudit.pilares.cardiovascular_lipidos.riesgo_cardiovascular === 'ELEVADO' 
-                                                                ? 'bg-red-50 text-[#E30613] dark:text-[#F85A5A] border-red-200 dark:border-red-900/50 dark:bg-red-950/30' 
-                                                                : ocularAudit.pilares.cardiovascular_lipidos.riesgo_cardiovascular === 'MODERADO'
-                                                                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800'
-                                                                : 'bg-emerald-50 text-[#3AAA35] dark:text-[#76D773] border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                                                        }`}>
-                                                            Riesgo {ocularAudit.pilares.cardiovascular_lipidos.riesgo_cardiovascular || 'Bajo'}
-                                                        </span>
+                                            {ocularAudit.pilares.cardiovascular_lipidos && (() => {
+                                                const riesgo = (ocularAudit.pilares.cardiovascular_lipidos.riesgo_cardiovascular || 'BAJO').toUpperCase();
+                                                const arco = ocularAudit.pilares.cardiovascular_lipidos.arco_senil_corneal || 'Negativo';
+                                                const hasArco = !arco.toLowerCase().includes('negativo') && !arco.toLowerCase().includes('ausente');
+                                                const isElevado = riesgo.includes('ELEVADO') || riesgo.includes('ALTO');
+                                                const isModerado = riesgo.includes('MODERADO') || hasArco;
+                                                const nodePos = isElevado ? 84 : isModerado ? 68 : 26;
+                                                const nodeBorder = isElevado ? 'border-[#E30613]' : isModerado ? 'border-amber-500' : 'border-[#3AAA35]';
+                                                const cardBorder = isElevado ? 'border-red-200/90 bg-red-50/10' : isModerado ? 'border-amber-200/90 bg-amber-50/15' : 'border-slate-200/90 bg-white';
+
+                                                return (
+                                                    <div className={`p-4 rounded-2xl border ${cardBorder} dark:bg-slate-800/40 dark:border-slate-700 shadow-2xs space-y-3 transition-all`}>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                                <span>🫀</span> Cardiovascular & Lípidos
+                                                            </span>
+                                                            <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase border ${
+                                                                isElevado
+                                                                    ? 'bg-red-50 text-[#E30613] border-red-200'
+                                                                    : isModerado
+                                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                    : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                                                            }`}>
+                                                                Riesgo {ocularAudit.pilares.cardiovascular_lipidos.riesgo_cardiovascular || (isModerado ? 'Moderado' : 'Bajo')}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="text-xs space-y-2.5">
+                                                            <p className="font-semibold text-slate-700 dark:text-slate-300">
+                                                                Arco Senil: <span className="text-slate-900 dark:text-white font-extrabold">{arco}</span>
+                                                            </p>
+
+                                                            {/* Barra Termodinámica Lipídica */}
+                                                            <div className="pt-1 pb-0.5">
+                                                                <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-sky-300 via-amber-300 to-rose-400">
+                                                                    <div
+                                                                        className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 ${nodeBorder} shadow-xs transition-all duration-300`}
+                                                                        style={{ left: `${nodePos}%` }}
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-wider mt-1.5">
+                                                                    <span className="text-slate-400">Normal (&lt;60)</span>
+                                                                    <span className="text-slate-400">Marginal</span>
+                                                                    <span className={isModerado || isElevado ? 'text-amber-700 font-black' : 'text-slate-400'}>Depósito Lipídico (&gt;9.2)</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
+                                                                {ocularAudit.pilares.cardiovascular_lipidos.hallazgos || ocularAudit.pilares.cardiovascular_lipidos.angioarquitectura_hipertensiva || 'Calibre arteriolar y venular conservado.'}
+                                                            </p>
+                                                        </div>
+
+                                                        <div className="flex justify-end pt-1">
+                                                            <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                                Correlación Córtex →
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Arco Senil: <span className="text-slate-900 dark:text-white font-bold">{ocularAudit.pilares.cardiovascular_lipidos.arco_senil_corneal || 'Negativo'}</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {ocularAudit.pilares.cardiovascular_lipidos.angioarquitectura_hipertensiva || ocularAudit.pilares.cardiovascular_lipidos.hallazgos || 'Calibre arteriolar y venular conservado.'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
 
                                             {/* PILAR 3: CONTEO SANGUÍNEO Y ANEMIA */}
                                             {ocularAudit.pilares.conteo_sanguineo_anemia && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                                            <span>💉</span> Conteo Sanguíneo & Hb
+                                                <div className="p-4 bg-white dark:bg-slate-800/40 rounded-2xl border border-slate-200/90 dark:border-slate-700 shadow-2xs space-y-2.5 transition-all">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                            <span>🧪</span> Conteo Sanguíneo & Hb
                                                         </span>
-                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${
+                                                        <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase border ${
                                                             ocularAudit.pilares.conteo_sanguineo_anemia.estado_anemia?.includes('ANEMIA')
-                                                                ? 'bg-red-50 text-[#E30613] dark:text-[#F85A5A] border-red-200 dark:border-red-900/50 dark:bg-red-950/30'
-                                                                : 'bg-emerald-50 text-[#3AAA35] dark:text-[#76D773] border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                                                                ? 'bg-red-50 text-[#E30613] border-red-200'
+                                                                : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
                                                         }`}>
                                                             {ocularAudit.pilares.conteo_sanguineo_anemia.estado_anemia || 'NORMAL'}
                                                         </span>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
+                                                    <div className="text-xs space-y-1.5">
                                                         <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Hb Estimada: <span className="font-mono text-slate-900 dark:text-white font-bold">{ocularAudit.pilares.conteo_sanguineo_anemia.hemoglobina_estimada_gdl || '14.0 g/dL'}</span>
+                                                            Hb Estimada: <span className="font-mono text-slate-900 dark:text-white font-extrabold">{ocularAudit.pilares.conteo_sanguineo_anemia.hemoglobina_estimada_gdl || '13.5 - 15.5 g/dL'}</span>{' '}
+                                                            <span className="text-[11px] font-normal text-slate-400">(Rango estimado)</span>
                                                         </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {ocularAudit.pilares.conteo_sanguineo_anemia.palidez_conjuntival_tarsal || ocularAudit.pilares.conteo_sanguineo_anemia.hallazgos || 'Perfusión microvascular tisular conservada.'}
+                                                        <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
+                                                            {ocularAudit.pilares.conteo_sanguineo_anemia.palidez_conjuntival_tarsal || ocularAudit.pilares.conteo_sanguineo_anemia.hallazgos || 'Palidez conjuntival descartada. Se observa perfusión microvascular de lecho escleral conservada.'}
                                                         </p>
+                                                    </div>
+                                                    <div className="flex justify-end pt-1">
+                                                        <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                            Correlación Córtex →
+                                                        </span>
                                                     </div>
                                                 </div>
                                             )}
 
                                             {/* PILAR 4: FUNCIÓN RENAL Y HEPÁTICA */}
                                             {ocularAudit.pilares.funcion_renal_hepatica && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                                            <span>🌊</span> Función Renal & Hepática
+                                                <div className="p-4 bg-white dark:bg-slate-800/40 rounded-2xl border border-slate-200/90 dark:border-slate-700 shadow-2xs space-y-2.5 transition-all">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                            <span>🧬</span> Función Renal & Hepática
                                                         </span>
-                                                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase">
+                                                        <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
                                                             Biomarcadores
                                                         </span>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Edema Infraorbitario: <span className="text-slate-900 dark:text-white font-bold">{ocularAudit.pilares.funcion_renal_hepatica.edema_infraorbitario_renal || 'Normal'}</span>
+                                                    <div className="text-xs space-y-1.5">
+                                                        <ul className="space-y-1 text-[11px] text-slate-700 dark:text-slate-300">
+                                                            <li>
+                                                                • Edema Infraorbitario: <strong className="text-slate-900 dark:text-white">{ocularAudit.pilares.funcion_renal_hepatica.edema_infraorbitario_renal || 'Normal'}</strong>
+                                                            </li>
+                                                            <li>
+                                                                • Esclera: <strong className="text-[#3AAA35]">{ocularAudit.pilares.funcion_renal_hepatica.ictericia_escleral_hepatica || 'Ausente de Ictericia (Blanco Quirúrgico Fisiológico)'}</strong>
+                                                            </li>
+                                                        </ul>
+                                                        <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px] pt-0.5">
+                                                            {ocularAudit.pilares.funcion_renal_hepatica.hallazgos || 'Sin estasis periorbitario significativo ni signos de ictericia escleral.'}
                                                         </p>
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Esclera: <span className="text-slate-900 dark:text-white font-bold">{ocularAudit.pilares.funcion_renal_hepatica.ictericia_escleral_hepatica || 'Blanco Fisiológico'}</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-1 leading-tight">
-                                                            {ocularAudit.pilares.funcion_renal_hepatica.hallazgos || 'Sin estasis periorbitario significativo.'}
-                                                        </p>
+                                                    </div>
+                                                    <div className="flex justify-end pt-1">
+                                                        <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                            Correlación Córtex →
+                                                        </span>
                                                     </div>
                                                 </div>
                                             )}
 
                                             {/* PILAR 5: RELOJ DE EDAD BIOLÓGICA OCULAR */}
-                                            {ocularAudit.pilares.edad_biologica_longevidad && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                                            <span>⏳</span> Edad Biológica & Longevidad
-                                                        </span>
-                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${
-                                                            ocularAudit.pilares.edad_biologica_longevidad.retinal_age_gap?.includes('+')
-                                                                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800'
-                                                                : 'bg-emerald-50 text-[#3AAA35] dark:text-[#76D773] border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                                                        }`}>
-                                                            {ocularAudit.pilares.edad_biologica_longevidad.retinal_age_gap || '0 años'}
-                                                        </span>
+                                            {ocularAudit.pilares.edad_biologica_longevidad && (() => {
+                                                const hasPositiveGap = ocularAudit.pilares.edad_biologica_longevidad.retinal_age_gap?.includes('+');
+                                                return (
+                                                    <div className={`p-4 rounded-2xl border ${hasPositiveGap ? 'border-amber-200/90 bg-amber-50/15' : 'border-slate-200/90 bg-white'} dark:bg-slate-800/40 dark:border-slate-700 shadow-2xs space-y-2.5 transition-all`}>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                                <span>⏳</span> Edad Biológica & Longevidad
+                                                            </span>
+                                                            <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase border ${
+                                                                hasPositiveGap
+                                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                    : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                                                            }`}>
+                                                                {ocularAudit.pilares.edad_biologica_longevidad.retinal_age_gap || '0 años'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-xs space-y-1.5">
+                                                            <p className="font-semibold text-slate-700 dark:text-slate-300">
+                                                                Edad Estimada Ocular: <span className="font-mono text-slate-900 dark:text-white font-extrabold">{ocularAudit.pilares.edad_biologica_longevidad.edad_biologica_ocular || patientData?.demographics?.age || 60} años</span>{' '}
+                                                                <span className="text-slate-400 text-[11px] font-normal">(Cronológica: {patientData?.demographics?.age || 60})</span>
+                                                            </p>
+                                                            <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
+                                                                {ocularAudit.pilares.edad_biologica_longevidad.hallazgos || ocularAudit.pilares.edad_biologica_longevidad.estado_senescencia || 'Envejecimiento microvascular acorde a patrón normativo.'}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex justify-end pt-1">
+                                                            <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                                Correlación Córtex →
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Edad Estimada: <span className="font-mono text-slate-900 dark:text-white font-bold">{ocularAudit.pilares.edad_biologica_longevidad.edad_biologica_ocular || 60} años</span>
-                                                            <span className="text-slate-400 text-[10px] ml-1">(Cronológica: {patientData?.demographics?.age || 60})</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {ocularAudit.pilares.edad_biologica_longevidad.estado_senescencia || ocularAudit.pilares.edad_biologica_longevidad.hallazgos || 'Envejecimiento microvascular acorde.'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
 
                                             {/* PILAR 6: SALUD VISUAL Y MEDIOS ESTRUCTURALES */}
                                             {ocularAudit.pilares.salud_visual_estructural && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                                                <div className="p-4 bg-white dark:bg-slate-800/40 rounded-2xl border border-slate-200/90 dark:border-slate-700 shadow-2xs space-y-2.5 transition-all">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                                             <span>👁️</span> Medios & Estructura
                                                         </span>
-                                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-blue-50 text-[#1C75BC] dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                                                            {ocularAudit.pilares.salud_visual_estructural.asimetria_binocular?.includes('Bilateral') ? 'Simétrico' : 'Asimétrico'}
+                                                        <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase bg-emerald-50 text-[#3AAA35] border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
+                                                            {ocularAudit.pilares.salud_visual_estructural.asimetria_binocular?.toLowerCase().includes('asim') ? 'Asimétrico' : 'Simétrico'}
                                                         </span>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Cristalino: <span className="text-slate-900 dark:text-white font-bold">{ocularAudit.pilares.salud_visual_estructural.cristalino_cataratas || 'Transparente'}</span>
+                                                    <div className="text-xs space-y-1.5">
+                                                        <ul className="space-y-1 text-[11px] text-slate-700 dark:text-slate-300">
+                                                            <li>
+                                                                • Cristalino: <strong className="text-slate-900 dark:text-white">{ocularAudit.pilares.salud_visual_estructural.cristalino_cataratas || 'Transparente'}</strong>
+                                                            </li>
+                                                            <li>
+                                                                • Córnea: <strong className="text-[#3AAA35]">{ocularAudit.pilares.salud_visual_estructural.cornea_superficie || 'Transparente (sin ectasias ni leucomas)'}</strong>
+                                                            </li>
+                                                        </ul>
+                                                        <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px] pt-0.5">
+                                                            {ocularAudit.pilares.salud_visual_estructural.hallazgos || 'Transparencia óptica en rangos de viabilidad para telemetría biofotónica. Reflejo pupilar simétrico.'}
                                                         </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {ocularAudit.pilares.salud_visual_estructural.cornea_superficie || ocularAudit.pilares.salud_visual_estructural.hallazgos || 'Medios transparentes sin opacidades significativas.'}
-                                                        </p>
+                                                    </div>
+                                                    <div className="flex justify-end pt-1">
+                                                        <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                            Correlación Córtex →
+                                                        </span>
                                                     </div>
                                                 </div>
                                             )}
