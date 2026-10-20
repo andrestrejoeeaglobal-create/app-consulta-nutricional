@@ -2691,53 +2691,236 @@ export const TabBiochemicals = ({
 
             {/* 📸 [ACORDEÓN 5] PASO 5: EVIDENCIA SOMÁTICA DOCUMENTADA - CONTENEDOR PERMANENTE NOM-004 */}
             <div id="card-somatic" className="bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden font-sans">
-                <button 
-                    type="button"
-                    onClick={() => toggleSection('somatic')}
-                    className="w-full p-4 flex items-center justify-between bg-slate-50/40 hover:bg-slate-100/70 dark:bg-slate-800/20 dark:hover:bg-slate-800/50 transition-colors text-left select-none focus:outline-none cursor-pointer"
-                    aria-expanded={openSections.somatic}
-                >
-                    <div className="flex items-center gap-2.5">
-                        <span className="text-base">📸</span>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Evidencia Somática Documentada</h4>
-                        <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.somatic ? 'rotate-180' : ''}`} />
-                    </div>
-                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${
-                        typeof patientData?.scan_data?.visual_metrics === 'object' && patientData?.scan_data?.visual_metrics?.imageUrl ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800' : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
-                    }`}>
-                        {typeof patientData?.scan_data?.visual_metrics === 'object' && patientData?.scan_data?.visual_metrics?.imageUrl ? 'SOMATIC VERIFIED' : 'EVALUACIÓN OMITIDA'}
-                    </span>
-                </button>
+                {(() => {
+                    const vm = typeof patientData?.scan_data?.visual_metrics === 'object' && patientData?.scan_data?.visual_metrics !== null
+                        ? patientData.scan_data.visual_metrics
+                        : null;
+                    const somaticItems = Array.isArray(vm?.items) && vm.items.length > 0
+                        ? vm.items
+                        : (vm?.imageUrl ? [{
+                            index: 1,
+                            region: 'Evidencia Somática #1',
+                            finding: vm.findings || 'Exploración visual somática documentada.',
+                            severity: vm.severity || 'LOW',
+                            clinical_flags: vm.clinical_flags || [],
+                            imageUrl: vm.imageUrl
+                        }] : []);
+                    const hasSomatic = somaticItems.length > 0;
 
-                <div className={`grid transition-all duration-300 ease-in-out ${openSections.somatic ? 'grid-rows-[1fr] opacity-100 border-t border-slate-100 dark:border-slate-800' : 'grid-rows-[0fr] opacity-0 border-t-0'}`}>
-                    <div className="overflow-hidden">
-                        <div className="p-5 space-y-4">
-                            {typeof patientData?.scan_data?.visual_metrics === 'object' && patientData?.scan_data?.visual_metrics?.imageUrl ? (
-                                <div className="flex items-center gap-4">
-                                    <img 
-                                        src={getValidImageUrl(patientData.scan_data.visual_metrics.imageUrl)} 
-                                        onError={handleImageError}
-                                        alt="Evidencia Somática" 
-                                        className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs" 
-                                    />
-                                    <div className="flex-1 text-xs text-slate-700 dark:text-slate-300 space-y-1">
-                                        <p><span className="font-bold text-slate-900 dark:text-white">Estatus:</span> Registro fotográfico somático guardado</p>
+                    return (
+                        <>
+                            <button 
+                                type="button"
+                                onClick={() => toggleSection('somatic')}
+                                className="w-full p-4 flex items-center justify-between bg-slate-50/40 hover:bg-slate-100/70 dark:bg-slate-800/20 dark:hover:bg-slate-800/50 transition-colors text-left select-none focus:outline-none cursor-pointer"
+                                aria-expanded={openSections.somatic}
+                            >
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-base">📸</span>
+                                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Evidencia Somática Documentada</h4>
+                                    <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.somatic ? 'rotate-180' : ''}`} />
+                                </div>
+                                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${
+                                    hasSomatic
+                                        ? 'bg-blue-50 text-[#1C75BC] border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                                }`}>
+                                    {hasSomatic ? `SOMATIC VERIFIED (${somaticItems.length} FOTO${somaticItems.length > 1 ? 'S' : ''})` : 'EVALUACIÓN OMITIDA'}
+                                </span>
+                            </button>
+
+                            <div className={`grid transition-all duration-300 ease-in-out ${openSections.somatic ? 'grid-rows-[1fr] opacity-100 border-t border-slate-100 dark:border-slate-800' : 'grid-rows-[0fr] opacity-0 border-t-0'}`}>
+                                <div className="overflow-hidden">
+                                    <div className="p-5 space-y-5 bg-[#FAFAFA] dark:bg-slate-900">
+                                        {hasSomatic ? (
+                                            <>
+                                                {/* 1. CABECERA EJECUTIVA MULTI-FOTOGRAFÍA SOMÁTICA */}
+                                                <div className="bg-slate-100/80 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-base">📸</span>
+                                                            <h5 className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">
+                                                                Galería e Inferencia Morfológica Somática ({somaticItems.length} Evidencia{somaticItems.length > 1 ? 's' : ''})
+                                                            </h5>
+                                                        </div>
+                                                        <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full uppercase border ${
+                                                            String(vm?.severity || 'LOW').toUpperCase().includes('HIGH') || String(vm?.severity || 'LOW').toUpperCase().includes('CRITICAL')
+                                                                ? 'bg-red-50 text-[#E30613] border-red-200'
+                                                                : String(vm?.severity || 'LOW').toUpperCase().includes('MEDIUM')
+                                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                    : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                                                        }`}>
+                                                            Severidad Global: {vm?.severity || 'LOW'}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Galería de Miniaturas de todas las fotos capturadas */}
+                                                    <div className="flex flex-wrap items-center gap-4 pt-1">
+                                                        {somaticItems.map((it, idx) => (
+                                                            <div key={idx} className="flex flex-col items-center gap-1.5">
+                                                                <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-white dark:border-slate-700 shadow-sm bg-slate-900">
+                                                                    <img
+                                                                        src={getValidImageUrl(it.imageUrl)}
+                                                                        onError={handleImageError}
+                                                                        alt={it.region || `Evidencia ${idx + 1}`}
+                                                                        className="w-full h-full object-cover"
+                                                                    />
+                                                                    <span className="absolute bottom-0 inset-x-0 bg-slate-900/75 text-white text-[8px] font-black text-center py-0.5 tracking-widest uppercase">
+                                                                        FOTO #{idx + 1}
+                                                                    </span>
+                                                                </div>
+                                                                <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 uppercase max-w-[90px] truncate">
+                                                                    {it.region || `F-#${idx + 1}`}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Síntesis Morfológica Global */}
+                                                    {vm?.findings && (
+                                                        <div className="bg-white dark:bg-slate-900/90 p-3.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs">
+                                                            <p className="text-xs text-slate-600 dark:text-slate-300 italic leading-relaxed">
+                                                                "{vm.findings}"
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 2. PILA DE TARJETAS BENTO CLÍNICAS POR FOTOGRAFÍA */}
+                                                <div className="space-y-4">
+                                                    {somaticItems.map((item, idx) => {
+                                                        const sev = String(item.severity || 'LOW').toUpperCase();
+                                                        const isHigh = sev.includes('HIGH') || sev.includes('CRITICAL');
+                                                        const isMed = sev.includes('MEDIUM') || sev.includes('MODER');
+                                                        const isOptimal = !isHigh && !isMed;
+                                                        const pct = isOptimal ? 50 : isMed ? 74 : 88;
+
+                                                        const badge = isOptimal
+                                                            ? {
+                                                                bg: 'bg-emerald-50 text-[#3AAA35] border-emerald-200 font-bold',
+                                                                borderLeft: 'border-l-[#3AAA35]',
+                                                                calloutBg: 'bg-[#3AAA35] text-white',
+                                                                calloutArrow: 'border-b-[#3AAA35]',
+                                                                label: 'INTEGRIDAD CONSERVADA',
+                                                                icon: <CheckCircle2 size={12} className="text-[#3AAA35]" />
+                                                            }
+                                                            : isMed
+                                                                ? {
+                                                                    bg: 'bg-amber-50 text-amber-700 border-amber-200 font-bold',
+                                                                    borderLeft: 'border-l-amber-500',
+                                                                    calloutBg: 'bg-amber-600 text-white',
+                                                                    calloutArrow: 'border-b-amber-600',
+                                                                    label: 'OBSERVACIÓN MODERADA',
+                                                                    icon: <AlertTriangle size={12} className="text-amber-600" />
+                                                                }
+                                                                : {
+                                                                    bg: 'bg-red-50 text-[#E30613] border-red-200 font-extrabold',
+                                                                    borderLeft: 'border-l-[#E30613]',
+                                                                    calloutBg: 'bg-[#E30613] text-white',
+                                                                    calloutArrow: 'border-b-[#E30613]',
+                                                                    label: 'ALERTA MORFOLÓGICA ALTA',
+                                                                    icon: <AlertTriangle size={12} className="text-[#E30613]" />
+                                                                };
+
+                                                        return (
+                                                            <div
+                                                                key={idx}
+                                                                className={`bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/90 dark:border-slate-700 border-l-4 ${badge.borderLeft} p-5 shadow-2xs hover:shadow-md transition-all`}
+                                                            >
+                                                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                                                    <div className="flex items-start gap-3.5 flex-1">
+                                                                        <img
+                                                                            src={getValidImageUrl(item.imageUrl)}
+                                                                            onError={handleImageError}
+                                                                            alt={item.region || `Evidencia ${idx + 1}`}
+                                                                            className="w-16 h-16 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0 shadow-2xs"
+                                                                        />
+                                                                        <div className="space-y-1.5 flex-1">
+                                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                                <h5 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
+                                                                                    Fotografía #{idx + 1}: {item.region || 'Región Somática Evaluada'}
+                                                                                </h5>
+                                                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] border uppercase tracking-wider ${badge.bg}`}>
+                                                                                    {badge.icon}
+                                                                                    <span>{badge.label}</span>
+                                                                                </span>
+                                                                            </div>
+                                                                            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                                                                                {item.finding}
+                                                                            </p>
+                                                                            {Array.isArray(item.clinical_flags) && item.clinical_flags.length > 0 && (
+                                                                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                                                                    {item.clinical_flags.map((fl, fIdx) => (
+                                                                                        <span key={fIdx} className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+                                                                                            ⚑ {fl}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="sm:text-right shrink-0">
+                                                                        <span className={`text-lg font-black tracking-tight uppercase ${
+                                                                            isOptimal ? 'text-slate-900 dark:text-white' : isMed ? 'text-amber-600' : 'text-[#E30613]'
+                                                                        }`}>
+                                                                            FOTO #{idx + 1}
+                                                                        </span>
+                                                                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                                            Severidad: {item.severity || 'LOW'}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Barra Termodinámica Morfológica */}
+                                                                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/60">
+                                                                    <div className="grid grid-cols-3 text-[9px] font-extrabold uppercase tracking-wider mb-1.5">
+                                                                        <span className="text-slate-400 text-left">Hipotrofismo</span>
+                                                                        <span className="text-[#3AAA35] text-center">Integridad Tisular Óptima</span>
+                                                                        <span className="text-slate-400 text-right">Compromiso / Estasis</span>
+                                                                    </div>
+                                                                    <div className="relative pt-1 pb-7">
+                                                                        <div className="h-2.5 w-full rounded-full overflow-hidden grid grid-cols-3 gap-0.5 bg-slate-100 dark:bg-slate-700 p-0.5">
+                                                                            <div className="bg-amber-300/60 dark:bg-amber-500/40 rounded-l-full" />
+                                                                            <div className="bg-[#3AAA35]/75 dark:bg-[#3AAA35]/65" />
+                                                                            <div className="bg-rose-400/65 dark:bg-rose-500/45 rounded-r-full" />
+                                                                        </div>
+                                                                        <div
+                                                                            className="absolute top-0 -translate-x-1/2 flex flex-col items-center transition-all duration-300"
+                                                                            style={{ left: `${pct}%` }}
+                                                                        >
+                                                                            <div className={`w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 shadow-md ${
+                                                                                isOptimal ? 'bg-[#3AAA35]' : isMed ? 'bg-amber-500' : 'bg-[#E30613]'
+                                                                            }`} />
+                                                                            <div className={`w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[5px] ${badge.calloutArrow} mt-0.5`} />
+                                                                            <div className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold whitespace-nowrap shadow-xs ${badge.calloutBg}`}>
+                                                                                {isOptimal ? 'Tejido Eutrófico' : isMed ? 'Vigilancia Clínica' : 'Atención Prioritaria'}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-300 font-medium flex items-start gap-2.5">
+                                                <span className="text-base shrink-0 mt-0.5">📸</span>
+                                                <div>
+                                                    <strong className="text-slate-900 dark:text-white block font-bold mb-0.5 uppercase tracking-wider text-[10px]">Constancia Asentada (NOM-004-SSA3-2012):</strong>
+                                                    <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">
+                                                        Evidencia visual somática omitida por el evaluado/especialista. No se cargó registro fotográfico somático complementario para este folio de cita.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-300 font-medium flex items-start gap-2.5">
-                                    <span className="text-base shrink-0 mt-0.5">📸</span>
-                                    <div>
-                                        <strong className="text-slate-900 dark:text-white block font-bold mb-0.5 uppercase tracking-wider text-[10px]">Constancia Asentada (NOM-004-SSA3-2012):</strong>
-                                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">
-                                            Evidencia visual somática omitida por el evaluado/especialista. No se cargó registro fotográfico somático complementario para este folio de cita.
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                            </div>
+                        </>
+                    );
+                })()}
             </div>
 
             {/* Modal */}

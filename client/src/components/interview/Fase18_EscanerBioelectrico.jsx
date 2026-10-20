@@ -27,8 +27,7 @@ export default function Fase18_EscanerBioelectrico({
     const [ventralPreview, setVentralPreview] = useState(null);
     const [lingualActiveTab, setLingualActiveTab] = useState('dorsal'); // 'dorsal' | 'ventral'
     const [pdfFiles, setPdfFiles] = useState([]); // Arreglo de múltiples archivos PDF/Imágenes
-    const [somaticFile, setSomaticFile] = useState(null);
-    const [somaticPreview, setSomaticPreview] = useState(null);
+    const [somaticFiles, setSomaticFiles] = useState([]); // Arreglo de múltiples fotografías somáticas { file, previewUrl, name }
     const [isUploading, setIsUploading] = useState(false);
     const [telemetryProgressMsg, setTelemetryProgressMsg] = useState('');
     const [useLiveCamera, setUseLiveCamera] = useState(false);
@@ -1225,7 +1224,7 @@ Seleccione el botón a continuación para tomar o adjuntar la fotografía somát
         }
 
         if (value === 'VISUAL_RETRY') {
-            setSomaticFile(null);
+            setSomaticFiles([]);
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
@@ -1576,40 +1575,60 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
         }
     };
 
-    const submitSomaticScan = async (file) => {
-        if (!file) return;
+    const submitSomaticScan = async (entries) => {
+        const list = Array.isArray(entries) ? entries : (entries ? [{ file: entries, previewUrl: URL.createObjectURL(entries), name: entries.name }] : []);
+        if (list.length === 0) return;
         setIsUploading(true);
         try {
             const formData = new FormData();
-            formData.append('visualImage', file);
+            for (const entry of list) {
+                const compressed = await compressImageForTelemetry(entry.file, 1400, 1400, 0.85);
+                formData.append('visualImages', compressed);
+            }
 
             const response = await fetch(`${apiUrl}/api/bio/scan/visual-scan`, {
                 method: 'POST',
                 body: formData
             });
 
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
             const data = await response.json();
+            const resolvedItems = Array.isArray(data.items) && data.items.length > 0
+                ? data.items
+                : list.map((entry, idx) => ({
+                    index: idx + 1,
+                    fileName: entry.name || `Evidencia_${idx + 1}.jpg`,
+                    region: `Evidencia Somática #${idx + 1}`,
+                    finding: data.findings || 'Exploración visual somática documentada.',
+                    severity: data.severity || 'LOW',
+                    clinical_flags: data.clinical_flags || [],
+                    imageUrl: entry.previewUrl
+                }));
 
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
                     ...(prev?.scan_data || {}),
                     visual_metrics: {
-                        imageUrl: data.imageUrl,
+                        imageUrl: data.imageUrl || resolvedItems[0]?.imageUrl,
+                        totalPhotos: resolvedItems.length,
                         status: 'COMPLETE',
-                        findings: 'Postura y distribución fenotípica procesadas.'
+                        severity: data.severity || 'LOW',
+                        clinical_flags: data.clinical_flags || [],
+                        findings: data.findings || 'Exploración morfológica somática procesada por Gemini Vision.',
+                        items: resolvedItems
                     }
                 }
             }));
 
             const gateMsg = {
                 role: 'assistant',
-                content: `### 📸 Resumen de Evidencia Visual Complementaria
+                content: `### 📸 Evidencia Visual Somática Procesada
 
-* **Evidencia Foto-documental**: Fotografía registrada y procesada por Gemini Vision.
-* **Estatus**: Protocolo de evaluación bioeléctrica y multimodal concluido.
-
----
+✅ **${resolvedItems.length} Fotografía(s) Somática(s)** analizadas por Gemini Vision y desplegadas en las **Bento Cards Clínicas** del panel derecho.
 
 ¿Confirma que la evaluación acumulada es verídica y completa?`,
                 options: [
@@ -1619,8 +1638,14 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
             };
             setMessages(prev => [...prev, gateMsg]);
             setActiveModal(null);
+            setSomaticFiles([]);
         } catch (err) {
-            console.error("Error enviando foto somática:", err);
+            console.error("Error enviando fotos somáticas:", err);
+            showToast({
+                title: "Error en Evidencia Somática",
+                message: "No se pudo procesar el registro fotográfico. Verifique la conexión con el servidor e intente de nuevo.",
+                type: "error"
+            });
         } finally {
             setIsUploading(false);
         }
@@ -1707,8 +1732,14 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                                     }
                                                     stopLiveCamera();
                                                 } else if (activeModal === 'VISUAL_SOMATIC') {
-                                                    setSomaticFile(file);
-                                                    setSomaticPreview(URL.createObjectURL(file));
+                                                    setSomaticFiles(prev => [
+                                                        ...prev,
+                                                        {
+                                                            file,
+                                                            previewUrl: URL.createObjectURL(file),
+                                                            name: file.name || `Camara_${prev.length + 1}.jpg`
+                                                        }
+                                                    ]);
                                                 }
                                             });
                                         }}
@@ -2113,42 +2144,98 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                             </div>
                         )}
 
-                        {/* CONTENIDO MODAL SOMÁTICA (OPCIONES DUALES) */}
+                        {/* CONTENIDO MODAL SOMÁTICA (SOPORTE MULTI-FOTOGRAFÍA ACUMULATIVA: CÁMARA + GALERÍA) */}
                         {activeModal === 'VISUAL_SOMATIC' && !useLiveCamera && (
                             <div className="space-y-4 text-center">
-                                <p className="text-xs text-slate-600">Seleccione el método de captura para el registro de postura/fenotipo somático.</p>
+                                <p className="text-xs text-slate-600">
+                                    Capture o adjunte <strong>una o múltiples fotografías</strong> para el registro de postura, piel, vascularidad o fenotipo somático.
+                                </p>
                                 <div className="grid grid-cols-1 gap-2.5">
                                     <button 
+                                        type="button"
                                         onClick={startLiveCamera}
-                                        className="w-full py-3 bg-[#1C75BC] text-white text-xs font-bold rounded-xl hover:bg-[#155d96] transition-all shadow-sm flex items-center justify-center gap-2"
+                                        className="w-full py-3 bg-[#1C75BC] text-white text-xs font-bold rounded-xl hover:bg-[#155d96] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
                                     >
-                                        📷 Usar Cámara en Vivo (WebRTC)
+                                        📷 {somaticFiles.length > 0 ? 'Tomar Otra Foto con Cámara (WebRTC)' : 'Usar Cámara en Vivo (WebRTC)'}
                                     </button>
                                     <div className="relative border border-slate-200 rounded-xl p-3 bg-slate-50 hover:bg-slate-100 transition-all text-left">
-                                        <label className="text-[10px] font-bold text-slate-500 block uppercase mb-1">📁 O seleccionar archivo de disco/galería</label>
+                                        <label className="text-[10px] font-bold text-slate-500 block uppercase mb-1">
+                                            📁 {somaticFiles.length > 0 ? 'Agregar más fotografías de disco/galería' : 'O seleccionar una o varias fotos de disco/galería'}
+                                        </label>
                                         <input 
                                             type="file" 
+                                            multiple
                                             accept="image/*" 
+                                            onClick={(e) => { e.target.value = ''; }}
                                             onChange={(e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    setSomaticFile(file);
-                                                    setSomaticPreview(URL.createObjectURL(file));
+                                                const newFiles = Array.from(e.target.files || []);
+                                                if (newFiles.length > 0) {
+                                                    const mapped = newFiles.map((f) => ({
+                                                        file: f,
+                                                        previewUrl: URL.createObjectURL(f),
+                                                        name: f.name
+                                                    }));
+                                                    setSomaticFiles(prev => [...prev, ...mapped]);
                                                 }
                                             }}
                                             className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-[#1C75BC] hover:file:bg-blue-100 cursor-pointer"
                                         />
                                     </div>
                                 </div>
-                                {somaticPreview && (
-                                    <div className="flex flex-col items-center gap-2 pt-2 border-t border-slate-100">
-                                        <img src={somaticPreview} alt="Somática" className="w-24 h-24 object-cover rounded-xl border border-slate-200 shadow-xs" />
+
+                                {somaticFiles.length > 0 && (
+                                    <div className="space-y-3 pt-3 border-t border-slate-100 text-left">
+                                        <div className="flex items-center justify-between text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                                            <span>Fotografías en cola ({somaticFiles.length})</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSomaticFiles([])}
+                                                className="text-red-500 hover:underline cursor-pointer"
+                                            >
+                                                Vaciar todas
+                                            </button>
+                                        </div>
+
+                                        <div className="grid grid-cols-3 gap-2.5 max-h-48 overflow-y-auto p-1">
+                                            {somaticFiles.map((item, idx) => (
+                                                <div key={idx} className="relative group flex flex-col items-center bg-slate-50 border border-slate-200 rounded-xl p-1.5 shadow-2xs">
+                                                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-900">
+                                                        <img
+                                                            src={item.previewUrl}
+                                                            alt={item.name || `Somática ${idx + 1}`}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                        <span className="absolute bottom-0 inset-x-0 bg-slate-900/75 text-white text-[8px] font-black text-center py-0.5 uppercase tracking-wider">
+                                                            FOTO #{idx + 1}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-[9px] font-semibold text-slate-600 truncate w-full text-center mt-1">
+                                                        {item.name}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSomaticFiles(prev => prev.filter((_, i) => i !== idx))}
+                                                        className="absolute -top-1.5 -right-1.5 bg-[#E30613] hover:bg-red-700 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center font-bold shadow-sm cursor-pointer"
+                                                        title="Quitar esta fotografía"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+
                                         <button 
-                                            onClick={() => submitSomaticScan(somaticFile)}
+                                            type="button"
+                                            onClick={() => submitSomaticScan(somaticFiles)}
                                             disabled={isUploading}
-                                            className="w-full py-2.5 bg-[#1C75BC] text-white font-bold rounded-xl text-xs hover:bg-[#155d96] transition-all shadow-md"
+                                            className="w-full py-2.5 bg-[#1C75BC] text-white font-bold rounded-xl text-xs hover:bg-[#155d96] disabled:opacity-50 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
                                         >
-                                            {isUploading ? '⚡ Procesando Somática...' : '📸 Confirmar Registro Somático'}
+                                            {isUploading ? (
+                                                <>
+                                                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                    <span>Analizando {somaticFiles.length} Fotografía(s) en Gemini Vision...</span>
+                                                </>
+                                            ) : `📸 Confirmar Registro Somático (${somaticFiles.length} Foto${somaticFiles.length > 1 ? 's' : ''})`}
                                         </button>
                                     </div>
                                 )}

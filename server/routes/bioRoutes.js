@@ -1214,60 +1214,83 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
 
 /**
  * POST /api/bio/scan/visual-scan
- * Recibe una imagen de evidencia física y la analiza con Gemini Vision (con sanitización EXIF y optimización con sharp).
+ * Recibe una o múltiples imágenes de evidencia física somática y las analiza con Gemini Vision
+ * (con sanitización EXIF, optimización con sharp y retorno de miniaturas Base64 persistentes).
  */
-router.post('/visual-scan', upload.single('visualImage'), async (req, res) => {
-    const file = req.file;
+router.post('/visual-scan', upload.any(), async (req, res) => {
+    const uploadedFiles = Array.isArray(req.files)
+        ? req.files.filter(f => f && (f.fieldname === 'visualImages' || f.fieldname === 'visualImage'))
+        : (req.file ? [req.file] : []);
 
-    if (!file) {
-        return res.status(400).json({ success: false, message: "No se proporcionó ninguna imagen para el escaneo visual." });
+    if (uploadedFiles.length === 0) {
+        return res.status(400).json({ success: false, message: "No se proporcionó ninguna imagen para el escaneo visual somático." });
     }
 
-    console.log(`📸 [VISUAL SCAN] Iniciando análisis para: ${file.filename}`);
+    console.log(`📸 [VISUAL SCAN] Iniciando análisis multi-evidencia para ${uploadedFiles.length} fotografía(s).`);
 
     try {
-        // 1. Sanitizar EXIF y optimizar a un máximo de 1024x1024px con sharp
-        await sanitizeAndOptimizeImage(file.path);
+        // 1. Sanitizar EXIF, optimizar con sharp y generar Data URLs persistentes antes de destrucción efímera
+        const processedFiles = [];
+        for (let i = 0; i < uploadedFiles.length; i++) {
+            const file = uploadedFiles[i];
+            await sanitizeAndOptimizeImage(file.path);
+            const base64Data = fs.readFileSync(file.path).toString("base64");
+            const mimeType = file.mimetype || 'image/jpeg';
+            processedFiles.push({
+                index: i + 1,
+                file,
+                fileName: file.originalname || `Evidencia_${i + 1}.jpg`,
+                base64Data,
+                mimeType,
+                dataUrl: `data:${mimeType};base64,${base64Data}`
+            });
+        }
 
         let analysisResults = null;
 
-        // 2. Si hay GEMINI_API_KEY, consultar con Gemini Vision
+        // 2. Si hay GEMINI_API_KEY, consultar con Gemini Vision para todas las imágenes
         if (process.env.GEMINI_API_KEY) {
             try {
                 const { GoogleGenAI } = require('@google/genai');
                 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-                const base64Data = fs.readFileSync(file.path).toString("base64");
-                const mimeType = file.mimetype;
-
-                const contents = [
-                    {
+                const contents = [];
+                processedFiles.forEach((pf) => {
+                    contents.push({
                         inlineData: {
-                            data: base64Data,
-                            mimeType: mimeType
+                            data: pf.base64Data,
+                            mimeType: pf.mimeType
                         }
-                    },
-                    `Actúa como un Patólogo y Dermatólogo Clínico de soporte para el Ecosistema T.I.L.O.
-Analiza la imagen médica adjunta que ha sido cargada por el médico durante una consulta presencial.
-Tu tarea es realizar una descripción puramente objetiva y morfológica de los hallazgos visuales observados en la imagen (como válices prominentes, pigmentación de hemosiderina, eritema local, edema, úlceras o lesiones cutáneas).
+                    });
+                });
 
-REGLA CLÍNICA DE SEGURIDAD ABSOLUTA:
-- NO emitas diagnósticos categóricos ni definitivos en lenguaje directo (ej. no digas "El paciente tiene dermatitis").
-- Usa lenguaje de compatibilidad y sugerencia diagnóstica (ej. "Los hallazgos morfológicos observados son compatibles con...", "Se observa hiperpigmentación peri-maleolar sugerente de estasis venosa...").
-- La descripción de los hallazgos morfológicos objetivos debe ser clara, profesional y rigurosa.
+                contents.push(`Actúa como un Patólogo y Dermatólogo Clínico de soporte para el Ecosistema T.I.L.O.
+Analiza las ${processedFiles.length} imagen(es) médica(s) somática(s) adjunta(s) cargadas durante la consulta presencial.
+Realiza una descripción puramente objetiva y morfológica de los hallazgos visuales observados en cada fotografía y una síntesis global (ej. várices prominentes, pigmentación ocre por hemosiderina, eritema, edema, distribución adiposa/postural, trofismo cutáneo o lesiones dérmicas).
 
-Genera la respuesta estrictamente en formato JSON con la siguiente estructura de campos:
+REGLA CLÍNICA DE SEGURIDAD ABSOLUTA (NOM-004):
+- NO emitas diagnósticos categóricos definitivos. Usa lenguaje descriptivo morfológico y de compatibilidad clínica ("Los hallazgos morfológicos observados son compatibles con...", "Se aprecia hiperpigmentación sugerente de...").
+
+Genera la respuesta estrictamente en formato JSON con la siguiente estructura:
 {
-  "findings": "Tu descripción clínica detallada y sugerencias...",
-  "clinical_flags": ["Array de banderas de riesgo sugeridas (ej: CHRONIC_VENOUS_INSUFFICIENCY_DETECTED, VARICOSE_VEINS_HIGH_RISK, VENOUS_STASIS_DERMATITIS)"],
-  "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+  "findings": "Síntesis clínica morfológica global integrando las ${processedFiles.length} fotografías...",
+  "clinical_flags": ["Banderas clínicas sugeridas, ej: CHRONIC_VENOUS_INSUFFICIENCY_DETECTED, EDEMA_PERIPHERAL_MODERATE"],
+  "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+  "items": [
+    {
+      "index": 1,
+      "region": "Región anatómica identificada en la foto #1 (ej. Extremidad Inferior / Tobillo Medial)",
+      "finding": "Descripción morfológica objetiva de la foto #1...",
+      "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+      "clinical_flags": ["Banderas específicas de esta foto"]
+    }
+  ]
 }
 
-Responde ÚNICAMENTE con el objeto JSON. No agregues texto adicional, explicaciones ni formato markdown.`
-                ];
+Responde ÚNICAMENTE con el objeto JSON válido.`);
 
-                console.log("🤖 Consultando a Gemini Vision para análisis morfológico...");
-                const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+                console.log(`🤖 Consultando a Gemini Vision para análisis somático de ${processedFiles.length} foto(s)...`);
+                const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-pro', 'gemini-flash-lite-latest'];
                 let response = null;
                 for (const targetModel of candidateModels) {
                     try {
@@ -1290,40 +1313,78 @@ Responde ÚNICAMENTE con el objeto JSON. No agregues texto adicional, explicacio
 
                 const cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
                 analysisResults = JSON.parse(cleanText);
-                console.log("✅ Análisis de Gemini Vision exitoso:", analysisResults);
-
+                console.log("✅ Análisis multi-evidencia de Gemini Vision exitoso.");
             } catch (geminiErr) {
                 console.error("⚠️ Error consultando a Gemini Vision. Usando fallback local:", geminiErr.message);
-                analysisResults = runOfflineVisualMock(file.originalname);
+                analysisResults = runOfflineVisualMockMulti(processedFiles);
             }
         } else {
             console.log("ℹ️ GEMINI_API_KEY no configurada. Ejecutando motor de visión local offline.");
-            analysisResults = runOfflineVisualMock(file.originalname);
+            analysisResults = runOfflineVisualMockMulti(processedFiles);
         }
+
+        const normalizedItems = processedFiles.map((pf, idx) => {
+            const aiItem = (Array.isArray(analysisResults?.items) && (analysisResults.items.find(it => Number(it.index) === idx + 1) || analysisResults.items[idx])) || null;
+            const fallbackSingle = runOfflineVisualMock(pf.fileName);
+            return {
+                index: idx + 1,
+                fileName: pf.fileName,
+                region: aiItem?.region || `Evidencia Somática #${idx + 1}`,
+                finding: aiItem?.finding || analysisResults?.findings || fallbackSingle.findings,
+                severity: aiItem?.severity || analysisResults?.severity || fallbackSingle.severity || "LOW",
+                clinical_flags: Array.isArray(aiItem?.clinical_flags) ? aiItem.clinical_flags : (analysisResults?.clinical_flags || []),
+                imageUrl: pf.dataUrl
+            };
+        });
 
         res.json({
             success: true,
-            findings: analysisResults.findings,
-            clinical_flags: analysisResults.clinical_flags || [],
-            severity: analysisResults.severity || "LOW",
-            imageUrl: `/uploads/${file.filename}`
+            totalPhotos: processedFiles.length,
+            findings: analysisResults?.findings || normalizedItems.map(i => `Foto #${i.index} (${i.region}): ${i.finding}`).join(' '),
+            clinical_flags: analysisResults?.clinical_flags || [],
+            severity: analysisResults?.severity || "LOW",
+            imageUrl: processedFiles[0].dataUrl,
+            items: normalizedItems
         });
 
     } catch (err) {
         console.error("🔥 Error en endpoint visual-scan:", err.message);
-        res.status(500).json({ success: false, message: "Error interno al procesar el análisis de visión." });
+        res.status(500).json({ success: false, message: "Error interno al procesar el análisis de visión somática." });
     } finally {
-        // Destrucción efímera de la imagen clínica en cumplimiento con HIPAA y LFPDPPP
-        try {
-            if (fs.existsSync(file.path)) {
-                fs.unlinkSync(file.path);
-                console.log(`🗑️ [EFÍMERO] Imagen de evidencia visual destruida físicamente del servidor: ${file.path}`);
+        // Destrucción efímera de las imágenes clínicas temporales en cumplimiento con HIPAA y LFPDPPP
+        for (const f of uploadedFiles) {
+            try {
+                if (f?.path && fs.existsSync(f.path)) {
+                    fs.unlinkSync(f.path);
+                    console.log(`🗑️ [EFÍMERO] Imagen de evidencia visual destruida físicamente del servidor: ${f.path}`);
+                }
+            } catch (unlinkErr) {
+                console.error("⚠️ No se pudo eliminar la imagen temporal de evidencia visual:", unlinkErr.message);
             }
-        } catch (unlinkErr) {
-            console.error("⚠️ No se pudo eliminar la imagen temporal de evidencia visual:", unlinkErr.message);
         }
     }
 });
+
+function runOfflineVisualMockMulti(processedFiles) {
+    const items = processedFiles.map((pf, idx) => {
+        const single = runOfflineVisualMock(pf.fileName);
+        return {
+            index: idx + 1,
+            region: `Región Anatómica Evaluada #${idx + 1}`,
+            finding: single.findings,
+            severity: single.severity,
+            clinical_flags: single.clinical_flags
+        };
+    });
+    const allFlags = [...new Set(items.flatMap(i => i.clinical_flags || []))];
+    const hasHigh = items.some(i => i.severity === 'HIGH' || i.severity === 'CRITICAL');
+    return {
+        findings: items.map(i => `[Evidencia #${i.index}] ${i.finding}`).join(' '),
+        clinical_flags: allFlags,
+        severity: hasHigh ? 'HIGH' : 'LOW',
+        items
+    };
+}
 
 // Helper de fallback local offline para análisis visual
 function runOfflineVisualMock(fileName) {
