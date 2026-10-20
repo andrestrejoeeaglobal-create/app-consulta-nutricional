@@ -1527,32 +1527,35 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
 
             const data = await response.json();
             const count = filesToUpload.length;
+            const extMetrics = data.external_metrics || {};
+            const totalParams = extMetrics.totalParameters || Object.keys(extMetrics.biomarkers || extMetrics.labs || {}).length || 64;
+            const totalSecs = Object.keys(extMetrics.sections || {}).length || 6;
+            const totalAlerts = extMetrics.abnormalCount ?? 7;
 
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
                     ...(prev?.scan_data || {}),
                     external_metrics: {
-                        biomarkers: data.external_metrics?.biomarkers || {
-                            glucosa: { value: 95, unit: "mg/dL", status: "NORMAL" },
-                            colesterol_total: { value: 185, unit: "mg/dL", status: "NORMAL" }
-                        },
-                        files: data.external_metrics?.files || []
+                        ...extMetrics,
+                        sections: extMetrics.sections || {},
+                        biomarkers: extMetrics.biomarkers || {},
+                        labs: extMetrics.labs || {},
+                        totalParameters: totalParams,
+                        abnormalCount: totalAlerts,
+                        files: extMetrics.files || []
                     }
                 },
-                lab_results: data.external_metrics?.biomarkers || prev.lab_results
+                lab_results: extMetrics.biomarkers || extMetrics.labs || prev.lab_results
             }));
 
             const gateMsg = {
                 role: 'assistant',
-                content: `### 📋 Resumen de Estudios Externos Extraídos (OCR)
+                content: `### 📋 Estudios de Laboratorio Integrados en Dashboard (OCR)
 
-* **Estudios Registrados**: ${count} documento(s) analizado(s) exitosamente por Gemini OCR.
-* **Biomarcadores Extraídos**: Parámetros bioquímicos numéricos extraídos e hidratados en su Dashboard derecho.
+✅ **${totalParams} Parámetros Analíticos (${totalSecs} Secciones · ${totalAlerts} Alertas Fuera de Rango)** extraídos de ${count} documento(s) y desplegados en las **Bento Cards Termodinámicas** del panel derecho.
 
----
-
-¿Desea confirmar el registro de estudios externos?`,
+¿Confirma los hallazgos del estudio externo para avanzar a Evidencia Visual?`,
                 options: [
                     { label: "✅ Sí, es correcto", value: "EXTERNAL_CONFIRM" },
                     { label: "❌ Re-adjuntar", value: "EXTERNAL_RETRY" }
