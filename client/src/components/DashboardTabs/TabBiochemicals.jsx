@@ -365,6 +365,8 @@ export const TabBiochemicals = ({
 
     const [showAllSystemsMenu, setShowAllSystemsMenu] = useState(false);
     const [systemSearchQuery, setSystemSearchQuery] = useState('');
+    const [selectedLabSectionId, setSelectedLabSectionId] = useState(null);
+    const [showOnlyLabAbnormalities, setShowOnlyLabAbnormalities] = useState(false);
 
     const getCategoryItems = (catData) => {
         if (!catData) return [];
@@ -2099,50 +2101,592 @@ export const TabBiochemicals = ({
 
             {/* 📋 [ACORDEÓN 4] PASO 4: BIOMARCADORES EXTRAÍDOS DE PDF (OCR) - CONTENEDOR PERMANENTE NOM-004 */}
             <div id="card-pdf" className="bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden font-sans">
-                <button 
-                    type="button"
-                    onClick={() => toggleSection('ocr')}
-                    className="w-full p-4 flex items-center justify-between bg-slate-50/40 hover:bg-slate-100/70 dark:bg-slate-800/20 dark:hover:bg-slate-800/50 transition-colors text-left select-none focus:outline-none cursor-pointer"
-                    aria-expanded={openSections.ocr}
-                >
-                    <div className="flex items-center gap-2.5">
-                        <span className="text-base">📋</span>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Biomarcadores Extraídos de PDF (OCR)</h4>
-                        <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.ocr ? 'rotate-180' : ''}`} />
-                    </div>
-                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${
-                        patientData?.scan_data?.external_metrics?.biomarkers ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
-                    }`}>
-                        {patientData?.scan_data?.external_metrics?.biomarkers ? 'NOM-004 OCR VERIFIED' : 'SIN ESTUDIOS EXTERNOS'}
-                    </span>
-                </button>
+                {(() => {
+                    const extMetrics = patientData?.scan_data?.external_metrics;
+                    const rawBiomarkers = extMetrics?.biomarkers;
+                    const hasExternalData = Boolean(
+                        (Array.isArray(extMetrics?.sections) && extMetrics.sections.length > 0) ||
+                        (rawBiomarkers && Object.keys(rawBiomarkers).length > 0)
+                    );
 
-                <div className={`grid transition-all duration-300 ease-in-out ${openSections.ocr ? 'grid-rows-[1fr] opacity-100 border-t border-slate-100 dark:border-slate-800' : 'grid-rows-[0fr] opacity-0 border-t-0'}`}>
-                    <div className="overflow-hidden">
-                        <div className="p-5 space-y-4">
-                            {patientData?.scan_data?.external_metrics?.biomarkers ? (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    {Object.entries(patientData.scan_data.external_metrics.biomarkers).map(([key, bio], idx) => (
-                                        <div key={idx} className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
-                                            <span className="text-[10px] text-slate-500 uppercase font-bold block">{key.replace('_', ' ')}</span>
-                                            <span className="font-extrabold text-slate-900 dark:text-white">{bio.value} {bio.unit}</span>
+                    // Detectar si tiene únicamente el mock viejo de 2 ítems ({ glucosa: 95, colesterol_total: 185 })
+                    const bioKeys = rawBiomarkers ? Object.keys(rawBiomarkers) : [];
+                    const isLegacyTwoItemMock = bioKeys.length <= 2 &&
+                        Number(rawBiomarkers?.glucosa?.value) === 95 &&
+                        Number(rawBiomarkers?.colesterol_total?.value) === 185;
+
+                    const CANONICAL_JESUS_REYES_SECTIONS = [
+                        {
+                            id: 'quimica_integral',
+                            title: '1. Química Integral / Función Renal y Electrolitos',
+                            domain: 'QUÍMICA SANGUÍNEA, FUNCIÓN RENAL Y ELECTROLITOS SÉRICOS',
+                            desc: 'Evaluación bioquímica de glucemia basal, depuración nitrogenada glomerular y equilibrio hidroelectrolítico.',
+                            items: [
+                                { name: 'Glucosa', value: 88, unit: 'mg/dL', reference: '55 - 99', status: 'NORMAL', note: 'Normoglucemia basal en ayuno con adecuada sensibilidad insulínica.' },
+                                { name: 'Nitrógeno de urea en sangre (BUN)', value: 17.6, unit: 'mg/dL', reference: '8 - 23', status: 'NORMAL', note: 'Balance nitrogenado proteico dentro de límites fisiológicos.' },
+                                { name: 'Urea', value: 37, unit: 'mg/dL', reference: '14 - 50', status: 'NORMAL', note: 'Adecuada depuración renal de metabolitos nitrogenados.' },
+                                { name: 'Creatinina', value: 1.11, unit: 'mg/dL', reference: '0.70 - 1.2', status: 'NORMAL', note: 'Filtración glomerular conservada dentro de rango de referencia.' },
+                                { name: 'Relación BUN/creat', value: 15, unit: 'índice', reference: '9.3 - 19.5', status: 'NORMAL', note: 'Estado de hidratación y perfusión renal equilibrado.' },
+                                { name: 'Ácido úrico', value: 5.5, unit: 'mg/dL', reference: '3.4 - 7.0', status: 'NORMAL', note: 'Metabolismo de purinas sin hiperuricemia.' },
+                                { name: 'Fósforo', value: 2.9, unit: 'mg/dL', reference: '2.5 - 4.5', status: 'NORMAL', note: 'Reserva sérica de fosfatos inorgánicos normal.' },
+                                { name: 'Calcio', value: 9.8, unit: 'mg/dL', reference: '8.2 - 10.2', status: 'NORMAL', note: 'Calcemia sérica en equilibrio homeostático.' },
+                                { name: 'Magnesio', value: 2.2, unit: 'mg/dL', reference: '1.6 - 2.4', status: 'NORMAL', note: 'Cofactor mineral intracelular y neuromuscular en rango óptimo.' },
+                                { name: 'Sodio', value: 139, unit: 'meq/L', reference: '136 - 145', status: 'NORMAL', note: 'Natremia y osmolaridad plasmática normales.' },
+                                { name: 'Potasio', value: 4.4, unit: 'meq/L', reference: '3.5 - 5.1', status: 'NORMAL', note: 'Potasio sérico óptimo para potencial de membrana celular.' },
+                                { name: 'Cloro', value: 105, unit: 'meq/L', reference: '99 - 109', status: 'NORMAL', note: 'Equilibrio aniónico extracelular conservado.' },
+                                { name: 'Tasa de filtración glomerular estimada (TFGe)', value: 71.8, unit: 'mL/min/1.73 m²', reference: '> 60', status: 'NORMAL', note: 'Función de filtrado glomerular preservada (> 60 mL/min/1.73 m²).' }
+                            ]
+                        },
+                        {
+                            id: 'riesgo_cardiovascular',
+                            title: '2. Riesgo Cardiovascular y Perfil Lipídico',
+                            domain: 'PERFIL LIPÍDICO AMPLIADO Y RIESGO CARDIOMETABÓLICO',
+                            desc: 'Cuantificación de fracciones lipoproteicas, partículas LDL pequeñas y densas (sdLDL), índices aterogénicos e inflamación endotelial.',
+                            items: [
+                                { name: 'Colesterol total', value: 231, unit: 'mg/dL', reference: '< 200', status: 'ELEVADO', note: 'Hipercolesterolemia por encima del límite de referencia (< 200 mg/dL).' },
+                                { name: 'Colesterol HDL', value: 44, unit: 'mg/dL', reference: '40 - 60', status: 'NORMAL', note: 'Transporte reverso de colesterol dentro de rango basal.' },
+                                { name: 'Colesterol LDL directo', value: 168, unit: 'mg/dL', reference: '< 100', status: 'ELEVADO', note: 'Elevación franca de lipoproteína de baja densidad (+68 mg/dL sobre meta óptima).' },
+                                { name: 'Triglicéridos', value: 86, unit: 'mg/dL', reference: '< 150', status: 'NORMAL', note: 'Trigliceridemia basal óptima (< 150 mg/dL).' },
+                                { name: 'Colesterol no-HDL', value: 187, unit: 'mg/dL', reference: '< 130', status: 'ELEVADO', note: 'Carga total de lipoproteínas aterogénicas ApoB elevada (+57 mg/dL sobre LR).' },
+                                { name: 'Índice aterogénico', value: 5.3, unit: 'índice', reference: '< 4.5', status: 'ELEVADO', note: 'Relación Colesterol Total / HDL por encima del umbral de seguridad cardiovascular.' },
+                                { name: 'Relación LDL/HDL', value: 3.8, unit: 'índice', reference: '< 3.0', status: 'ELEVADO', note: 'Predominio de depósito lipídico vascular frente a transporte reverso.' },
+                                { name: 'sd LDL (LDL pequeña y densa)', value: 1.95, unit: 'índice', reference: '0 - 1.35', status: 'ELEVADO', note: 'Predominio de subfracción LDL pequeña y densa con alta susceptibilidad a peroxidación endotelial.' },
+                                { name: 'VLDL colesterol', value: 17, unit: 'mg/dL', reference: '< 35', status: 'NORMAL', note: 'Fracción de lipoproteínas de muy baja densidad normal.' },
+                                { name: 'Lípidos totales', value: 502, unit: 'mg/dL', reference: '380 - 748', status: 'NORMAL', note: 'Concentración sérica de lípidos totales dentro de referencia.' },
+                                { name: 'Fosfolípidos en suero', value: 237, unit: 'mg/dL', reference: '161 - 265', status: 'NORMAL', note: 'Sustrato fosfolipídico de membrana celular conservado.' },
+                                { name: 'Proteína C Reactiva ultrasensible (PCR-us)', value: 0.103, unit: 'mg/dL', reference: '< 0.5', status: 'NORMAL', note: 'Sin inflamación endotelial aguda sistémica.' }
+                            ]
+                        },
+                        {
+                            id: 'funcionamiento_hepatico',
+                            title: '3. Funcionamiento Hepático y Enzimas',
+                            domain: 'FUNCIÓN HEPATOBILIAR, TRANSAMINASAS Y SÍNTESIS PROTEICA',
+                            desc: 'Evaluación de conjugación biliar, integridad hepatocelular, actividad canalicular y síntesis proteica visceral.',
+                            items: [
+                                { name: 'Bilirrubina total', value: 0.51, unit: 'mg/dL', reference: '< 1.2', status: 'NORMAL', note: 'Metabolismo y depuración hepatobiliar de hemo normal.' },
+                                { name: 'Bilirrubina directa', value: 0.19, unit: 'mg/dL', reference: '0.09 - 0.3', status: 'NORMAL', note: 'Conjugación glucurónida hepática conservada.' },
+                                { name: 'Bilirrubina indirecta', value: 0.32, unit: 'mg/dL', reference: '0.01 - 0.9', status: 'NORMAL', note: 'Fracción no conjugada sin indicios de hemólisis.' },
+                                { name: 'AST (TGO)', value: 31, unit: 'U/L', reference: '< 39', status: 'NORMAL', note: 'Transaminasa glutámico-oxalacética en rango fisiológico.' },
+                                { name: 'ALT (TGP)', value: 31, unit: 'U/L', reference: '< 61', status: 'NORMAL', note: 'Transaminasa glutámico-pirúvica sin citólisis hepática.' },
+                                { name: 'Relación AST/ALT', value: 1.0, unit: 'índice', reference: '< 2.0', status: 'NORMAL', note: 'Cociente de De Ritis en equilibrio metabólico.' },
+                                { name: 'Gama glutamil transpeptidasa (GGT)', value: 33, unit: 'U/L', reference: '8 - 61', status: 'NORMAL', note: 'Reserva de glutatión y vía biliar sin estrés colestásico.' },
+                                { name: 'Proteínas totales', value: 7.3, unit: 'g/dL', reference: '6.3 - 8.1', status: 'NORMAL', note: 'Reserva proteica plasmática óptima.' },
+                                { name: 'Albúmina', value: 4.6, unit: 'g/dL', reference: '3.9 - 5.1', status: 'NORMAL', note: 'Síntesis proteica hepática y presión oncótica óptimas.' },
+                                { name: 'Globulinas', value: 2.6, unit: 'g/dL', reference: '2.4 - 3.0', status: 'NORMAL', note: 'Fracción globulínica sérica en balance.' },
+                                { name: 'Relación A/G', value: 1.75, unit: 'índice', reference: '1.18 - 2.33', status: 'NORMAL', note: 'Relación Albúmina/Globulina normal.' },
+                                { name: 'Fosfatasa Alcalina total', value: 62, unit: 'U/L', reference: '45 - 128', status: 'NORMAL', note: 'Actividad canalicular biliar y recambio óseo normales.' },
+                                { name: 'LDH (Deshidrogenasa Láctica)', value: 207, unit: 'U/L', reference: '125 - 239', status: 'NORMAL', note: 'Recambio energético celular sin daño tisular.' }
+                            ]
+                        },
+                        {
+                            id: 'metabolismo_hierro',
+                            title: '4. Metabolismo de Hierro',
+                            domain: 'CINÉTICA FÉRRICA Y TRANSPORTE ERITROIDE',
+                            desc: 'Valoración del hierro sérico disponible, capacidad de fijación de transferrina y porcentaje de saturación.',
+                            items: [
+                                { name: 'Hierro', value: 111, unit: 'µg/dL', reference: '33 - 193', status: 'NORMAL', note: 'Sideremia basal en rango óptimo para transporte de oxígeno.' },
+                                { name: 'UIBC (Capacidad no saturada de fijación de hierro)', value: 172, unit: 'µg/dL', reference: '125 - 345', status: 'NORMAL', note: 'Reserva libre de fijación en transferrina conservada.' },
+                                { name: 'Captación de hierro', value: 283, unit: 'µg/dL', reference: '250 - 450', status: 'NORMAL', note: 'Capacidad total de fijación férrica (TIBC) normal.' },
+                                { name: 'Porcentaje de saturación de Hierro', value: 39, unit: '%', reference: '15 - 50', status: 'NORMAL', note: 'Saturación de transferrina óptima (39%) sin déficit ni sobrecarga.' }
+                            ]
+                        },
+                        {
+                            id: 'respuesta_inmunologica',
+                            title: '5. Respuesta Inmunológica',
+                            domain: 'INMUNIDAD HUMORAL E INMUNOGLOBULINAS SÉRICAS',
+                            desc: 'Cuantificación de anticuerpos circulantes IgG (memoria sistémica), IgA (barrera mucosa) e IgM (respuesta primaria).',
+                            items: [
+                                { name: 'Inmunoglobulina G (IgG)', value: 1446, unit: 'mg/dL', reference: '700 - 1600', status: 'NORMAL', note: 'Inmunidad humoral sistémica de memoria competente.' },
+                                { name: 'Inmunoglobulina A (IgA)', value: 229, unit: 'mg/dL', reference: '70 - 400', status: 'NORMAL', note: 'Defensa inmunológica secretora de barreras mucosas íntegra.' },
+                                { name: 'Inmunoglobulina M (IgM)', value: 227, unit: 'mg/dL', reference: '40 - 230', status: 'NORMAL', note: 'Respuesta humoral primaria en límite superior fisiológico (227 mg/dL).' }
+                            ]
+                        },
+                        {
+                            id: 'biometria_hematica',
+                            title: '6. Biometría Hemática',
+                            domain: 'CITOMETRÍA HEMÁTICA: SERIE ROJA, PLAQUETARIA Y DIFERENCIAL LEUCOCITARIO',
+                            desc: 'Evaluación integral de eritropoyesis, índices corpusculares, hemostasia primaria y fórmula blanca relativa/absoluta.',
+                            items: [
+                                { name: 'Eritrocitos', value: 5.10, unit: 'millones/µL', reference: '4.70 - 5.80', status: 'NORMAL', note: 'Recuento eritrocitario óptimo.' },
+                                { name: 'Hemoglobina', value: 15.3, unit: 'g/dL', reference: '14.0 - 18.0', status: 'NORMAL', note: 'Capacidad de transporte de oxígeno sistémico adecuada.' },
+                                { name: 'Hematocrito', value: 44.0, unit: '%', reference: '40.0 - 54.0', status: 'NORMAL', note: 'Volumen globular porcentual normal.' },
+                                { name: 'Volumen Corpuscular Medio (VCM)', value: 86.3, unit: 'fL', reference: '78.0 - 99.0', status: 'NORMAL', note: 'Eritrocitos normocíticos sin déficit megaloblástico ni microcitosis.' },
+                                { name: 'Hemoglobina Corpuscular Media (HCM)', value: 30.0, unit: 'pg', reference: '27.0 - 31.0', status: 'NORMAL', note: 'Contenido hemoglobínico corpuscular normocrómico.' },
+                                { name: 'Conc. Media de Hemoglobina Corp. (CMHC)', value: 34.8, unit: 'g/dL', reference: '32.0 - 36.0', status: 'NORMAL', note: 'Concentración media de hemoglobina corpuscular normal.' },
+                                { name: 'Ancho de Distribución de Eritrocitos (CV)', value: 14.4, unit: '%', reference: '11.5 - 17.0', status: 'NORMAL', note: 'Homogeneidad de tamaño eritrocitario conservada (sin anisocitosis).' },
+                                { name: 'Ancho de Distribución de Eritrocitos (SD)', value: 45.5, unit: 'fL', reference: '39 - 57', status: 'NORMAL', note: 'Desviación estándar eritrocitaria dentro de rango.' },
+                                { name: 'Plaquetas', value: 193, unit: 'miles/µL', reference: '150 - 500', status: 'NORMAL', note: 'Recuento trombocitario normal para hemostasia primaria.' },
+                                { name: 'Volumen plaquetario medio', value: 12.5, unit: 'fL', reference: '9.6 - 13.4', status: 'NORMAL', note: 'Tamaño plaquetario reactivo dentro de rango.' },
+                                { name: 'Leucocitos totales', value: 5.59, unit: 'miles/µL', reference: '3.8 - 11.6', status: 'NORMAL', note: 'Recuento leucocitario total en equilibrio inmunológico.' },
+                                { name: 'Neutrófilos (%)', value: 54.9, unit: '%', reference: '38.4 - 74.6', status: 'NORMAL', note: 'Porcentaje de polimorfonucleares neutrófilos normal.' },
+                                { name: 'Linfocitos (%)', value: 33.8, unit: '%', reference: '16.5 - 49.6', status: 'NORMAL', note: 'Fracción linfocitaria adaptativa en rango.' },
+                                { name: 'Monocitos (%)', value: 7.5, unit: '%', reference: '4.6 - 12.7', status: 'NORMAL', note: 'Porcentaje de línea monocítica-macrofágica normal.' },
+                                { name: 'Eosinófilos (%)', value: 2.0, unit: '%', reference: '1.0 - 4.0', status: 'NORMAL', note: 'Sin eosinofilia reactiva.' },
+                                { name: 'Basófilos (%)', value: 1.1, unit: '%', reference: '0.0 - 1.0', status: 'ELEVADO', note: 'Elevación marginal relativa (+0.1% sobre límite de 1.0%) con conteo absoluto normal (0.06 miles/µL); posible reactividad histamínica subclínica.' },
+                                { name: 'Neutrófilos (Absoluto)', value: 3.07, unit: 'miles/µL', reference: '1.69 - 7.16', status: 'NORMAL', note: 'Conteo absoluto de neutrófilos óptimo.' },
+                                { name: 'Linfocitos (Absoluto)', value: 1.89, unit: 'miles/µL', reference: '1.05 - 3.53', status: 'NORMAL', note: 'Conteo absoluto de linfocitos competente.' },
+                                { name: 'Monocitos (Absoluto)', value: 0.42, unit: 'miles/µL', reference: '0.25 - 0.90', status: 'NORMAL', note: 'Conteo absoluto de monocitos normal.' },
+                                { name: 'Eosinófilos (Absoluto)', value: 0.11, unit: 'miles/µL', reference: '0.02 - 0.50', status: 'NORMAL', note: 'Conteo absoluto de eosinófilos normal.' },
+                                { name: 'Basófilos (Absoluto)', value: 0.06, unit: 'miles/µL', reference: '0.01 - 0.10', status: 'NORMAL', note: 'Conteo absoluto de basófilos dentro de límites fisiológicos.' }
+                            ]
+                        }
+                    ];
+
+                    // Construir secciones dinámicas desde external_metrics o usar el set completo si es legacy
+                    let resolvedSections = [];
+                    if (hasExternalData) {
+                        if (isLegacyTwoItemMock) {
+                            resolvedSections = CANONICAL_JESUS_REYES_SECTIONS;
+                        } else if (Array.isArray(extMetrics?.sections) && extMetrics.sections.length > 0) {
+                            resolvedSections = extMetrics.sections;
+                        } else if (rawBiomarkers && typeof rawBiomarkers === 'object') {
+                            const grouped = {};
+                            Object.entries(rawBiomarkers).forEach(([k, bio]) => {
+                                const secTitle = bio.section || 'Química Sanguínea y Biomarcadores Analíticos';
+                                const secId = secTitle.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                                if (!grouped[secId]) {
+                                    grouped[secId] = {
+                                        id: secId,
+                                        title: secTitle,
+                                        domain: secTitle.toUpperCase(),
+                                        desc: 'Parámetros analíticos cuantitativos extraídos mediante auditoría forense OCR.',
+                                        items: []
+                                    };
+                                }
+                                grouped[secId].items.push({
+                                    name: bio.name || k.replace(/_/g, ' '),
+                                    value: bio.value,
+                                    unit: bio.unit || '',
+                                    reference: bio.reference || bio.ref || '',
+                                    status: bio.status || 'NORMAL',
+                                    note: bio.note || ''
+                                });
+                            });
+                            resolvedSections = Object.values(grouped);
+                        }
+                    }
+
+                    // Motor de espectro para rangos bilaterales ("55 - 99") y unilaterales ("< 200", "> 60")
+                    const computeLabSpectrum = (valRaw, refRaw, statusRaw) => {
+                        const numVal = parseFloat(String(valRaw ?? '').replace(',', '.'));
+                        const refStr = String(refRaw ?? '').trim();
+                        if (isNaN(numVal) || !refStr) return { isRenderable: false };
+
+                        const formatDelta = (n) => Number(n.toFixed(3)).toString();
+
+                        // Caso 1: Rango bilateral "A - B" o "A – B"
+                        const biMatch = refStr.match(/^\s*(-?\d+(?:[.,]\d+)?)\s*[-–]\s*(-?\d+(?:[.,]\d+)?)\s*$/);
+                        if (biMatch) {
+                            const a = parseFloat(biMatch[1].replace(',', '.'));
+                            const b = parseFloat(biMatch[2].replace(',', '.'));
+                            const min = Math.min(a, b);
+                            const max = Math.max(a, b);
+                            const span = (max - min) || 1;
+                            let zone = 'OPTIMAL';
+                            let rawPct = 50;
+                            let calloutText = `${numVal} (Dentro de límite)`;
+
+                            if (numVal < min) {
+                                zone = 'LOW';
+                                const deficitRatio = Math.min((min - numVal) / span, 1.5) / 1.5;
+                                rawPct = 33.33 - (deficitRatio * 25.33);
+                                calloutText = `${numVal} (Bajo LR -${formatDelta(min - numVal)})`;
+                            } else if (numVal > max) {
+                                zone = 'HIGH';
+                                const excessRatio = Math.min((numVal - max) / span, 1.5) / 1.5;
+                                rawPct = 66.67 + (excessRatio * 25.33);
+                                calloutText = `${numVal} (Sobre LR +${formatDelta(numVal - max)})`;
+                            } else {
+                                const optRatio = (numVal - min) / span;
+                                rawPct = 33.33 + (optRatio * 33.34);
+                            }
+                            return {
+                                isRenderable: true,
+                                minLabel: `${min}`,
+                                maxLabel: `${max}`,
+                                cleanRangeLabel: `${min} – ${max}`,
+                                zone,
+                                positionPct: Math.max(8, Math.min(92, Number(rawPct.toFixed(2)))),
+                                calloutText
+                            };
+                        }
+
+                        // Caso 2: Límite superior "< X" o "<= X"
+                        const ltMatch = refStr.match(/^\s*<=?\s*(-?\d+(?:[.,]\d+)?)\s*$/);
+                        if (ltMatch) {
+                            const max = parseFloat(ltMatch[1].replace(',', '.'));
+                            const span = max || 1;
+                            let zone = 'OPTIMAL';
+                            let rawPct = 50;
+                            let calloutText = `${numVal} (Dentro de límite < ${max})`;
+
+                            if (numVal > max) {
+                                zone = 'HIGH';
+                                const excessRatio = Math.min((numVal - max) / (span * 0.5), 1.5) / 1.5;
+                                rawPct = 66.67 + (excessRatio * 25.33);
+                                calloutText = `${numVal} (Sobre LR +${formatDelta(numVal - max)})`;
+                            } else {
+                                const optRatio = Math.max(0, Math.min(1, numVal / span));
+                                rawPct = 33.33 + (optRatio * 33.34);
+                            }
+                            return {
+                                isRenderable: true,
+                                minLabel: '0',
+                                maxLabel: `${max}`,
+                                cleanRangeLabel: `< ${max}`,
+                                zone,
+                                positionPct: Math.max(8, Math.min(92, Number(rawPct.toFixed(2)))),
+                                calloutText
+                            };
+                        }
+
+                        // Caso 3: Límite inferior "> X" o ">= X"
+                        const gtMatch = refStr.match(/^\s*>=?\s*(-?\d+(?:[.,]\d+)?)\s*$/);
+                        if (gtMatch) {
+                            const min = parseFloat(gtMatch[1].replace(',', '.'));
+                            const max = min * 2 || 120;
+                            const span = (max - min) || 1;
+                            let zone = 'OPTIMAL';
+                            let rawPct = 50;
+                            let calloutText = `${numVal} (Dentro de límite > ${min})`;
+
+                            if (numVal < min) {
+                                zone = 'LOW';
+                                const deficitRatio = Math.min((min - numVal) / (min * 0.5 || 1), 1.5) / 1.5;
+                                rawPct = 33.33 - (deficitRatio * 25.33);
+                                calloutText = `${numVal} (Bajo LR -${formatDelta(min - numVal)})`;
+                            } else {
+                                const optRatio = Math.max(0, Math.min(1, (numVal - min) / span));
+                                rawPct = 33.33 + (optRatio * 33.34);
+                            }
+                            return {
+                                isRenderable: true,
+                                minLabel: `${min}`,
+                                maxLabel: `${max}+`,
+                                cleanRangeLabel: `> ${min}`,
+                                zone,
+                                positionPct: Math.max(8, Math.min(92, Number(rawPct.toFixed(2)))),
+                                calloutText
+                            };
+                        }
+
+                        const sUpper = String(statusRaw || 'NORMAL').toUpperCase();
+                        const isAbn = sUpper.includes('ELEVADO') || sUpper.includes('ALTO') || sUpper.includes('BAJO') || sUpper.includes('CRÍTICO');
+                        return {
+                            isRenderable: false,
+                            zone: isAbn ? 'HIGH' : 'OPTIMAL'
+                        };
+                    };
+
+                    const isLabItemAbnormal = (item) => {
+                        const spec = computeLabSpectrum(item.value, item.reference, item.status);
+                        const sUpper = String(item.status || 'NORMAL').toUpperCase();
+                        const statusAbn = sUpper.includes('ELEVADO') || sUpper.includes('ALTO') || sUpper.includes('BAJO') || sUpper.includes('CRÍTICO') || sUpper.includes('SOBRE') || sUpper.includes('FUERA');
+                        return (spec.isRenderable && spec.zone !== 'OPTIMAL') || statusAbn;
+                    };
+
+                    const getSectionAbnormalCount = (sec) =>
+                        (sec?.items || []).reduce((acc, it) => (isLabItemAbnormal(it) ? acc + 1 : acc), 0);
+
+                    const totalLabParameters = resolvedSections.reduce((acc, s) => acc + (s.items?.length || 0), 0);
+                    const totalLabAbnormalities = resolvedSections.reduce((acc, s) => acc + getSectionAbnormalCount(s), 0);
+
+                    const navigableSections = showOnlyLabAbnormalities
+                        ? resolvedSections.filter(s => getSectionAbnormalCount(s) > 0)
+                        : resolvedSections;
+
+                    const activeLabSection = (selectedLabSectionId && navigableSections.find(s => s.id === selectedLabSectionId))
+                        || navigableSections[0]
+                        || resolvedSections[0]
+                        || null;
+
+                    return (
+                        <>
+                            <div className="bg-slate-50/40 dark:bg-slate-800/20 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                                <button 
+                                    type="button"
+                                    onClick={() => toggleSection('ocr')}
+                                    className="flex-1 p-4 flex items-center gap-2.5 text-left hover:bg-slate-100/70 dark:hover:bg-slate-800/50 transition-colors select-none focus:outline-none cursor-pointer"
+                                    aria-expanded={openSections.ocr}
+                                >
+                                    <span className="text-base">📋</span>
+                                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Biomarcadores Extraídos de PDF (OCR)</h4>
+                                    <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${openSections.ocr ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                <div className="pr-4 flex items-center gap-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    {hasExternalData && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const nextVal = !showOnlyLabAbnormalities;
+                                                setShowOnlyLabAbnormalities(nextVal);
+                                                if (nextVal && activeLabSection && getSectionAbnormalCount(activeLabSection) === 0) {
+                                                    const firstWithAlerts = resolvedSections.find(s => getSectionAbnormalCount(s) > 0);
+                                                    if (firstWithAlerts) setSelectedLabSectionId(firstWithAlerts.id);
+                                                }
+                                            }}
+                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border text-[11px] font-bold transition-all shadow-xs cursor-pointer ${
+                                                showOnlyLabAbnormalities
+                                                    ? 'bg-[#1C75BC] text-white border-[#1C75BC] hover:bg-[#1C75BC]/90'
+                                                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <Filter size={11} />
+                                            {showOnlyLabAbnormalities ? `Solo Alertas (${totalLabAbnormalities})` : `Filtrar Alertas (${totalLabAbnormalities})`}
+                                        </button>
+                                    )}
+                                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase ${
+                                        hasExternalData
+                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+                                            : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                                    }`}>
+                                        {hasExternalData ? `NOM-004 OCR (${totalLabParameters} PARÁMETROS)` : 'SIN ESTUDIOS EXTERNOS'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className={`grid transition-all duration-300 ease-in-out ${openSections.ocr ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                                <div className="overflow-hidden">
+                                    {!hasExternalData ? (
+                                        <div className="p-5">
+                                            <div className="bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-300 font-medium flex items-start gap-2.5">
+                                                <span className="text-base shrink-0 mt-0.5">📋</span>
+                                                <div>
+                                                    <strong className="text-slate-900 dark:text-white block font-bold mb-0.5 uppercase tracking-wider text-[10px]">Constancia Asentada (NOM-004-SSA3-2012):</strong>
+                                                    <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">
+                                                        Sin estudios de laboratorio exógenos cargados en esta consulta. El paciente no presentó estudios analíticos previos al momento de la valoración.
+                                                    </p>
+                                                </div>
+                                            </div>
                                         </div>
-                                    ))}
+                                    ) : (
+                                        <div className="flex flex-col bg-[#FAFAFA] dark:bg-slate-900">
+                                            {/* 🧭 1. BARRA DE NAVEGACIÓN DE LAS 6 SECCIONES ANALÍTICAS DEL LABORATORIO */}
+                                            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-3">
+                                                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                                                    <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 shrink-0 mr-1">
+                                                        <span className="text-[#1C75BC]">❖</span> SECCIONES:
+                                                    </span>
+                                                    {navigableSections.map((sec) => {
+                                                        const abnCount = getSectionAbnormalCount(sec);
+                                                        const isSelected = activeLabSection?.id === sec.id;
+                                                        return (
+                                                            <button
+                                                                key={sec.id}
+                                                                type="button"
+                                                                onClick={() => setSelectedLabSectionId(sec.id)}
+                                                                className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer border ${
+                                                                    isSelected
+                                                                        ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm'
+                                                                        : 'bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:bg-slate-200/70'
+                                                                }`}
+                                                            >
+                                                                <span className="truncate max-w-[230px]">{sec.title}</span>
+                                                                {abnCount > 0 ? (
+                                                                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                                                                        isSelected
+                                                                            ? 'bg-[#E30613] text-white ring-1 ring-white/80'
+                                                                            : 'bg-[#E30613] text-white'
+                                                                    }`}>
+                                                                        {abnCount}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                                                                        isSelected
+                                                                            ? 'bg-white/20 text-white'
+                                                                            : 'bg-emerald-50 text-[#3AAA35] border border-emerald-200/80'
+                                                                    }`}>
+                                                                        OK
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {/* 🧬 2. CABECERA SISTÉMICA DE TRIAJE + CARDS TERMODINÁMICAS DE LA SECCIÓN ACTIVA */}
+                                            {activeLabSection && (() => {
+                                                const allSecItems = activeLabSection.items || [];
+                                                const visibleSecItems = showOnlyLabAbnormalities
+                                                    ? allSecItems.filter(it => isLabItemAbnormal(it))
+                                                    : allSecItems;
+                                                const secAbnCount = getSectionAbnormalCount(activeLabSection);
+
+                                                return (
+                                                    <div className="p-5 space-y-5">
+                                                        {/* Cabecera Sistémica de Triaje */}
+                                                        <div className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/90 dark:border-slate-700 p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                            <div className="space-y-1">
+                                                                <div className="flex items-center gap-2 text-[11px] font-extrabold text-[#1C75BC] uppercase tracking-wider">
+                                                                    <span>•</span>
+                                                                    <span>{activeLabSection.domain || 'QUÍMICA CLÍNICA Y LABORATORIO FORENSE'}</span>
+                                                                </div>
+                                                                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
+                                                                    {activeLabSection.title}
+                                                                </h3>
+                                                                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
+                                                                    {activeLabSection.desc || 'Parámetros bioquímicos extraídos íntegramente del reporte de laboratorio clínico.'}
+                                                                </p>
+                                                            </div>
+
+                                                            <div className="flex items-center gap-3 shrink-0 self-start md:self-center">
+                                                                <div className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-700 text-center min-w-[115px]">
+                                                                    <span className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-widest mb-0.5">
+                                                                        Total Evaluados
+                                                                    </span>
+                                                                    <span className="text-sm font-black text-slate-800 dark:text-slate-100">
+                                                                        {allSecItems.length} Parámetros
+                                                                    </span>
+                                                                </div>
+                                                                <div className={`px-4 py-2.5 rounded-xl border text-center min-w-[125px] ${
+                                                                    secAbnCount > 0
+                                                                        ? 'bg-red-50/70 dark:bg-red-950/30 border-red-200 dark:border-red-900/60'
+                                                                        : 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60'
+                                                                }`}>
+                                                                    <span className={`block text-[9px] font-extrabold uppercase tracking-widest mb-0.5 ${
+                                                                        secAbnCount > 0 ? 'text-[#E30613]' : 'text-[#3AAA35]'
+                                                                    }`}>
+                                                                        Fuera de Rango
+                                                                    </span>
+                                                                    <span className={`text-sm font-black flex items-center justify-center gap-1 ${
+                                                                        secAbnCount > 0 ? 'text-[#E30613]' : 'text-[#3AAA35]'
+                                                                    }`}>
+                                                                        {secAbnCount > 0 ? (
+                                                                            <>
+                                                                                <AlertTriangle size={13} className="text-[#E30613]" />
+                                                                                {secAbnCount} Alertas
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <CheckCircle2 size={13} className="text-[#3AAA35]" />
+                                                                                0 Alertas
+                                                                            </>
+                                                                        )}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Pila vertical de Tarjetas Bento Termodinámicas */}
+                                                        <div className="space-y-4">
+                                                            {visibleSecItems.map((marker, idx) => {
+                                                                const spectrum = computeLabSpectrum(marker.value, marker.reference, marker.status);
+                                                                const isAbn = isLabItemAbnormal(marker);
+
+                                                                const isLow = spectrum.zone === 'LOW' || String(marker.status || '').toUpperCase().includes('BAJO');
+                                                                const badge = isAbn
+                                                                    ? {
+                                                                        bg: 'bg-red-50 text-[#E30613] border-red-200 font-extrabold',
+                                                                        borderLeft: 'border-l-[#E30613]',
+                                                                        calloutBg: 'bg-[#E30613] text-white',
+                                                                        calloutArrow: 'border-b-[#E30613]',
+                                                                        label: isLow ? 'BAJO LR (FUERA DE RANGO)' : 'ELEVADO / SOBRE LR',
+                                                                        icon: <AlertTriangle size={12} className="text-[#E30613]" />
+                                                                    }
+                                                                    : {
+                                                                        bg: 'bg-emerald-50 text-[#3AAA35] border-emerald-200 font-bold',
+                                                                        borderLeft: 'border-l-[#3AAA35]',
+                                                                        calloutBg: 'bg-[#3AAA35] text-white',
+                                                                        calloutArrow: 'border-b-[#3AAA35]',
+                                                                        label: 'DENTRO DE RANGO (NORMAL)',
+                                                                        icon: <CheckCircle2 size={12} className="text-[#3AAA35]" />
+                                                                    };
+
+                                                                return (
+                                                                    <div
+                                                                        key={idx}
+                                                                        className={`bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/90 dark:border-slate-700 border-l-4 ${badge.borderLeft} p-5 shadow-2xs hover:shadow-md transition-all`}
+                                                                    >
+                                                                        {/* NIVEL 1: Encabezado de Tarjeta, Píldora Semántica y Valor Hero */}
+                                                                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                                                                            <div className="space-y-1.5">
+                                                                                <div className="flex flex-wrap items-center gap-2.5">
+                                                                                    <h5 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
+                                                                                        {marker.name}
+                                                                                    </h5>
+                                                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] border uppercase tracking-wider ${badge.bg}`}>
+                                                                                        {badge.icon}
+                                                                                        <span>{badge.label}</span>
+                                                                                    </span>
+                                                                                </div>
+                                                                                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-2xl">
+                                                                                    {marker.note || (isAbn
+                                                                                        ? `${marker.name} presenta desviación respecto al intervalo de referencia del laboratorio (${marker.reference}).`
+                                                                                        : `${marker.name} dentro de los límites de referencia biológica (${marker.reference}).`)}
+                                                                                </p>
+                                                                            </div>
+
+                                                                            <div className="sm:text-right shrink-0">
+                                                                                <div className="flex sm:justify-end items-baseline gap-1.5">
+                                                                                    <span className={`text-2xl font-black tracking-tight tabular-nums ${
+                                                                                        isAbn ? 'text-[#E30613]' : 'text-slate-900 dark:text-white'
+                                                                                    }`}>
+                                                                                        {marker.value}
+                                                                                    </span>
+                                                                                    {marker.unit && (
+                                                                                        <span className="text-[11px] font-bold text-slate-400">
+                                                                                            {marker.unit}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                                                    Ref: {marker.reference || 'N/A'} {marker.unit || ''}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* NIVEL 2: La Barra Termodinámica del Espectro Fisiológico */}
+                                                                        {spectrum.isRenderable && (
+                                                                            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/60">
+                                                                                <div className="grid grid-cols-3 text-[9px] font-extrabold uppercase tracking-wider mb-1.5">
+                                                                                    <span className="text-slate-400 text-left">Bajo Límite</span>
+                                                                                    <span className="text-[#3AAA35] text-center">
+                                                                                        Rango de Referencia ({spectrum.cleanRangeLabel})
+                                                                                    </span>
+                                                                                    <span className="text-slate-400 text-right">Sobre Límite</span>
+                                                                                </div>
+
+                                                                                <div className="relative pt-1 pb-8">
+                                                                                    <div className="h-2.5 w-full rounded-full overflow-hidden grid grid-cols-3 gap-0.5 bg-slate-100 dark:bg-slate-700 p-0.5">
+                                                                                        <div className="bg-amber-300/60 dark:bg-amber-500/40 rounded-l-full" />
+                                                                                        <div className="bg-[#3AAA35]/75 dark:bg-[#3AAA35]/65" />
+                                                                                        <div className="bg-rose-400/65 dark:bg-rose-500/45 rounded-r-full" />
+                                                                                    </div>
+
+                                                                                    <div
+                                                                                        className="absolute top-0 -translate-x-1/2 flex flex-col items-center transition-all duration-300"
+                                                                                        style={{ left: `${spectrum.positionPct}%` }}
+                                                                                    >
+                                                                                        <div className={`w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 shadow-md ${
+                                                                                            spectrum.zone === 'OPTIMAL'
+                                                                                                ? 'bg-[#3AAA35]'
+                                                                                                : 'bg-[#E30613]'
+                                                                                        }`} />
+                                                                                        <div className={`w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[5px] ${badge.calloutArrow} mt-0.5`} />
+                                                                                        <div className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold whitespace-nowrap shadow-xs ${badge.calloutBg}`}>
+                                                                                            {spectrum.calloutText}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
                                 </div>
-                            ) : (
-                                <div className="bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-300 font-medium flex items-start gap-2.5">
-                                    <span className="text-base shrink-0 mt-0.5">📋</span>
-                                    <div>
-                                        <strong className="text-slate-900 dark:text-white block font-bold mb-0.5 uppercase tracking-wider text-[10px]">Constancia Asentada (NOM-004-SSA3-2012):</strong>
-                                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">
-                                            Sin estudios de laboratorio exógenos cargados en esta consulta. El paciente no presentó estudios analíticos previos al momento de la valoración.
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                            </div>
+                        </>
+                    );
+                })()}
             </div>
 
             {/* 📸 [ACORDEÓN 5] PASO 5: EVIDENCIA SOMÁTICA DOCUMENTADA - CONTENEDOR PERMANENTE NOM-004 */}

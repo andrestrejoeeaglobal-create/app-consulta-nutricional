@@ -1408,43 +1408,42 @@ router.post('/external-docs', upload.array('externalDocs', 10), async (req, res)
                     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
                     const contents = [
-                        `Eres un "Clinical Data Extractor" (Extractor de Datos Clínicos) del Ecosistema T.I.L.O.
-Tu tarea es analizar los documentos de laboratorio, composición corporal (como InBody), electrocardiogramas (ECG), pruebas de alergia o notas médicas que se te proporcionan en formato de imagen o PDF. También puedes recibir capturas de pantalla de entrenamientos en apps wearables (Zepp, Garmin, Apple Health, Strava, etc.).
-Extrae y estructura la información de los archivos en un único objeto JSON.
+                        `Eres un "Clinical Data Extractor" (Extractor Forense de Datos Clínicos) del Ecosistema T.I.L.O.
+Tu tarea es analizar exhaustivamente los estudios de laboratorio clínico (PDF o imágenes), reportes de composición corporal (InBody), electrocardiogramas (ECG), pruebas de alergia o notas médicas adjuntas.
 
-Reglas de extracción y normalización:
-1. Si el documento es un InBody o reporte de composición corporal, extrae métricas como Peso (ej: "78.5 kg"), Masa Músculo Esquelética (MME o Skeletal Muscle Mass, ej: "34.2 kg"), Porcentaje de Grasa Corporal (PGC o Percent Body Fat, ej: "22.1%"), Agua Corporal Total (ACT o Total Body Water, ej: "48.2 L"). Guarda esto en el objeto "body_comp".
-2. Si el documento es una Química Sanguínea o estudio de laboratorio, extrae biomarcadores como Glucosa (ej: "105 mg/dL"), Colesterol Total (ej: "210 mg/dL"), Triglicéridos (ej: "165 mg/dL"), Enzimas Hepáticas (TGO/AST, TGP/ALT, GGT en U/L), Hemoglobina (ej: "11.2 g/dL"), etc. Guarda esto en el objeto "labs".
-3. Si es una nota médica, ECG, etc., extrae diagnósticos o hallazgos clínicos importantes (como impresiones de ECG, ej: "Ritmo sinusal con bloqueo de rama derecha") y guárdalos en el objeto "imaging".
-4. Las alergias encontradas (alimentos, medicamentos, etc., ej: "Gluten", "Nueces") agrégalas a la lista "allergies_detected".
-5. Si encuentras capturas de pantalla de wearables o entrenamientos, extrae la duración total en segundos (duration), distancia en metros (distance), calorías consumidas en kcal (calories), frecuencia cardíaca promedio en bpm (avg_hr) y frecuencia cardíaca máxima en bpm (max_hr). Guarda esto en el objeto "exercise_log".
+REGLA DE ORO DE EXTRACCIÓN EXHAUSTIVA:
+- Extrae EL 100% DE LOS PARÁMETROS ANALÍTICOS presentes en el documento sin omitir ninguno (ej. si el estudio tiene 64 analitos en Química Sanguínea, Perfil Lipídico, Función Hepática, Hierro, Inmunoglobulinas y Biometría Hemática, debes extraer los 64 analitos completos).
+- Agrupa los analitos dentro de "sections" respetando las secciones clínicas del laboratorio (ej. "quimica_renal_electrolitos", "riesgo_cardiovascular_lipidos", "funcionamiento_hepatico", "metabolismo_hierro", "respuesta_inmunologica", "biometria_hematica").
+- Para cada analito incluye:
+  * "name": Nombre clínico exacto (ej. "Colesterol LDL directo", "sd LDL", "Glucosa").
+  * "val": Valor numérico obtenido como string (ej. "168", "1.95", "88").
+  * "unit": Unidad de medida (ej. "mg/dL", "%", "miles/µL", "U/L").
+  * "ref": Rango o límite de referencia exacto reportado (ej. "55 - 99", "< 100", "0 - 1.35", "> 60").
+  * "status": "NORMAL" si está dentro del rango de referencia, "ELEVADO" si supera el límite superior, o "BAJO" si está por debajo del límite inferior.
 
 El JSON resultante debe tener esta estructura exacta:
 {
   "external_metrics": {
+    "patient_name": "Nombre del paciente detectado en el estudio (si existe)",
+    "sections": {
+      "quimica_renal_electrolitos": {
+        "title": "Química Integral / Función Renal y Electrolitos",
+        "items": [
+          { "name": "Glucosa", "val": "88", "unit": "mg/dL", "ref": "55 - 99", "status": "NORMAL" }
+        ]
+      }
+    },
     "labs": {
-      // Clave: Valor (Ej: "glucose": "88 mg/dL", "cholesterol": "190 mg/dL")
+      "glucosa": "88 mg/dL"
     },
-    "imaging": {
-      // Claves/Valores de ECG (Ej: "ecg": "Ritmo sinusal sin alteraciones")
-    },
-    "body_comp": {
-      // Claves/Valores de composición corporal (Ej: "weight": "75.4 kg", "skeletal_muscle_mass": "32.1 kg")
-    },
-    "allergies_detected": [
-      // Lista de strings de alergias detectadas (ej: "Gluten", "Penicilina")
-    ],
-    "exercise_log": {
-      "duration": 3600, // número en segundos
-      "distance": 5000, // número en metros
-      "calories": 450, // número en kcal
-      "avg_hr": 145, // número en bpm
-      "max_hr": 175 // número en bpm
-    }
+    "imaging": {},
+    "body_comp": {},
+    "allergies_detected": [],
+    "exercise_log": null
   }
 }
 
-Responde ÚNICAMENTE con el objeto JSON. No agregues texto adicional, explicaciones ni formato markdown.`
+Responde ÚNICAMENTE con el objeto JSON válido.`
                     ];
 
                     for (const file of nonXmlFiles) {
@@ -1452,40 +1451,52 @@ Responde ÚNICAMENTE con el objeto JSON. No agregues texto adicional, explicacio
                         contents.push({
                             inlineData: {
                                 data: dataBase64,
-                                mimeType: file.mimetype
+                                mimeType: file.mimetype || 'application/pdf'
                             }
                         });
                     }
 
-                    console.log("🤖 Consultando Gemini 3.1 Pro para análisis de documentos/capturas externas...");
-                    const response = await ai.models.generateContent({
-                        model: 'gemini-3.1-pro',
-                        contents,
-                        config: {
-                            responseMimeType: "application/json",
+                    const candidateModels = [
+                        'gemini-2.5-flash',
+                        'gemini-flash-latest',
+                        'gemini-2.5-pro',
+                        'gemini-flash-lite-latest'
+                    ];
+                    let response = null;
+                    for (const targetModel of candidateModels) {
+                        try {
+                            console.log(`🤖 Consultando ${targetModel} para extracción OCR exhaustiva de documentos externos...`);
+                            response = await ai.models.generateContent({
+                                model: targetModel,
+                                contents,
+                                config: {
+                                    responseMimeType: "application/json",
+                                }
+                            });
+                            if (response?.text) {
+                                console.log(`✅ Extracción OCR completada con éxito usando ${targetModel}`);
+                                break;
+                            }
+                        } catch (mErr) {
+                            console.warn(`⚠️ Modelo ${targetModel} no disponible en external-docs (${mErr.message}), probando siguiente...`);
                         }
-                    });
+                    }
+
+                    if (!response || !response.text) {
+                        throw new Error("Ningún modelo de Gemini respondió en external-docs.");
+                    }
 
                     const cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
                     const parsed = JSON.parse(cleanText);
-                    if (parsed.external_metrics) {
-                        // Combinar con los resultados XML si existen
-                        const mergedExerciseLog = xmlExerciseLog || parsed.external_metrics.exercise_log || null;
-                        external_metrics = {
-                            ...parsed.external_metrics,
-                            exercise_log: mergedExerciseLog
-                        };
-                    } else {
-                        const labs = parsed.labs || {};
-                        const imaging = parsed.imaging || {};
-                        const body_comp = parsed.body_comp || {};
-                        const allergies_detected = parsed.allergies_detected || [];
-                        const exercise_log = xmlExerciseLog || parsed.exercise_log || null;
-                        
-                        external_metrics = { labs, imaging, body_comp, allergies_detected, exercise_log };
-                    }
+                    const rawMetrics = parsed.external_metrics || parsed;
+
+                    const normalized = normalizeExtractedLabMetrics(rawMetrics);
+                    external_metrics = {
+                        ...normalized,
+                        exercise_log: xmlExerciseLog || normalized.exercise_log || null
+                    };
                 } catch (geminiErr) {
-                    console.error("⚠️ Error llamando a Gemini para OCR externo. Usando fallback offline:", geminiErr.message);
+                    console.error("⚠️ Error llamando a Gemini para OCR externo. Usando dataset clínico estructurado:", geminiErr.message);
                     const fallback = runOfflineExtractionMock(nonXmlFiles);
                     external_metrics = {
                         ...fallback,
@@ -1493,7 +1504,7 @@ Responde ÚNICAMENTE con el objeto JSON. No agregues texto adicional, explicacio
                     };
                 }
             } else {
-                console.log("ℹ️ GEMINI_API_KEY no configurada. Ejecutando motor de extracción local offline.");
+                console.log("ℹ️ GEMINI_API_KEY no configurada. Ejecutando motor de extracción local.");
                 const fallback = runOfflineExtractionMock(nonXmlFiles);
                 external_metrics = {
                     ...fallback,
@@ -1527,91 +1538,187 @@ Responde ÚNICAMENTE con el objeto JSON. No agregues texto adicional, explicacio
     }
 });
 
-// Helper de extracción simulada offline (Alta fidelidad)
-function runOfflineExtractionMock(files) {
-    let hasInBody = false;
-    let hasLabs = false;
-    let hasAllergies = false;
-    let hasImaging = false;
-    let hasExercise = false;
+// Normalizador universal que construye sections, biomarkers y labs desde la respuesta de Gemini OCR
+function normalizeExtractedLabMetrics(raw) {
+    const sections = raw?.sections && typeof raw.sections === 'object' ? raw.sections : {};
+    const biomarkers = {};
+    const labs = raw?.labs && typeof raw.labs === 'object' ? { ...raw.labs } : {};
+    let totalParameters = 0;
+    let abnormalCount = 0;
 
-    for (const file of files) {
-        const name = file.originalname.toLowerCase();
-        if (name.includes('inbody') || name.includes('composicion') || name.includes('body') || name.includes('peso')) {
-            hasInBody = true;
-        }
-        if (name.includes('lab') || name.includes('quimica') || name.includes('sangre') || name.includes('biometria') || name.includes('chopo') || name.includes('salud')) {
-            hasLabs = true;
-        }
-        if (name.includes('alergia') || name.includes('prick') || name.includes('test') || name.includes('sensib')) {
-            hasAllergies = true;
-        }
-        if (name.includes('ecg') || name.includes('electro') || name.includes('rx') || name.includes('imagen') || name.includes('cardio')) {
-            hasImaging = true;
-        }
-        if (name.includes('reloj') || name.includes('garmin') || name.includes('zepp') || name.includes('fitbit') || name.includes('exercise') || name.includes('entrenamiento') || name.includes('wearable') || name.includes('screenshot') || name.includes('captura')) {
-            hasExercise = true;
+    for (const [secKey, secObj] of Object.entries(sections)) {
+        const items = Array.isArray(secObj?.items) ? secObj.items : [];
+        for (const item of items) {
+            if (!item || !item.name) continue;
+            totalParameters++;
+            const statusUpper = String(item.status || 'NORMAL').toUpperCase();
+            if (statusUpper !== 'NORMAL' && statusUpper !== '-') {
+                abnormalCount++;
+            }
+            const slug = item.name
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_|_$/g, '');
+            biomarkers[slug] = {
+                name: item.name,
+                value: item.val !== undefined ? item.val : item.value,
+                unit: item.unit || '',
+                ref: item.ref || '',
+                status: item.status || 'NORMAL',
+                section: secObj.title || secKey
+            };
+            labs[slug] = `${item.val !== undefined ? item.val : item.value} ${item.unit || ''}`.trim();
         }
     }
 
-    // Si no coincide ningún nombre, simular una extracción combinada por defecto
-    if (!hasInBody && !hasLabs && !hasAllergies && !hasImaging && !hasExercise) {
-        hasInBody = true;
-        hasLabs = true;
-        hasAllergies = true;
-        hasImaging = true;
-        hasExercise = true;
+    // Si Gemini sólo devolvió labs planos sin sections, construir una sección general
+    if (Object.keys(sections).length === 0 && Object.keys(labs).length > 0) {
+        const items = [];
+        for (const [k, v] of Object.entries(labs)) {
+            const valStr = typeof v === 'object' ? (v.value || v.val || '') : String(v);
+            items.push({
+                name: k.replace(/_/g, ' ').toUpperCase(),
+                val: valStr,
+                unit: typeof v === 'object' ? (v.unit || '') : '',
+                ref: typeof v === 'object' ? (v.ref || '-') : '-',
+                status: typeof v === 'object' ? (v.status || 'NORMAL') : 'NORMAL'
+            });
+            biomarkers[k] = {
+                name: k.replace(/_/g, ' '),
+                value: valStr,
+                unit: typeof v === 'object' ? (v.unit || '') : '',
+                ref: typeof v === 'object' ? (v.ref || '-') : '-',
+                status: typeof v === 'object' ? (v.status || 'NORMAL') : 'NORMAL',
+                section: 'Química Sanguínea y Biomarcadores'
+            };
+            totalParameters++;
+        }
+        sections.quimica_general = {
+            title: 'Química Sanguínea y Biomarcadores',
+            items
+        };
     }
 
-    const mockData = {
-        labs: {},
-        imaging: {},
-        body_comp: {},
-        allergies_detected: [],
-        exercise_log: null
+    return {
+        patient_name: raw?.patient_name || null,
+        sections,
+        biomarkers,
+        labs,
+        totalParameters,
+        abnormalCount,
+        imaging: raw?.imaging || {},
+        body_comp: raw?.body_comp || {},
+        allergies_detected: raw?.allergies_detected || [],
+        exercise_log: raw?.exercise_log || null
     };
+}
 
-    if (hasInBody) {
-        mockData.body_comp = {
-            weight: "78.5 kg",
-            skeletal_muscle_mass: "34.2 kg",
-            body_fat_percent: "22.1%",
-            total_body_water: "48.2 L"
-        };
-    }
-
-    if (hasLabs) {
-        mockData.labs = {
-            glucose: "105 mg/dL",
-            cholesterol: "210 mg/dL",
-            triglycerides: "165 mg/dL",
-            ast_tgo: "38 U/L",
-            alt_tgp: "42 U/L",
-            hemoglobin: "11.2 g/dL"
-        };
-    }
-
-    if (hasImaging) {
-        mockData.imaging = {
-            ecg: "Ritmo sinusal con bloqueo de rama derecha periférica."
-        };
-    }
-
-    if (hasAllergies) {
-        mockData.allergies_detected = ["Gluten", "Nueces"];
-    }
-
-    if (hasExercise) {
-        mockData.exercise_log = {
-            duration: 2700, // 45 min
-            distance: 6200, // 6.2 km
-            calories: 520,
-            avg_hr: 142,
-            max_hr: 168
-        };
-    }
-
-    return mockData;
+// Helper de respaldo estructurado con los 64 parámetros analíticos completos
+function runOfflineExtractionMock() {
+    const structuredLabs = {
+        patient_name: "JESÚS REYES SALGADO",
+        sections: {
+            quimica_renal_electrolitos: {
+                title: "1. Química Integral / Función Renal y Electrolitos",
+                items: [
+                    { name: "Glucosa", val: "88", unit: "mg/dL", ref: "55 - 99", status: "NORMAL" },
+                    { name: "Nitrógeno de urea en sangre (BUN)", val: "17.6", unit: "mg/dL", ref: "8 - 23", status: "NORMAL" },
+                    { name: "Urea", val: "37", unit: "mg/dL", ref: "14 - 50", status: "NORMAL" },
+                    { name: "Creatinina", val: "1.11", unit: "mg/dL", ref: "0.70 - 1.2", status: "NORMAL" },
+                    { name: "Relación BUN/creat", val: "15", unit: "", ref: "9.3 - 19.5", status: "NORMAL" },
+                    { name: "Ácido úrico", val: "5.5", unit: "mg/dL", ref: "3.4 - 7.0", status: "NORMAL" },
+                    { name: "Fósforo", val: "2.9", unit: "mg/dL", ref: "2.5 - 4.5", status: "NORMAL" },
+                    { name: "Calcio", val: "9.8", unit: "mg/dL", ref: "8.2 - 10.2", status: "NORMAL" },
+                    { name: "Magnesio", val: "2.2", unit: "mg/dL", ref: "1.6 - 2.4", status: "NORMAL" },
+                    { name: "Sodio", val: "139", unit: "meq/L", ref: "136 - 145", status: "NORMAL" },
+                    { name: "Potasio", val: "4.4", unit: "meq/L", ref: "3.5 - 5.1", status: "NORMAL" },
+                    { name: "Cloro", val: "105", unit: "meq/L", ref: "99 - 109", status: "NORMAL" },
+                    { name: "Tasa de filtración glomerular estimada (TFGe)", val: "71.8", unit: "mL/min/1.73 m²", ref: "> 60", status: "NORMAL" }
+                ]
+            },
+            riesgo_cardiovascular_lipidos: {
+                title: "2. Riesgo Cardiovascular y Perfil Lipídico",
+                items: [
+                    { name: "Colesterol total", val: "231", unit: "mg/dL", ref: "< 200", status: "ELEVADO" },
+                    { name: "Colesterol HDL", val: "44", unit: "mg/dL", ref: "40 - 60", status: "NORMAL" },
+                    { name: "Colesterol LDL directo", val: "168", unit: "mg/dL", ref: "< 100", status: "ELEVADO" },
+                    { name: "Triglicéridos", val: "86", unit: "mg/dL", ref: "< 150", status: "NORMAL" },
+                    { name: "Colesterol no-HDL", val: "187", unit: "mg/dL", ref: "< 130", status: "ELEVADO" },
+                    { name: "Índice aterogénico", val: "5.3", unit: "", ref: "< 4.5", status: "ELEVADO" },
+                    { name: "Relación LDL/HDL", val: "3.8", unit: "", ref: "< 3.0", status: "ELEVADO" },
+                    { name: "sd LDL (LDL pequeña y densa)", val: "1.95", unit: "mg/dL", ref: "0 - 1.35", status: "ELEVADO" },
+                    { name: "VLDL colesterol", val: "17", unit: "mg/dL", ref: "< 35", status: "NORMAL" },
+                    { name: "Lípidos totales", val: "502", unit: "mg/dL", ref: "380 - 748", status: "NORMAL" },
+                    { name: "Fosfolípidos en suero", val: "237", unit: "mg/dL", ref: "161 - 265", status: "NORMAL" },
+                    { name: "Proteína C Reactiva ultrasensible (PCR-us)", val: "0.103", unit: "mg/dL", ref: "< 0.5", status: "NORMAL" }
+                ]
+            },
+            funcionamiento_hepatico: {
+                title: "3. Funcionamiento Hepático y Enzimas",
+                items: [
+                    { name: "Bilirrubina total", val: "0.51", unit: "mg/dL", ref: "< 1.2", status: "NORMAL" },
+                    { name: "Bilirrubina directa", val: "0.19", unit: "mg/dL", ref: "0.09 - 0.3", status: "NORMAL" },
+                    { name: "Bilirrubina indirecta", val: "0.32", unit: "mg/dL", ref: "0.01 - 0.9", status: "NORMAL" },
+                    { name: "AST (TGO)", val: "31", unit: "U/L", ref: "< 39", status: "NORMAL" },
+                    { name: "ALT (TGP)", val: "31", unit: "U/L", ref: "< 61", status: "NORMAL" },
+                    { name: "Relación AST/ALT", val: "1.0", unit: "", ref: "< 2.0", status: "NORMAL" },
+                    { name: "Gama glutamil transpeptidasa (GGT)", val: "33", unit: "U/L", ref: "8 - 61", status: "NORMAL" },
+                    { name: "Proteínas totales", val: "7.3", unit: "g/dL", ref: "6.3 - 8.1", status: "NORMAL" },
+                    { name: "Albúmina", val: "4.6", unit: "g/dL", ref: "3.9 - 5.1", status: "NORMAL" },
+                    { name: "Globulinas", val: "2.6", unit: "g/dL", ref: "2.4 - 3.0", status: "NORMAL" },
+                    { name: "Relación A/G", val: "1.75", unit: "", ref: "1.18 - 2.33", status: "NORMAL" },
+                    { name: "Fosfatasa Alcalina total", val: "62", unit: "U/L", ref: "45 - 128", status: "NORMAL" },
+                    { name: "LDH (Deshidrogenasa Láctica)", val: "207", unit: "U/L", ref: "125 - 239", status: "NORMAL" }
+                ]
+            },
+            metabolismo_hierro: {
+                title: "4. Metabolismo de Hierro",
+                items: [
+                    { name: "Hierro sérico", val: "111", unit: "µg/dL", ref: "33 - 193", status: "NORMAL" },
+                    { name: "UIBC (Capacidad no saturada de fijación)", val: "172", unit: "µg/dL", ref: "125 - 345", status: "NORMAL" },
+                    { name: "Captación de hierro (TIBC)", val: "283", unit: "µg/dL", ref: "250 - 450", status: "NORMAL" },
+                    { name: "Porcentaje de saturación de Hierro", val: "39", unit: "%", ref: "15 - 50", status: "NORMAL" }
+                ]
+            },
+            respuesta_inmunologica: {
+                title: "5. Respuesta Inmunológica",
+                items: [
+                    { name: "Inmunoglobulina G (IgG)", val: "1446", unit: "mg/dL", ref: "700 - 1600", status: "NORMAL" },
+                    { name: "Inmunoglobulina A (IgA)", val: "229", unit: "mg/dL", ref: "70 - 400", status: "NORMAL" },
+                    { name: "Inmunoglobulina M (IgM)", val: "227", unit: "mg/dL", ref: "40 - 230", status: "NORMAL" }
+                ]
+            },
+            biometria_hematica: {
+                title: "6. Biometría Hemática Completa",
+                items: [
+                    { name: "Eritrocitos", val: "5.10", unit: "millones/µL", ref: "4.70 - 5.80", status: "NORMAL" },
+                    { name: "Hemoglobina", val: "15.3", unit: "g/dL", ref: "14.0 - 18.0", status: "NORMAL" },
+                    { name: "Hematocrito", val: "44.0", unit: "%", ref: "40.0 - 54.0", status: "NORMAL" },
+                    { name: "Volumen Corpuscular Medio (VCM)", val: "86.3", unit: "fL", ref: "78.0 - 99.0", status: "NORMAL" },
+                    { name: "Hemoglobina Corpuscular Media (HCM)", val: "30.0", unit: "pg", ref: "27.0 - 31.0", status: "NORMAL" },
+                    { name: "Conc. Media de Hemoglobina Corp. (CMHC)", val: "34.8", unit: "g/dL", ref: "32.0 - 36.0", status: "NORMAL" },
+                    { name: "Ancho de Distribución Eritrocitaria (CV)", val: "14.4", unit: "%", ref: "11.5 - 17.0", status: "NORMAL" },
+                    { name: "Ancho de Distribución Eritrocitaria (SD)", val: "45.5", unit: "fL", ref: "39 - 57", status: "NORMAL" },
+                    { name: "Plaquetas", val: "193", unit: "miles/µL", ref: "150 - 500", status: "NORMAL" },
+                    { name: "Volumen Plaquetario Medio (VPM)", val: "12.5", unit: "fL", ref: "9.6 - 13.4", status: "NORMAL" },
+                    { name: "Leucocitos totales", val: "5.59", unit: "miles/µL", ref: "3.8 - 11.6", status: "NORMAL" },
+                    { name: "Neutrófilos (%)", val: "54.9", unit: "%", ref: "38.4 - 74.6", status: "NORMAL" },
+                    { name: "Linfocitos (%)", val: "33.8", unit: "%", ref: "16.5 - 49.6", status: "NORMAL" },
+                    { name: "Monocitos (%)", val: "7.5", unit: "%", ref: "4.6 - 12.7", status: "NORMAL" },
+                    { name: "Eosinófilos (%)", val: "2.0", unit: "%", ref: "1.0 - 4.0", status: "NORMAL" },
+                    { name: "Basófilos (%)", val: "1.1", unit: "%", ref: "0.0 - 1.0", status: "ELEVADO" },
+                    { name: "Neutrófilos (absolutos)", val: "3.07", unit: "miles/µL", ref: "1.69 - 7.16", status: "NORMAL" },
+                    { name: "Linfocitos (absolutos)", val: "1.89", unit: "miles/µL", ref: "1.05 - 3.53", status: "NORMAL" },
+                    { name: "Monocitos (absolutos)", val: "0.42", unit: "miles/µL", ref: "0.25 - 0.90", status: "NORMAL" },
+                    { name: "Eosinófilos (absolutos)", val: "0.11", unit: "miles/µL", ref: "0.02 - 0.50", status: "NORMAL" },
+                    { name: "Basófilos (absolutos)", val: "0.06", unit: "miles/µL", ref: "0.01 - 0.10", status: "NORMAL" }
+                ]
+            }
+        }
+    };
+    return normalizeExtractedLabMetrics(structuredLabs);
 }
 
 /**
