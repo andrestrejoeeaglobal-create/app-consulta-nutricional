@@ -1673,227 +1673,369 @@ export const TabBiochemicals = ({
                                 <p className="text-xs text-slate-500 italic py-1">Evaluación de topografía lingual omitida por el evaluado/especialista.</p>
                             ) : lingualAudit ? (
                                 lingualAudit.pilares ? (
-                                    /* BENTO GRID DE 6 PILARES GLOSÓMICOS MULTIDIMENSIONALES */
+                                    /* STACK VERTICAL DE 6 BENTO CARDS TERMODINÁMICAS GLOSÓMICAS */
                                     <div className="space-y-4">
-                                        {/* BANNER TELEMÉTRICO Y MINIATURAS DUALES */}
-                                        <div className="flex flex-col sm:flex-row items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 gap-3">
-                                            <div className="flex items-center gap-3">
-                                                {lingualAudit.dorsal_url && (
-                                                    <div className="text-center">
-                                                        <img 
-                                                            src={getValidImageUrl(lingualAudit.dorsal_url)} 
-                                                            onError={handleImageError}
-                                                            alt="Cara Dorsal" 
-                                                            className="w-14 h-14 object-cover rounded-xl border border-slate-300 dark:border-slate-600 shadow-xs" 
-                                                        />
-                                                        <span className="text-[9px] font-bold text-slate-500 uppercase mt-0.5 block">Dorsal</span>
-                                                    </div>
-                                                )}
-                                                {lingualAudit.ventral_url && (
-                                                    <div className="text-center">
-                                                        <img 
-                                                            src={getValidImageUrl(lingualAudit.ventral_url)} 
-                                                            onError={handleImageError}
-                                                            alt="Cara Ventral" 
-                                                            className="w-14 h-14 object-cover rounded-xl border border-slate-300 dark:border-slate-600 shadow-xs" 
-                                                        />
-                                                        <span className="text-[9px] font-bold text-slate-500 uppercase mt-0.5 block">Ventral</span>
-                                                    </div>
-                                                )}
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                                                            {lingualAudit.tipo_toma}
-                                                        </span>
-                                                        <span className="text-[10px] font-bold text-slate-500">
-                                                            Calidad: <strong className="text-slate-800 dark:text-slate-200">{lingualAudit.calidad_optica}</strong>
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-lg leading-snug italic">
-                                                        "{lingualAudit.sintesis_fisiopatologica || 'Telemetría de mucosa lingual y microbioma procesada con éxito.'}"
-                                                    </p>
-                                                </div>
+                                        {/* CABECERA GLOSÓMICA: BADGES + FOTOS D-SCAN/V-SCAN + SÍNTESIS + RELOJ MUCOSAL */}
+                                        <div className="bg-slate-50/70 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-4">
+                                            <div className="space-y-1">
+                                                <span className="inline-block text-[10px] font-black px-2.5 py-1 rounded-md bg-indigo-100/80 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800 uppercase tracking-wide">
+                                                    {lingualAudit.tipo_toma || 'TOMA DUAL COMPLETA (SUPERFICIE DORSAL & VENTRAL SUBLINGUAL)'}
+                                                </span>
+                                                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 pl-0.5">
+                                                    Calidad: <span className="font-bold text-[#3AAA35]">{lingualAudit.calidad_optica || 'Óptima'}</span>
+                                                </p>
                                             </div>
 
-                                            {/* BADGE DE EDAD MUCOSAL ESTIMADA */}
+                                            {/* Fotografías Linguales Centradas D-SCAN / V-SCAN */}
+                                            {(lingualAudit.dorsal_url || lingualAudit.ventral_url) && (
+                                                <div className="flex items-center justify-center gap-5 py-1">
+                                                    {lingualAudit.dorsal_url && (
+                                                        <div className="flex flex-col items-center gap-1.5">
+                                                            <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-white dark:border-slate-700 shadow-sm bg-slate-900">
+                                                                <img
+                                                                    src={getValidImageUrl(lingualAudit.dorsal_url)}
+                                                                    onError={handleImageError}
+                                                                    alt="Cara Dorsal"
+                                                                    className="w-full h-full object-cover"
+                                                                />
+                                                                <span className="absolute bottom-0 inset-x-0 bg-slate-900/75 text-white text-[8px] font-black text-center py-0.5 tracking-widest uppercase">
+                                                                    D-SCAN
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 uppercase">Dorsal</span>
+                                                        </div>
+                                                    )}
+                                                    {lingualAudit.ventral_url && (
+                                                        <div className="flex flex-col items-center gap-1.5">
+                                                            <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-white dark:border-slate-700 shadow-sm bg-slate-900">
+                                                                <img
+                                                                    src={getValidImageUrl(lingualAudit.ventral_url)}
+                                                                    onError={handleImageError}
+                                                                    alt="Cara Ventral"
+                                                                    className="w-full h-full object-cover"
+                                                                />
+                                                                <span className="absolute bottom-0 inset-x-0 bg-slate-900/75 text-white text-[8px] font-black text-center py-0.5 tracking-widest uppercase">
+                                                                    V-SCAN
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 uppercase">Ventral</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Síntesis Fisiopatológica en Caja Blanca */}
+                                            {lingualAudit.sintesis_fisiopatologica && (
+                                                <div className="bg-white dark:bg-slate-900/90 p-3.5 rounded-xl border border-slate-200/70 dark:border-slate-800 shadow-2xs">
+                                                    <p className="text-xs text-slate-600 dark:text-slate-300 italic leading-relaxed">
+                                                        "{lingualAudit.sintesis_fisiopatologica}"
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Barra Inferior de Reloj / Edad Mucosal */}
                                             {lingualAudit.pilares.edad_biologica_mucosal && (
-                                                <div className="text-center px-4 py-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
-                                                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Edad Mucosal</span>
-                                                    <span className="text-base font-black text-slate-900 dark:text-white">
-                                                        {lingualAudit.pilares.edad_biologica_mucosal.edad_mucosal_estimada || 60} años
-                                                    </span>
-                                                    <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 block">
-                                                        {lingualAudit.pilares.edad_biologica_mucosal.resiliencia_epitelial || 'Acorde'}
-                                                    </span>
+                                                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/70">
+                                                    <div className="flex items-baseline gap-2">
+                                                        <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Edad Mucosal</span>
+                                                        <span className="text-sm font-black text-slate-900 dark:text-white">
+                                                            {lingualAudit.pilares.edad_biologica_mucosal.edad_mucosal_estimada || patientData?.demographics?.age || 60} años
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                                            Cronológica: <strong className="text-slate-700 dark:text-slate-200">{patientData?.demographics?.age || 60}a</strong>
+                                                        </span>
+                                                        <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-md bg-emerald-50 text-[#3AAA35] border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
+                                                            Resiliencia: {lingualAudit.pilares.edad_biologica_mucosal.resiliencia_epitelial || 'Preservada'}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* BENTO GRID 6 PILARES */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                            {/* PILAR 1: GASTROINTESTINAL Y MICROBIOMA */}
-                                            {lingualAudit.pilares.gastrointestinal_microbioma && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                                            <span>🍞</span> Microbioma & Digestivo
-                                                        </span>
-                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${
-                                                            lingualAudit.pilares.gastrointestinal_microbioma.sospecha_disbiosis?.includes('Elevada')
-                                                                ? 'bg-rose-50 text-[#E30613] dark:text-[#F85A5A] border-rose-200 dark:bg-rose-950/30 dark:border-rose-800'
-                                                                : 'bg-emerald-50 text-[#3AAA35] dark:text-[#76D773] border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                                                        }`}>
-                                                            {lingualAudit.pilares.gastrointestinal_microbioma.sospecha_disbiosis?.includes('Elevada') ? 'Disbiosis Activa' : 'Eubiosis / Fisiológico'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Saburra: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.gastrointestinal_microbioma.saburra_grosor || 'Delgada'}</span>
-                                                            <span className="text-slate-500 font-normal ml-1">({lingualAudit.pilares.gastrointestinal_microbioma.saburra_color || 'Blanquecina'})</span>
-                                                        </p>
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Fisuras: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.gastrointestinal_microbioma.fisuras_grietas || 'Ausentes'}</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {lingualAudit.pilares.gastrointestinal_microbioma.hallazgos}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            )}
+                                        {/* TÍTULO DE SECCIÓN: BIOMARCADORES GLOSÓMICOS CUANTITATIVOS */}
+                                        <div className="flex items-center justify-between px-1 pt-1">
+                                            <h5 className="text-[11px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                                                Biomarcadores Glosómicos Cuantitativos
+                                            </h5>
+                                            <span className="text-[11px] font-medium text-slate-400">
+                                                6 parámetros validados
+                                            </span>
+                                        </div>
 
-                                            {/* PILAR 2: CARDIOVASCULAR Y OXIGENACIÓN */}
-                                            {lingualAudit.pilares.cardiovascular_oxigenacion && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                                            <span>🫀</span> Vascular & Raninas
-                                                        </span>
-                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${
-                                                            lingualAudit.pilares.cardiovascular_oxigenacion.riesgo_vascular_congestivo?.includes('ELEVADO')
-                                                                ? 'bg-rose-50 text-[#E30613] dark:text-[#F85A5A] border-rose-200 dark:bg-rose-950/30 dark:border-rose-800'
-                                                                : 'bg-emerald-50 text-[#3AAA35] dark:text-[#76D773] border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                                                        }`}>
-                                                            {lingualAudit.pilares.cardiovascular_oxigenacion.riesgo_vascular_congestivo || 'BAJO'}
-                                                        </span>
+                                        {/* 🏛️ STACK VERTICAL DE 6 BENTO CARDS TERMODINÁMICAS GLOSÓMICAS */}
+                                        <div className="flex flex-col gap-3.5">
+                                            {/* PILAR 1: GASTROINTESTINAL Y MICROBIOMA */}
+                                            {lingualAudit.pilares.gastrointestinal_microbioma && (() => {
+                                                const saburraGrosor = lingualAudit.pilares.gastrointestinal_microbioma.saburra_grosor || 'Delgada';
+                                                const saburraColor = lingualAudit.pilares.gastrointestinal_microbioma.saburra_color || 'Blanquecina Fisiológica';
+                                                const fisuras = lingualAudit.pilares.gastrointestinal_microbioma.fisuras_grietas || 'Ausentes';
+                                                const disbiosis = (lingualAudit.pilares.gastrointestinal_microbioma.sospecha_disbiosis || 'Baja').toUpperCase();
+                                                const isElevada = disbiosis.includes('ELEVAD') || disbiosis.includes('ALTA') || saburraGrosor.toLowerCase().includes('gruesa');
+                                                const isModerada = disbiosis.includes('MODERAD') || saburraGrosor.toLowerCase().includes('moderada');
+                                                const nodePos = isElevada ? 84 : isModerada ? 64 : 42;
+                                                const nodeBorder = isElevada ? 'border-[#E30613]' : isModerada ? 'border-amber-500' : 'border-[#3AAA35]';
+                                                const cardBorder = isElevada ? 'border-red-200/90 bg-red-50/10' : isModerada ? 'border-amber-200/90 bg-amber-50/10' : 'border-slate-200/90 bg-white';
+
+                                                return (
+                                                    <div className={`p-4 rounded-2xl border ${cardBorder} dark:bg-slate-800/40 dark:border-slate-700 shadow-2xs space-y-3 transition-all`}>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                                <span>🍞</span> Microbioma & Digestivo
+                                                            </span>
+                                                            <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase border ${
+                                                                isElevada
+                                                                    ? 'bg-red-50 text-[#E30613] border-red-200'
+                                                                    : isModerada
+                                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                    : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                                                            }`}>
+                                                                {isElevada ? 'Disbiosis Activa' : isModerada ? 'Saburra Moderada' : 'Eubiosis / Fisiológico'}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="text-xs space-y-2.5">
+                                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+                                                                <p className="font-semibold text-slate-700 dark:text-slate-300">
+                                                                    Saburra: <span className="text-slate-900 dark:text-white font-extrabold">{saburraGrosor}</span>
+                                                                    {!String(saburraGrosor).includes('(') && (
+                                                                        <span className="text-slate-500 font-normal ml-1">({saburraColor})</span>
+                                                                    )}
+                                                                </p>
+                                                                <p className="font-semibold text-slate-700 dark:text-slate-300">
+                                                                    Fisuras: <span className="text-slate-900 dark:text-white font-extrabold">{fisuras}</span>
+                                                                </p>
+                                                            </div>
+
+                                                            {/* Barra Termodinámica de Biopelícula / Saburra */}
+                                                            <div className="pt-1 pb-0.5">
+                                                                <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-sky-200 via-emerald-400 to-amber-400">
+                                                                    <div
+                                                                        className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 ${nodeBorder} shadow-xs transition-all duration-300`}
+                                                                        style={{ left: `${nodePos}%` }}
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-wider mt-1.5">
+                                                                    <span className="text-slate-400">Atrófica / Lisa</span>
+                                                                    <span className="text-[#3AAA35]">Eubiosis (Delgada)</span>
+                                                                    <span className={isModerada || isElevada ? 'text-amber-700 font-black' : 'text-slate-400'}>Biopelícula Densa</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
+                                                                {lingualAudit.pilares.gastrointestinal_microbioma.hallazgos || 'Mucosa lingual con biopelícula evaluada dentro de parámetros funcionales.'}
+                                                            </p>
+                                                        </div>
+
+                                                        <div className="flex justify-end pt-1">
+                                                            <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                                Correlación Córtex →
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Estasis Sublingual: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.cardiovascular_oxigenacion.estasis_venosa_sublingual || 'Fisiológica'}</span>
-                                                        </p>
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Cianosis: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.cardiovascular_oxigenacion.cianosis_periferica || 'Ausente'}</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {lingualAudit.pilares.cardiovascular_oxigenacion.hallazgos}
-                                                        </p>
+                                                );
+                                            })()}
+
+                                            {/* PILAR 2: CARDIOVASCULAR Y OXIGENACIÓN (RANINAS) */}
+                                            {lingualAudit.pilares.cardiovascular_oxigenacion && (() => {
+                                                const riesgoVasc = (lingualAudit.pilares.cardiovascular_oxigenacion.riesgo_vascular_congestivo || 'BAJO').toUpperCase();
+                                                const estasis = lingualAudit.pilares.cardiovascular_oxigenacion.estasis_venosa_sublingual || 'Fisiológica';
+                                                const cianosis = lingualAudit.pilares.cardiovascular_oxigenacion.cianosis_periferica || 'Ausente (Perfusión Óptima)';
+                                                const isElevado = riesgoVasc.includes('ELEVAD') || riesgoVasc.includes('ALTO');
+                                                const isModerado = riesgoVasc.includes('MODERAD') || estasis.toLowerCase().includes('dilataci') || estasis.toLowerCase().includes('leve');
+                                                const nodePos = isElevado ? 85 : isModerado ? 66 : 28;
+                                                const nodeBorder = isElevado ? 'border-[#E30613]' : isModerado ? 'border-amber-500' : 'border-[#3AAA35]';
+                                                const cardBorder = isElevado ? 'border-red-200/90 bg-red-50/10' : isModerado ? 'border-amber-200/90 bg-amber-50/15' : 'border-slate-200/90 bg-white';
+
+                                                return (
+                                                    <div className={`p-4 rounded-2xl border ${cardBorder} dark:bg-slate-800/40 dark:border-slate-700 shadow-2xs space-y-3 transition-all`}>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                                <span>🫀</span> Vascular & Raninas
+                                                            </span>
+                                                            <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase border ${
+                                                                isElevado
+                                                                    ? 'bg-red-50 text-[#E30613] border-red-200'
+                                                                    : isModerado
+                                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                    : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                                                            }`}>
+                                                                Riesgo {lingualAudit.pilares.cardiovascular_oxigenacion.riesgo_vascular_congestivo || (isModerado ? 'Moderado' : 'Bajo')}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="text-xs space-y-2.5">
+                                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+                                                                <p className="font-semibold text-slate-700 dark:text-slate-300">
+                                                                    Estasis Sublingual: <span className="text-slate-900 dark:text-white font-extrabold">{estasis}</span>
+                                                                </p>
+                                                                <p className="font-semibold text-slate-700 dark:text-slate-300">
+                                                                    Cianosis: <span className="text-[#3AAA35] font-extrabold">{cianosis}</span>
+                                                                </p>
+                                                            </div>
+
+                                                            {/* Barra Termodinámica de Retorno Venoso Sublingual */}
+                                                            <div className="pt-1 pb-0.5">
+                                                                <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-emerald-400 via-amber-300 to-rose-400">
+                                                                    <div
+                                                                        className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 ${nodeBorder} shadow-xs transition-all duration-300`}
+                                                                        style={{ left: `${nodePos}%` }}
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-wider mt-1.5">
+                                                                    <span className="text-[#3AAA35]">Flujo Óptimo</span>
+                                                                    <span className={isModerado ? 'text-amber-700 font-black' : 'text-slate-400'}>Dilatación Leve</span>
+                                                                    <span className={isElevado ? 'text-[#E30613] font-black' : 'text-slate-400'}>Estasis / Congestión</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
+                                                                {lingualAudit.pilares.cardiovascular_oxigenacion.hallazgos || 'Red venosa sublingual evaluada sin signos de congestión portal severa.'}
+                                                            </p>
+                                                        </div>
+
+                                                        <div className="flex justify-end pt-1">
+                                                            <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                                Correlación Córtex →
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
 
                                             {/* PILAR 3: CONTEO SANGUÍNEO Y NUTRICIÓN */}
                                             {lingualAudit.pilares.conteo_sanguineo_nutricion && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                                            <span>💉</span> Nutrición & Sustrato
+                                                <div className="p-4 bg-white dark:bg-slate-800/40 rounded-2xl border border-slate-200/90 dark:border-slate-700 shadow-2xs space-y-2.5 transition-all">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                            <span>🧪</span> Nutrición & Sustrato
                                                         </span>
-                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${
+                                                        <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase border ${
                                                             lingualAudit.pilares.conteo_sanguineo_nutricion.palidez_sustrato?.includes('Palidez')
-                                                                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800'
-                                                                : 'bg-emerald-50 text-[#3AAA35] dark:text-[#76D773] border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                                                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
                                                         }`}>
                                                             {lingualAudit.pilares.conteo_sanguineo_nutricion.palidez_sustrato?.includes('Palidez') ? 'Alerta Anemia' : 'Normocrómica'}
                                                         </span>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Color Sustrato: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.conteo_sanguineo_nutricion.palidez_sustrato || 'Rosado'}</span>
+                                                    <div className="text-xs space-y-1.5">
+                                                        <ul className="space-y-1 text-[11px] text-slate-700 dark:text-slate-300">
+                                                            <li>
+                                                                • Color Sustrato: <strong className="text-slate-900 dark:text-white">{lingualAudit.pilares.conteo_sanguineo_nutricion.palidez_sustrato || 'Normocrómica (Rosado Saludable)'}</strong>
+                                                            </li>
+                                                            <li>
+                                                                • Atrofia Papilar: <strong className="text-[#3AAA35]">{lingualAudit.pilares.conteo_sanguineo_nutricion.atrofia_papilar_glositis || 'Ausente (Papilas Preservadas)'}</strong>
+                                                            </li>
+                                                        </ul>
+                                                        <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px] pt-0.5">
+                                                            {lingualAudit.pilares.conteo_sanguineo_nutricion.hallazgos || 'Coloración general rosada y saludable del sustrato lingual con papilas filiformes y fungiformes preservadas.'}
                                                         </p>
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Atrofia Papilar: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.conteo_sanguineo_nutricion.atrofia_papilar_glositis || 'Ausente'}</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {lingualAudit.pilares.conteo_sanguineo_nutricion.hallazgos}
-                                                        </p>
+                                                    </div>
+                                                    <div className="flex justify-end pt-1">
+                                                        <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                            Correlación Córtex →
+                                                        </span>
                                                     </div>
                                                 </div>
                                             )}
 
                                             {/* PILAR 4: FUNCIÓN HEPÁTICA, RENAL E HIDRATACIÓN */}
                                             {lingualAudit.pilares.funcion_hepatica_renal_hidratacion && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                                            <span>🌊</span> Hepatorrenal & Hidratación
+                                                <div className="p-4 bg-white dark:bg-slate-800/40 rounded-2xl border border-slate-200/90 dark:border-slate-700 shadow-2xs space-y-2.5 transition-all">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                            <span>🧬</span> Hepatorrenal & Hidratación
                                                         </span>
-                                                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase">
+                                                        <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
                                                             Biomarcadores
                                                         </span>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Festoneado / Edema: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.funcion_hepatica_renal_hidratacion.marcas_dentales_festoneado || 'Ausentes'}</span>
+                                                    <div className="text-xs space-y-1.5">
+                                                        <ul className="space-y-1 text-[11px] text-slate-700 dark:text-slate-300">
+                                                            <li>
+                                                                • Festoneado / Edema: <strong className="text-slate-900 dark:text-white">{lingualAudit.pilares.funcion_hepatica_renal_hidratacion.marcas_dentales_festoneado || 'Ausentes (Bordes Lisos)'}</strong>
+                                                            </li>
+                                                            <li>
+                                                                • Tinte Amarillo: <strong className="text-[#3AAA35]">{lingualAudit.pilares.funcion_hepatica_renal_hidratacion.tinte_amarillo_base || 'Ausente'}</strong>
+                                                            </li>
+                                                        </ul>
+                                                        <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px] pt-0.5">
+                                                            {lingualAudit.pilares.funcion_hepatica_renal_hidratacion.hallazgos || 'Buena hidratación general de la mucosa, ausencia de marcas dentales laterales y sin tinte ictérico sublingual.'}
                                                         </p>
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Tinte Amarillo: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.funcion_hepatica_renal_hidratacion.tinte_amarillo_base || 'Ausente'}</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {lingualAudit.pilares.funcion_hepatica_renal_hidratacion.hallazgos}
-                                                        </p>
+                                                    </div>
+                                                    <div className="flex justify-end pt-1">
+                                                        <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                            Correlación Córtex →
+                                                        </span>
                                                     </div>
                                                 </div>
                                             )}
 
                                             {/* PILAR 5: SISTEMA INMUNE E INFLAMACIÓN */}
                                             {lingualAudit.pilares.inmune_inflamacion && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                                                <div className="p-4 bg-white dark:bg-slate-800/40 rounded-2xl border border-slate-200/90 dark:border-slate-700 shadow-2xs space-y-2.5 transition-all">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                                             <span>🛡️</span> Inmunidad & Inflamación
                                                         </span>
-                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${
+                                                        <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase border ${
                                                             lingualAudit.pilares.inmune_inflamacion.nivel_inflamacion_mucosa?.includes('Activo')
-                                                                ? 'bg-rose-50 text-[#E30613] dark:text-[#F85A5A] border-rose-200 dark:bg-rose-950/30 dark:border-rose-800'
-                                                                : 'bg-emerald-50 text-[#3AAA35] dark:text-[#76D773] border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                                                                ? 'bg-red-50 text-[#E30613] border-red-200'
+                                                                : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
                                                         }`}>
-                                                            {lingualAudit.pilares.inmune_inflamacion.nivel_inflamacion_mucosa || 'Fisiológico'}
+                                                            {lingualAudit.pilares.inmune_inflamacion.nivel_inflamacion_mucosa || 'Bajo / Fisiológico'}
                                                         </span>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Lengua Geográfica: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.inmune_inflamacion.lengua_geografica || 'Ausente'}</span>
+                                                    <div className="text-xs space-y-1.5">
+                                                        <ul className="space-y-1 text-[11px] text-slate-700 dark:text-slate-300">
+                                                            <li>
+                                                                • Lengua Geográfica: <strong className="text-slate-900 dark:text-white">{lingualAudit.pilares.inmune_inflamacion.lengua_geografica || 'Ausente'}</strong>
+                                                            </li>
+                                                            <li>
+                                                                • Papilas Eritematosas: <strong className="text-[#3AAA35]">{lingualAudit.pilares.inmune_inflamacion.petequias_papilas_eritematosas || 'Ausentes'}</strong>
+                                                            </li>
+                                                        </ul>
+                                                        <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px] pt-0.5">
+                                                            {lingualAudit.pilares.inmune_inflamacion.hallazgos || 'Sin signos de inflamación aguda, parches geográficos ni lesiones eritematosas en bordes o punta.'}
                                                         </p>
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Papilas Eritematosas: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.inmune_inflamacion.petequias_papilas_eritematosas || 'Ausentes'}</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {lingualAudit.pilares.inmune_inflamacion.hallazgos}
-                                                        </p>
+                                                    </div>
+                                                    <div className="flex justify-end pt-1">
+                                                        <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                            Correlación Córtex →
+                                                        </span>
                                                     </div>
                                                 </div>
                                             )}
 
                                             {/* PILAR 6: EDAD BIOLÓGICA MUCOSAL Y SENESCENCIA */}
                                             {lingualAudit.pilares.edad_biologica_mucosal && (
-                                                <div className="p-3 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl border border-slate-200/70 dark:border-slate-800 space-y-2 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                                                <div className="p-4 bg-white dark:bg-slate-800/40 rounded-2xl border border-slate-200/90 dark:border-slate-700 shadow-2xs space-y-2.5 transition-all">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                                             <span>⏳</span> Edad Mucosal & Trofismo
                                                         </span>
-                                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                                        <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase bg-emerald-50 text-[#3AAA35] border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
                                                             {lingualAudit.pilares.edad_biologica_mucosal.resiliencia_epitelial || 'Preservada'}
                                                         </span>
                                                     </div>
-                                                    <div className="text-[11px] space-y-1">
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Trofismo Muscular: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.edad_biologica_mucosal.trofismo_muscular || 'Eutrófico'}</span>
+                                                    <div className="text-xs space-y-1.5">
+                                                        <ul className="space-y-1 text-[11px] text-slate-700 dark:text-slate-300">
+                                                            <li>
+                                                                • Trofismo Muscular: <strong className="text-slate-900 dark:text-white">{lingualAudit.pilares.edad_biologica_mucosal.trofismo_muscular || 'Eutrófico (Tono óptimo)'}</strong>
+                                                            </li>
+                                                            <li>
+                                                                • Fasciculaciones: <strong className="text-[#3AAA35]">{lingualAudit.pilares.edad_biologica_mucosal.temblores_fasciculaciones || 'Ausentes'}</strong>
+                                                            </li>
+                                                        </ul>
+                                                        <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px] pt-0.5">
+                                                            {lingualAudit.pilares.edad_biologica_mucosal.hallazgos || 'Trofismo muscular lingual conservado, adecuado tono neuromuscular y ausencia de temblores finos.'}
                                                         </p>
-                                                        <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                            Fasciculaciones: <span className="text-slate-900 dark:text-white font-bold">{lingualAudit.pilares.edad_biologica_mucosal.temblores_fasciculaciones || 'Ausentes'}</span>
-                                                        </p>
-                                                        <p className="text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight">
-                                                            {lingualAudit.pilares.edad_biologica_mucosal.hallazgos}
-                                                        </p>
+                                                    </div>
+                                                    <div className="flex justify-end pt-1">
+                                                        <span className="text-[10px] font-bold text-[#1C75BC] underline decoration-[#1C75BC]/40 underline-offset-2">
+                                                            Correlación Córtex →
+                                                        </span>
                                                     </div>
                                                 </div>
                                             )}
