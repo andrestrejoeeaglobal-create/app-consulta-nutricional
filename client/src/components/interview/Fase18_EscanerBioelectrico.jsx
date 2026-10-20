@@ -1388,22 +1388,15 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
             }));
 
             const p = data.pilares || {};
+            const relojOcular = p.edad_biologica_longevidad?.edad_biologica_ocular || patientData?.demographics?.age || '60';
+            const gapOcular = p.edad_biologica_longevidad?.retinal_age_gap || '0 años';
             const gateMsg = {
                 role: 'assistant',
-                content: `### 👁️ Auditoría Visual Ocular Binocular Multidimensional (Gemini 2.5 Flash Vision)
+                content: `### 👁️ Telemetría Ocular Binocular Integrada en Dashboard
 
-* 🩸 **Diabetes y Control de Glucosa**: Riesgo ${p.diabetes_glucosa?.riesgo || 'Bajo'} (HbA1c est.: ${p.diabetes_glucosa?.hba1c_estimada || '< 6.0%'}). ${p.diabetes_glucosa?.hallazgos || ''}
-* 🫀 **Salud Cardiovascular y Lípidos**: Riesgo ${p.cardiovascular_lipidos?.riesgo_cardiovascular || 'Bajo'}. Arco Senil: ${p.cardiovascular_lipidos?.arco_senil_corneal || 'Negativo'}. ${p.cardiovascular_lipidos?.hallazgos || ''}
-* 💉 **Conteo Sanguíneo y Anemia**: Hb ${p.conteo_sanguineo_anemia?.hemoglobina_estimada_gdl || '14.0 g/dL'} (${p.conteo_sanguineo_anemia?.estado_anemia || 'Normal'}). ${p.conteo_sanguineo_anemia?.palidez_conjuntival_tarsal || ''}
-* 🌊 **Función Renal y Hepática**: Edema: ${p.funcion_renal_hepatica?.edema_infraorbitario_renal || 'Normal'}. Esclera: ${p.funcion_renal_hepatica?.ictericia_escleral_hepatica || 'Blanco Fisiológico'}.
-* ⏳ **Reloj de Edad Biológica Ocular**: ${p.edad_biologica_longevidad?.edad_biologica_ocular || '60'} años (Age Gap: ${p.edad_biologica_longevidad?.retinal_age_gap || '0 años'}). Senescencia: ${p.edad_biologica_longevidad?.estado_senescencia || 'Acorde'}.
-* 👁️ **Salud Visual Estructural**: Cristalino: ${p.salud_visual_estructural?.cristalino_cataratas || 'Claro'}. Asimetría: ${p.salud_visual_estructural?.asimetria_binocular || 'Bilateral simétrica'}.
+✅ **6 Biomarcadores Oculómicos Cuantitativos** y el **Reloj Ocular (${relojOcular} años · Gap: ${gapOcular})** han sido desplegados en el panel derecho (**Auditoría Visual Ocular Binocular**).
 
----
-
-*Síntesis Fisiopatológica*: ${data.sintesis_fisiopatologica || data.ocular_audit?.sintesis_fisiopatologica || 'Telemetría ocular en rangos fisiológicos estables.'}
-
-¿Confirma que la evaluación visual ocular binocular es correcta para avanzar a la evaluación lingual?`,
+Revise las tarjetas termodinámicas en su Dashboard. ¿Confirma los hallazgos para avanzar a la Evaluación Lingual?`,
                 options: [
                     { label: "✅ Sí, es correcta", value: "OCULAR_CONFIRM" },
                     { label: "❌ Re-capturar Ojos", value: "OCULAR_RETRY" }
