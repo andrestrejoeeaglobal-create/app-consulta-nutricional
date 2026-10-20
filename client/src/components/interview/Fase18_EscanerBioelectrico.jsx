@@ -34,6 +34,8 @@ export default function Fase18_EscanerBioelectrico({
     const [useLiveCamera, setUseLiveCamera] = useState(false);
     const [mediaStream, setMediaStream] = useState(null);
     const [cameraError, setCameraError] = useState(null);
+    const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
+    const isCapturingRef = useRef(false);
     const videoRef = useRef(null);
 
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -111,7 +113,10 @@ export default function Fase18_EscanerBioelectrico({
     };
 
     const captureCameraSnapshot = (onCaptured) => {
-        if (!videoRef.current) return;
+        if (!videoRef.current || isCapturingRef.current) return;
+        isCapturingRef.current = true;
+        setIsCapturingSnapshot(true);
+
         const video = videoRef.current;
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth || 640;
@@ -120,10 +125,18 @@ export default function Fase18_EscanerBioelectrico({
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
         canvas.toBlob((blob) => {
-            if (!blob) return;
+            if (!blob) {
+                isCapturingRef.current = false;
+                setIsCapturingSnapshot(false);
+                return;
+            }
             const file = new File([blob], `camera-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
             stopLiveCamera();
             onCaptured(file);
+            setTimeout(() => {
+                isCapturingRef.current = false;
+                setIsCapturingSnapshot(false);
+            }, 800);
         }, 'image/jpeg', 0.9);
     };
 
@@ -1686,12 +1699,13 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                 </div>
                                 <div className="flex gap-2">
                                     <button
+                                        disabled={isCapturingSnapshot}
                                         onClick={() => {
                                             captureCameraSnapshot((file) => {
                                                 if (activeModal === 'OCULAR_RIGHT') {
                                                     setRightEyeFile(file);
                                                     setRightEyePreview(URL.createObjectURL(file));
-                                                    setActiveModal('OCULAR_LEFT');
+                                                    setActiveModal(leftEyeFile ? 'OCULAR_BINOCULAR_PREVIEW' : 'OCULAR_LEFT');
                                                 } else if (activeModal === 'OCULAR_LEFT') {
                                                     setLeftEyeFile(file);
                                                     setLeftEyePreview(URL.createObjectURL(file));
@@ -1711,9 +1725,9 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                                 }
                                             });
                                         }}
-                                        className="flex-1 py-2.5 bg-[#1C75BC] hover:bg-[#155d96] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5"
+                                        className="flex-1 py-2.5 bg-[#1C75BC] hover:bg-[#155d96] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5"
                                     >
-                                        📸 Tomar Fotografía
+                                        {isCapturingSnapshot ? '⏳ Procesando captura...' : '📸 Tomar Fotografía'}
                                     </button>
                                     <button
                                         onClick={stopLiveCamera}
@@ -1746,7 +1760,7 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                                 if (file) {
                                                     setRightEyeFile(file);
                                                     setRightEyePreview(URL.createObjectURL(file));
-                                                    setActiveModal('OCULAR_LEFT');
+                                                    setActiveModal(leftEyeFile ? 'OCULAR_BINOCULAR_PREVIEW' : 'OCULAR_LEFT');
                                                 }
                                             }}
                                             className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-[#1C75BC] hover:file:bg-blue-100 cursor-pointer"
@@ -1790,17 +1804,33 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                         {/* CONTENIDO MODAL BINOCULAR PREVIEW */}
                         {activeModal === 'OCULAR_BINOCULAR_PREVIEW' && (
                             <div className="space-y-4 text-center">
-                                <div className="flex justify-center gap-4">
+                                <div className="flex justify-center gap-6">
                                     {rightEyePreview && (
-                                        <div className="flex flex-col items-center">
-                                            <img src={rightEyePreview} alt="Derecho" className="w-20 h-20 object-cover rounded-xl border border-slate-200 shadow-xs" />
-                                            <span className="text-[9px] font-bold text-slate-500 mt-1 uppercase">Ojo Derecho</span>
+                                        <div className="flex flex-col items-center gap-1.5">
+                                            <img src={rightEyePreview} alt="Derecho" className="w-24 h-24 object-cover rounded-xl border border-slate-200 shadow-xs" />
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase">Ojo Derecho</span>
+                                            <button
+                                                type="button"
+                                                disabled={isUploading}
+                                                onClick={() => setActiveModal('OCULAR_RIGHT')}
+                                                className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-[#1C75BC] border border-slate-200 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50"
+                                            >
+                                                🔄 Repetir Derecho
+                                            </button>
                                         </div>
                                     )}
                                     {leftEyePreview && (
-                                        <div className="flex flex-col items-center">
-                                            <img src={leftEyePreview} alt="Izquierdo" className="w-20 h-20 object-cover rounded-xl border border-slate-200 shadow-xs" />
-                                            <span className="text-[9px] font-bold text-slate-500 mt-1 uppercase">Ojo Izquierdo</span>
+                                        <div className="flex flex-col items-center gap-1.5">
+                                            <img src={leftEyePreview} alt="Izquierdo" className="w-24 h-24 object-cover rounded-xl border border-slate-200 shadow-xs" />
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase">Ojo Izquierdo</span>
+                                            <button
+                                                type="button"
+                                                disabled={isUploading}
+                                                onClick={() => setActiveModal('OCULAR_LEFT')}
+                                                className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-[#1C75BC] border border-slate-200 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50"
+                                            >
+                                                🔄 Repetir Izquierdo
+                                            </button>
                                         </div>
                                     )}
                                 </div>
