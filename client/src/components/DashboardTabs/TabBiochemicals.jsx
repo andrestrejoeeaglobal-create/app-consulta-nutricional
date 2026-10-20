@@ -441,18 +441,6 @@ export const TabBiochemicals = ({
         };
     };
 
-    const getCategoryAbnormalCount = (catKey) => {
-        const catData = activeMetrics?.[catKey];
-        const items = getCategoryItems(catData);
-        return items.reduce((acc, item) => {
-            const s = item?.status ? String(item.status).toUpperCase() : 'NORMAL';
-            if (s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-' && s !== 'INFORMATIVO') {
-                return acc + 1;
-            }
-            return acc;
-        }, 0);
-    };
-
     /**
      * 📐 Motor Matemático del Espectro Fisiológico (La Barra Termodinámica)
      * Blindado contra comas decimales europeas, rangos invertidos (ej. 0,796 - 0,433) y valores no numéricos.
@@ -522,6 +510,30 @@ export const TabBiochemicals = ({
             calloutText,
             cleanRangeLabel: `${min} – ${max}`
         };
+    };
+
+    /**
+     * 🔍 Evaluador Estricto de Valores Fuera de Rango
+     * Verifica tanto la desviación matemática real (numVal < min || numVal > max) como el estado biosemántico.
+     */
+    const isMarkerOutOfRange = (item) => {
+        if (!item) return false;
+        const valText = item.val !== undefined ? item.val : (item.value !== undefined ? item.value : '');
+        const refText = item.ref !== undefined ? item.ref : (item.reference !== undefined ? item.reference : '');
+        const spectrum = computeThermodynamicSpectrum(valText, refText);
+        const s = item?.status ? String(item.status).toUpperCase().trim() : 'NORMAL';
+        const isStatusAbnormal = s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-' && s !== 'INFORMATIVO';
+
+        if (spectrum.isRenderable) {
+            return spectrum.zone !== 'OPTIMAL' || isStatusAbnormal;
+        }
+        return isStatusAbnormal;
+    };
+
+    const getCategoryAbnormalCount = (catKey) => {
+        const catData = activeMetrics?.[catKey];
+        const items = getCategoryItems(catData);
+        return items.reduce((acc, item) => (isMarkerOutOfRange(item) ? acc + 1 : acc), 0);
     };
 
     const getSystemMeta = (catKey) => {
@@ -754,20 +766,22 @@ export const TabBiochemicals = ({
                             type="button"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                setShowOnlyAbnormalities(!showOnlyAbnormalities);
+                                const nextVal = !showOnlyAbnormalities;
+                                setShowOnlyAbnormalities(nextVal);
+                                if (nextVal && activeCategory && getCategoryAbnormalCount(activeCategory) === 0) {
+                                    const firstWithAlerts = categoriesKeys.find(k => getCategoryAbnormalCount(k) > 0);
+                                    if (firstWithAlerts) setSelectedCategory(firstWithAlerts);
+                                }
                             }} 
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-xs cursor-pointer ${
                                 showOnlyAbnormalities 
                                     ? 'bg-[#1C75BC] text-white border-[#1C75BC] hover:bg-[#1C75BC]/90' 
                                     : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
                             }`}
                         >
                             <Filter size={12} />
-                            {showOnlyAbnormalities ? 'Mostrando Anormalidades' : 'Mostrar solo Anormalidades'}
+                            {showOnlyAbnormalities ? 'Mostrando solo Fuera de Rango' : 'Mostrar solo Anormalidades'}
                         </button>
-                        <span className="text-[10px] bg-[#1C75BC]/10 text-[#1C75BC] dark:text-blue-400 px-2.5 py-0.5 rounded-full font-bold border border-[#1C75BC]/30 uppercase tracking-wider">
-                            Biosensores Activos
-                        </span>
                     </div>
                 </div>
 
@@ -793,103 +807,30 @@ export const TabBiochemicals = ({
                             <div className="flex flex-col bg-[#FAFAFA] dark:bg-slate-900">
                                 {/* 🧭 1. NAVEGACIÓN ANATÓMICA HORIZONTAL + MENÚ BUSCABLE DE 37 CATEGORÍAS */}
                                 <div className="relative bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-3">
-                                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                                        <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 shrink-0 mr-1">
-                                            <span className="text-[#1C75BC]">❖</span> SISTEMAS:
-                                        </span>
+                                    {(() => {
+                                        const navigableKeys = showOnlyAbnormalities
+                                            ? categoriesKeys.filter(k => getCategoryAbnormalCount(k) > 0)
+                                            : categoriesKeys;
+                                        const effectiveCategory = (activeCategory && navigableKeys.includes(activeCategory))
+                                            ? activeCategory
+                                            : (navigableKeys[0] || activeCategory);
+                                        const baseSlice = navigableKeys.slice(0, 5);
+                                        const visiblePills = effectiveCategory && !baseSlice.includes(effectiveCategory)
+                                            ? [effectiveCategory, ...navigableKeys.filter(k => k !== effectiveCategory).slice(0, 4)]
+                                            : baseSlice;
 
-                                        {(() => {
-                                            // Garantizar que la categoría activa siempre sea visible en la tira rápida superior (primeros 5 lugares)
-                                            const baseSlice = categoriesKeys.slice(0, 5);
-                                            const visiblePills = activeCategory && !baseSlice.includes(activeCategory)
-                                                ? [activeCategory, ...categoriesKeys.filter(k => k !== activeCategory).slice(0, 4)]
-                                                : baseSlice;
+                                        return (
+                                            <>
+                                                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                                                    <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 shrink-0 mr-1">
+                                                        <span className="text-[#1C75BC]">❖</span> SISTEMAS:
+                                                    </span>
 
-                                            return visiblePills.map(catKey => {
-                                                const title = CATEGORIAS_CLINICAS[catKey] || catKey.replace(/_/g, ' ');
-                                                const abnormalCount = getCategoryAbnormalCount(catKey);
-                                                const isSelected = catKey === activeCategory;
-
-                                                return (
-                                                    <button
-                                                        key={catKey}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setSelectedCategory(catKey);
-                                                            setShowAllSystemsMenu(false);
-                                                        }}
-                                                        className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer border ${
-                                                            isSelected
-                                                                ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm'
-                                                                : 'bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:bg-slate-200/70'
-                                                        }`}
-                                                    >
-                                                        <span className="truncate max-w-[180px]">{title}</span>
-                                                        {abnormalCount > 0 ? (
-                                                            <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
-                                                                isSelected
-                                                                    ? 'bg-[#E30613] text-white ring-1 ring-white/80'
-                                                                    : 'bg-[#E30613] text-white'
-                                                            }`}>
-                                                                {abnormalCount}
-                                                            </span>
-                                                        ) : (
-                                                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
-                                                                isSelected
-                                                                    ? 'bg-white/20 text-white'
-                                                                    : 'bg-[#3AAA35]/15 text-[#3AAA35]'
-                                                            }`}>
-                                                                OK
-                                                            </span>
-                                                        )}
-                                                    </button>
-                                                );
-                                            });
-                                        })()}
-
-                                        {categoriesKeys.length > 5 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowAllSystemsMenu(prev => !prev)}
-                                                className={`ml-auto flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-extrabold border transition-all shrink-0 cursor-pointer ${
-                                                    showAllSystemsMenu
-                                                        ? 'bg-slate-800 text-white border-slate-800'
-                                                        : 'bg-white dark:bg-slate-800 text-[#1C75BC] border-[#1C75BC]/30 hover:bg-[#1C75BC]/5'
-                                                }`}
-                                            >
-                                                <span>Más ({categoriesKeys.length - 5})</span>
-                                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showAllSystemsMenu ? 'rotate-180' : ''}`} />
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    {/* Panel Desplegable Buscable para las 37 Categorías Completas */}
-                                    {showAllSystemsMenu && (
-                                        <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg animate-in fade-in duration-150">
-                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
-                                                <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                                                    Directorio Completo de Sistemas Biológicos ({categoriesKeys.length} Categorías)
-                                                </span>
-                                                <input
-                                                    type="text"
-                                                    value={systemSearchQuery}
-                                                    onChange={(e) => setSystemSearchQuery(e.target.value)}
-                                                    placeholder="🔍 Filtrar sistema (ej. Oligoelementos, Tiroides, Hígado)..."
-                                                    className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 w-full sm:w-72 focus:outline-none focus:border-[#1C75BC]"
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
-                                                {categoriesKeys
-                                                    .filter(catKey => {
-                                                        if (!systemSearchQuery.trim()) return true;
-                                                        const q = systemSearchQuery.toLowerCase().trim();
-                                                        const label = (CATEGORIAS_CLINICAS[catKey] || catKey).toLowerCase();
-                                                        return label.includes(q) || catKey.toLowerCase().includes(q);
-                                                    })
-                                                    .map((catKey, index) => {
+                                                    {visiblePills.map(catKey => {
                                                         const title = CATEGORIAS_CLINICAS[catKey] || catKey.replace(/_/g, ' ');
                                                         const abnormalCount = getCategoryAbnormalCount(catKey);
-                                                        const isSelected = catKey === activeCategory;
+                                                        const isSelected = catKey === effectiveCategory;
+
                                                         return (
                                                             <button
                                                                 key={catKey}
@@ -897,29 +838,27 @@ export const TabBiochemicals = ({
                                                                 onClick={() => {
                                                                     setSelectedCategory(catKey);
                                                                     setShowAllSystemsMenu(false);
-                                                                    setSystemSearchQuery('');
                                                                 }}
-                                                                className={`flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs font-bold transition-all cursor-pointer border ${
+                                                                className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer border ${
                                                                     isSelected
-                                                                        ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-xs'
-                                                                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:border-[#1C75BC]/50'
+                                                                        ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm'
+                                                                        : 'bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:bg-slate-200/70'
                                                                 }`}
                                                             >
-                                                                <span className="truncate pr-2">
-                                                                    <span className={`font-mono text-[10px] mr-1.5 ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
-                                                                        {index + 1}.
-                                                                    </span>
-                                                                    {title}
-                                                                </span>
+                                                                <span className="truncate max-w-[180px]">{title}</span>
                                                                 {abnormalCount > 0 ? (
-                                                                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
-                                                                        isSelected ? 'bg-[#E30613] text-white ring-1 ring-white/80' : 'bg-[#E30613] text-white'
+                                                                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                                                                        isSelected
+                                                                            ? 'bg-[#E30613] text-white ring-1 ring-white/80'
+                                                                            : 'bg-[#E30613] text-white'
                                                                     }`}>
                                                                         {abnormalCount}
                                                                     </span>
                                                                 ) : (
-                                                                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full shrink-0 ${
-                                                                        isSelected ? 'bg-white/20 text-white' : 'bg-[#3AAA35]/15 text-[#3AAA35]'
+                                                                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                                                                        isSelected
+                                                                            ? 'bg-white/20 text-white'
+                                                                            : 'bg-[#3AAA35]/15 text-[#3AAA35]'
                                                                     }`}>
                                                                         OK
                                                                     </span>
@@ -927,27 +866,129 @@ export const TabBiochemicals = ({
                                                             </button>
                                                         );
                                                     })}
-                                            </div>
-                                        </div>
-                                    )}
+
+                                                    {navigableKeys.length > 5 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowAllSystemsMenu(prev => !prev)}
+                                                            className={`ml-auto flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-extrabold border transition-all shrink-0 cursor-pointer ${
+                                                                showAllSystemsMenu
+                                                                    ? 'bg-slate-800 text-white border-slate-800'
+                                                                    : 'bg-white dark:bg-slate-800 text-[#1C75BC] border-[#1C75BC]/30 hover:bg-[#1C75BC]/5'
+                                                            }`}
+                                                        >
+                                                            <span>Más ({navigableKeys.length - 5})</span>
+                                                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showAllSystemsMenu ? 'rotate-180' : ''}`} />
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {/* Panel Desplegable Buscable para las Categorías */}
+                                                {showAllSystemsMenu && (
+                                                    <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg animate-in fade-in duration-150">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
+                                                            <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                                                                {showOnlyAbnormalities
+                                                                    ? `Sistemas con Valores Fuera de Rango (${navigableKeys.length} Categorías)`
+                                                                    : `Directorio Completo de Sistemas Biológicos (${navigableKeys.length} Categorías)`}
+                                                            </span>
+                                                            <input
+                                                                type="text"
+                                                                value={systemSearchQuery}
+                                                                onChange={(e) => setSystemSearchQuery(e.target.value)}
+                                                                placeholder="🔍 Filtrar sistema (ej. Oligoelementos, Tiroides, Hígado)..."
+                                                                className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 w-full sm:w-72 focus:outline-none focus:border-[#1C75BC]"
+                                                            />
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                                                            {navigableKeys
+                                                                .filter(catKey => {
+                                                                    if (!systemSearchQuery.trim()) return true;
+                                                                    const q = systemSearchQuery.toLowerCase().trim();
+                                                                    const label = (CATEGORIAS_CLINICAS[catKey] || catKey).toLowerCase();
+                                                                    return label.includes(q) || catKey.toLowerCase().includes(q);
+                                                                })
+                                                                .map((catKey, index) => {
+                                                                    const title = CATEGORIAS_CLINICAS[catKey] || catKey.replace(/_/g, ' ');
+                                                                    const abnormalCount = getCategoryAbnormalCount(catKey);
+                                                                    const isSelected = catKey === effectiveCategory;
+                                                                    return (
+                                                                        <button
+                                                                            key={catKey}
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setSelectedCategory(catKey);
+                                                                                setShowAllSystemsMenu(false);
+                                                                                setSystemSearchQuery('');
+                                                                            }}
+                                                                            className={`flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs font-bold transition-all cursor-pointer border ${
+                                                                                isSelected
+                                                                                    ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-xs'
+                                                                                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700 hover:border-[#1C75BC]/50'
+                                                                            }`}
+                                                                        >
+                                                                            <span className="truncate pr-2">
+                                                                                <span className={`font-mono text-[10px] mr-1.5 ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
+                                                                                    {index + 1}.
+                                                                                </span>
+                                                                                {title}
+                                                                            </span>
+                                                                            {abnormalCount > 0 ? (
+                                                                                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                                                                                    isSelected ? 'bg-[#E30613] text-white ring-1 ring-white/80' : 'bg-[#E30613] text-white'
+                                                                                }`}>
+                                                                                    {abnormalCount}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full shrink-0 ${
+                                                                                    isSelected ? 'bg-white/20 text-white' : 'bg-[#3AAA35]/15 text-[#3AAA35]'
+                                                                                }`}>
+                                                                                    OK
+                                                                                </span>
+                                                                            )}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                 </div>
 
                                 {/* 🏥 2. CABECERA DE TRIAGE SISTÉMICO + BENTO CARDS TERMODINÁMICAS */}
                                 <div className="p-5 max-h-[760px] overflow-y-auto space-y-4 custom-scrollbar">
-                                    {activeCategory && activeMetrics[activeCategory] ? (() => {
-                                        const categoryItems = getCategoryItems(activeMetrics[activeCategory]);
+                                    {(() => {
+                                        const navigableKeys = showOnlyAbnormalities
+                                            ? categoriesKeys.filter(k => getCategoryAbnormalCount(k) > 0)
+                                            : categoriesKeys;
+                                        const targetCat = (activeCategory && navigableKeys.includes(activeCategory))
+                                            ? activeCategory
+                                            : (navigableKeys[0] || activeCategory);
+
+                                        if (!targetCat || !activeMetrics[targetCat]) {
+                                            return (
+                                                <div className="py-16 flex flex-col items-center justify-center text-slate-400">
+                                                    <span className="text-4xl mb-2">🧬</span>
+                                                    <p className="text-sm font-bold">Seleccione un sistema biológico</p>
+                                                    <p className="text-xs">Elija una categoría en la barra superior para explorar sus Bento Cards Termodinámicas.</p>
+                                                </div>
+                                            );
+                                        }
+
+                                        const categoryItems = getCategoryItems(activeMetrics[targetCat]);
                                         const displayedItems = categoryItems.filter(marker => {
                                             if (!showOnlyAbnormalities) return true;
-                                            const s = marker?.status ? String(marker.status).toUpperCase() : 'NORMAL';
-                                            return s !== 'NORMAL' && s !== 'NORMAL (-)' && s !== '-' && s !== 'INFORMATIVO';
+                                            return isMarkerOutOfRange(marker);
                                         });
-                                        const categoryTitle = CATEGORIAS_CLINICAS[activeCategory] || activeCategory.replace(/_/g, ' ');
+                                        const categoryTitle = CATEGORIAS_CLINICAS[targetCat] || targetCat.replace(/_/g, ' ');
                                         const totalCount = categoryItems.length;
-                                        const abnormalTotal = getCategoryAbnormalCount(activeCategory);
+                                        const abnormalTotal = getCategoryAbnormalCount(targetCat);
                                         const normalTotal = Math.max(0, totalCount - abnormalTotal);
                                         const riskPct = totalCount > 0 ? Math.round((abnormalTotal / totalCount) * 100) : 0;
-                                        const sysMeta = getSystemMeta(activeCategory);
-                                        const catIndex = Math.max(0, categoriesKeys.indexOf(activeCategory));
+                                        const sysMeta = getSystemMeta(targetCat);
+                                        const catIndex = Math.max(0, categoriesKeys.indexOf(targetCat));
                                         const readingCode = `#B-${9001 + catIndex}`;
 
                                         let globalRiskLabel = `Homeostasis Óptima (${riskPct}%)`;
@@ -1126,13 +1167,7 @@ export const TabBiochemicals = ({
                                                 </div>
                                             </div>
                                         );
-                                    })() : (
-                                        <div className="py-16 flex flex-col items-center justify-center text-slate-400">
-                                            <span className="text-4xl mb-2">🧬</span>
-                                            <p className="text-sm font-bold">Seleccione un sistema biológico</p>
-                                            <p className="text-xs">Elija una categoría en la barra superior para explorar sus Bento Cards Termodinámicas.</p>
-                                        </div>
-                                    )}
+                                    })()}
                                 </div>
                             </div>
                         )}
