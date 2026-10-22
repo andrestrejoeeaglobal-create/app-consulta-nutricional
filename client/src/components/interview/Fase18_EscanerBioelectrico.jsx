@@ -80,6 +80,27 @@ export default function Fase18_EscanerBioelectrico({
         }));
     }, [currentStep, setPatientData]);
 
+    // 🔄 Auto-recuperación de modal si el último mensaje del chat fue el clic en "Capturar Registro Somático" o "Adjuntar Archivo PDF"
+    const recoveredLastUserMsgRef = useRef(null);
+    useEffect(() => {
+        if (!Array.isArray(messages) || messages.length === 0) return;
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg?.role === 'user' && typeof lastMsg.content === 'string') {
+            const msgKey = `${messages.length}:${lastMsg.content}`;
+            if (recoveredLastUserMsgRef.current === msgKey) return;
+            const lower = lastMsg.content.toLowerCase();
+            if (lower.includes('capturar registro som') && !patientData?.scan_data?.visual_metrics) {
+                recoveredLastUserMsgRef.current = msgKey;
+                setCurrentStep('VISUAL');
+                setActiveModal('VISUAL_SOMATIC');
+            } else if (lower.includes('adjuntar archivo pdf') && !patientData?.scan_data?.external_metrics) {
+                recoveredLastUserMsgRef.current = msgKey;
+                setCurrentStep('EXTERNAL');
+                setActiveModal('EXTERNAL_PDF');
+            }
+        }
+    }, [messages, patientData?.scan_data?.visual_metrics, patientData?.scan_data?.external_metrics]);
+
     // 📷 WebRTC Live Camera Handlers con protección ante denegación de permisos y giros
     const startLiveCamera = async () => {
         setCameraError(null);
@@ -1096,12 +1117,13 @@ Entramos a la fase de **Validación Bioquímica Exógena**. Si dispone de estudi
         // ----------------------------------------------------------------------
         // ETAPA 4: ESTUDIOS EXTERNOS (OCR PDF)
         // ----------------------------------------------------------------------
-        if (value === 'START_EXTERNAL_SCAN') {
+        if (value === 'START_EXTERNAL_SCAN' || lowerVal.includes('adjuntar archivo pdf') || lowerVal.includes('adjuntar estudio')) {
+            setCurrentStep('EXTERNAL');
             setActiveModal('EXTERNAL_PDF');
             return;
         }
 
-        if (value === 'EXTERNAL_SKIP') {
+        if (value === 'EXTERNAL_SKIP' || (activeStep === 'EXTERNAL' && (lowerVal.includes('omitir') || lowerVal.includes('sin estudios externos')))) {
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
@@ -1129,7 +1151,7 @@ Entramos a la fase de **Validación Bioquímica Exógena**. Si dispone de estudi
             return;
         }
 
-        if (value === 'EXTERNAL_RETRY') {
+        if (value === 'EXTERNAL_RETRY' || lowerVal.includes('re-adjuntar') || lowerVal.includes('readjuntar')) {
             setPdfFiles([]);
             setPatientData(prev => ({
                 ...prev,
@@ -1153,7 +1175,7 @@ Entramos a la fase de **Validación Bioquímica Exógena**. Si dispone de estudi
             return;
         }
 
-        if (value === 'EXTERNAL_CONFIRM') {
+        if (value === 'EXTERNAL_CONFIRM' || (activeStep === 'EXTERNAL' && (lowerVal.includes('sí, es correcto') || lowerVal.includes('si, es correcto')))) {
             setCurrentStep('VISUAL');
             const msgEvidencia = {
                 role: 'assistant',
@@ -1190,12 +1212,13 @@ Seleccione el botón a continuación para tomar o adjuntar la fotografía somát
         // ----------------------------------------------------------------------
         // ETAPA 5: EVIDENCIA VISUAL (SOMÁTICA)
         // ----------------------------------------------------------------------
-        if (value === 'START_VISUAL_SCAN') {
+        if (value === 'START_VISUAL_SCAN' || lowerVal.includes('capturar registro somático') || lowerVal.includes('capturar registro somatico')) {
+            setCurrentStep('VISUAL');
             setActiveModal('VISUAL_SOMATIC');
             return;
         }
 
-        if (value === 'VISUAL_SKIP') {
+        if (value === 'VISUAL_SKIP' || lowerVal.includes('omitir evidencia visual') || (activeStep === 'VISUAL' && lowerVal.includes('omitir'))) {
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
@@ -1223,7 +1246,7 @@ Seleccione el botón a continuación para tomar o adjuntar la fotografía somát
             return;
         }
 
-        if (value === 'VISUAL_RETRY') {
+        if (value === 'VISUAL_RETRY' || lowerVal.includes('re-capturar evidencia') || lowerVal.includes('recapturar evidencia')) {
             setSomaticFiles([]);
             setPatientData(prev => ({
                 ...prev,
@@ -1247,7 +1270,7 @@ Seleccione el botón a continuación para tomar o adjuntar la fotografía somát
             return;
         }
 
-        if (value === 'VISUAL_CONFIRM') {
+        if (value === 'VISUAL_CONFIRM' || (activeStep === 'VISUAL' && (lowerVal.includes('sí, es correcta') || lowerVal.includes('si, es correcta')))) {
             setCurrentStep('FINAL_SEAL');
             const finalSealMsg = {
                 role: 'assistant',
