@@ -2701,11 +2701,96 @@ export const TabBiochemicals = ({
                             index: 1,
                             region: 'Evidencia Somática #1',
                             finding: vm.findings || 'Exploración visual somática documentada.',
-                            severity: vm.severity || 'LOW',
+                            severity: vm.severity || 'Baja',
                             clinical_flags: vm.clinical_flags || [],
                             imageUrl: vm.imageUrl
                         }] : []);
                     const hasSomatic = somaticItems.length > 0;
+
+                    // 🧬 Traductor Clínico de Severidad (insensible a mayúsculas/minúsculas: low, Medium, HIGH, CRITICAL, etc.)
+                    const translateSomaticSeverity = (rawSev) => {
+                        const s = String(rawSev || 'Baja').trim().toUpperCase();
+                        if (s.includes('CRIT') || s.includes('CRÍT') || s.includes('SEVER')) return 'CRÍTICA';
+                        if (s.includes('HIGH') || s.includes('ALT')) return 'ALTA';
+                        if (s.includes('MED') || s.includes('MOD')) return 'MODERADA';
+                        if (s.includes('LOW') || s.includes('BAJ') || s.includes('NORM') || s.includes('LEVE')) return 'BAJA';
+                        return s || 'BAJA';
+                    };
+
+                    // 🧬 Traductor Clínico de Banderas Morfológicas (exacto + tokenizador dermatológico/vascular)
+                    const translateSomaticFlag = (rawFlag) => {
+                        if (!rawFlag) return '';
+                        const cleanKey = String(rawFlag).trim().toUpperCase().replace(/\s+/g, '_');
+                        const EXACT_FLAG_MAP = {
+                            RETICULAR_ERYTHEMA: 'ERITEMA RETICULAR',
+                            PUNCTATE_MACULES: 'MÁCULAS PUNTIFORMES',
+                            MICROPAPULAR_ERUPTION: 'ERUPCIÓN MICROPAPULAR',
+                            PERIFOLLICULAR_INVOLVEMENT: 'COMPROMISO PERIFOLICULAR',
+                            CUTANEOUS_EDEMA_SUPERFICIAL: 'EDEMA CUTÁNEO SUPERFICIAL',
+                            SUPERFICIAL_CUTANEOUS_EDEMA: 'EDEMA CUTÁNEO SUPERFICIAL',
+                            CHRONIC_VENOUS_INSUFFICIENCY_DETECTED: 'INSUFICIENCIA VENOSA CRÓNICA',
+                            CHRONIC_VENOUS_INSUFFICIENCY: 'INSUFICIENCIA VENOSA CRÓNICA',
+                            VARICOSE_VEINS_HIGH_RISK: 'VENAS VARICOSAS DE ALTO RIESGO',
+                            VENOUS_STASIS_DERMATITIS: 'DERMATITIS POR ESTASIS VENOSA',
+                            EDEMA_PERIPHERAL_MODERATE: 'EDEMA PERIFÉRICO MODERADO',
+                            PERIPHERAL_EDEMA: 'EDEMA PERIFÉRICO',
+                            HYPERPIGMENTATION: 'HIPERPIGMENTACIÓN CUTÁNEA',
+                            HEMOSIDERIN_PIGMENTATION: 'PIGMENTACIÓN POR HEMOSIDERINA',
+                            FOLLICULAR_HYPERKERATOSIS: 'HIPERQUERATOSIS FOLICULAR',
+                            XEROSIS_CUTIS: 'XEROSIS CUTÁNEA',
+                            TELANGIECTASIA: 'TELANGIECTASIAS SUPERFICIALES',
+                            VENOUS_ECTASIA: 'ECTASIA VENOSA'
+                        };
+                        if (EXACT_FLAG_MAP[cleanKey]) return EXACT_FLAG_MAP[cleanKey];
+
+                        const TOKEN_MAP = {
+                            RETICULAR: 'RETICULAR',
+                            ERYTHEMA: 'ERITEMA',
+                            PUNCTATE: 'PUNTIFORME',
+                            MACULES: 'MÁCULAS',
+                            MACULAR: 'MACULAR',
+                            MICROPAPULAR: 'MICROPAPULAR',
+                            PAPULAR: 'PAPULAR',
+                            ERUPTION: 'ERUPCIÓN',
+                            PERIFOLLICULAR: 'PERIFOLICULAR',
+                            FOLLICULAR: 'FOLICULAR',
+                            INVOLVEMENT: 'COMPROMISO',
+                            CUTANEOUS: 'CUTÁNEO',
+                            DERMAL: 'DÉRMICO',
+                            SKIN: 'CUTÁNEO',
+                            EDEMA: 'EDEMA',
+                            SUPERFICIAL: 'SUPERFICIAL',
+                            DEEP: 'PROFUNDO',
+                            CHRONIC: 'CRÓNICA',
+                            VENOUS: 'VENOSA',
+                            INSUFFICIENCY: 'INSUFICIENCIA',
+                            DETECTED: 'DETECTADA',
+                            VARICOSE: 'VARICOSAS',
+                            VEINS: 'VENAS',
+                            HIGH: 'ALTO',
+                            MODERATE: 'MODERADO',
+                            MILD: 'LEVE',
+                            LOW: 'BAJO',
+                            RISK: 'RIESGO',
+                            STASIS: 'ESTASIS',
+                            DERMATITIS: 'DERMATITIS',
+                            PERIPHERAL: 'PERIFÉRICO',
+                            LESION: 'LESIÓN',
+                            LESIONS: 'LESIONES',
+                            ULCER: 'ÚLCERA',
+                            ATROPHY: 'ATROFIA',
+                            DRYNESS: 'SEQUEDAD',
+                            INFLAMMATION: 'INFLAMACIÓN',
+                            VASCULAR: 'VASCULAR'
+                        };
+
+                        const words = String(rawFlag).replace(/_/g, ' ').trim().split(/\s+/);
+                        return words
+                            .map(w => TOKEN_MAP[w.toUpperCase()] || w.toUpperCase())
+                            .join(' ');
+                    };
+
+                    const globalSeverityEs = translateSomaticSeverity(vm?.severity);
 
                     return (
                         <>
@@ -2725,7 +2810,7 @@ export const TabBiochemicals = ({
                                         ? 'bg-blue-50 text-[#1C75BC] border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800'
                                         : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
                                 }`}>
-                                    {hasSomatic ? `SOMATIC VERIFIED (${somaticItems.length} FOTO${somaticItems.length > 1 ? 'S' : ''})` : 'EVALUACIÓN OMITIDA'}
+                                    {hasSomatic ? `EVIDENCIA VERIFICADA (${somaticItems.length} FOTO${somaticItems.length > 1 ? 'S' : ''})` : 'EVALUACIÓN OMITIDA'}
                                 </span>
                             </button>
 
@@ -2744,20 +2829,20 @@ export const TabBiochemicals = ({
                                                             </h5>
                                                         </div>
                                                         <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full uppercase border ${
-                                                            String(vm?.severity || 'LOW').toUpperCase().includes('HIGH') || String(vm?.severity || 'LOW').toUpperCase().includes('CRITICAL')
+                                                            globalSeverityEs === 'ALTA' || globalSeverityEs === 'CRÍTICA'
                                                                 ? 'bg-red-50 text-[#E30613] border-red-200'
-                                                                : String(vm?.severity || 'LOW').toUpperCase().includes('MEDIUM')
+                                                                : globalSeverityEs === 'MODERADA'
                                                                     ? 'bg-amber-50 text-amber-700 border-amber-200'
                                                                     : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
                                                         }`}>
-                                                            Severidad Global: {vm?.severity || 'LOW'}
+                                                            Severidad Global: {globalSeverityEs}
                                                         </span>
                                                     </div>
 
                                                     {/* Galería de Miniaturas de todas las fotos capturadas */}
                                                     <div className="flex flex-wrap items-center gap-4 pt-1">
                                                         {somaticItems.map((it, idx) => (
-                                                            <div key={idx} className="flex flex-col items-center gap-1.5">
+                                                            <div key={idx} className="flex flex-col items-center gap-1">
                                                                 <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-white dark:border-slate-700 shadow-sm bg-slate-900">
                                                                     <img
                                                                         src={getValidImageUrl(it.imageUrl)}
@@ -2769,8 +2854,11 @@ export const TabBiochemicals = ({
                                                                         FOTO #{idx + 1}
                                                                     </span>
                                                                 </div>
-                                                                <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 uppercase max-w-[90px] truncate">
+                                                                <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 uppercase max-w-[95px] truncate">
                                                                     {it.region || `F-#${idx + 1}`}
+                                                                </span>
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                    Sev: {translateSomaticSeverity(it.severity)}
                                                                 </span>
                                                             </div>
                                                         ))}
@@ -2789,9 +2877,9 @@ export const TabBiochemicals = ({
                                                 {/* 2. PILA DE TARJETAS BENTO CLÍNICAS POR FOTOGRAFÍA */}
                                                 <div className="space-y-4">
                                                     {somaticItems.map((item, idx) => {
-                                                        const sev = String(item.severity || 'LOW').toUpperCase();
-                                                        const isHigh = sev.includes('HIGH') || sev.includes('CRITICAL');
-                                                        const isMed = sev.includes('MEDIUM') || sev.includes('MODER');
+                                                        const itemSeverityEs = translateSomaticSeverity(item.severity);
+                                                        const isHigh = itemSeverityEs === 'ALTA' || itemSeverityEs === 'CRÍTICA';
+                                                        const isMed = itemSeverityEs === 'MODERADA';
                                                         const isOptimal = !isHigh && !isMed;
                                                         const pct = isOptimal ? 50 : isMed ? 74 : 88;
 
@@ -2852,7 +2940,7 @@ export const TabBiochemicals = ({
                                                                                 <div className="flex flex-wrap gap-1.5 pt-1">
                                                                                     {item.clinical_flags.map((fl, fIdx) => (
                                                                                         <span key={fIdx} className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
-                                                                                            ⚑ {fl}
+                                                                                            ⚑ {translateSomaticFlag(fl)}
                                                                                         </span>
                                                                                     ))}
                                                                                 </div>
@@ -2867,7 +2955,7 @@ export const TabBiochemicals = ({
                                                                             FOTO #{idx + 1}
                                                                         </span>
                                                                         <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                                                            Severidad: {item.severity || 'LOW'}
+                                                                            Severidad: {itemSeverityEs}
                                                                         </span>
                                                                     </div>
                                                                 </div>
