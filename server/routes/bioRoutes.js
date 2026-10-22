@@ -1268,21 +1268,23 @@ router.post('/visual-scan', upload.any(), async (req, res) => {
 Analiza las ${processedFiles.length} imagen(es) médica(s) somática(s) adjunta(s) cargadas durante la consulta presencial.
 Realiza una descripción puramente objetiva y morfológica de los hallazgos visuales observados en cada fotografía y una síntesis global (ej. várices prominentes, pigmentación ocre por hemosiderina, eritema, edema, distribución adiposa/postural, trofismo cutáneo o lesiones dérmicas).
 
-REGLA CLÍNICA DE SEGURIDAD ABSOLUTA (NOM-004):
-- NO emitas diagnósticos categóricos definitivos. Usa lenguaje descriptivo morfológico y de compatibilidad clínica ("Los hallazgos morfológicos observados son compatibles con...", "Se aprecia hiperpigmentación sugerente de...").
+REGLAS CLÍNICAS Y LINGÜÍSTICAS OBLIGATORIAS (NOM-004):
+1. NO emitas diagnósticos categóricos definitivos. Usa lenguaje descriptivo morfológico y de compatibilidad clínica ("Los hallazgos morfológicos observados son compatibles con...", "Se aprecia hiperpigmentación sugerente de...").
+2. PROHIBIDO USAR INGLÉS O GUIONES BAJOS: Todos los valores de "severity" y todas las etiquetas en "clinical_flags" deben estar redactados ESTRICTAMENTE EN ESPAÑOL CLÍNICO (ej. "Eritema Reticular", "Máculas Puntiformes", "Erupción Micropapular", "Compromiso Perifolicular", "Edema Cutáneo Superficial", "Insuficiencia Venosa Crónica").
+3. Los valores permitidos para "severity" (tanto global como por cada elemento en "items") son exclusivamente: "Baja", "Moderada", "Alta" o "Crítica".
 
 Genera la respuesta estrictamente en formato JSON con la siguiente estructura:
 {
   "findings": "Síntesis clínica morfológica global integrando las ${processedFiles.length} fotografías...",
-  "clinical_flags": ["Banderas clínicas sugeridas, ej: CHRONIC_VENOUS_INSUFFICIENCY_DETECTED, EDEMA_PERIPHERAL_MODERATE"],
-  "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+  "clinical_flags": ["Etiquetas clínicas en español sin guiones bajos, ej: Eritema Reticular, Edema Cutáneo Superficial"],
+  "severity": "Baja" | "Moderada" | "Alta" | "Crítica",
   "items": [
     {
       "index": 1,
-      "region": "Región anatómica identificada en la foto #1 (ej. Extremidad Inferior / Tobillo Medial)",
-      "finding": "Descripción morfológica objetiva de la foto #1...",
-      "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
-      "clinical_flags": ["Banderas específicas de esta foto"]
+      "region": "Región anatómica identificada en la foto #1 en español (ej. Extremidad Inferior / Cara Anterior de la Pierna)",
+      "finding": "Descripción morfológica objetiva de la foto #1 en español...",
+      "severity": "Baja" | "Moderada" | "Alta" | "Crítica",
+      "clinical_flags": ["Etiquetas clínicas específicas de esta foto en español sin guiones bajos"]
     }
   ]
 }
@@ -1331,7 +1333,7 @@ Responde ÚNICAMENTE con el objeto JSON válido.`);
                 fileName: pf.fileName,
                 region: aiItem?.region || `Evidencia Somática #${idx + 1}`,
                 finding: aiItem?.finding || analysisResults?.findings || fallbackSingle.findings,
-                severity: aiItem?.severity || analysisResults?.severity || fallbackSingle.severity || "LOW",
+                severity: aiItem?.severity || analysisResults?.severity || fallbackSingle.severity || "Baja",
                 clinical_flags: Array.isArray(aiItem?.clinical_flags) ? aiItem.clinical_flags : (analysisResults?.clinical_flags || []),
                 imageUrl: pf.dataUrl
             };
@@ -1342,7 +1344,7 @@ Responde ÚNICAMENTE con el objeto JSON válido.`);
             totalPhotos: processedFiles.length,
             findings: analysisResults?.findings || normalizedItems.map(i => `Foto #${i.index} (${i.region}): ${i.finding}`).join(' '),
             clinical_flags: analysisResults?.clinical_flags || [],
-            severity: analysisResults?.severity || "LOW",
+            severity: analysisResults?.severity || "Baja",
             imageUrl: processedFiles[0].dataUrl,
             items: normalizedItems
         });
@@ -1377,11 +1379,14 @@ function runOfflineVisualMockMulti(processedFiles) {
         };
     });
     const allFlags = [...new Set(items.flatMap(i => i.clinical_flags || []))];
-    const hasHigh = items.some(i => i.severity === 'HIGH' || i.severity === 'CRITICAL');
+    const hasHigh = items.some(i => {
+        const s = String(i.severity || '').toUpperCase();
+        return s.includes('HIGH') || s.includes('ALTA') || s.includes('CRÍTICA') || s.includes('CRITICA');
+    });
     return {
         findings: items.map(i => `[Evidencia #${i.index}] ${i.finding}`).join(' '),
         clinical_flags: allFlags,
-        severity: hasHigh ? 'HIGH' : 'LOW',
+        severity: hasHigh ? 'Alta' : 'Baja',
         items
     };
 }
@@ -1394,15 +1399,15 @@ function runOfflineVisualMock(fileName) {
     if (isVascular) {
         return {
             findings: "Marcadores visuales observados en la extremidad inferior compatibles con Insuficiencia Venosa Crónica severa. Se aprecian venas varicosas prominentes y tortuosas con una marcada pigmentación ocre (hemosiderina / dermatitis por estasis) de predominio peri-maleolar en cara medial. Edema periférico moderado evidente.",
-            clinical_flags: ["CHRONIC_VENOUS_INSUFFICIENCY_DETECTED", "VARICOSE_VEINS_HIGH_RISK", "VENOUS_STASIS_DERMATITIS"],
-            severity: "HIGH"
+            clinical_flags: ["Insuficiencia Venosa Crónica", "Venas Varicosas de Alto Riesgo", "Dermatitis por Estasis Venosa"],
+            severity: "Alta"
         };
     }
 
     return {
         findings: "Exploración visual compatible con tejido cutáneo sin lesiones ulcerosas ni signos evidentes de compromiso microvascular o venoso superficial crítico en el área analizada. Se aconseja monitoreo evolutivo en consultas subsiguientes.",
         clinical_flags: [],
-        severity: "LOW"
+        severity: "Baja"
     };
 }
 
