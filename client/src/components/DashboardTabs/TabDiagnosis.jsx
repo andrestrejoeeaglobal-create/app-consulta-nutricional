@@ -3,6 +3,7 @@ import { Activity, ShieldAlert, AlertTriangle, Zap, HeartPulse, Lock, FileText, 
 import TabNotes from './TabNotes';
 import TabIntervention from './TabIntervention';
 import { TabRecommendations } from './TabRecommendations';
+import { DiagnosticoRenderizado } from '../interview/Fase19_DiagnosticoIntegral';
 import tiloImg from '../../assets/tilo.png';
 
 export const TabDiagnosis = ({
@@ -486,7 +487,7 @@ export const TabDiagnosis = ({
         : defaultSupplementation;
 
     // --- SISTEMA BIVALENTE DE VISTAS (PACIENTE vs MÉDICA) ---
-    const [localPlanViewMode, setLocalPlanViewMode] = useState('patient');
+    const [localPlanViewMode, setLocalPlanViewMode] = useState('medical');
     const activeViewMode = propPlanViewMode || localPlanViewMode;
     const setActiveViewMode = propSetPlanViewMode || setLocalPlanViewMode;
 
@@ -648,44 +649,49 @@ export const TabDiagnosis = ({
                     /* VISTA 2: EXPEDIENTE CLÍNICO OFICIAL (NOM-004 / MATRIZ IFM) */
                     <div className="p-6 space-y-6">
                         
-                        {/* Sección 1: Diagnósticos */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-                            <h3 className="text-slate-900 text-xs font-extrabold uppercase tracking-wider mb-3 flex items-center gap-2 border-b border-slate-100 pb-3">
-                                <Activity className="w-4.5 h-4.5 text-[#1C75BC]" />
-                                1. Diagnósticos Clínicos Aprobados (Matriz IFM de 7 Nodos)
-                            </h3>
+                        {/* Síntesis CORTEX v2.4 (Matriz de 7 Nodos IFM + Árbol Bioenergético) */}
+                        {Array.isArray(patientData?.clinical_dossier?.ifm_nodes_matrix) && patientData.clinical_dossier.ifm_nodes_matrix.length > 0 ? (
+                            <DiagnosticoRenderizado cortexSynthesis={patientData.clinical_dossier} />
+                        ) : (
+                            /* Sección 1: Diagnósticos (Fallback previo a síntesis v2.4) */
+                            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+                                <h3 className="text-slate-900 text-xs font-extrabold uppercase tracking-wider mb-3 flex items-center gap-2 border-b border-slate-100 pb-3">
+                                    <Activity className="w-4.5 h-4.5 text-[#1C75BC]" />
+                                    1. Diagnósticos Clínicos Aprobados (Matriz IFM de 7 Nodos)
+                                </h3>
 
-                            {/* Banner de Prioridad Primaria de Entrada (Nodo Raíz) */}
-                            <div className="mb-4 bg-amber-50/80 border border-amber-200 p-3.5 rounded-xl text-xs text-amber-900 font-medium flex items-start gap-2.5">
-                                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                                <div>
-                                    <strong className="font-bold text-amber-950 block">Nodo Raíz Obligatorio (Asimilación):</strong>
-                                    <span>La hiperpermeabilidad y absorción intestinal deben sellarse primero antes de cualquier protocolización de quelación de metales pesados para evitar endotoxemia metabólica.</span>
+                                {/* Banner de Prioridad Primaria de Entrada (Nodo Raíz) */}
+                                <div className="mb-4 bg-amber-50/80 border border-amber-200 p-3.5 rounded-xl text-xs text-amber-900 font-medium flex items-start gap-2.5">
+                                    <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <div>
+                                        <strong className="font-bold text-amber-950 block">Nodo Raíz Obligatorio (Asimilación):</strong>
+                                        <span>La hiperpermeabilidad y absorción intestinal deben sellarse primero antes de cualquier protocolización de quelación de metales pesados para evitar endotoxemia metabólica.</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {cleanDiagnoses.length > 0 ? (
-                                <div className="space-y-2.5">
-                                    {cleanDiagnoses.map((d, idx) => (
-                                        <div key={idx} className={`flex justify-between items-start p-3.5 rounded-xl text-xs font-medium border ${d.isRootNode ? 'bg-amber-50/50 border-amber-300' : 'bg-slate-50 border-slate-200/80'}`}>
-                                            <div>
-                                                {d.nodo && <span className="text-[10px] font-extrabold text-[#1C75BC] uppercase tracking-wider block mb-0.5">{d.nodo}</span>}
-                                                <span className="font-bold text-slate-800 block">{d.nombre}</span>
-                                                <span className="text-[10.5px] text-slate-500 font-mono mt-0.5 block">{d.cie10}</span>
+                                {cleanDiagnoses.length > 0 ? (
+                                    <div className="space-y-2.5">
+                                        {cleanDiagnoses.map((d, idx) => (
+                                            <div key={idx} className={`flex justify-between items-start p-3.5 rounded-xl text-xs font-medium border ${d.isRootNode ? 'bg-amber-50/50 border-amber-300' : 'bg-slate-50 border-slate-200/80'}`}>
+                                                <div>
+                                                    {d.nodo && <span className="text-[10px] font-extrabold text-[#1C75BC] uppercase tracking-wider block mb-0.5">{d.nodo}</span>}
+                                                    <span className="font-bold text-slate-800 block">{d.nombre}</span>
+                                                    <span className="text-[10.5px] text-slate-500 font-mono mt-0.5 block">{d.cie10}</span>
+                                                </div>
+                                                <span className={`px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-full ${d.isRootNode || d.prioridad?.includes('Alta') || d.prioridad?.includes('Primaria') ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-xs' : 'bg-blue-50 text-[#1C75BC] border border-blue-100'}`}>
+                                                    {d.prioridad}
+                                                </span>
                                             </div>
-                                            <span className={`px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-full ${d.isRootNode || d.prioridad?.includes('Alta') || d.prioridad?.includes('Primaria') ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-xs' : 'bg-blue-50 text-[#1C75BC] border border-blue-100'}`}>
-                                                {d.prioridad}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 font-medium flex items-center gap-2.5">
-                                    <span className="text-base">🛡️</span>
-                                    <span>Homeostasis Metabólica General (Sin Alteraciones Agudas Registradas).</span>
-                                </div>
-                            )}
-                        </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 font-medium flex items-center gap-2.5">
+                                        <span className="text-base">🛡️</span>
+                                        <span>Homeostasis Metabólica General (Sin Alteraciones Agudas Registradas).</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Sección 2: Suplementación */}
                         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
@@ -848,134 +854,6 @@ export const TabDiagnosis = ({
                             </p>
                         </div>
                     )}
-
-                    {/* --- CHILD ACCORDION 1: RESUMEN CLÍNICO (ABCD) --- */}
-                    <Accordion
-                        title="Resumen Clínico (ABCD)"
-                        id="accordion-diagnosis-abcd"
-                        isOpen={openSections.childDiagnosisAbcd}
-                        onToggle={() => toggleSection('childDiagnosisAbcd')}
-                    >
-                        <div id="card-diagnosis" className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                            {/* A: Antropometría */}
-                            <div className="bg-tilo-bg-base/40 p-5 rounded-2xl border border-tilo-border flex flex-col justify-between">
-                                <div>
-                                    <h3 className="text-tilo-text-muted text-[10px] font-extrabold uppercase tracking-widest mb-4 flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-tilo-primary"></span>
-                                        A. Antropometría & Composición
-                                    </h3>
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between items-center pb-2.5 border-b border-tilo-border/60">
-                                            <span className="text-xs font-medium text-tilo-text-muted">Índice de Masa Corporal (IMC)</span>
-                                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${displayImcClass === 'Normal' ? 'bg-tilo-success/10 text-tilo-success border border-tilo-success/20' : 'bg-tilo-danger/10 text-tilo-danger border border-tilo-danger/20'}`}>
-                                                {displayImc || '--'} ({displayImcClass || '--'})
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center pb-2.5 border-b border-tilo-border/60">
-                                            <span className="text-xs font-medium text-tilo-text-muted">Peso / Talla (Estatura)</span>
-                                            <span className="text-xs font-bold text-tilo-text-main">
-                                                {displayWeight || '--'} kg / {displayHeight ? (parseFloat(displayHeight) > 3 ? `${displayHeight} cm` : `${displayHeight} m`) : '--'}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs font-medium text-tilo-text-muted">Índice Cintura-Cadera (ICC)</span>
-                                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${displayIccRiesgo === 'Sin Riesgo' ? 'bg-tilo-success/10 text-tilo-success border border-tilo-success/20' : 'bg-tilo-warning/10 text-tilo-warning border border-tilo-warning/20'}`}>
-                                                {displayIcc || '--'} ({displayIccRiesgo || '--'})
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* B: Bioquímicos / Vitales */}
-                            <div className="bg-tilo-bg-base/40 p-5 rounded-2xl border border-tilo-border flex flex-col justify-between">
-                                <div>
-                                    <h3 className="text-tilo-text-muted text-[10px] font-extrabold uppercase tracking-widest mb-4 flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-tilo-danger"></span>
-                                        B. Bioquímicos, Vitales & Escáner
-                                    </h3>
-                                    <div className="grid grid-cols-2 gap-2.5">
-                                        <div className="bg-white p-3 rounded-xl border border-tilo-border/80 shadow-2xs">
-                                            <span className="text-[9.5px] uppercase font-extrabold text-tilo-text-muted block mb-0.5 tracking-wider">Presión Arterial</span>
-                                            <span className="text-xs font-extrabold text-tilo-text-main">{displayBP ? `${displayBP} mmHg` : '80/40 mmHg'}</span>
-                                        </div>
-                                        <div className="bg-white p-3 rounded-xl border border-tilo-border/80 shadow-2xs">
-                                            <span className="text-[9.5px] uppercase font-extrabold text-tilo-text-muted block mb-0.5 tracking-wider">Glucosa Ayuno / HbA1c</span>
-                                            <span className="text-xs font-extrabold text-tilo-text-main">{displayGluc ? `${displayGluc} mg/dL` : '95 mg/dL (Estable)'}</span>
-                                        </div>
-                                        <div className="bg-white p-3 rounded-xl border border-tilo-border/80 shadow-2xs">
-                                            <span className="text-[9.5px] uppercase font-extrabold text-tilo-text-muted block mb-0.5 tracking-wider">SpO2 / FC</span>
-                                            <span className="text-xs font-extrabold text-tilo-text-main">{displaySpo2 || '95'}% / {displayFc || '90'} bpm</span>
-                                        </div>
-                                        <div className="bg-white p-3 rounded-xl border border-tilo-border/80 shadow-2xs">
-                                            <span className="text-[9.5px] uppercase font-extrabold text-tilo-text-muted block mb-0.5 tracking-wider">Escáner Bioeléctrico</span>
-                                            <span className="text-xs font-extrabold text-tilo-primary">{patientData?.escaner?.anguloFase ? `Fase: ${patientData.escaner.anguloFase}°` : '5.8° | Normotrófico'}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* C: Clínica */}
-                            <div className="bg-tilo-bg-base/40 p-5 rounded-2xl border border-tilo-border flex flex-col justify-between">
-                                <div>
-                                    <h3 className="text-tilo-text-muted text-[10px] font-extrabold uppercase tracking-widest mb-3 flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-tilo-warning"></span>
-                                        C. Evaluación Clínica & Diagnósticos
-                                    </h3>
-                                    <div className="space-y-3">
-                                        <div>
-                                            <span className="text-[10px] uppercase font-extrabold text-tilo-text-muted block mb-1.5 tracking-wider">Diagnósticos Aprobados</span>
-                                            {cleanDiagnoses.length > 0 ? (
-                                                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
-                                                    {cleanDiagnoses.map((d, idx) => (
-                                                        <div key={idx} className="flex items-center justify-between p-2 bg-white rounded-lg border border-tilo-border/80 text-xs font-semibold text-tilo-text-main shadow-2xs">
-                                                            <div className="flex items-center gap-2 truncate">
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-[#1C75BC] shrink-0"></span>
-                                                                <span className="truncate">{d.nombre}</span>
-                                                            </div>
-                                                            <span className="text-[9.5px] font-mono text-tilo-text-muted font-bold ml-2 shrink-0">{d.cie10}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <span className="text-xs text-tilo-text-muted italic">Sin patologías registradas</span>
-                                            )}
-                                        </div>
-                                        <div className="pt-2 border-t border-tilo-border/60 flex justify-between items-center">
-                                            <span className="text-[10px] uppercase font-extrabold text-tilo-text-muted tracking-wider">Alergias Identificadas</span>
-                                            <span className={`text-xs font-bold ${hasAllergies ? 'text-tilo-danger bg-red-50 border border-red-200 px-2 py-0.5 rounded-full' : 'text-tilo-text-main'}`}>
-                                                {hasAllergies ? allergies.map(a => a.agent || a.name || a).join(', ') : 'Sin alergias registradas'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* D: Dietética */}
-                            <div className="bg-tilo-bg-base/40 p-5 rounded-2xl border border-tilo-border flex flex-col justify-between">
-                                <div>
-                                    <h3 className="text-tilo-text-muted text-[10px] font-extrabold uppercase tracking-widest mb-4 flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-tilo-success"></span>
-                                        D. Perfil Dietético & Hormonal
-                                    </h3>
-                                    <div className="space-y-3">
-                                        <div className="bg-white p-3.5 rounded-xl border border-tilo-border/80 shadow-2xs">
-                                            <span className="text-[9.5px] uppercase font-extrabold text-tilo-text-muted block mb-1 tracking-wider">Enfoque Metabólico (Framework 5x5x5)</span>
-                                            <span className="text-xs font-bold text-tilo-success block">
-                                                Modulación Insulina / Cortisol (Sin Conteo Calórico)
-                                            </span>
-                                        </div>
-                                        <div className="bg-white p-3.5 rounded-xl border border-tilo-border/80 shadow-2xs">
-                                            <span className="text-[9.5px] uppercase font-extrabold text-tilo-text-muted block mb-1 tracking-wider">Aversiones / Exclusiones</span>
-                                            <span className="text-xs font-bold text-tilo-text-main block leading-relaxed">
-                                                {patientData?.evaluacionDietetica?.preferencias?.aversiones ? `Aversión: ${patientData.evaluacionDietetica.preferencias.aversiones}` : (patientData?.nutrition?.dislikes?.length > 0 ? patientData.nutrition.dislikes.join(', ') : 'Sin aversiones registradas')}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </Accordion>
 
                     {/* --- CHILD ACCORDION 2: ARQUITECTURA DE ORO RECOMENDADA --- */}
                     <Accordion

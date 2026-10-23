@@ -5824,7 +5824,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
         <div className="flex flex-1 w-full overflow-hidden">
 
           {/* --- COLUMNA IZQUIERDA: CHAT --- */}
-          <div className={`${['PHASE_19_DIAGNOSIS'].includes(currentPhase) ? 'w-full' : 'w-1/2'} flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 relative overflow-hidden`}>
+          <div className="w-1/2 flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 relative overflow-hidden">
             <AnimatePresence mode="wait">
                 <motion.div
                   key="chat-shell"
@@ -6262,6 +6262,8 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setPatientData={setPatientData}
                       messages={messagesList}
                       setMessages={setMessages}
+                      registerInputHandler={setInputHandler}
+                      setActiveTab={setActiveTab}
                       onPhaseComplete={() => {
                         setInputHandler(null);
                         setCurrentPhase('PHASE_20_PORTAPAPELES');
@@ -6272,7 +6274,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                             ...prev,
                             {
                               role: 'assistant',
-                              content: "✨ **Expediente Clínico Consolidado y Sellado**\n\nEl dictamen médico del motor CORTEX v2.0 ha sido generado en el panel principal. ¿Qué deseas hacer a continuación?",
+                              content: "✨ **Expediente Clínico Consolidado y Sellado**\n\nEl dictamen médico del motor CORTEX v2.4 ha sido generado en el panel principal. ¿Qué deseas hacer a continuación?",
                               options: [
                                 { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
                                 { label: "🚀 Sellar y Continuar a Calendario & Sprint ➔", value: "GO_TO_CALENDAR_SPRINT" }
@@ -6326,12 +6328,11 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     />
                   )}
 
-                  {!['PHASE_19_DIAGNOSIS'].includes(currentPhase) && (
-                    <>
-                      <div 
-                        className="flex-1 h-full overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar z-10 relative"
-                        style={{ paddingBottom: (isSpecificLogisticsQuestion || hasVerticalMenuOpen) ? '280px' : '2rem' }}
-                      >
+                  <>
+                    <div 
+                      className="flex-1 h-full overflow-y-auto p-8 space-y-6 bg-slate-50 custom-scrollbar z-10 relative"
+                      style={{ paddingBottom: (isSpecificLogisticsQuestion || hasVerticalMenuOpen) ? '280px' : '2rem' }}
+                    >
                     {messagesList.map((msg, index) => (
                       <div
                         key={index}
@@ -6851,64 +6852,61 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     </>
                 </div>
               </>
-            )}
           </motion.div>
         </AnimatePresence>
       </div>
 
           {/* PANEL DERECHO (50%) - DASHBOARD RESTAURADO (ACORDEONES) */}
-          {!['PHASE_19_DIAGNOSIS'].includes(currentPhase) && (
-            <div className="w-1/2 h-full flex flex-col bg-gray-50 border-l border-gray-200 relative overflow-hidden">
-              {/* COMPUERTA NOM-004: BLOQUEO DE FASE 0 */}
-              {!isIdentityConfirmed ? (
-                  // Fase 0 Activa: Muro de Contención
-                  showPrivacyPolicy ? (
-                      <div className="absolute inset-0 z-10 w-full h-full bg-slate-50">
-                          <AvisoPrivacidad onAccept={handleAcceptPrivacy} onClose={() => setShowPrivacyPolicy(false)} />
-                      </div>
-                  ) : (
-                      <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
-                          <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-                              <Lock className="w-16 h-16 text-slate-300 mb-6" />
-                              <h2 className="text-xl font-bold text-slate-700 uppercase tracking-widest font-prototype">
-                                  Espejo Clínico Bloqueado
-                              </h2>
-                              <p className="text-slate-500 mt-3 text-sm font-medium max-w-sm">
-                                  Esperando validación de identidad y aceptación del aviso de privacidad (NOM-004).
-                              </p>
-                          </div>
-                      </div>
-                  )
-              ) : (
-                  // Fase 1+: Dashboard Liberado
-                  <div className="h-full w-full animate-in fade-in duration-1000">
-                    {/* DASHBOARD COMPONENT INTEGRATION */}
-                    <MedicalDashboard
-                      patientData={patientData}
-                      setPatientData={setPatientData}
-                      currentStep={interviewStep === 'appointment' ? currentPhase : interviewStep}
-                      activeTab={activeTab}
-                      onTabChange={setActiveTab}
-                      isEditing={isEditing}
-                      onEditToggle={() => setIsEditing(!isEditing)}
-                      onTriggerEdit={handleTriggerEdit}
-                      activeField={activeField}
-                      fase3State={fase3State}
-                      fase4State={fase4State}
-                      fase5State={fase5State}
-                      fase6State={fase6State}
-                      fase7State={fase7State}
-                      fase8State={fase8State}
-                      fase9State={fase9State}
-                      citationId={citationId}
-                      isPhase20EditMode={isPhase20EditMode}
-                      planViewMode={planViewMode}
-                      setPlanViewMode={setPlanViewMode}
-                    />
-                  </div>
-              )}
-            </div>
-          )}
+          <div className="w-1/2 h-full flex flex-col bg-gray-50 border-l border-gray-200 relative overflow-hidden">
+            {/* COMPUERTA NOM-004: BLOQUEO DE FASE 0 */}
+            {!isIdentityConfirmed ? (
+                // Fase 0 Activa: Muro de Contención
+                showPrivacyPolicy ? (
+                    <div className="absolute inset-0 z-10 w-full h-full bg-slate-50">
+                        <AvisoPrivacidad onAccept={handleAcceptPrivacy} onClose={() => setShowPrivacyPolicy(false)} />
+                    </div>
+                ) : (
+                    <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
+                        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                            <Lock className="w-16 h-16 text-slate-300 mb-6" />
+                            <h2 className="text-xl font-bold text-slate-700 uppercase tracking-widest font-prototype">
+                                Espejo Clínico Bloqueado
+                            </h2>
+                            <p className="text-slate-500 mt-3 text-sm font-medium max-w-sm">
+                                Esperando validación de identidad y aceptación del aviso de privacidad (NOM-004).
+                            </p>
+                        </div>
+                    </div>
+                )
+            ) : (
+                // Fase 1+: Dashboard Liberado
+                <div className="h-full w-full animate-in fade-in duration-1000">
+                  {/* DASHBOARD COMPONENT INTEGRATION */}
+                  <MedicalDashboard
+                    patientData={patientData}
+                    setPatientData={setPatientData}
+                    currentStep={interviewStep === 'appointment' ? currentPhase : interviewStep}
+                    activeTab={activeTab}
+                    onTabChange={setActiveTab}
+                    isEditing={isEditing}
+                    onEditToggle={() => setIsEditing(!isEditing)}
+                    onTriggerEdit={handleTriggerEdit}
+                    activeField={activeField}
+                    fase3State={fase3State}
+                    fase4State={fase4State}
+                    fase5State={fase5State}
+                    fase6State={fase6State}
+                    fase7State={fase7State}
+                    fase8State={fase8State}
+                    fase9State={fase9State}
+                    citationId={citationId}
+                    isPhase20EditMode={isPhase20EditMode}
+                    planViewMode={planViewMode}
+                    setPlanViewMode={setPlanViewMode}
+                  />
+                </div>
+            )}
+          </div>
 
         </div >
 

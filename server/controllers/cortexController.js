@@ -1071,8 +1071,31 @@ const synthesizeDossier = async (req, res) => {
                 pilar_cuidados_suplementacion: isLactanteExplicit
                     ? "Monitoreo constante de crecimiento con su pediatra tratante bajo la NOM-043."
                     : `Protocolo Cronobiológico: ${orthomolecularPrescription.supplements[0].name} por la mañana y ${orthomolecularPrescription.supplements[1].name} por la noche disuelto en 500 ml de agua.`
-            }
+            },
+            human_approved_diagnosis: preliminary_diagnosis,
+            human_approved_management: suggested_management,
+            status: "SYNTHESIZED_READY_FOR_REVIEW"
         };
+
+        // ==========================================
+        // 7. PERSISTENCIA INMEDIATA EN SQLITE ANTE REFRESCO (F5)
+        // ==========================================
+        try {
+            const stmtCheck = db.prepare('SELECT patient_data_snapshot FROM session_persistence WHERE citation_id = ?');
+            const existingRow = stmtCheck.get(citationId.toString());
+            if (existingRow) {
+                const storedSnapshot = JSON.parse(existingRow.patient_data_snapshot || '{}');
+                storedSnapshot.clinical_dossier = payload;
+                const stmtUpdate = db.prepare(`
+                    UPDATE session_persistence 
+                    SET patient_data_snapshot = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE citation_id = ?
+                `);
+                stmtUpdate.run(JSON.stringify(storedSnapshot), citationId.toString());
+            }
+        } catch (persistErr) {
+            console.warn("⚠️ No se pudo pre-guardar clinical_dossier en SQLite:", persistErr.message);
+        }
 
         res.json({
             success: true,

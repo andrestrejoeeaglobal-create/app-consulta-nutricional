@@ -1,26 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
     BrainCircuit, 
-    AlertTriangle, 
-    CheckCircle2, 
     Activity, 
-    Sliders, 
-    X, 
-    Plus, 
-    Trash2, 
-    Lock, 
-    Send, 
-    Clock, 
-    FileText,
     ShieldAlert,
     Target,
-    Zap,
-    LayoutGrid
+    Zap
 } from 'lucide-react';
 import tiloImg from '../../assets/tilo.png';
-import ReactMarkdown from 'react-markdown';
-import { cleanBinaryGateMessage } from '../../utils/utils';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 
@@ -333,11 +319,16 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
     );
 }
 
+// ==========================================================================
+// CONTROLADOR HEADLESS FASE 19: Mantiene activo <MedicalDashboard /> (50/50)
+// ==========================================================================
 export default function Fase19_DiagnosticoIntegral({
     patientData,
     setPatientData,
     messages,
     setMessages,
+    registerInputHandler,
+    setActiveTab,
     onPhaseComplete
 }) {
     const identityLock = useClinicalGenome(state => state.identityLock);
@@ -345,79 +336,13 @@ export default function Fase19_DiagnosticoIntegral({
     const { isLactante, isPediatrico, patientAge } = usePatientLinguistics(patientData);
     const citationId = patientData?.idCita || patientData?.citaId || 1;
 
-    // Resolutores Exhaustivos de Metadatos de Referencia (ABCD)
-    // 1. Biometría & IMC
-    const displayWeight = patientData?.vitals?.weight || patientData?.peso || patientData?.biometria?.peso || patientData?.profile?.weight;
-    const displayHeight = patientData?.vitals?.height || patientData?.talla || patientData?.biometria?.talla || patientData?.profile?.height;
-    let calculatedImc = null;
-    if (displayWeight && displayHeight) {
-        const hMetros = parseFloat(displayHeight) > 10 ? parseFloat(displayHeight) / 100 : parseFloat(displayHeight);
-        calculatedImc = (parseFloat(displayWeight) / (hMetros * hMetros)).toFixed(1);
-    }
-    const displayImc = patientData?.vitals?.bmi || patientData?.imc || patientData?.biometria?.imc || calculatedImc;
-    const displayImcClass = patientData?.vitals?.bmi_class || patientData?.imcEstado || patientData?.biometria?.imc_estado || (displayImc ? (displayImc < 18.5 ? 'Bajo Peso' : displayImc < 25 ? 'Normal' : displayImc < 30 ? 'Sobrepeso' : 'Obesidad') : 'Estable');
-
-    // 2. Presión Arterial, Glucosa, SpO2, FC
-    let displayBP = null;
-    if (patientData?.vitals?.blood_pressure) {
-        if (typeof patientData.vitals.blood_pressure === 'object') {
-            const sys = patientData.vitals.blood_pressure.systolic;
-            const dia = patientData.vitals.blood_pressure.diastolic;
-            if (sys && dia) displayBP = `${sys}/${dia}`;
-        } else {
-            displayBP = patientData.vitals.blood_pressure;
-        }
-    }
-    if (!displayBP) displayBP = patientData?.signosVitales?.ta || patientData?.vitals?.bp;
-
-    let displayGluc = patientData?.vitals?.glucose || patientData?.signosVitales?.glucosa;
-    if (displayGluc) {
-        displayGluc = displayGluc.toString().replace(/\s*mg\/dL/gi, '');
-    }
-
-    const displaySpo2 = patientData?.vitals?.spo2 || patientData?.signosVitales?.spo2 || patientData?.signosVitales?.oximetria || '95';
-    const displayFC = patientData?.vitals?.hr || 
-                      patientData?.vitals?.heart_rate || 
-                      patientData?.vitals?.fc || 
-                      patientData?.signosVitales?.fc || 
-                      patientData?.signosVitales?.pulso || 
-                      patientData?.signosVitales?.frecuenciaCardiaca || 
-                      patientData?.signosVitales?.frecuencia_cardiaca || 
-                      (isLactante ? 90 : null);
-
-    // 3. Fármacos & Alergias
-    const medsList = patientData?.history?.medications?.length > 0 
-        ? patientData.history.medications.map(m => typeof m === 'object' ? m.name : m).filter(Boolean)
-        : (patientData?.farmacologia ? [patientData.farmacologia] : []);
-
-    const foodAllergiesList = patientData?.history?.allergies?.food?.length > 0
-        ? patientData.history.allergies.food.map(a => typeof a === 'object' ? a.agent : a).filter(Boolean)
-        : [];
-
-    const drugAllergiesList = patientData?.history?.allergies?.drug?.length > 0
-        ? patientData.history.allergies.drug.map(a => typeof a === 'object' ? a.agent : a).filter(Boolean)
-        : [];
-
-    // Chat scroll ref & Cerrojos de Inmunidad
-    const chatEndRef = useRef(null);
     const isSynthesizingRef = useRef(false);
+    const hasAutoRecoveredRef = useRef(false);
+    const [additionalSymptoms, setAdditionalSymptoms] = useState(
+        patientData?.clinical_dossier?.additional_symptoms_reported || ''
+    );
 
-    // Estados Locales
-    const [symptomsInput, setSymptomsInput] = useState('');
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [dossierState, setDossierState] = useState('idle'); // idle -> review -> saving -> complete
-    
-    // Almacenamiento de expediente en edición
-    const [originalDossier, setOriginalDossier] = useState(null);
-    const [diagnoses, setDiagnoses] = useState([]);
-    const [management, setManagement] = useState([]);
-    const [criticalAlerts, setCriticalAlerts] = useState([]);
-    const [additionalSymptoms, setAdditionalSymptoms] = useState('');
-    const [viewTab, setViewTab] = useState('bento'); // 'bento' | 'edit'
-
-    const [errorMessage, setErrorMessage] = useState('');
-
-    // Cargar Wayfinding AI: Pregunta de seguridad inicial de Tilo (Con deduplicación atómica StrictMode)
+    // 1. Inicialización de Wayfinding con Deduplicación Atómica StrictMode
     useEffect(() => {
         const wayfindingQuestion = "Revisando su historial médico y bio-escaneos... ¿Hay algún síntoma, dolor o molestia reciente que no hayamos registrado hasta este momento?";
 
@@ -451,187 +376,161 @@ export default function Fase19_DiagnosticoIntegral({
                 ];
             });
         }
+    }, [setMessages]);
 
-        // Si ya hay expediente aprobado en patientData, restaurar estado
-        if (patientData?.clinical_dossier) {
-            const dossier = patientData.clinical_dossier;
-            setDiagnoses(dossier.human_approved_diagnosis || []);
-            setManagement(dossier.human_approved_management || []);
-            setAdditionalSymptoms(dossier.additional_symptoms_reported || '');
-            setDossierState('review');
-        }
-    }, [setMessages, patientData]);
-
-    // Auto-scroll al final del chat al recibir mensajes
+    // 2. Auto-Recuperación Silenciosa (Self-Healing) si se refrescó la página tras haber sintetizado
     useEffect(() => {
-        if (chatEndRef.current) {
-            chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        if (hasAutoRecoveredRef.current || isSynthesizingRef.current) return;
+        const hasSynthesisMessageInChat = Array.isArray(messages) && messages.some(m =>
+            typeof m?.content === 'string' &&
+            (m.content.includes("Motor CORTEX v2.4 de Síntesis Activo") || m.content.includes("Sin síntomas adicionales"))
+        );
+        const hasPersistedIfmMatrix = Array.isArray(patientData?.clinical_dossier?.ifm_nodes_matrix) &&
+            patientData.clinical_dossier.ifm_nodes_matrix.length > 0;
+
+        if (hasSynthesisMessageInChat && !hasPersistedIfmMatrix) {
+            hasAutoRecoveredRef.current = true;
+            triggerSynthesis("Sin síntomas adicionales. Recuperación automática de síntesis tras refresco.", true);
         }
-    }, [messages, isAnalyzing]);
+    }, [messages, patientData?.clinical_dossier]);
 
-    // --- ACCIÓN: Detonar Síntesis CORTEX (Con Regla de Inmunidad contra doble clic) ---
-    const triggerSynthesis = async (patientText) => {
-        if (isSynthesizingRef.current || isAnalyzing) return;
+    // 3. Acción Principal: Detonar Síntesis CORTEX v2.4 y Persistir de Inmediato en patientData + SQLite
+    const triggerSynthesis = async (patientText, silentChat = false) => {
+        if (isSynthesizingRef.current) return;
         isSynthesizingRef.current = true;
-
         setAdditionalSymptoms(patientText);
 
-        if (setMessages) {
-            setMessages(prev => {
-                const cleaned = prev.map(m => m.options ? { ...m, options: undefined } : m);
-                return [
-                    ...cleaned,
-                    {
-                        role: 'user',
-                        content: patientText
-                    }
-                ];
-            });
+        if (!silentChat && setMessages) {
+            setMessages(prev => [
+                ...prev.map(m => m.options ? { ...m, options: undefined } : m),
+                {
+                    role: 'assistant',
+                    content: "🧠 **Procesando Expediente Clínico en Motor CORTEX v2.4...**\n\nDestilando anomalías en las 7 Micro-Cápsulas IFM, auditando códigos CIE-10 y calculando el Árbol Bioenergético. Mientras tanto, puede navegar libremente por las pestañas superiores del Dashboard.",
+                    avatar: tiloImg,
+                    inputType: 'analyzing'
+                }
+            ]);
         }
 
-        setIsAnalyzing(true);
-        setDossierState('idle');
-        setErrorMessage('');
+        const isCloudStandalone = typeof window !== 'undefined' && 
+            (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
+            !import.meta.env.VITE_API_URL;
 
-        setTimeout(async () => {
-            const isCloudStandalone = typeof window !== 'undefined' && 
-                (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
-                !import.meta.env.VITE_API_URL;
+        try {
+            const payloadToSend = pruneTelemetryPayloadForNetwork(
+                patientData,
+                electretTelemetry,
+                identityLock,
+                isLactante,
+                isPediatrico,
+                patientAge
+            );
 
-            try {
-                const payloadToSend = pruneTelemetryPayloadForNetwork(
-                    patientData,
-                    electretTelemetry,
-                    identityLock,
-                    isLactante,
-                    isPediatrico,
-                    patientAge
-                );
+            let data;
+            if (!isCloudStandalone) {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                const response = await fetch(`${apiUrl}/api/cortex/synthesize-dossier`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ citationId, patientData: payloadToSend })
+                });
+                data = await response.json();
+            } else {
+                data = {
+                    success: true,
+                    dossier: {
+                        preliminary_diagnosis: ["Evaluación Metabólica Preliminar Completada (Modo Standalone)"],
+                        suggested_management: ["Plan Nutracéutico Personalizado 33Plus/34Plus"],
+                        critical_alerts: []
+                    }
+                };
+            }
 
-                let data;
-                if (!isCloudStandalone) {
-                    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-                    const response = await fetch(`${apiUrl}/api/cortex/synthesize-dossier`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ citationId, patientData: payloadToSend })
-                    });
-                    data = await response.json();
-                } else {
-                    data = {
-                        success: true,
-                        dossier: {
-                            preliminary_diagnosis: ["Evaluación Metabólica Preliminar Completada (Modo Standalone)"],
-                            suggested_management: ["Plan Nutracéutico Personalizado 33Plus/34Plus"],
-                            critical_alerts: []
+            if (data?.success && data?.dossier) {
+                const dossier = data.dossier;
+
+                // PERSISTENCIA INMEDIATA EN ESTADO GLOBAL (Sobrevive a F5 y habilita todas las pestañas del Dashboard)
+                if (setPatientData) {
+                    setPatientData(prev => ({
+                        ...prev,
+                        clinical_dossier: {
+                            ...dossier,
+                            human_approved_diagnosis: dossier.preliminary_diagnosis || [],
+                            human_approved_management: dossier.suggested_management || [],
+                            additional_symptoms_reported: patientText,
+                            status: "SYNTHESIZED_READY_FOR_REVIEW"
                         }
-                    };
+                    }));
                 }
-                if (data.success && data.dossier) {
-                    const dossier = data.dossier;
-                    setOriginalDossier(dossier);
-                    setDiagnoses(dossier.preliminary_diagnosis || []);
-                    setManagement(dossier.suggested_management || []);
-                    setCriticalAlerts(dossier.critical_alerts || []);
-                    setDossierState('review');
 
-                    if (setMessages) {
-                        setMessages(prev => [
-                            ...prev,
+                if (setActiveTab) {
+                    setActiveTab('diagnosis');
+                }
+
+                if (setMessages) {
+                    setMessages(prev => {
+                        const withoutAnalyzing = prev.filter(m => m.inputType !== 'analyzing').map(m => m.options ? { ...m, options: undefined } : m);
+                        return [
+                            ...withoutAnalyzing,
                             {
                                 role: 'assistant',
-                                content: `🧠 **Motor CORTEX v2.4 de Síntesis Activo.**\n\nHe compilado y estructurado el expediente clínico en las **7 Micro-Cápsulas de la Matriz IFM** y el **Árbol Bioenergético** en el Dashboard derecho.\n\nUna vez que valide los hallazgos expuestos en el panel derecho, confirme a continuación para sellar el expediente y avanzar a la prescripción nutracéutica:`,
+                                content: `🧠 **Motor CORTEX v2.4 de Síntesis Activo.**\n\nHe compilado y guardado el expediente clínico en las **7 Micro-Cápsulas de la Matriz IFM** y el **Árbol Bioenergético** dentro de la pestaña **Diagnóstico** del Dashboard derecho.\n\n💡 *Puede navegar libremente por las pestañas superiores (Biometría y Vitales, Bioquímicos, Historia Clínica) para consultar cualquier dato del paciente.* Cuando esté listo, confirme a continuación:`,
                                 avatar: tiloImg,
                                 options: [
                                     { label: "✅ Confirmar y Sellar Expediente ➔", value: "APPROVE_AND_SEAL_DOSSIER" },
                                     { label: "🔄 Re-Sintetizar Expediente", value: "RESYNTHESIZE_DOSSIER" }
                                 ]
                             }
-                        ]);
-                    }
-                } else {
-                    setErrorMessage(data.message || "No se pudo recuperar la síntesis del motor CORTEX.");
+                        ];
+                    });
                 }
-            } catch (err) {
-                console.error("🔥 Error al recuperar síntesis CORTEX:", err);
-                setErrorMessage("Error de comunicación con el servidor clínico.");
-            } finally {
-                isSynthesizingRef.current = false;
-                setIsAnalyzing(false);
+            } else if (!silentChat && setMessages) {
+                setMessages(prev => [
+                    ...prev.filter(m => m.inputType !== 'analyzing'),
+                    {
+                        role: 'assistant',
+                        content: `⚠️ **Aviso del Motor CORTEX:** ${data?.message || "No se pudo completar la síntesis en este intento."}`,
+                        avatar: tiloImg,
+                        options: [
+                            { label: "🔄 Reintentar Síntesis CORTEX", value: "RESYNTHESIZE_DOSSIER" }
+                        ]
+                    }
+                ]);
             }
-        }, 600);
+        } catch (err) {
+            console.error("🔥 Error al recuperar síntesis CORTEX:", err);
+            if (!silentChat && setMessages) {
+                setMessages(prev => [
+                    ...prev.filter(m => m.inputType !== 'analyzing'),
+                    {
+                        role: 'assistant',
+                        content: "⚠️ **Error de comunicación con el servidor clínico.** Verifique su conexión e intente nuevamente.",
+                        avatar: tiloImg,
+                        options: [
+                            { label: "🔄 Reintentar Síntesis CORTEX", value: "RESYNTHESIZE_DOSSIER" }
+                        ]
+                    }
+                ]);
+            }
+        } finally {
+            isSynthesizingRef.current = false;
+        }
     };
 
-    // --- ACCIÓN: Enviar respuesta de síntomas del paciente ---
-    const handleSendSymptoms = (e) => {
-        e.preventDefault();
-        if (!symptomsInput.trim()) return;
-        const patientText = symptomsInput.trim();
-        setSymptomsInput('');
-        triggerSynthesis(patientText);
-    };
-
-    // --- EDICIÓN DE ITEMS ---
-    const handleUpdateDiagnosis = (index, value) => {
-        setDiagnoses(prev => {
-            const copy = [...prev];
-            copy[index] = value;
-            return copy;
-        });
-    };
-
-    const handleAddDiagnosis = () => {
-        setDiagnoses(prev => [...prev, '']);
-    };
-
-    const handleRemoveDiagnosis = (index) => {
-        setDiagnoses(prev => prev.filter((_, i) => i !== index));
-    };
-
-    const handleUpdateManagement = (index, value) => {
-        setManagement(prev => {
-            const copy = [...prev];
-            copy[index] = value;
-            return copy;
-        });
-    };
-
-    const handleAddManagement = () => {
-        setManagement(prev => [...prev, '']);
-    };
-
-    const handleRemoveManagement = (index) => {
-        setManagement(prev => prev.filter((_, i) => i !== index));
-    };
-
-    // --- ACCIÓN: Restaurar sugerencias originales de la IA ---
-    // --- ACCIÓN: Restaurar sugerencias / Re-ejecutar CORTEX v2.0 ---
-    const handleRestoreSuggestions = () => {
-        triggerSynthesis(additionalSymptoms || 'Re-síntesis de expediente clínico');
-    };
-
-    // --- ACCIÓN: Rechazar sugerencias para ingresar manual ---
-    const handleRejectSuggestions = () => {
-        setDiagnoses(['']);
-        setManagement(['']);
-    };
-
-    // --- ACCIÓN: Confirmar y Sellar Dossier en SQLite ---
+    // 4. Acción: Confirmar y Sellar Dossier en SQLite y Avanzar a Fase 20
     const handleApproveDossier = async () => {
-        setDossierState('saving');
+        const currentDossier = patientData?.clinical_dossier || {};
+        const finalDiagnosis = currentDossier.human_approved_diagnosis || currentDossier.preliminary_diagnosis || [];
+        const finalManagement = currentDossier.human_approved_management || currentDossier.suggested_management || [];
+
         const isCloudStandalone = typeof window !== 'undefined' && 
             (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
             !import.meta.env.VITE_API_URL;
-
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
-        // Filtrar vacíos
-        const finalDiagnosis = diagnoses.filter(d => d.trim() !== '');
-        const finalManagement = management.filter(m => m.trim() !== '');
 
         try {
             if (!isCloudStandalone) {
-                const response = await fetch(`${apiUrl}/api/cortex/approve-dossier`, {
+                await fetch(`${apiUrl}/api/cortex/approve-dossier`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -639,37 +538,22 @@ export default function Fase19_DiagnosticoIntegral({
                         approvedDiagnosis: finalDiagnosis,
                         approvedManagement: finalManagement,
                         additionalSymptoms,
-                        originalDiagnosis: originalDossier?.preliminary_diagnosis || [],
-                        originalManagement: originalDossier?.suggested_management || [],
-                        ifmNodesMatrix: originalDossier?.ifm_nodes_matrix || [],
-                        bioenergetics: originalDossier?.bioenergetics || null,
-                        orthomolecularPrescription: originalDossier?.orthomolecular_prescription || null
+                        originalDiagnosis: currentDossier.preliminary_diagnosis || [],
+                        originalManagement: currentDossier.suggested_management || [],
+                        ifmNodesMatrix: currentDossier.ifm_nodes_matrix || [],
+                        bioenergetics: currentDossier.bioenergetics || null,
+                        orthomolecularPrescription: currentDossier.orthomolecular_prescription || null
                     })
                 });
-
-                const data = await response.json();
-                if (data.success) {
-                    setDossierState('complete');
-                } else {
-                    setDossierState('review');
-                    setErrorMessage(data.message || "Error al sellar expediente.");
-                    return;
-                }
-            } else {
-                setDossierState('complete');
             }
 
-            // Sincronizar estado local en React global (incluyendo Nodos IFM, Bioenergética y Prescripción del Backend)
             if (setPatientData) {
                 setPatientData(prev => ({
                     ...prev,
                     clinical_dossier: {
-                        ...(originalDossier || prev?.clinical_dossier || {}),
+                        ...(prev?.clinical_dossier || {}),
                         human_approved_diagnosis: finalDiagnosis,
                         human_approved_management: finalManagement,
-                        ifm_nodes_matrix: originalDossier?.ifm_nodes_matrix || prev?.clinical_dossier?.ifm_nodes_matrix || [],
-                        bioenergetics: originalDossier?.bioenergetics || prev?.clinical_dossier?.bioenergetics || null,
-                        orthomolecular_prescription: originalDossier?.orthomolecular_prescription || prev?.clinical_dossier?.orthomolecular_prescription || null,
                         additional_symptoms_reported: additionalSymptoms,
                         doctor_approval_timestamp: new Date().toISOString(),
                         status: "READY_FOR_PHASE_20"
@@ -679,514 +563,64 @@ export default function Fase19_DiagnosticoIntegral({
             }
 
             if (onPhaseComplete) {
-                setTimeout(() => {
-                    onPhaseComplete('PHASE_20_PORTAPAPELES');
-                }, 1000);
+                onPhaseComplete('PHASE_20_PORTAPAPELES');
             }
         } catch (err) {
             console.error("🔥 Error aprobando dossier:", err);
-            setDossierState('review');
-            setErrorMessage("Error de conexión al guardar el expediente.");
         }
     };
 
-    const isPatientChatLocked = dossierState === 'review' || dossierState === 'saving' || dossierState === 'complete';
+    // 5. Handler Headless para el Chat Unificado de App.jsx
+    const handleChatInput = async (userMsg, source = 'text') => {
+        if (!userMsg) return;
 
-    return (
-        <div className="flex-1 flex flex-row min-h-0 bg-[#FAFAFA] overflow-hidden">
-            
-            {/* ==========================================================================
-                PANEL IZQUIERDO: CHAT TILO (50%)
-            ========================================================================== */}
-            <div className="w-1/2 flex flex-col bg-white border-r border-slate-200 shadow-lg relative h-full">
-                
-                {/* Cabecera del Chat */}
-                <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center gap-3 select-none">
-                    <div className="w-10 h-10 rounded-full bg-white border flex items-center justify-center overflow-hidden">
-                        <img src={tiloImg} alt="Tilo" className="w-8 h-8 object-contain" />
-                    </div>
-                    <div>
-                        <h4 className="font-bold text-slate-800 text-[13px] uppercase tracking-wider">Tilo Asistente</h4>
-                        <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
-                            Fase 19: CORTEX Wayfinding
-                        </span>
-                    </div>
-                </div>
+        if (userMsg === 'NO_ADDITIONAL_SYMPTOMS') {
+            await triggerSynthesis("Sin síntomas adicionales. Proceder con el diagnóstico integral CORTEX v2.4.", false);
+            return;
+        }
 
-                {/* Historial de Mensajes del Chat */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                    {messages.map((msg, index) => (
-                        <div key={index} className={`flex ${msg.role === 'assistant' ? 'justify-start' : 'justify-end'} items-start gap-3`}>
-                            {msg.role === 'assistant' && (
-                                <div className="w-9 h-9 rounded-full bg-slate-50 border flex items-center justify-center overflow-hidden flex-shrink-0">
-                                    <img src={tiloImg} alt="Tilo" className="w-7 h-7 object-contain" />
-                                </div>
-                            )}
-                            <div className={`max-w-[85%] p-4 rounded-2xl text-[13px] leading-relaxed ${
-                                msg.role === 'assistant' 
-                                    ? 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-200/80 shadow-sm' 
-                                    : 'bg-[#1C75BC] text-white rounded-tr-none shadow-md shadow-blue-600/10'
-                            }`}>
-                                {msg.role === 'assistant' ? (
-                                    <div className="prose prose-sm max-w-none text-slate-800 text-[13px] leading-relaxed space-y-3">
-                                        <ReactMarkdown>{cleanBinaryGateMessage(msg.content)}</ReactMarkdown>
-                                        {msg.options && msg.options.length > 0 && (
-                                            <div className="flex flex-wrap gap-2 pt-2.5 border-t border-slate-200/80 select-none">
-                                                {msg.options.map((opt, oIdx) => (
-                                                    <button
-                                                        key={oIdx}
-                                                        onClick={() => {
-                                                            if (opt.value === 'NO_ADDITIONAL_SYMPTOMS') {
-                                                                triggerSynthesis("Sin síntomas adicionales. Proceder con el diagnóstico integral CORTEX v2.4.");
-                                                            } else if (opt.value === 'APPROVE_AND_SEAL_DOSSIER') {
-                                                                handleApproveDossier();
-                                                            } else if (opt.value === 'RESYNTHESIZE_DOSSIER') {
-                                                                triggerSynthesis(additionalSymptoms || "Re-síntesis de expediente clínico solicitada.");
-                                                            } else {
-                                                                setSymptomsInput("Registrando molestia adicional: ");
-                                                            }
-                                                        }}
-                                                        disabled={isAnalyzing || dossierState === 'saving'}
-                                                        className="px-3.5 py-2 bg-white hover:bg-blue-50 text-[#1C75BC] border border-blue-200 hover:border-[#1C75BC] rounded-xl text-[11px] font-extrabold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                                    >
-                                                        {opt.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <p className="whitespace-pre-line font-sans font-medium">{msg.content}</p>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+        if (userMsg === 'ADD_SYMPTOM') {
+            if (setMessages) {
+                setMessages(prev => [
+                    ...prev.map(m => m.options ? { ...m, options: undefined } : m),
+                    {
+                        role: 'assistant',
+                        content: "✏️ Por favor, escriba a continuación el síntoma, dolor o molestia adicional que desea integrar antes de ejecutar la síntesis diagnóstica:",
+                        avatar: tiloImg,
+                        inputType: 'text'
+                    }
+                ]);
+            }
+            return;
+        }
 
-                    {/* Indicador de Carga / Análisis CORTEX */}
-                    {isAnalyzing && (
-                        <div className="flex justify-start items-start gap-3">
-                            <div className="w-9 h-9 rounded-full bg-slate-50 border flex items-center justify-center overflow-hidden flex-shrink-0 animate-spin">
-                                <BrainCircuit className="w-5 h-5 text-[#1C75BC]" />
-                            </div>
-                            <div className="bg-slate-50 text-slate-600 rounded-2xl rounded-tl-none p-4 border border-slate-200/80 flex items-center gap-2 text-[12px] italic">
-                                <span className="flex gap-1">
-                                    <span className="w-1.5 h-1.5 bg-[#1C75BC] rounded-full animate-bounce"></span>
-                                    <span className="w-1.5 h-1.5 bg-[#1C75BC] rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                                    <span className="w-1.5 h-1.5 bg-[#1C75BC] rounded-full animate-bounce [animation-delay:0.4s]"></span>
-                                </span>
-                                🧠 Motor CORTEX v2.0 procesando expediente clínico...
-                            </div>
-                        </div>
-                    )}
-                    {errorMessage && !isAnalyzing && (
-                        <div className="flex justify-start items-start gap-3 animate-in fade-in">
-                            <div className="w-9 h-9 rounded-full bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0">
-                                <AlertTriangle className="w-5 h-5 text-red-600" />
-                            </div>
-                            <div className="bg-red-50 text-red-800 rounded-2xl rounded-tl-none p-4 border border-red-200 text-xs space-y-2 max-w-[85%]">
-                                <p className="font-bold">⚠️ Error en Procesamiento CORTEX:</p>
-                                <p>{errorMessage}</p>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setErrorMessage('');
-                                        triggerSynthesis(additionalSymptoms || "Sin síntomas adicionales");
-                                    }}
-                                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-[11px] transition-colors cursor-pointer"
-                                >
-                                    🔄 Reintentar Síntesis
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={chatEndRef} />
-                </div>
+        if (userMsg === 'APPROVE_AND_SEAL_DOSSIER') {
+            await handleApproveDossier();
+            return;
+        }
 
-                {/* Formulario de Entrada */}
-                <div className="p-4 border-t border-slate-100 bg-white">
-                    {isPatientChatLocked ? (
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 justify-center select-none">
-                            <Lock className="w-4 h-4 text-[#1C75BC]" />
-                            <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                                Puente Clínico Bloqueado (Handoff Activo)
-                            </span>
-                        </div>
-                    ) : (
-                        <form onSubmit={handleSendSymptoms} className="flex gap-2">
-                            <input 
-                                type="text"
-                                value={symptomsInput}
-                                onChange={(e) => setSymptomsInput(e.target.value)}
-                                placeholder="Describa molestias, dolores o síntomas adicionales aquí..."
-                                className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs focus:outline-none focus:border-[#1C75BC] focus:bg-white transition-all font-sans"
-                                disabled={isAnalyzing}
-                            />
-                            <button 
-                                type="submit" 
-                                disabled={isAnalyzing || !symptomsInput.trim()}
-                                className={`p-3 rounded-xl transition-all shadow-md flex items-center justify-center ${
-                                    symptomsInput.trim() && !isAnalyzing
-                                        ? 'bg-[#1C75BC] hover:bg-[#155d96] text-white cursor-pointer' 
-                                        : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
-                                }`}
-                            >
-                                <Send className="w-4 h-4" />
-                            </button>
-                        </form>
-                    )}
-                </div>
-            </div>
+        if (userMsg === 'RESYNTHESIZE_DOSSIER') {
+            await triggerSynthesis(additionalSymptoms || "Re-síntesis de expediente clínico solicitada.", false);
+            return;
+        }
 
-            {/* ==========================================================================
-                PANEL DERECHO: REVIEW MODE DEL ESPECIALISTA (50%)
-            ========================================================================== */}
-            <div className="w-1/2 flex flex-col bg-[#FAFAFA] h-full">
-                
-                {/* Cabecera del Dashboard Médico */}
-                <div className="p-5 border-b border-slate-200 bg-white flex items-center justify-between select-none">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 border border-indigo-100">
-                            <BrainCircuit className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <h3 className="font-extrabold text-[13.5px] text-slate-800 uppercase tracking-wider">CORTEX Review Mode</h3>
-                            <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
-                                Motor CORTEX v2.0 Activo
-                            </p>
-                        </div>
-                    </div>
-                    {dossierState === 'review' && (
-                        <div className="flex gap-2">
-                            <button 
-                                onClick={() => triggerSynthesis(additionalSymptoms || 'Re-síntesis solicitada por especialista')}
-                                disabled={isAnalyzing}
-                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-                                title="Ejecutar síntesis diagnóstica en tiempo real con CORTEX v2.0"
-                            >
-                                <BrainCircuit className="w-3.5 h-3.5 text-indigo-600" />
-                                Re-Sintetizar CORTEX v2.0
-                            </button>
-                            <button 
-                                onClick={handleRestoreSuggestions}
-                                disabled={isAnalyzing}
-                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                            >
-                                Restaurar IA
-                            </button>
-                            <button 
-                                onClick={handleRejectSuggestions}
-                                className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors cursor-pointer"
-                            >
-                                Rechazar Sugerido
-                            </button>
-                        </div>
-                    )}
-                </div>
+        // Texto libre ingresado por el usuario en la barra del chat
+        if (source === 'text') {
+            if (setMessages) {
+                setMessages(prev => [
+                    ...prev.map(m => m.options ? { ...m, options: undefined } : m),
+                    { role: 'user', content: userMsg }
+                ]);
+            }
+            await triggerSynthesis(userMsg, false);
+        }
+    };
 
-                {/* Área de Visualización y Bento Grid */}
-                <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
-                    
-                    {/* Caso 1: Aún no se ha realizado el Handoff del paciente (Vista Previa Telemétrica de Escáneres) */}
-                    {dossierState === 'idle' && (
-                        <div className="space-y-6 animate-in fade-in duration-300 select-none">
-                            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h4 className="font-extrabold text-[12.5px] text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                                        <Activity className="w-4.5 h-4.5 text-[#1C75BC]" />
-                                        Resumen Telemétrico y Bio-Escaneos Colectados
-                                    </h4>
-                                    <span className="text-[10px] font-bold px-2.5 py-1 bg-blue-50 text-[#1C75BC] border border-blue-100 rounded-full uppercase tracking-wider">
-                                        Fase 1 a 18 Sincronizadas
-                                    </span>
-                                </div>
+    useEffect(() => {
+        if (registerInputHandler) {
+            registerInputHandler(() => handleChatInput);
+        }
+    }, [registerInputHandler, patientData, additionalSymptoms]);
 
-                                <div className="grid grid-cols-2 gap-4 text-xs mb-5">
-                                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-                                        <span className="text-[9.5px] font-bold text-slate-400 uppercase block mb-1">IMC / Composición</span>
-                                        <span className="font-bold text-slate-800 text-sm block">
-                                            {displayImc ? `${displayImc} (${displayImcClass})` : 'No registrado'}
-                                        </span>
-                                        <span className="text-[10.5px] text-slate-500 mt-1 block">
-                                            Peso: {displayWeight ? `${displayWeight} kg` : '--'} | Talla: {displayHeight ? `${displayHeight} cm` : '--'}
-                                        </span>
-                                    </div>
-
-                                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-                                        <span className="text-[9.5px] font-bold text-slate-400 uppercase block mb-1">Presión / SpO2 / FC</span>
-                                        <span className="font-bold text-slate-800 text-sm block">
-                                            {displayBP || '--/--'} mmHg
-                                        </span>
-                                        <span className="text-[10.5px] text-slate-500 mt-1 block">
-                                            SpO2: {displaySpo2 || '95'}% | FC: {displayFC || (isLactante ? '90' : '72')} LPM
-                                        </span>
-                                    </div>
-
-                                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 col-span-2">
-                                        <span className="text-[9.5px] font-bold text-slate-400 uppercase block mb-1">Bioimpedancia Electret & Protocolo Biológico</span>
-                                        <span className="font-semibold text-slate-700 text-xs block">
-                                            {patientData?.electret_scans ? '✅ Escáner Electret Registrado y Mapeado' : '✅ Telemetría clínica indexada bajo la NOM-004-SSA3-2012'}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="p-3.5 bg-blue-50/60 border border-blue-200/80 rounded-xl flex items-center gap-2.5 text-[#1C75BC] text-xs font-semibold">
-                                    <Clock className="w-4 h-4 shrink-0 animate-pulse" />
-                                    <span>En espera de confirmación en el Chat Clínico de Tilo (panel izquierdo) para iniciar la síntesis diagnóstica...</span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Caso 2: Skeleton Loader mientras CORTEX sintetiza */}
-                    {isAnalyzing && (
-                        <div className="space-y-6 animate-pulse select-none">
-                            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-[#1C75BC]">
-                                        <BrainCircuit className="w-6 h-6 animate-spin" />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-extrabold text-xs uppercase tracking-wider text-slate-800">
-                                            Sintetizando Expediente Clínico Multimodal...
-                                        </h4>
-                                        <span className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">
-                                            Ejecutando Fusión de Bio-Escaneos & Blindaje COFEPRIS
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="h-4 bg-slate-100 rounded-lg w-3/4"></div>
-                                <div className="h-4 bg-slate-100 rounded-lg w-1/2"></div>
-                                <div className="h-20 bg-slate-50 rounded-xl border border-slate-100"></div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Caso 3: Dossier Synthesizing o Guardando */}
-                    {dossierState === 'saving' && (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-8 select-none">
-                            <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#1C75BC] shadow-sm mb-4">
-                                <BrainCircuit className="w-8 h-8 animate-spin" />
-                            </div>
-                            <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Sellando Expediente Clínico</h4>
-                            <p className="text-slate-500 text-xs mt-2 leading-relaxed">
-                                Guardando diagnósticos, plan de intervención y metadatos de deltas RLHF en SQLite...
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Caso 4: CORTEX en Completo */}
-                    {dossierState === 'complete' && (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-8 select-none">
-                            <div className="w-16 h-16 rounded-2xl bg-green-50 border border-green-100 flex items-center justify-center text-green-600 shadow-sm mb-4">
-                                <CheckCircle2 className="w-8 h-8 animate-bounce" />
-                            </div>
-                            <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider text-green-700">Expediente Sellado</h4>
-                            <p className="text-slate-500 text-xs mt-2 leading-relaxed">
-                                Sincronización con base de datos exitosa. Transicionando al Portapapeles Clínico...
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Caso 5: Modo de Revisión Bento Activo */}
-                    {dossierState === 'review' && !isAnalyzing && (
-                        <div className="space-y-6 animate-in fade-in duration-300">
-                            
-                            {/* CONMUTADOR DE VISTAS (BENTO GRID VS EDICIÓN FINA) */}
-                            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 select-none">
-                                <button 
-                                    onClick={() => setViewTab('bento')}
-                                    className={`flex-1 py-2 px-3 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                                        viewTab === 'bento'
-                                            ? 'bg-white text-[#1C75BC] shadow-xs border border-slate-200/60'
-                                            : 'text-slate-500 hover:text-slate-800'
-                                    }`}
-                                >
-                                    <LayoutGrid className="w-3.5 h-3.5" />
-                                    Vista Estructurada (Bento Grid)
-                                </button>
-                                <button 
-                                    onClick={() => setViewTab('edit')}
-                                    className={`flex-1 py-2 px-3 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                                        viewTab === 'edit'
-                                            ? 'bg-white text-[#1C75BC] shadow-xs border border-slate-200/60'
-                                            : 'text-slate-500 hover:text-slate-800'
-                                    }`}
-                                >
-                                    <FileText className="w-3.5 h-3.5" />
-                                    Modo Edición Fina (CIE-10 / Dosificación)
-                                </button>
-                            </div>
-
-                            {/* BANNERS DE SEGURIDAD CRÍTICOS (WCAG 2.2 / Doble Codificación) */}
-                            {criticalAlerts.length > 0 && (
-                                <div className="bg-red-50 text-red-700 border border-red-200 rounded-2xl p-5 flex flex-col gap-3.5 shadow-sm">
-                                    <div className="flex items-center gap-2 select-none">
-                                        <AlertTriangle className="w-5 h-5 text-red-600" />
-                                        <h4 className="font-black text-[12px] uppercase tracking-wider">Alertas de Seguridad Críticas</h4>
-                                    </div>
-                                    <ul className="space-y-2 text-xs font-semibold pl-1">
-                                        {criticalAlerts.map((alert, idx) => (
-                                            <li key={idx} className="flex items-start gap-2">
-                                                <span className="text-red-500 mt-0.5">•</span>
-                                                <span>{alert}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-
-                            {/* CONTENIDO SEGÚN LA PESTAÑA SELECCIONADA */}
-                            {viewTab === 'bento' ? (
-                                <DiagnosticoRenderizado cortexSynthesis={originalDossier || patientData?.clinical_dossier} />
-                            ) : (
-                                /* MODO EDICIÓN FINA CON TEXTAREAS Y BOTONES DE EDICIÓN */
-                                <div className="grid grid-cols-1 gap-6">
-                                    
-                                    {/* 🩺 TARJETA BENTO: DIAGNÓSTICO PRELIMINAR */}
-                                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                                        <div className="flex justify-between items-center mb-4 select-none">
-                                            <div className="flex items-center gap-2">
-                                                <h4 className="font-extrabold text-[12.5px] text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                                                    <FileText className="w-4.5 h-4.5 text-[#1C75BC]" />
-                                                    Diagnósticos de Soporte Funcional (CIE-10)
-                                                </h4>
-                                                <span className="text-[9.5px] font-extrabold px-2 py-0.5 bg-blue-50 text-[#1C75BC] border border-blue-100 rounded-full uppercase tracking-wider">
-                                                    {diagnoses.length} Registrados
-                                                </span>
-                                            </div>
-                                            <button 
-                                                onClick={handleAddDiagnosis}
-                                                className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                            >
-                                                <Plus className="w-3.5 h-3.5" /> Añadir
-                                            </button>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {diagnoses.map((diag, index) => (
-                                                <div key={index} className="flex gap-2 items-start">
-                                                    <textarea 
-                                                        value={diag}
-                                                        onChange={(e) => handleUpdateDiagnosis(index, e.target.value)}
-                                                        rows={2}
-                                                        className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs focus:outline-none focus:border-[#1C75BC] focus:bg-white transition-all font-sans font-medium resize-y leading-relaxed"
-                                                        placeholder="Ingrese diagnóstico o soporte funcional..."
-                                                    />
-                                                    <button 
-                                                        onClick={() => handleRemoveDiagnosis(index)}
-                                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer mt-1"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* 💊 TARJETA BENTO: INTERVENCIÓN Y SUPLEMENTACIÓN */}
-                                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                                        <div className="flex justify-between items-center mb-4 select-none">
-                                            <div className="flex items-center gap-2">
-                                                <h4 className="font-extrabold text-[12.5px] text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                                                    <Sliders className="w-4.5 h-4.5 text-[#1C75BC]" />
-                                                    Intervenciones y Dosificación
-                                                </h4>
-                                                <span className="text-[9.5px] font-extrabold px-2 py-0.5 bg-blue-50 text-[#1C75BC] border border-blue-100 rounded-full uppercase tracking-wider">
-                                                    {management.length} Prescripciones
-                                                </span>
-                                            </div>
-                                            <button 
-                                                onClick={handleAddManagement}
-                                                className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                            >
-                                                <Plus className="w-3.5 h-3.5" /> Añadir
-                                            </button>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {management.map((mng, index) => (
-                                                <div key={index} className="flex gap-2 items-start">
-                                                    <textarea 
-                                                        value={mng}
-                                                        onChange={(e) => handleUpdateManagement(index, e.target.value)}
-                                                        rows={2}
-                                                        className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs focus:outline-none focus:border-[#1C75BC] focus:bg-white transition-all font-sans font-medium resize-y leading-relaxed"
-                                                        placeholder="Ingrese indicación de manejo, dosificación, suplementación..."
-                                                    />
-                                                    <button 
-                                                        onClick={() => handleRemoveManagement(index)}
-                                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer mt-1"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* 📌 TARJETA BENTO: RESUMEN ANTECEDENTES Y CRUCES ABCD */}
-                            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm select-none">
-                                <h4 className="font-extrabold text-[12px] text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
-                                    <Activity className="w-4 h-4 text-[#1C75BC]" />
-                                    Metadatos de Referencia Telemétrica (ABCD)
-                                </h4>
-                                <div className="grid grid-cols-2 gap-4 text-xs">
-                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                        <span className="text-[9.5px] font-bold text-slate-400 uppercase block mb-1">IMC / Composición</span>
-                                        <span className="font-bold text-slate-800 text-xs block">
-                                            {displayImc ? `${displayImc} (${displayImcClass})` : 'Registrado en expediente'}
-                                        </span>
-                                        <span className="text-[10px] text-slate-500 mt-0.5 block">
-                                            {displayWeight ? `Peso: ${displayWeight} kg` : ''} {displayHeight ? `| Talla: ${displayHeight} cm` : ''}
-                                        </span>
-                                    </div>
-
-                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                        <span className="text-[9.5px] font-bold text-slate-400 uppercase block mb-1">Presión / SpO2 / FC / Glucosa</span>
-                                        <span className="font-bold text-slate-800 text-xs block">
-                                            {displayBP ? `${displayBP} mmHg` : 'Signos estables'}
-                                        </span>
-                                        <span className="text-[10px] text-slate-500 mt-0.5 block">
-                                            SpO2: {displaySpo2 || '95'}% | FC: {displayFC || (isLactante ? '90' : '72')} LPM {displayGluc ? `| Gluc: ${displayGluc} mg/dL` : ''}
-                                        </span>
-                                    </div>
-
-                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 col-span-2">
-                                        <span className="text-[9.5px] font-bold text-slate-400 uppercase block mb-1">Fármacos & Alergias Declaradas</span>
-                                        <span className="font-semibold text-slate-700 text-xs truncate block">
-                                            {medsList.length > 0 ? `💊 Medicamentos: ${medsList.join(', ')}` : 'Sin medicamentos activos'}
-                                        </span>
-                                        {(foodAllergiesList.length > 0 || drugAllergiesList.length > 0) && (
-                                            <span className="text-[10px] text-red-600 font-bold mt-1 block">
-                                                ⚠️ Alergias: {[...foodAllergiesList, ...drugAllergiesList].join(', ')}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
-                    )}
-                </div>
-
-                {/* Sello Final y Acciones */}
-                {dossierState === 'review' && !isAnalyzing && (
-                    <div className="p-5 border-t border-slate-200 bg-white select-none flex flex-col gap-2">
-                        {errorMessage && (
-                            <span className="text-[11px] font-bold text-red-600 block mb-2">{errorMessage}</span>
-                        )}
-                        <button 
-                            onClick={handleApproveDossier}
-                            className="w-full py-4 bg-[#1C75BC] hover:bg-[#155d96] text-white font-extrabold uppercase text-[12.5px] tracking-wider rounded-xl transition-all shadow-lg shadow-blue-600/10 flex items-center justify-center gap-2 cursor-pointer"
-                        >
-                            Confirmar y Sellar Expediente ➔
-                        </button>
-                    </div>
-                )}
-
-            </div>
-        </div>
-    );
+    return null;
 }
