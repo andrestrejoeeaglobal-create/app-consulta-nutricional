@@ -19,50 +19,7 @@ export const TabDiagnosis = ({
     planViewMode: propPlanViewMode,
     setPlanViewMode: propSetPlanViewMode
 }) => {
-    // Resolutores de Metadatos de Referencia (ABCD)
-    // 1. IMC / Composición
-    const displayWeight = patientData?.vitals?.weight || patientData?.peso;
-    const displayHeight = patientData?.vitals?.height || patientData?.talla;
-    let calculatedImc = null;
-    if (displayWeight && displayHeight) {
-        const hMetros = parseFloat(displayHeight) > 10 ? parseFloat(displayHeight) / 100 : parseFloat(displayHeight);
-        calculatedImc = (parseFloat(displayWeight) / (hMetros * hMetros)).toFixed(1);
-    }
-    const displayImc = patientData?.vitals?.bmi || patientData?.imc || calculatedImc;
-    const displayImcClass = patientData?.vitals?.bmi_class || patientData?.imcEstado || (displayImc ? (displayImc < 18.5 ? 'Bajo Peso' : displayImc < 25 ? 'Normal' : displayImc < 30 ? 'Sobrepeso' : 'Obesidad') : 'Estable');
-
-    // 2. ICC
-    const displayWaist = patientData?.vitals?.waist || patientData?.cintura;
-    const displayHip = patientData?.vitals?.hip || patientData?.cadera;
-    let displayIcc = patientData?.vitals?.whr || patientData?.icc;
-    if (!displayIcc && displayWaist && displayHip) {
-        displayIcc = (parseFloat(displayWaist) / parseFloat(displayHip)).toFixed(2);
-    }
-    const displayIccRiesgo = patientData?.vitals?.whr_risk || patientData?.iccRiesgo || 'Sin Riesgo';
-
-    // 3. Presión / Glucosa
-    let displayBP = null;
-    if (patientData?.vitals?.blood_pressure) {
-        if (typeof patientData.vitals.blood_pressure === 'object') {
-            const sys = patientData.vitals.blood_pressure.systolic;
-            const dia = patientData.vitals.blood_pressure.diastolic;
-            if (sys && dia) displayBP = `${sys}/${dia}`;
-        } else {
-            displayBP = patientData.vitals.blood_pressure;
-        }
-    }
-    if (!displayBP) displayBP = patientData?.signosVitales?.ta;
-
-    let displayGluc = patientData?.vitals?.glucose || patientData?.signosVitales?.glucosa;
-    if (displayGluc) {
-        displayGluc = displayGluc.toString().replace(/\s*mg\/dL/gi, '');
-    }
-
-    // 4. SpO2 / FC
-    const displaySpo2 = patientData?.vitals?.spo2 || patientData?.signosVitales?.spo2;
-    const displayFc = patientData?.vitals?.hr || patientData?.vitals?.heart_rate || patientData?.signosVitales?.fc;
-
-    // 5. Síntesis Fisiopatológica Multimodal CORTEX (Lectura Defensiva)
+    // Síntesis Fisiopatológica Multimodal CORTEX (Lectura Defensiva)
     const correlacionMultimodal = React.useMemo(() => {
         const rawCorr = patientData?.scan_data?.correlacion_multimodal || 
                         patientData?.scan_data?.ocular_metrics?.correlacion_multimodal || 
