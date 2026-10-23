@@ -398,8 +398,9 @@ export default function Fase19_DiagnosticoIntegral({
         ? patientData.history.allergies.drug.map(a => typeof a === 'object' ? a.agent : a).filter(Boolean)
         : [];
 
-    // Chat scroll ref
+    // Chat scroll ref & Cerrojos de Inmunidad
     const chatEndRef = useRef(null);
+    const isSynthesizingRef = useRef(false);
 
     // Estados Locales
     const [symptomsInput, setSymptomsInput] = useState('');
@@ -416,24 +417,39 @@ export default function Fase19_DiagnosticoIntegral({
 
     const [errorMessage, setErrorMessage] = useState('');
 
-    // Cargar Wayfinding AI: Pregunta de seguridad inicial de Tilo
+    // Cargar Wayfinding AI: Pregunta de seguridad inicial de Tilo (Con deduplicación atómica StrictMode)
     useEffect(() => {
         const wayfindingQuestion = "Revisando su historial médico y bio-escaneos... ¿Hay algún síntoma, dolor o molestia reciente que no hayamos registrado hasta este momento?";
-        const hasWayfinding = messages.some(m => m.content.includes(wayfindingQuestion));
-        
-        if (!hasWayfinding && setMessages) {
-            setMessages(prev => [
-                ...prev,
-                {
-                    role: 'assistant',
-                    content: wayfindingQuestion,
-                    avatar: tiloImg,
-                    options: [
-                        { label: "✅ Sin síntomas adicionales (Generar Diagnóstico)", value: "NO_ADDITIONAL_SYMPTOMS" },
-                        { label: "✏️ Registrar síntoma o molestia", value: "ADD_SYMPTOM" }
-                    ]
+
+        if (setMessages) {
+            setMessages(prev => {
+                let seenWayfinding = false;
+                const deduplicated = prev.filter(m => {
+                    if (typeof m?.content === 'string' && m.content.includes(wayfindingQuestion)) {
+                        if (seenWayfinding) return false;
+                        seenWayfinding = true;
+                        return true;
+                    }
+                    return true;
+                });
+
+                if (seenWayfinding) {
+                    return deduplicated.length !== prev.length ? deduplicated : prev;
                 }
-            ]);
+
+                return [
+                    ...deduplicated,
+                    {
+                        role: 'assistant',
+                        content: wayfindingQuestion,
+                        avatar: tiloImg,
+                        options: [
+                            { label: "✅ Sin síntomas adicionales (Generar Diagnóstico)", value: "NO_ADDITIONAL_SYMPTOMS" },
+                            { label: "✏️ Registrar síntoma o molestia", value: "ADD_SYMPTOM" }
+                        ]
+                    }
+                ];
+            });
         }
 
         // Si ya hay expediente aprobado en patientData, restaurar estado
@@ -444,7 +460,7 @@ export default function Fase19_DiagnosticoIntegral({
             setAdditionalSymptoms(dossier.additional_symptoms_reported || '');
             setDossierState('review');
         }
-    }, [messages, setMessages, patientData]);
+    }, [setMessages, patientData]);
 
     // Auto-scroll al final del chat al recibir mensajes
     useEffect(() => {
@@ -453,8 +469,11 @@ export default function Fase19_DiagnosticoIntegral({
         }
     }, [messages, isAnalyzing]);
 
-    // --- ACCIÓN: Detonar Síntesis CORTEX ---
+    // --- ACCIÓN: Detonar Síntesis CORTEX (Con Regla de Inmunidad contra doble clic) ---
     const triggerSynthesis = async (patientText) => {
+        if (isSynthesizingRef.current || isAnalyzing) return;
+        isSynthesizingRef.current = true;
+
         setAdditionalSymptoms(patientText);
 
         if (setMessages) {
@@ -521,8 +540,12 @@ export default function Fase19_DiagnosticoIntegral({
                             ...prev,
                             {
                                 role: 'assistant',
-                                content: `🧠 **Motor CORTEX de Síntesis Activo.**\n\nHe compilado y estructurado el borrador de su expediente clínico. Para garantizar el rigor y la seguridad de su plan, he transferido el control total al Bio-Arquitecto en el panel derecho para la validación final del diagnóstico y plan de dosificación.`,
-                                avatar: tiloImg
+                                content: `🧠 **Motor CORTEX v2.4 de Síntesis Activo.**\n\nHe compilado y estructurado el expediente clínico en las **7 Micro-Cápsulas de la Matriz IFM** y el **Árbol Bioenergético** en el Dashboard derecho.\n\nUna vez que valide los hallazgos expuestos en el panel derecho, confirme a continuación para sellar el expediente y avanzar a la prescripción nutracéutica:`,
+                                avatar: tiloImg,
+                                options: [
+                                    { label: "✅ Confirmar y Sellar Expediente ➔", value: "APPROVE_AND_SEAL_DOSSIER" },
+                                    { label: "🔄 Re-Sintetizar Expediente", value: "RESYNTHESIZE_DOSSIER" }
+                                ]
                             }
                         ]);
                     }
@@ -533,9 +556,10 @@ export default function Fase19_DiagnosticoIntegral({
                 console.error("🔥 Error al recuperar síntesis CORTEX:", err);
                 setErrorMessage("Error de comunicación con el servidor clínico.");
             } finally {
+                isSynthesizingRef.current = false;
                 setIsAnalyzing(false);
             }
-        }, 1200);
+        }, 600);
     };
 
     // --- ACCIÓN: Enviar respuesta de síntomas del paciente ---
@@ -714,12 +738,16 @@ export default function Fase19_DiagnosticoIntegral({
                                                         key={oIdx}
                                                         onClick={() => {
                                                             if (opt.value === 'NO_ADDITIONAL_SYMPTOMS') {
-                                                                triggerSynthesis("Sin síntomas adicionales. Proceder con el diagnóstico integral CORTEX v2.0.");
+                                                                triggerSynthesis("Sin síntomas adicionales. Proceder con el diagnóstico integral CORTEX v2.4.");
+                                                            } else if (opt.value === 'APPROVE_AND_SEAL_DOSSIER') {
+                                                                handleApproveDossier();
+                                                            } else if (opt.value === 'RESYNTHESIZE_DOSSIER') {
+                                                                triggerSynthesis(additionalSymptoms || "Re-síntesis de expediente clínico solicitada.");
                                                             } else {
                                                                 setSymptomsInput("Registrando molestia adicional: ");
                                                             }
                                                         }}
-                                                        disabled={isAnalyzing}
+                                                        disabled={isAnalyzing || dossierState === 'saving'}
                                                         className="px-3.5 py-2 bg-white hover:bg-blue-50 text-[#1C75BC] border border-blue-200 hover:border-[#1C75BC] rounded-xl text-[11px] font-extrabold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                                     >
                                                         {opt.label}
@@ -903,14 +931,10 @@ export default function Fase19_DiagnosticoIntegral({
                                     </div>
                                 </div>
 
-                                <button 
-                                    onClick={() => triggerSynthesis("Sin síntomas adicionales")}
-                                    disabled={isAnalyzing}
-                                    className="w-full py-4 bg-[#1C75BC] hover:bg-[#155d96] text-white font-extrabold uppercase text-[12px] tracking-wider rounded-xl transition-all shadow-lg shadow-blue-600/10 flex items-center justify-center gap-2 cursor-pointer"
-                                >
-                                    <BrainCircuit className="w-5 h-5 animate-pulse" />
-                                    Generar Síntesis CORTEX y Evaluar Diagnósticos (CIE-10) ➔
-                                </button>
+                                <div className="p-3.5 bg-blue-50/60 border border-blue-200/80 rounded-xl flex items-center gap-2.5 text-[#1C75BC] text-xs font-semibold">
+                                    <Clock className="w-4 h-4 shrink-0 animate-pulse" />
+                                    <span>En espera de confirmación en el Chat Clínico de Tilo (panel izquierdo) para iniciar la síntesis diagnóstica...</span>
+                                </div>
                             </div>
                         </div>
                     )}
