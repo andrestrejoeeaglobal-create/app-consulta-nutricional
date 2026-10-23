@@ -1,23 +1,154 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import tiloImg from '../../assets/tilo.png';
 
+/**
+ * Calcula el Peso Ideal (Fórmula de Devine Bidireccional + Referencia Lemmens)
+ * y el Peso Ajustado para pacientes con obesidad (IMC >= 35).
+ */
+function calculatePrecisionWeights(weightKg, heightCm, gender) {
+    const validWeight = Number(weightKg) > 0 ? Number(weightKg) : 70;
+    const validHeight = Number(heightCm) > 0 ? Number(heightCm) : 165;
+    const baseHeightCm = 152.4; // Base de 5 pies (60 pulgadas)
+    const gStr = String(gender || '').toLowerCase();
+    const isMale = gStr.startsWith('masc') || gStr === 'hombre' || gStr === 'm';
+    const baseWeightKg = isMale ? 50.0 : 45.5;
+
+    let idealWeight = baseWeightKg;
+    if (validHeight >= baseHeightCm) {
+        const inchesOverBase = (validHeight - baseHeightCm) / 2.54;
+        idealWeight = baseWeightKg + (2.3 * inchesOverBase);
+    } else {
+        // Corrección bidireccional para estaturas bajas (< 152.4 cm):
+        // Resta 1.5 kg por cada pulgada por debajo de los 5 pies
+        const inchesUnderBase = (baseHeightCm - validHeight) / 2.54;
+        idealWeight = Math.max(30.0, baseWeightKg - (1.5 * inchesUnderBase));
+    }
+
+    const heightM = validHeight / 100;
+    const lemmensIdealWeight = 22.0 * (heightM * heightM);
+
+    const adjustedWeight = idealWeight > 0 && validWeight > idealWeight
+        ? idealWeight + 0.25 * (validWeight - idealWeight)
+        : validWeight;
+
+    return {
+        idealWeight: Number(idealWeight.toFixed(2)),
+        lemmensIdealWeight: Number(lemmensIdealWeight.toFixed(2)),
+        adjustedWeight: Number(adjustedWeight.toFixed(2))
+    };
+}
+
+function computeClientBioenergetics(patientData, ageYears, isLactante, isJuvenilAdolescente, isGeriatric) {
+    if (patientData?.clinical_dossier?.bioenergetics) {
+        return patientData.clinical_dossier.bioenergetics;
+    }
+
+    const rawWeight = parseFloat(patientData?.vitals?.weight || patientData?.peso || patientData?.biometria?.peso || patientData?.profile?.weight) || (isLactante ? 9.5 : 72);
+    const rawHeight = parseFloat(patientData?.vitals?.height || patientData?.talla || patientData?.biometria?.talla || patientData?.profile?.height) || (isLactante ? 74 : 168);
+    const heightCm = rawHeight < 3 ? rawHeight * 100 : rawHeight;
+    const heightM = heightCm / 100;
+    const bmi = heightM > 0 ? Number((rawWeight / (heightM * heightM)).toFixed(1)) : 24.0;
+
+    const gender = patientData?.sex || patientData?.genero || patientData?.profile?.gender || patientData?.identificacion?.genero || 'Masculino';
+    const gStr = String(gender).toLowerCase();
+    const isMale = gStr.startsWith('masc') || gStr === 'hombre' || gStr === 'm';
+
+    const weights = calculatePrecisionWeights(rawWeight, heightCm, gender);
+
+    const bodyFatRaw = parseFloat(
+        patientData?.vitals?.body_fat ||
+        patientData?.biometria?.grasa_corporal ||
+        patientData?.biometria?.porcentaje_grasa ||
+        patientData?.metrics?.body_fat ||
+        0
+    );
+    const hasBioimpedanceFat = !isNaN(bodyFatRaw) && bodyFatRaw >= 4 && bodyFatRaw <= 65;
+
+    let bmr = 1500;
+    let equationUsed = 'Mifflin-St Jeor Estándar';
+    let formulaExplanation = '';
+
+    if (isLactante || isJuvenilAdolescente || ageYears < 18) {
+        equationUsed = 'OMS / Schofield Pediátrica';
+        if (ageYears < 3) {
+            bmr = isMale ? (59.512 * rawWeight) - 30.4 : (58.317 * rawWeight) - 31.1;
+            bmr += isLactante ? 180 : 120;
+        } else if (ageYears < 10) {
+            bmr = isMale ? (22.706 * rawWeight) + 504.3 : (20.315 * rawWeight) + 485.9;
+        } else {
+            bmr = isMale ? (17.686 * rawWeight) + 658.2 : (13.384 * rawWeight) + 692.6;
+        }
+        formulaExplanation = `OMS/Schofield (${rawWeight} kg, ${ageYears} años)`;
+    } else if (hasBioimpedanceFat) {
+        equationUsed = 'Katch-McArdle (Masa Libre de Grasa)';
+        const lbm = Number((rawWeight * (1 - (bodyFatRaw / 100))).toFixed(2));
+        bmr = 370 + (21.6 * lbm);
+        formulaExplanation = `MLG ${lbm} kg (Grasa ${bodyFatRaw}%)`;
+    } else if (bmi >= 35) {
+        equationUsed = 'Mifflin-St Jeor con Peso Ajustado (Devine Bidireccional)';
+        const s = isMale ? 5 : -161;
+        bmr = (10 * weights.adjustedWeight) + (6.25 * heightCm) - (5 * ageYears) + s;
+        formulaExplanation = `IMC ${bmi} ≥ 35 → Peso Ajustado ${weights.adjustedWeight} kg (PI Devine: ${weights.idealWeight} kg)`;
+    } else {
+        equationUsed = 'Mifflin-St Jeor Estándar';
+        const s = isMale ? 5 : -161;
+        bmr = (10 * rawWeight) + (6.25 * heightCm) - (5 * ageYears) + s;
+        formulaExplanation = `Peso ${rawWeight} kg | Estatura ${heightCm} cm | Edad ${ageYears} años`;
+    }
+
+    bmr = Math.max(isLactante ? 450 : 950, Math.round(bmr));
+    const actStr = String(patientData?.activity_level || patientData?.physical_activity || patientData?.habits?.activity_level || 'LIGERO').toUpperCase();
+    let pal = 1.375;
+    if (isLactante) pal = 1.25;
+    else if (actStr.includes('SEDENTARIO') || actStr.includes('NULA')) pal = 1.2;
+    else if (actStr.includes('MODERAD') || actStr.includes('ACTIVO')) pal = 1.55;
+    else if (actStr.includes('INTENS') || actStr.includes('ATLETA')) pal = 1.725;
+
+    const tdee = Math.round(bmr * pal);
+    let targetKcal = tdee;
+    if (!isLactante && !isJuvenilAdolescente) {
+        if (bmi >= 30) targetKcal = Math.max(1250, tdee - 450);
+        else if (bmi >= 25.5) targetKcal = Math.max(1300, tdee - 300);
+        else if (bmi < 18.5) targetKcal = tdee + 300;
+    }
+
+    const macros = isLactante
+        ? { carbs: 50, protein: 15, fat: 35 }
+        : isJuvenilAdolescente
+        ? { carbs: 50, protein: 20, fat: 30 }
+        : isGeriatric
+        ? { carbs: 45, protein: 25, fat: 30 }
+        : bmi >= 27
+        ? { carbs: 35, protein: 35, fat: 30 }
+        : { carbs: 40, protein: 30, fat: 30 };
+
+    return {
+        bmr,
+        tdee,
+        targetKcal,
+        bmi,
+        weights,
+        equationUsed,
+        formulaExplanation,
+        macros
+    };
+}
+
 const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, setMessages, registerInputHandler, patientData }) => {
-    const ageCandidate = patientData?.identificacion?.edad ?? patientData?.identityLock?.patientInfo?.age ?? patientData?.edad ?? 30;
+    const ageCandidate = Number(patientData?.identificacion?.edad ?? patientData?.identityLock?.patientInfo?.age ?? patientData?.edad ?? 30);
 
     const isLactante = ageCandidate < 2 || patientData?.isLactante;
     const isJuvenilAdolescente = !isLactante && (ageCandidate < 18 || patientData?.isPediatrico);
     const isGeriatric = ageCandidate >= 65 || patientData?.isGeriatrico;
 
-    // Valores por defecto dinámicos por franja de edad:
-    const defaultTdee = isLactante ? '950' : isJuvenilAdolescente ? '1800' : isGeriatric ? '1600' : '2200';
-    const defaultTarget = isLactante ? '950' : isJuvenilAdolescente ? '1800' : isGeriatric ? '1600' : '2000';
-    const defaultMacros = isLactante 
-        ? { carbs: 50, protein: 15, fat: 35 } // Grasas 30-40%, Carbs 45-55%, Prot 10-15% (~13g)
-        : isJuvenilAdolescente 
-        ? { carbs: 50, protein: 20, fat: 30 } 
-        : isGeriatric 
-        ? { carbs: 45, protein: 25, fat: 30 } 
-        : { carbs: 40, protein: 30, fat: 30 };
+    const bio = useMemo(
+        () => computeClientBioenergetics(patientData, ageCandidate, isLactante, isJuvenilAdolescente, isGeriatric),
+        [patientData, ageCandidate, isLactante, isJuvenilAdolescente, isGeriatric]
+    );
+
+    const defaultTdee = String(bio.tdee || (isLactante ? '950' : isJuvenilAdolescente ? '1800' : isGeriatric ? '1600' : '2200'));
+    const defaultTarget = String(bio.targetKcal || (isLactante ? '950' : isJuvenilAdolescente ? '1800' : isGeriatric ? '1600' : '2000'));
+    const defaultMacros = bio.macros || { carbs: 40, protein: 30, fat: 30 };
 
     const [internalStep, setInternalStep] = useState('TDEE'); // TDEE, TARGET, CARBS, PROTEIN, FAT, CONSTRAINTS, FINAL
     const [tdee, setTdee] = useState(defaultTdee);
@@ -31,28 +162,29 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
         if (internalStep === 'TDEE') {
             const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("Protocolo Dietético"));
             if (!alreadyGreeted) {
-                let promptText = "";
-                if (isLactante) {
-                    promptText = "⚖️ **Protocolo Dietético Pediátrico (Primeros 1,000 Días)**\n\nDefiniremos los requerimientos energéticos y distribución de macronutrientes adaptados al desarrollo infantil.\n\nPara un bebé de 1 año (12 meses), el requerimiento calórico promedio es de **900 a 1,000 kcal/día** (80-90 kcal/kg/día).\n• **Aporte Lácteo:** 400-500 ml/día (14-16 oz) = ~300-350 kcal.\n• **Sólidos variados (BLW/papillas):** 600-700 kcal.\n\n¿Cuál es el TDEE Calculado en kcal? (Ej: 950)";
-                } else if (isJuvenilAdolescente) {
-                    promptText = "⚖️ **Protocolo Dietético Juvenil**\n\nDefiniremos los requerimientos energéticos para crecimiento óseo y desarrollo escolar/deportivo.\n\n¿Cuál es el TDEE Calculado en kcal? (Ej: 1800)";
-                } else if (isGeriatric) {
-                    promptText = "⚖️ **Protocolo Dietético Geriátrico**\n\nDefiniremos la energía y distribución proteica fraccionada para protección anti-sarcopenia y preservación renal (TFG).\n\n¿Cuál es el TDEE Calculado en kcal? (Ej: 1600)";
-                } else {
-                    promptText = "⚖️ **Protocolo Dietético Metabólico**\n\nVamos a definir los requerimientos energéticos y distribución de macronutrientes.\n\n¿Cuál es el TDEE Calculado (Gasto Energético Total) en kcal? (Ej: 2200)";
-                }
+                const promptText =
+                    `⚖️ **Protocolo Dietético y Árbol Bioenergético (${bio.equationUsed})**\n\n` +
+                    `• **Fórmula Aplicada:** ${bio.equationUsed}\n` +
+                    `• **Detalle Antropométrico:** ${bio.formulaExplanation}\n` +
+                    `• **Tasa Metabólica Basal (TMB):** **${bio.bmr} kcal/día**\n` +
+                    `• **Gasto Energético Total Calculado (TDEE):** **${defaultTdee} kcal/día**\n` +
+                    `• **Meta Calórica Sugerida:** **${defaultTarget} kcal/día**\n\n` +
+                    `¿Confirma el **TDEE Calculado de ${defaultTdee} kcal** o desea ingresar otro valor en kcal?`;
 
                 setMessages(prev => [
                     ...prev,
                     {
                         role: 'assistant',
                         content: promptText,
-                        avatar: tiloImg
+                        avatar: tiloImg,
+                        options: [
+                            { label: `✅ Confirmar TDEE (${defaultTdee} kcal)`, value: defaultTdee }
+                        ]
                     }
                 ]);
             }
         }
-    }, [internalStep, isLactante, isJuvenilAdolescente, isGeriatric]);
+    }, [internalStep, bio, defaultTdee, defaultTarget]);
 
     const handleSend = (userMsg) => {
         const addBotMsg = (msg, options = null) => {
@@ -71,13 +203,15 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
             }
             setTdee(val.toString());
             setInternalStep('TARGET');
-            
-            const targetPrompt = isLactante 
-                ? `TDEE Pediátrico guardado: ${val} kcal.\n\nEstructura del día recomendada: 3 comidas principales + 2 colaciones saludables + 400-500 ml de leche (materna/entera/fórmula).\n\n¿Cuál es la **Prescripción Final** en kcal? (Ej: ${val})`
-                : `TDEE guardado: ${val} kcal.\n\n¿Cuál es la **Prescripción Final** (Déficit/Superávit) en kcal? (Ej: ${defaultTarget})`;
-            
-            addBotMsg(targetPrompt);
-        } 
+
+            const targetPrompt = isLactante
+                ? `TDEE Pediátrico guardado: **${val} kcal**.\n\n¿Cuál es la **Prescripción Final** en kcal? (Sugerida: **${defaultTarget} kcal**)`
+                : `TDEE guardado: **${val} kcal**.\n\n¿Cuál es la **Prescripción Calórica Final** en kcal? (Sugerida por CORTEX: **${defaultTarget} kcal**)`;
+
+            addBotMsg(targetPrompt, [
+                { label: `✅ Confirmar Meta (${defaultTarget} kcal)`, value: defaultTarget }
+            ]);
+        }
         else if (internalStep === 'TARGET') {
             if (isNaN(val) || val < minVal) {
                 addBotMsg(`Por favor, ingresa un valor numérico válido (Ej: ${defaultTarget}).`);
@@ -85,12 +219,15 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
             }
             setTarget(val.toString());
             setInternalStep('CARBS');
-            
-            const carbsPrompt = isLactante
-                ? `Prescripción Pediátrica guardada: ${val} kcal.\n\nDistribución de macronutrientes recomendada para lactantes: Grasas 30-40%, Carbs 45-55%, Prot 10-15% (~13g/día).\n\n¿Qué **porcentaje de Carbohidratos Complejos**? (Ej: ${defaultMacros.carbs})`
-                : `Prescripción guardada: ${val} kcal.\n\nAhora la distribución de macros. ¿Qué **porcentaje de Carbohidratos**? (Ej: ${defaultMacros.carbs})`;
 
-            addBotMsg(carbsPrompt);
+            const carbsPrompt =
+                `Prescripción guardada: **${val} kcal**.\n\n` +
+                `Distribución sugerida por CORTEX: **${defaultMacros.carbs}% Carbohidratos / ${defaultMacros.protein}% Proteínas / ${defaultMacros.fat}% Lípidos**.\n\n` +
+                `¿Qué **porcentaje de Carbohidratos** desea asignar?`;
+
+            addBotMsg(carbsPrompt, [
+                { label: `✅ ${defaultMacros.carbs}% Carbohidratos`, value: String(defaultMacros.carbs) }
+            ]);
         }
         else if (internalStep === 'CARBS') {
             if (isNaN(val) || val < 0 || val > 100) {
@@ -99,12 +236,11 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
             }
             setMacros(prev => ({ ...prev, carbs: val }));
             setInternalStep('PROTEIN');
-            
-            const proteinPrompt = isLactante
-                ? `Carbohidratos: ${val}%\n\n¿Qué **porcentaje de Proteínas** (~13g/día para crecimiento)? (Ej: ${defaultMacros.protein})`
-                : `Carbohidratos: ${val}%\n\n¿Qué **porcentaje de Proteínas**? (Ej: ${defaultMacros.protein})`;
 
-            addBotMsg(proteinPrompt);
+            addBotMsg(
+                `Carbohidratos: **${val}%**\n\n¿Qué **porcentaje de Proteínas** desea asignar? (Sugerido: **${defaultMacros.protein}%**)`,
+                [{ label: `✅ ${defaultMacros.protein}% Proteínas`, value: String(defaultMacros.protein) }]
+            );
         }
         else if (internalStep === 'PROTEIN') {
             if (isNaN(val) || val < 0 || val > 100) {
@@ -114,22 +250,22 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
             setMacros(prev => ({ ...prev, protein: val }));
             setInternalStep('FAT');
 
-            const fatPrompt = isLactante
-                ? `Proteínas: ${val}%\n\n¿Qué **porcentaje de Grasas Saludables** (esenciales para mielinización y desarrollo cerebral 30-40%)? (Ej: ${defaultMacros.fat})`
-                : `Proteínas: ${val}%\n\n¿Qué **porcentaje de Lípidos**? (Ej: ${defaultMacros.fat})`;
-
-            addBotMsg(fatPrompt);
+            const remainingFat = Math.max(0, 100 - (macros.carbs + val));
+            addBotMsg(
+                `Proteínas: **${val}%**\n\n¿Qué **porcentaje de Lípidos** desea asignar? (Restante para 100%: **${remainingFat}%**)`,
+                [{ label: `✅ ${remainingFat}% Lípidos`, value: String(remainingFat) }]
+            );
         }
         else if (internalStep === 'FAT') {
             if (isNaN(val) || val < 0 || val > 100) {
                 addBotMsg("Porcentaje inválido. Ingresa un número del 0 al 100.");
                 return;
             }
-            
+
             const currentCarbs = macros.carbs;
             const currentProtein = macros.protein;
             const total = currentCarbs + currentProtein + val;
-            
+
             if (total !== 100) {
                 addBotMsg(`⚠️ **Error de Distribución**\n\nLa suma de los macros es **${total}%** (Carbs: ${currentCarbs}%, Prot: ${currentProtein}%, Grasas: ${val}%). Debe sumar exactamente 100%.\n\nVamos a intentar de nuevo. ¿Qué **porcentaje de Carbohidratos**?`);
                 setInternalStep('CARBS');
@@ -148,7 +284,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
             setMacros(prev => ({ ...prev, fat: val }));
             setInternalStep('CONSTRAINTS');
             addBotMsg(
-                `✅ Distribución perfecta (100%).\n\n` + 
+                `✅ Distribución perfecta (100%).\n\n` +
                 `Finalmente, ¿desea agregar alguna restricción logística o alimentaria dura? Puede seleccionar varias si es necesario. Si no, seleccione 'Terminar y Consolidar Plan'.`,
                 getRemainingOptions(constraints)
             );
@@ -160,13 +296,16 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
             if (isDoneSignal) {
                 setInternalStep('FINAL');
                 if (registerInputHandler) registerInputHandler(null);
-                
+
                 if (setPatientData) {
                     setPatientData(prev => ({
                         ...prev,
                         nutrition: {
                             ...prev.nutrition,
                             protocol: {
+                                equationUsed: bio.equationUsed,
+                                bmr: bio.bmr,
+                                weights: bio.weights,
                                 tdee,
                                 target,
                                 macros,
@@ -175,7 +314,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
                         }
                     }));
                 }
-                
+
                 addBotMsg("📋 **Plan Consolidado**\n\nEl protocolo dietético y la consulta médica han sido cerrados exitosamente.");
                 setTimeout(() => onPhaseComplete && onPhaseComplete(), 600);
             } else {
@@ -208,7 +347,15 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
                             ...prev,
                             nutrition: {
                                 ...prev.nutrition,
-                                protocol: { tdee, target, macros, constraints: updatedConstraints }
+                                protocol: {
+                                    equationUsed: bio.equationUsed,
+                                    bmr: bio.bmr,
+                                    weights: bio.weights,
+                                    tdee,
+                                    target,
+                                    macros,
+                                    constraints: updatedConstraints
+                                }
                             }
                         }));
                     }

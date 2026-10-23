@@ -56,11 +56,16 @@ const Fase15_SuplementacionAv = ({ patientData, onPhaseComplete, setPatientData,
     };
 
     useEffect(() => {
+        const backendSupplements = patientData?.clinical_dossier?.orthomolecular_prescription?.supplements;
+        const baseList = Array.isArray(backendSupplements) && backendSupplements.length > 0
+            ? backendSupplements
+            : mockSuggestions;
+
         const conflict = hasStimulantsConflict();
         if (conflict) {
             // Reemplazar energizantes o té verde por alternativas libres de cafeína (Maca/L-Teanina pura)
-            const filtered = mockSuggestions.map(s => {
-                const sName = s.name.toLowerCase();
+            const filtered = baseList.map(s => {
+                const sName = (s.name || '').toLowerCase();
                 if (sName.includes('té verde') || sName.includes('guaraná') || sName.includes('cafeína') || sName.includes('taurina')) {
                     return {
                         ...s,
@@ -73,7 +78,7 @@ const Fase15_SuplementacionAv = ({ patientData, onPhaseComplete, setPatientData,
             });
             setSuggestions(filtered);
         } else {
-            setSuggestions(mockSuggestions);
+            setSuggestions(baseList);
         }
     }, [patientData]);
 
