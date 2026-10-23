@@ -1,14 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-    BrainCircuit, 
     Activity, 
     ShieldAlert,
-    Target,
     Zap
 } from 'lucide-react';
 import tiloImg from '../../assets/tilo.png';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+
+const IFM_NODE_CLINICAL_DESCRIPTIONS = {
+    NODO_1_ASIMILACION: 'Evalúa la integridad de la barrera epitelial intestinal, función digestiva, permeabilidad mucosa y absorción de micronutrientes esenciales.',
+    NODO_2_DEFENSA: 'Monitorea la vigilancia inmunológica, respuesta inflamatoria sistémica, hipersensibilidades alimentarias y mecanismos de reparación tisular.',
+    NODO_3_ENERGIA: 'Cuantifica la eficiencia de la fosforilación oxidativa mitocondrial, regulación glucémica, sensibilidad insulínica y defensa antioxidante celular.',
+    NODO_4_BIOTRANSFORMACION: 'Audita las rutas de detoxificación hepática Fase I y Fase II, depuración biliar, filtración glomerular renal y aclaramiento de xenobióticos.',
+    NODO_5_TRANSPORTE: 'Analiza la hemodinámica cardiovascular, microcirculación endotelial, síntesis de óxido nítrico, perfusión de oxígeno y transporte lipoproteico.',
+    NODO_6_COMUNICACION: 'Evalúa la señalización neuroendocrina del eje hipotálamo-hipófisis-adrenal (HPA), conversión tiroidea periférica y balance de neurotransmisores.',
+    NODO_7_ESTRUCTURAL: 'Examina la biotensegridad miofascial, síntesis de colágeno en matriz extracelular, densidad mineral ósea e integridad de membranas celulares.'
+};
 
 // ==========================================================================
 // PODADO DE PAYLOAD EN RED (< 12 KB): Elimina Base64 y filtra solo anomalías
@@ -111,187 +119,455 @@ function pruneTelemetryPayloadForNetwork(rawPatientData, electretTelemetry, iden
 }
 
 // ==========================================================================
-// SUBCOMPONENTE: DiagnosticoRenderizado (Bento Grid Estructurado CORTEX v2.4)
+// SUBCOMPONENTE: DiagnosticoRenderizado (Bento Cards Termodinámicas CORTEX v2.7)
+// Homologado 1:1 con el estándar visual de TabBiochemicals.jsx
 // ==========================================================================
 export function DiagnosticoRenderizado({ cortexSynthesis }) {
-    let data = null;
-    try {
-        data = typeof cortexSynthesis === 'string' ? JSON.parse(cortexSynthesis) : cortexSynthesis;
-    } catch (error) {
-        console.error("Error parseando el diagnóstico de CORTEX:", error);
-    }
+    const [selectedNodeId, setSelectedNodeId] = useState('ALL');
+
+    const data = useMemo(() => {
+        if (!cortexSynthesis) return null;
+        try {
+            return typeof cortexSynthesis === 'string' ? JSON.parse(cortexSynthesis) : cortexSynthesis;
+        } catch (error) {
+            console.error("Error parseando el diagnóstico de CORTEX:", error);
+            return null;
+        }
+    }, [cortexSynthesis]);
+
+    // Regla de Inmunidad: Memoización estricta de Nodos IFM y coordenadas termodinámicas
+    const {
+        processedNodes,
+        totalNodesCount,
+        alertNodesCount,
+        normalNodesCount,
+        globalAlertPct,
+        rutaActiva,
+        causaRaiz,
+        alertas,
+        nutricion,
+        readaptacion,
+        sistemas,
+        bioenergetics
+    } = useMemo(() => {
+        if (!data) {
+            return {
+                processedNodes: [],
+                totalNodesCount: 0,
+                alertNodesCount: 0,
+                normalNodesCount: 0,
+                globalAlertPct: 0,
+                rutaActiva: '',
+                causaRaiz: '',
+                alertas: '',
+                nutricion: '',
+                readaptacion: '',
+                sistemas: [],
+                bioenergetics: null
+            };
+        }
+
+        const rawNodes = Array.isArray(data.ifm_nodes_matrix) ? data.ifm_nodes_matrix : [];
+        const nodes = rawNodes.map((node, idx) => {
+            const safeBiomarkers = Array.isArray(node.key_biomarkers) ? node.key_biomarkers : [];
+            const isHomeostasis = node.status === 'HOMEOSTASIS' && safeBiomarkers.length === 0;
+            const anomalyCount = safeBiomarkers.length > 0 ? safeBiomarkers.length : (isHomeostasis ? 0 : 1);
+            const isHighPriority = !isHomeostasis && (node.status === 'PRIORIDAD_ALTA' || anomalyCount >= 2);
+            const needsReview = node.validation_status === 'REQUIERE_REVISIÓN';
+
+            // Cálculo termodinámico de posición en la barra tripartita (0% - 100%)
+            let positionPct = 50;
+            if (!isHomeostasis) {
+                positionPct = Math.min(93, 70 + (anomalyCount * 6.5));
+            }
+
+            const shortName = String(node.nodeName || node.nodeId || `Nodo ${idx + 1}`)
+                .replace(/^Nodo\s*\d+\s*:\s*/i, '')
+                .trim();
+
+            return {
+                ...node,
+                indexOrder: idx + 1,
+                shortName,
+                safeBiomarkers,
+                isHomeostasis,
+                anomalyCount,
+                isHighPriority,
+                needsReview,
+                positionPct,
+                clinicalDescription: IFM_NODE_CLINICAL_DESCRIPTIONS[node.nodeId] || 'Evaluación sistémica de medicina funcional e integración de biomarcadores clínicos.'
+            };
+        });
+
+        const total = nodes.length;
+        const alerts = nodes.filter(n => !n.isHomeostasis).length;
+        const normals = total - alerts;
+        const pct = total > 0 ? Math.round((alerts / total) * 100) : 0;
+
+        return {
+            processedNodes: nodes,
+            totalNodesCount: total,
+            alertNodesCount: alerts,
+            normalNodesCount: normals,
+            globalAlertPct: pct,
+            rutaActiva: data.doctrina_aplicada || "RUTA D: NEUROPSIQUIATRÍA NUTRICIONAL E INMUNIDAD",
+            causaRaiz: data.diagnostico_causa_raiz || (Array.isArray(data.preliminary_diagnosis) ? data.preliminary_diagnosis.join(". ") : ""),
+            alertas: data.alertas_bioseguridad || (Array.isArray(data.critical_alerts) ? data.critical_alerts.join(". ") : ""),
+            nutricion: data.estrategia_terapeutica?.nutricion_defensora || (Array.isArray(data.suggested_management) ? data.suggested_management[0] : ""),
+            readaptacion: data.estrategia_terapeutica?.readaptacion_fisica || (Array.isArray(data.suggested_management) ? data.suggested_management[1] : ""),
+            sistemas: data.sistemas_afectados || ["Sistema Inmune", "Metabolismo Energético", "Biotensegridad Fascial"],
+            bioenergetics: data.bioenergetics || null
+        };
+    }, [data]);
 
     if (!data) return null;
 
-    const rutaActiva = data.doctrina_aplicada || "RUTA D: NEUROPSIQUIATRÍA NUTRICIONAL E INMUNIDAD";
-    const causaRaiz = data.diagnostico_causa_raiz || (Array.isArray(data.preliminary_diagnosis) ? data.preliminary_diagnosis.join(". ") : "");
-    const alertas = data.alertas_bioseguridad || (Array.isArray(data.critical_alerts) ? data.critical_alerts.join(". ") : "");
-    const nutricion = data.estrategia_terapeutica?.nutricion_defensora || (Array.isArray(data.suggested_management) ? data.suggested_management[0] : "");
-    const readaptacion = data.estrategia_terapeutica?.readaptacion_fisica || (Array.isArray(data.suggested_management) ? data.suggested_management[1] : "");
-    const sistemas = data.sistemas_afectados || ["Sistema Inmune", "Metabolismo Energético", "Biotensegridad Fascial"];
-    const ifmNodes = Array.isArray(data.ifm_nodes_matrix) ? data.ifm_nodes_matrix : [];
-    const bioenergetics = data.bioenergetics || null;
+    const activeNodeMeta = selectedNodeId === 'ALL'
+        ? null
+        : processedNodes.find(n => n.nodeId === selectedNodeId) || null;
+
+    const visibleNodes = activeNodeMeta ? [activeNodeMeta] : processedNodes;
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-300">
-            {/* CABECERA: DOCTRINA APLICADA */}
-            <div className="bg-slate-900 text-white p-5 rounded-2xl flex items-center justify-between shadow-md border border-slate-800 select-none">
-                <div>
-                    <h2 className="text-sm font-extrabold flex items-center gap-2 uppercase tracking-wider">
-                        <Target className="w-5 h-5 text-indigo-400" />
-                        Ruta Clínica Activa
-                    </h2>
-                    <p className="text-slate-200 text-xs font-medium mt-1">{rutaActiva}</p>
-                </div>
-                <span className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest text-white border border-white/20">
-                    Doctrina CORTEX v2.4
-                </span>
-            </div>
-
-            {/* MATRIZ DE 7 NODOS IFM (ISOMORFISMO ESTRUCTURAL COMPLETO) */}
-            {ifmNodes.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <h3 className="text-slate-900 font-extrabold text-xs uppercase tracking-wider flex items-center gap-2">
-                            <BrainCircuit className="w-4 h-4 text-[#1C75BC]" />
-                            Matriz Funcional de 7 Nodos IFM (Suero Clínico Purificado)
-                        </h3>
-                        <span className="text-[10px] font-bold text-[#1C75BC] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
-                            CIE-10 Determinista Auditado
+        <div className="space-y-4 animate-in fade-in duration-300">
+            {/* 1. SELECTOR HORIZONTAL DE PÍLDORAS INTERACTIVAS (❖ NODOS IFM:) */}
+            {processedNodes.length > 0 && (
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-3 shadow-xs">
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 px-2 shrink-0 select-none">
+                            ❖ NODOS IFM:
                         </span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2.5">
-                        {ifmNodes.map((node) => {
-                            const isHomeostasis = node.status === 'HOMEOSTASIS';
-                            const isError = node.status === 'ERROR_SINTESIS';
-                            const needsReview = node.validation_status === 'REQUIERE_REVISIÓN';
-                            const safeBiomarkers = Array.isArray(node.key_biomarkers) ? node.key_biomarkers : [];
 
+                        {/* Píldora Maestra: Todos los Nodos */}
+                        <button
+                            type="button"
+                            onClick={() => setSelectedNodeId('ALL')}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer border ${
+                                selectedNodeId === 'ALL'
+                                    ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm'
+                                    : 'bg-slate-100/80 text-slate-700 border-slate-200/80 hover:bg-slate-200/70'
+                            }`}
+                        >
+                            <span>Todos los Nodos ({totalNodesCount})</span>
+                            {alertNodesCount > 0 ? (
+                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                    selectedNodeId === 'ALL'
+                                        ? 'bg-white text-[#E30613]'
+                                        : 'bg-[#E30613] text-white'
+                                }`}>
+                                    {alertNodesCount}
+                                </span>
+                            ) : (
+                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                    selectedNodeId === 'ALL'
+                                        ? 'bg-white/20 text-white'
+                                        : 'bg-[#3AAA35]/15 text-[#3AAA35]'
+                                }`}>
+                                    OK
+                                </span>
+                            )}
+                        </button>
+
+                        {/* Píldoras Individuales de los 7 Nodos IFM */}
+                        {processedNodes.map((node) => {
+                            const isActive = selectedNodeId === node.nodeId;
                             return (
-                                <div
+                                <button
                                     key={node.nodeId}
-                                    className={`p-3.5 rounded-xl border transition-all ${
-                                        isError
-                                            ? 'bg-amber-50/70 border-amber-300'
-                                            : isHomeostasis
-                                            ? 'bg-slate-50/70 border-slate-200/80'
-                                            : 'bg-blue-50/30 border-blue-200'
+                                    type="button"
+                                    onClick={() => setSelectedNodeId(node.nodeId)}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer border ${
+                                        isActive
+                                            ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm'
+                                            : 'bg-slate-100/80 text-slate-700 border-slate-200/80 hover:bg-slate-200/70'
                                     }`}
                                 >
-                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                                        <span className="font-extrabold text-xs text-slate-800">
-                                            {node.nodeName || node.nodeId}
+                                    <span className="truncate max-w-[190px]">
+                                        {node.indexOrder}. {node.shortName}
+                                    </span>
+                                    {!node.isHomeostasis ? (
+                                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                            isActive
+                                                ? 'bg-white text-[#E30613]'
+                                                : 'bg-[#E30613] text-white'
+                                        }`}>
+                                            {node.anomalyCount}
                                         </span>
-                                        <div className="flex items-center gap-1.5">
-                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
-                                                isHomeostasis
-                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                    : 'bg-[#1C75BC]/10 text-[#1C75BC] border-[#1C75BC]/30'
-                                            }`}>
-                                                CIE-10: {node.cie10}
-                                            </span>
-                                            {needsReview && (
-                                                <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                                                    ⚠️ REQUIERE REVISIÓN
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
-                                        {node.summary}
-                                    </p>
-                                    {safeBiomarkers.length > 0 && (
-                                        <div className="flex flex-wrap gap-1.5 mt-2">
-                                            {safeBiomarkers.map((bm, bIdx) => (
-                                                <span key={bIdx} className="text-[10px] font-semibold bg-white text-slate-700 border border-slate-200 px-2 py-0.5 rounded-md">
-                                                    🔬 {bm}
-                                                </span>
-                                            ))}
-                                        </div>
+                                    ) : (
+                                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                            isActive
+                                                ? 'bg-white/20 text-white'
+                                                : 'bg-[#3AAA35]/15 text-[#3AAA35]'
+                                        }`}>
+                                            OK
+                                        </span>
                                     )}
-                                    {node.therapeutic_focus && (
-                                        <p className="text-[10.5px] text-[#1C75BC] font-bold mt-2">
-                                            🎯 Enfoque: {node.therapeutic_focus}
-                                        </p>
-                                    )}
-                                </div>
+                                </button>
                             );
                         })}
                     </div>
                 </div>
             )}
 
-            {/* RESUMEN BIOENERGÉTICO MULTI-ECUACIÓN */}
-            {bioenergetics && (
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-slate-900 font-extrabold text-xs uppercase tracking-wider flex items-center gap-2">
-                            <Zap className="w-4 h-4 text-[#3AAA35]" />
-                            Árbol Bioenergético: {bioenergetics.equationUsed}
-                        </h3>
-                        <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#3AAA35] border border-emerald-200">
-                            TMB: {bioenergetics.bmr} kcal | TDEE: {bioenergetics.tdee} kcal → Meta: {bioenergetics.targetKcal} kcal
+            {/* 2. CABECERA DE TRIAGE SISTÉMICO (ESTADO CLÍNICO GLOBAL) */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="space-y-1.5 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-md bg-[#1C75BC]/10 text-[#1C75BC] text-[10px] font-extrabold uppercase tracking-wider">
+                            {activeNodeMeta ? `NODO IFM 0${activeNodeMeta.indexOrder}` : 'DOCTRINA CORTEX V2.4'}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">
+                            #IFM-{activeNodeMeta ? `700${activeNodeMeta.indexOrder}` : '7000'}
+                        </span>
+                        <span className="text-[11px] font-semibold text-slate-500">
+                            • {totalNodesCount} Nodos IFM: <strong className="text-[#3AAA35]">{normalNodesCount} Normales</strong> / <strong className="text-[#E30613]">{alertNodesCount} Con Hallazgos</strong>
+                        </span>
+                        {bioenergetics && (
+                            <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 text-[#3AAA35] border border-emerald-200 text-[10px] font-extrabold">
+                                ⚡ {bioenergetics.equationUsed}: TMB {bioenergetics.bmr} kcal | Meta {bioenergetics.targetKcal} kcal
+                            </span>
+                        )}
+                    </div>
+                    <h3 className="text-lg font-extrabold text-slate-900 tracking-tight uppercase">
+                        {activeNodeMeta ? activeNodeMeta.nodeName : rutaActiva}
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
+                        {activeNodeMeta
+                            ? activeNodeMeta.clinicalDescription
+                            : (causaRaiz || 'Evaluación funcional integrativa de los 7 Nodos del Institute for Functional Medicine (IFM) con asignación determinista CIE-10 y suero clínico purificado.')}
+                    </p>
+                </div>
+
+                {/* Widget de Estado Clínico Global (Derecha) */}
+                <div className="flex items-center gap-4 bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-3 shrink-0">
+                    <div className="text-right">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                            ESTADO CLÍNICO GLOBAL
+                        </span>
+                        <span className={`text-sm font-extrabold ${
+                            alertNodesCount > 0 ? 'text-[#E30613]' : 'text-[#3AAA35]'
+                        }`}>
+                            {alertNodesCount > 0
+                                ? `⚠️ Alerta Prioritaria (${globalAlertPct}%)`
+                                : '✓ Homeostasis Óptima'}
                         </span>
                     </div>
-                    <p className="text-[11px] text-slate-600 font-medium">
-                        {bioenergetics.formulaExplanation} {bioenergetics.weights ? `| Peso Ideal Devine: ${bioenergetics.weights.idealWeight} kg | Lemmens: ${bioenergetics.weights.lemmensIdealWeight} kg` : ''}
-                    </p>
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-extrabold text-sm border ${
+                        alertNodesCount > 0
+                            ? 'bg-red-50 text-[#E30613] border-red-200'
+                            : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                    }`}>
+                        {alertNodesCount}/{totalNodesCount}
+                    </div>
+                </div>
+            </div>
+
+            {/* 3. BENTO CARDS TERMODINÁMICAS DE LOS NODOS IFM */}
+            {visibleNodes.length > 0 && (
+                <div className="grid grid-cols-1 gap-3.5">
+                    {visibleNodes.map((node) => {
+                        const borderLeftClass = node.isHomeostasis
+                            ? 'border-l-[#3AAA35]'
+                            : node.isHighPriority
+                            ? 'border-l-orange-500'
+                            : 'border-l-amber-500';
+
+                        const badgeStyle = node.isHomeostasis
+                            ? 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                            : node.isHighPriority
+                            ? 'bg-orange-50 text-orange-800 border-orange-300'
+                            : 'bg-amber-50 text-amber-800 border-amber-300';
+
+                        const badgeLabel = node.isHomeostasis
+                            ? '✓ HOMEOSTASIS FISIOLÓGICA'
+                            : node.isHighPriority
+                            ? '⚠️ ANORMAL MODERADO (++)'
+                            : '⚠️ ANORMAL LEVE (+)';
+
+                        const markerBg = node.isHomeostasis ? 'bg-[#3AAA35]' : 'bg-[#1C75BC]';
+
+                        return (
+                            <div
+                                key={node.nodeId}
+                                className={`bg-white rounded-2xl border border-slate-200/90 border-l-4 ${borderLeftClass} p-5 shadow-xs hover:shadow-md transition-all`}
+                            >
+                                {/* Cabecera de la Bento Card */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                                                NODO 0{node.indexOrder}
+                                            </span>
+                                            <h4 className="text-sm font-extrabold text-slate-900">
+                                                {node.nodeName || node.nodeId}
+                                            </h4>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-1">
+                                            {node.clinicalDescription}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-3 self-start sm:self-center shrink-0">
+                                        <div className="text-right">
+                                            <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                                                Código CIE-10 • Hallazgos
+                                            </span>
+                                            <span className="text-xl font-extrabold text-slate-900 tracking-tight font-mono">
+                                                {node.cie10}
+                                            </span>
+                                            <span className="text-xs font-bold text-slate-500 ml-1.5">
+                                                ({node.anomalyCount} {node.anomalyCount === 1 ? 'parámetro' : 'parámetros'})
+                                            </span>
+                                        </div>
+
+                                        {/* Píldora de Doble Codificación WCAG 2.1 AA */}
+                                        <span className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border tracking-wide ${badgeStyle}`}>
+                                            {badgeLabel}
+                                        </span>
+
+                                        {node.needsReview && (
+                                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                                                ⚠️ REVISIÓN CLÍNICA
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Barra de Progreso Termodinámica Tripartita con Callout Flotante */}
+                                <div className="my-4 bg-slate-50/90 border border-slate-200/70 rounded-xl p-3.5">
+                                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 mb-2">
+                                        <span>DEFICIENCIA / RIESGO</span>
+                                        <span className="text-[#3AAA35] font-extrabold">
+                                            ZONA ÓPTIMA FISIOLÓGICA (Z00.0)
+                                        </span>
+                                        <span>EXCESO / DISFUNCIÓN ACTIVA</span>
+                                    </div>
+
+                                    <div className="relative h-6 rounded-lg overflow-visible flex items-center">
+                                        {/* Fondo tripartito (Bajo | Normal | Alto) */}
+                                        <div className="w-full h-3 rounded-full overflow-hidden flex bg-slate-200/80 border border-slate-300/60">
+                                            <div className="w-1/3 h-full bg-gradient-to-r from-red-200/70 via-amber-200/70 to-emerald-200/50 border-r border-slate-300/80" />
+                                            <div className="w-1/3 h-full bg-[#3AAA35]/25 flex items-center justify-center">
+                                                <span className="text-[8px] font-extrabold text-[#3AAA35] uppercase tracking-widest select-none">
+                                                    RANGO FISIOLÓGICO NORMAL
+                                                </span>
+                                            </div>
+                                            <div className="w-1/3 h-full bg-gradient-to-r from-emerald-200/50 via-amber-200/70 to-red-200/80 border-l border-slate-300/80" />
+                                        </div>
+
+                                        {/* Marcador flotante dinámico */}
+                                        <div
+                                            className="absolute -top-1.5 transform -translate-x-1/2 flex flex-col items-center transition-all duration-300"
+                                            style={{ left: `${node.positionPct}%` }}
+                                        >
+                                            <div className={`px-2 py-0.5 rounded shadow-sm text-[10px] font-extrabold text-white whitespace-nowrap ${markerBg}`}>
+                                                {node.isHomeostasis
+                                                    ? `${node.cie10} (Óptimo)`
+                                                    : `${node.cie10} (${node.anomalyCount} ${node.anomalyCount === 1 ? 'Alerta' : 'Alertas'})`}
+                                            </div>
+                                            <div className={`w-2.5 h-2.5 rotate-45 -mt-1 ${markerBg} border border-white`} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Biomarcadores Clave Aislados en el Nodo */}
+                                {node.safeBiomarkers.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mb-3.5">
+                                        {node.safeBiomarkers.map((bm, bIdx) => (
+                                            <span
+                                                key={bIdx}
+                                                className="text-[10.5px] font-bold bg-slate-50 text-slate-700 border border-slate-200/90 px-2.5 py-1 rounded-lg"
+                                            >
+                                                🔬 {bm}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Pie de Tarjeta: Correlación Clínica y Enfoque Terapéutico */}
+                                <div className={`rounded-xl p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                                    node.isHomeostasis
+                                        ? 'bg-emerald-50/50 border border-emerald-200/60 text-emerald-950'
+                                        : 'bg-amber-50/70 border border-amber-200/80 text-amber-950'
+                                }`}>
+                                    <div className="space-y-1 flex-1">
+                                        <div className="flex items-start gap-2">
+                                            <span className="font-extrabold uppercase tracking-wider text-[10px] px-2 py-0.5 rounded bg-white/80 border border-black/10 shrink-0 mt-0.5">
+                                                ⓘ Síntesis Clínica
+                                            </span>
+                                            <p className="font-medium leading-relaxed text-xs">
+                                                {node.summary}
+                                            </p>
+                                        </div>
+                                        {node.therapeutic_focus && (
+                                            <p className="text-[11px] font-bold text-[#1C75BC] pl-1 pt-0.5">
+                                                🎯 Enfoque Terapéutico: <span className="font-semibold text-slate-700">{node.therapeutic_focus}</span>
+                                            </p>
+                                        )}
+                                    </div>
+                                    <span className="text-[10px] font-extrabold text-[#1C75BC] shrink-0 self-end sm:self-center">
+                                        Correlación Córtex →
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
-                {/* COLUMNA IZQUIERDA: DIAGNÓSTICO Y ALERTAS */}
-                <div className="space-y-6 flex flex-col">
-                    {/* Tarjeta de Causa Raíz */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex-1">
-                        <h3 className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-3 flex items-center gap-2 select-none">
-                            <Activity className="w-4.5 h-4.5 text-blue-600" />
-                            Diagnóstico de Causa Raíz
+            {/* 4. BLOQUE INFERIOR DE SÍNTESIS ESTRATÉGICA Y BIOSEGURIDAD */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-1">
+                {/* Columna Izquierda: Causa Raíz y Alertas */}
+                <div className="space-y-4 flex flex-col">
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex-1">
+                        <h3 className="text-slate-900 font-extrabold text-xs uppercase tracking-wider mb-2.5 flex items-center gap-2 select-none">
+                            <Activity className="w-4 h-4 text-[#1C75BC]" />
+                            Diagnóstico Funcional de Causa Raíz
                         </h3>
                         <p className="text-slate-700 text-xs leading-relaxed font-medium text-justify">
                             {causaRaiz}
                         </p>
                     </div>
 
-                    {/* Tarjeta de Alertas */}
                     {alertas && (
-                        <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 shadow-sm">
-                            <h3 className="text-amber-900 font-bold text-xs uppercase tracking-wider mb-3 flex items-center gap-2 select-none">
-                                <ShieldAlert className="w-4.5 h-4.5 text-amber-600" />
-                                Bioseguridad y Alertas
+                        <div className="bg-amber-50/80 p-5 rounded-2xl border border-amber-200 shadow-xs">
+                            <h3 className="text-amber-900 font-extrabold text-xs uppercase tracking-wider mb-2 flex items-center gap-2 select-none">
+                                <ShieldAlert className="w-4 h-4 text-amber-600" />
+                                Bioseguridad y Alertas Clínicas
                             </h3>
-                            <p className="text-amber-800 text-xs leading-relaxed font-medium text-justify">
+                            <p className="text-amber-900 text-xs leading-relaxed font-medium text-justify">
                                 {alertas}
                             </p>
                         </div>
                     )}
                 </div>
 
-                {/* COLUMNA DERECHA: ESTRATEGIA TERAPÉUTICA */}
-                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between bg-gradient-to-br from-indigo-50/30 to-white">
+                {/* Columna Derecha: Estrategia Terapéutica Integral */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col justify-between">
                     <div>
-                        <h3 className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-200 pb-3 select-none">
-                            <Zap className="w-4.5 h-4.5 text-indigo-600" />
+                        <h3 className="text-slate-900 font-extrabold text-xs uppercase tracking-wider mb-3.5 flex items-center gap-2 border-b border-slate-100 pb-2.5 select-none">
+                            <Zap className="w-4 h-4 text-[#1C75BC]" />
                             Estrategia Terapéutica Integral
                         </h3>
-                        
-                        <div className="space-y-4">
-                            {/* Nutrición Defensora */}
+
+                        <div className="space-y-3">
                             {nutricion && (
                                 <div>
-                                    <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5 select-none">Nutrición Defensora</h4>
-                                    <div className="bg-white p-3.5 rounded-xl border border-slate-100 text-xs text-slate-700 leading-relaxed font-medium shadow-xs">
+                                    <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 select-none">
+                                        Nutrición Defensora y Modulación Metabólica
+                                    </h4>
+                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed font-medium">
                                         {nutricion}
                                     </div>
                                 </div>
                             )}
 
-                            {/* Readaptación Física */}
                             {readaptacion && (
                                 <div>
-                                    <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5 select-none">Readaptación Física</h4>
-                                    <div className="bg-white p-3.5 rounded-xl border border-slate-100 text-xs text-slate-700 leading-relaxed font-medium shadow-xs">
+                                    <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 select-none">
+                                        Prescripción Ortomolecular y Readaptación
+                                    </h4>
+                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed font-medium">
                                         {readaptacion}
                                     </div>
                                 </div>
@@ -299,13 +575,17 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                         </div>
                     </div>
 
-                    {/* Sistemas Afectados (Chips) */}
                     {sistemas && sistemas.length > 0 && (
-                        <div className="pt-4 border-t border-slate-200 mt-5">
-                            <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2.5 select-none">Sistemas Implicados</h4>
+                        <div className="pt-3.5 border-t border-slate-100 mt-4">
+                            <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2 select-none">
+                                Sistemas Fisiológicos Implicados
+                            </h4>
                             <div className="flex flex-wrap gap-1.5 select-none">
                                 {sistemas.map((sistema, idx) => (
-                                    <span key={idx} className="bg-blue-100 text-blue-800 border border-blue-200 text-[10.5px] font-semibold px-3 py-1 rounded-full uppercase tracking-wider">
+                                    <span
+                                        key={idx}
+                                        className="bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/20 text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-wider"
+                                    >
                                         {sistema}
                                     </span>
                                 ))}
@@ -313,7 +593,6 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                         </div>
                     )}
                 </div>
-
             </div>
         </div>
     );
@@ -378,19 +657,28 @@ export default function Fase19_DiagnosticoIntegral({
         }
     }, [setMessages]);
 
-    // 2. Auto-Recuperación Silenciosa (Self-Healing) si se refrescó la página tras haber sintetizado
+    // 2. Auto-Recuperación Silenciosa (Self-Healing) si se refrescó la página o si existía algún nodo previo pendiente
     useEffect(() => {
         if (hasAutoRecoveredRef.current || isSynthesizingRef.current) return;
         const hasSynthesisMessageInChat = Array.isArray(messages) && messages.some(m =>
             typeof m?.content === 'string' &&
             (m.content.includes("Motor CORTEX v2.4 de Síntesis Activo") || m.content.includes("Sin síntomas adicionales"))
         );
-        const hasPersistedIfmMatrix = Array.isArray(patientData?.clinical_dossier?.ifm_nodes_matrix) &&
-            patientData.clinical_dossier.ifm_nodes_matrix.length > 0;
+        const persistedMatrix = patientData?.clinical_dossier?.ifm_nodes_matrix;
+        const hasPersistedIfmMatrix = Array.isArray(persistedMatrix) && persistedMatrix.length > 0;
+        const hasLegacyPendingNode = hasPersistedIfmMatrix && persistedMatrix.some(n =>
+            n.status === 'ERROR_SINTESIS' ||
+            String(n.summary || '').includes('SÍNTESIS_PENDIENTE') ||
+            String(n.therapeutic_focus || '').includes('PENDIENTE DE EVALUACIÓN')
+        );
 
-        if (hasSynthesisMessageInChat && !hasPersistedIfmMatrix) {
+        if ((hasSynthesisMessageInChat && !hasPersistedIfmMatrix) || hasLegacyPendingNode) {
             hasAutoRecoveredRef.current = true;
-            triggerSynthesis("Sin síntomas adicionales. Recuperación automática de síntesis tras refresco.", true);
+            triggerSynthesis(
+                patientData?.clinical_dossier?.additional_symptoms_reported ||
+                "Sin síntomas adicionales. Recuperación automática de síntesis tras actualización.",
+                true
+            );
         }
     }, [messages, patientData?.clinical_dossier]);
 
