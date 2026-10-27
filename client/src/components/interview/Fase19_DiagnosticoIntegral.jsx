@@ -239,15 +239,19 @@ export function formatClinicalBiomarker(raw) {
     });
 
     text = text
+        .replace(/^(?:SAFEGUARD|SALVAGUARDA)\s+DE\s+ESFUERZO\s+(?:F[ÍI]SICO\s+)?(?:\(ADULTO\)|ADULTO):?\s*/i, 'Salvaguarda de Esfuerzo Físico (Adulto): ')
         .replace(/SAFEGUARD\s*(?:DE)?/gi, 'Salvaguarda de')
-        .replace(/\bHIIT\b/gi, 'Zona 5 HIIT')
-        .replace(/\bNEAT\b/gi, 'Movilidad Diaria NEAT')
+        .replace(/(?:\(?(?:Zona\s*5|HIIT)\)?\s*)+/gi, 'Zona 5 (HIIT) ')
+        .replace(/(?:\(?(?:Movilidad\s+Diaria|Adaptada|NEAT)\)?\s*)+/gi, 'Movilidad Diaria Adaptada (NEAT) ')
+        .replace(/\s+([.,;:])/g, (_, p) => p)
+        .replace(/\s+/g, ' ')
         .replace(/\bRef:\s*N\/A\b/gi, 'Rango Observacional')
         .replace(/\bANORMAL\s+LEVE\b/gi, 'Alerta Leve')
         .replace(/\bANORMAL\s+MODERADO\b/gi, 'Alerta Moderada')
         .replace(/\bANORMAL\s+SEVERO\b/gi, 'Alerta Severa')
         .replace(/\bOPTIMAL\b/gi, 'Óptimo')
-        .replace(/\bNORMAL\b/gi, 'Normal');
+        .replace(/\bNORMAL\b/gi, 'Normal')
+        .trim();
 
     if (/^[A-Z0-9_]{3,}$/.test(text)) {
         text = text
@@ -269,10 +273,12 @@ export function formatClinicalText(text) {
     });
 
     return result
-        .replace(/SAFEGUARD DE ESFUERZO ADULTO/gi, 'Salvaguarda de Esfuerzo Físico (Adulto)')
+        .replace(/^(?:SAFEGUARD|SALVAGUARDA)\s+DE\s+ESFUERZO\s+(?:F[ÍI]SICO\s+)?(?:\(ADULTO\)|ADULTO):?\s*/i, 'Salvaguarda de Esfuerzo Físico (Adulto): ')
         .replace(/SAFEGUARD\s*(?:DE)?/gi, 'Salvaguarda de')
-        .replace(/\bHIIT\b/gi, 'Zona 5 HIIT')
-        .replace(/\bNEAT\b/gi, 'Movilidad Diaria NEAT')
+        .replace(/(?:\(?(?:Zona\s*5|HIIT)\)?\s*)+/gi, 'Zona 5 (HIIT) ')
+        .replace(/(?:\(?(?:Movilidad\s+Diaria|Adaptada|NEAT)\)?\s*)+/gi, 'Movilidad Diaria Adaptada (NEAT) ')
+        .replace(/\s+([.,;:])/g, (_, p) => p)
+        .replace(/\s+/g, ' ')
         .replace(/\bRef:\s*N\/A\b/gi, 'Rango Observacional')
         .replace(/\bANORMAL\s+LEVE\b/gi, 'Alerta Leve')
         .replace(/\bANORMAL\s+MODERADO\b/gi, 'Alerta Moderada')
@@ -280,7 +286,8 @@ export function formatClinicalText(text) {
         .replace(/\bOPTIMAL\b/gi, 'Óptimo')
         .replace(/\bNORMAL\b/gi, 'Normal')
         .replace(/\bRUTA_([A-D]):\s*/gi, 'Ruta Clínica $1 • ')
-        .replace(/\bRUTA_([A-D])\b/gi, 'Ruta Clínica $1');
+        .replace(/\bRUTA_([A-D])\b/gi, 'Ruta Clínica $1')
+        .trim();
 }
 
 export function DiagnosticoRenderizado({ cortexSynthesis }) {
@@ -350,14 +357,15 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                 positionPct = Math.min(93, 70 + (anomalyCount * 6.5));
             }
 
-            const shortName = String(node.nodeName || node.nodeId || `Nodo ${idx + 1}`)
-                .replace(/^Nodo\s*\d+\s*:\s*/i, '')
+            const cleanName = String(node.nodeName || node.nodeId || `Nodo ${idx + 1}`)
+                .replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')
                 .trim();
 
             return {
                 ...node,
                 indexOrder: idx + 1,
-                shortName,
+                shortName: cleanName,
+                cleanName,
                 safeBiomarkers,
                 isHomeostasis,
                 anomalyCount,
@@ -536,7 +544,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                 </div>
 
                 <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">
-                    {activeNodeMeta ? activeNodeMeta.nodeName : formatClinicalText(rutaActiva)}
+                    {activeNodeMeta ? `${activeNodeMeta.indexOrder}. ${activeNodeMeta.cleanName}` : formatClinicalText(rutaActiva)}
                 </h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
                     {activeNodeMeta
@@ -582,7 +590,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                                 NODO 0{node.indexOrder}
                                             </span>
                                             <h4 className="text-sm font-extrabold text-slate-900">
-                                                {node.nodeName || node.nodeId}
+                                                {node.cleanName}
                                             </h4>
                                         </div>
                                         <p className="text-[11px] text-slate-500 mt-1">
@@ -747,7 +755,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                                     )}
                                                 </div>
                                                 <p className="text-[11.5px] text-slate-700 leading-relaxed">
-                                                    {cleanText}
+                                                    {formatClinicalText(cleanText)}
                                                 </p>
                                             </div>
                                         </div>
@@ -756,7 +764,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                             </div>
                         ) : (
                             <p className="text-slate-700 text-xs leading-relaxed font-medium text-justify">
-                                {causaRaiz || 'Evaluación de causa raíz completada.'}
+                                {formatClinicalText(causaRaiz) || 'Evaluación de causa raíz completada.'}
                             </p>
                         )}
 
@@ -793,15 +801,9 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                         <div className="space-y-2.5">
                             {criticalSafeguards.map((alt, aIdx) => {
                                 const isCritical = /SAFEGUARD|SALVAGUARDA|BLOQUEADO|CONTRAINDICADA|PROHIBIDO|LOCK/i.test(alt);
-                                let cleanAlert = String(alt)
+                                const cleanAlert = String(alt)
                                     .replace(/^[•\s\d.-]+/, '')
                                     .trim();
-
-                                cleanAlert = cleanAlert
-                                    .replace(/^SAFEGUARD DE ESFUERZO ADULTO:/i, 'Salvaguarda de Esfuerzo Físico (Adulto):')
-                                    .replace(/SAFEGUARD/gi, 'Salvaguarda')
-                                    .replace(/\bHIIT\b/gi, 'Zona 5 HIIT')
-                                    .replace(/\bNEAT\b/gi, 'Movilidad Diaria NEAT');
 
                                 return (
                                     <div
