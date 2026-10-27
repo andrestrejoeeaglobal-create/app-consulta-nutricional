@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, ShieldAlert, AlertTriangle, Zap, HeartPulse, Lock, FileText, Calendar } from 'lucide-react';
-import { TabRecommendations } from './TabRecommendations';
+import { Activity, ShieldAlert, AlertTriangle, Zap, HeartPulse, Lock, FileText, Calendar, Clock } from 'lucide-react';
 import { DiagnosticoRenderizado } from '../interview/Fase19_DiagnosticoIntegral';
 import tiloImg from '../../assets/tilo.png';
 
@@ -17,6 +16,15 @@ export const TabDiagnosis = ({
     planViewMode: propPlanViewMode,
     setPlanViewMode: propSetPlanViewMode
 }) => {
+    const [activeTimelinePhase, setActiveTimelinePhase] = useState(1);
+
+    const dossier = patientData?.clinical_dossier || {};
+    const ifmNodes = Array.isArray(dossier.ifm_nodes_matrix) ? dossier.ifm_nodes_matrix : [];
+    const ortho = dossier.orthomolecular_prescription || {};
+    const bioenergetics = dossier.bioenergetics || ortho.bioenergetics_summary || null;
+    const node3 = ifmNodes.find(n => n.nodeId === 'NODO_3_ENERGIA');
+    const node5 = ifmNodes.find(n => n.nodeId === 'NODO_5_TRANSPORTE');
+
     // Síntesis Fisiopatológica Multimodal CORTEX (Lectura Defensiva)
     const correlacionMultimodal = React.useMemo(() => {
         const rawCorr = patientData?.scan_data?.correlacion_multimodal || 
@@ -771,69 +779,100 @@ export const TabDiagnosis = ({
                             </div>
                         )}
 
-                        {/* Sección 2: Suplementación */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-                            <h3 className="text-slate-900 text-xs font-extrabold uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
-                                <Zap className="w-4.5 h-4.5 text-indigo-600" />
-                                2. Protocolo de Suplementación Avanzada (33+ / 34+)
-                            </h3>
-                            {activeSupplementation.length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {activeSupplementation.map((s, idx) => {
-                                        const is33 = s.cortex?.includes('33Plus') || s.name?.includes('33');
-                                        return (
-                                            <div key={idx} className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-xl text-xs flex gap-3">
-                                                <div className={`w-9 h-9 rounded-xl shrink-0 flex items-center justify-center font-black text-xs shadow-xs ${is33 ? 'bg-red-50 text-[#E30613] border border-red-100' : 'bg-green-50 text-[#3AAA35] border border-green-100'}`}>
-                                                    {is33 ? '33+' : '34+'}
-                                                </div>
-                                                <div className="flex-1">
-                                                    <div className="flex justify-between items-center mb-1">
-                                                        <span className="font-bold text-slate-800">{s.name}</span>
-                                                        <span className="text-[9.5px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full">{s.timing}</span>
-                                                    </div>
-                                                    <p className="text-slate-700 font-semibold mb-1 text-[11.5px]">{s.dosage}</p>
-                                                    <p className="text-[10.5px] text-slate-500 leading-relaxed font-medium">{s.rationale}</p>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                        {/* Algoritmo de Secuenciación Terapéutica Cronológica (Línea de Tiempo 60-30-10) */}
+                        <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#1C75BC] p-5 shadow-xs space-y-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/20">
+                                        CRONOBIOLOGÍA METABÓLICA
+                                    </span>
+                                    <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                                        <Clock className="w-4 h-4 text-[#1C75BC]" />
+                                        <span>Algoritmo de Secuenciación Terapéutica Cronológica</span>
+                                    </h3>
                                 </div>
-                            ) : (
-                                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 text-xs text-slate-600 font-medium flex items-center gap-2.5">
-                                    <span className="text-base">🌱</span>
-                                    <span>Esquema Nutricional Básico sin Alteraciones Prescritas.</span>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Prescripción Nutracéutica y Matriz Terapéutica IFM (NOM-004) */}
-                        <TabRecommendations
-                            patientData={patientData}
-                            setPatientData={setPatientData}
-                            isEditing={isEditing}
-                        />
-
-                        {/* Sección 3: Recomendaciones y Manejo Clínico */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-                            <h3 className="text-slate-900 text-xs font-extrabold uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
-                                <FileText className="w-4.5 h-4.5 text-blue-600" />
-                                3. Recomendaciones y Manejo Clínico de Medicina Funcional
-                            </h3>
-                            {cleanManagement.length > 0 ? (
-                                <div className="space-y-2.5">
-                                    {cleanManagement.map((m, idx) => (
-                                        <div key={idx} className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-xl text-xs font-medium">
-                                            <span className="font-bold text-slate-800 block mb-1">✓ {m.accion}</span>
-                                            {m.racional && <p className="text-[11px] text-slate-500 leading-relaxed">{m.racional}</p>}
-                                        </div>
+                                <div className="flex items-center gap-1.5">
+                                    {[1, 2, 3].map(phase => (
+                                        <button
+                                            key={phase}
+                                            type="button"
+                                            onClick={() => setActiveTimelinePhase(phase)}
+                                            className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all border ${
+                                                activeTimelinePhase === phase
+                                                    ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-xs'
+                                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            Fase {phase}
+                                        </button>
                                     ))}
                                 </div>
-                            ) : (
-                                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 text-xs text-slate-600 font-medium flex items-center gap-2.5">
-                                    <span className="text-base">📋</span>
-                                    <span>Sin Indicaciones de Manejo Especial Adicionales.</span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                                <div className={`rounded-xl p-4 border transition-all space-y-2.5 flex flex-col justify-between ${
+                                    activeTimelinePhase === 1
+                                        ? 'bg-blue-50/70 border-[#1C75BC] ring-2 ring-[#1C75BC]/20 shadow-xs'
+                                        : 'bg-slate-50/60 border-slate-200/80 opacity-90'
+                                }`}>
+                                    <div>
+                                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2 mb-2">
+                                            <span className="text-[10px] font-black text-[#1C75BC] uppercase tracking-wider">Días 1 a 21</span>
+                                            <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-blue-100 text-blue-900">FASE 1</span>
+                                        </div>
+                                        <h5 className="font-extrabold text-slate-900 text-xs uppercase mb-1.5">Estabilización Endotelial y Barrera Mucosa</h5>
+                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
+                                            {ifmNodes[0]?.therapeutic_focus || 'Optimización digestiva e hidratación estructurada'} + Inicio de cronobiología 33Plus® (mañana) y 34Plus® (noche en 500 ml de agua).
+                                        </p>
+                                    </div>
+                                    <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between text-[9.5px] text-slate-500 font-bold">
+                                        <span>Microcirculación</span>
+                                        <span className="text-[#1C75BC]">Semana 1-3</span>
+                                    </div>
                                 </div>
-                            )}
+
+                                <div className={`rounded-xl p-4 border transition-all space-y-2.5 flex flex-col justify-between ${
+                                    activeTimelinePhase === 2
+                                        ? 'bg-emerald-50/70 border-[#3AAA35] ring-2 ring-[#3AAA35]/20 shadow-xs'
+                                        : 'bg-slate-50/60 border-slate-200/80 opacity-90'
+                                }`}>
+                                    <div>
+                                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2 mb-2">
+                                            <span className="text-[10px] font-black text-[#3AAA35] uppercase tracking-wider">Días 22 a 45</span>
+                                            <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900">FASE 2</span>
+                                        </div>
+                                        <h5 className="font-extrabold text-slate-900 text-xs uppercase mb-1.5">Modulación Lipídica y Reológica Profunda</h5>
+                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
+                                            {node3?.therapeutic_focus || 'Corrección de perfil lipídico aterogénico y sensibilidad insulínica'} + {node5?.therapeutic_focus || 'Optimización de perfusión microvascular'}.
+                                        </p>
+                                    </div>
+                                    <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between text-[9.5px] text-slate-500 font-bold">
+                                        <span>Homeostasis Tisular</span>
+                                        <span className="text-[#3AAA35]">Semana 4-6</span>
+                                    </div>
+                                </div>
+
+                                <div className={`rounded-xl p-4 border transition-all space-y-2.5 flex flex-col justify-between ${
+                                    activeTimelinePhase === 3
+                                        ? 'bg-indigo-50/70 border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
+                                        : 'bg-slate-50/60 border-slate-200/80 opacity-90'
+                                }`}>
+                                    <div>
+                                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2 mb-2">
+                                            <span className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">Días 46+</span>
+                                            <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-indigo-100 text-indigo-900">FASE 3</span>
+                                        </div>
+                                        <h5 className="font-extrabold text-slate-900 text-xs uppercase mb-1.5">Consolidación Metabólica y Re-Evaluación</h5>
+                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
+                                            Auditoría de control de biomarcadores fuera de rango y consolidación de composición corporal ({bioenergetics ? `${bioenergetics.targetKcal} kcal/día` : 'Mantenimiento'}).
+                                        </p>
+                                    </div>
+                                    <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between text-[9.5px] text-slate-500 font-bold">
+                                        <span>Biometría de Control</span>
+                                        <span className="text-indigo-600">Semana 7+</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Sección 4: Logística */}
