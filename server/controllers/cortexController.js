@@ -1059,7 +1059,7 @@ const synthesizeDossier = async (req, res) => {
         const diagnosticoCausaRaiz = isLactanteExplicit
             ? `Lactante de ${ageMonths || 11} meses en fase acelerada de crecimiento y desarrollo L-OMS. Constantes vitales dentro de parámetros normales (FC ${heartRate} LPM). Evaluación orientada a la maduración de la mucosa intestinal, tolerancia a alimentos sólidos y neurodesarrollo motor.`
             : (activeNodesWithAnomalies.length > 0
-                ? activeNodesWithAnomalies.map(n => `• ${n.nodeName} (${n.cie10}): ${n.summary}`).join(' ')
+                ? activeNodesWithAnomalies.map(n => `• ${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')} (${n.cie10}): ${n.summary}`).join(' ')
                 : 'Homeostasis funcional conservada en los 7 Nodos de la Matriz IFM (Z00.0).');
 
         const critical_alerts = [];
@@ -1085,7 +1085,7 @@ const synthesizeDossier = async (req, res) => {
         // Alertas críticas derivadas de nodos con hallazgos
         activeNodesWithAnomalies.forEach(n => {
             if (Array.isArray(n.key_biomarkers) && n.key_biomarkers.length > 0) {
-                critical_alerts.push(`ALERTA ${n.nodeName.toUpperCase()} (${n.cie10}): ${n.key_biomarkers.slice(0, 4).join(' | ')}`);
+                critical_alerts.push(`ALERTA ${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '').toUpperCase()} (${n.cie10}): ${n.key_biomarkers.slice(0, 4).join(' | ')}`);
             }
         });
 
@@ -1095,7 +1095,7 @@ const synthesizeDossier = async (req, res) => {
             "3. Estimulación Psicomotriz Activa y Tiempo de Juego (Tummy Time)",
             "4. Soporte Nutricional Pediátrico bajo Supervisión del Pediatra Tratante"
         ] : [
-            ...activeNodesWithAnomalies.map((n, idx) => `${idx + 1}. [${n.nodeName} - ${n.cie10}] ${n.therapeutic_focus}`),
+            ...activeNodesWithAnomalies.map((n, idx) => `${idx + 1}. [${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')} - ${n.cie10}] ${n.therapeutic_focus}`),
             `${activeNodesWithAnomalies.length + 1}. [Bioenergética ${bioenergetics.equationUsed}] TMB: ${bioenergetics.bmr} kcal | TDEE: ${bioenergetics.tdee} kcal | Meta Prescrita: ${bioenergetics.targetKcal} kcal (${bioenergetics.macros.carbs}% C / ${bioenergetics.macros.protein}% P / ${bioenergetics.macros.fat}% L).`,
             `${activeNodesWithAnomalies.length + 2}. [Readaptación Física] ${physicalStrategyText}`,
             `${activeNodesWithAnomalies.length + 3}. [Cronobiología Ortomolecular] ${orthomolecularPrescription.supplements[0].name} (Mañana) + ${orthomolecularPrescription.supplements[1].name} (Noche en 500 ml de agua 💧).`
