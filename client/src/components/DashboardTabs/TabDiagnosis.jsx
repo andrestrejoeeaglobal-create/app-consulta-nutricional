@@ -690,6 +690,42 @@ export const TabDiagnosis = ({
 
     return (
         <div className="space-y-6 font-sans">
+            {/* --- SAFETY ENGINE BANNER --- */}
+            {isRiskDetected && !overrideActive && (
+                <div className="bg-tilo-danger/10 border-l-4 border-tilo-danger p-6 rounded-xl flex items-start gap-4 transition-all animate-in zoom-in-95 duration-300">
+                    <ShieldAlert className="w-8 h-8 text-tilo-danger flex-shrink-0" />
+                    <div className="flex-1">
+                        <h3 className="text-tilo-danger font-extrabold text-base uppercase tracking-wider">Alerta de Seguridad Clínica</h3>
+                        <p className="text-tilo-text-main text-xs mt-1 leading-relaxed">
+                            El sistema ha detectado riesgos potenciales basados en el historial del paciente 
+                            ({hasAllergies ? 'Alergias registradas' : ''}{hasAllergies && hasPhentermine ? ' y ' : ''}{hasPhentermine ? 'Fentermina detectada' : ''}).
+                            La prescripción de suplementación avanzada está bloqueada por seguridad.
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => handleOverrideToggle(true)}
+                        className="bg-tilo-danger text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-tilo-danger/80 transition-colors shadow-sm cursor-pointer whitespace-nowrap"
+                    >
+                        Autorización Clínica
+                    </button>
+                </div>
+            )}
+
+            {overrideActive && (
+                <div className="bg-tilo-warning/10 border border-tilo-warning/30 p-4 rounded-xl flex items-center justify-between transition-all animate-in slide-in-from-top-4 duration-300">
+                    <div className="flex items-center gap-2 text-tilo-warning font-medium">
+                        <AlertTriangle className="w-5 h-5 text-tilo-warning" />
+                        <span className="text-tilo-text-main text-xs">Override Médico Activado. Riesgos asumidos por el especialista.</span>
+                    </div>
+                    <button
+                        onClick={() => handleOverrideToggle(false)}
+                        className="text-tilo-warning hover:text-tilo-warning/80 text-xs font-bold underline cursor-pointer"
+                    >
+                        Restaurar Seguridad
+                    </button>
+                </div>
+            )}
+
             {/* Tarjeta Principal del Reporte Consolidado (Doctrina CORTEX v2.1 CDSS) */}
             <div className="w-full bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden flex flex-col mb-6">
                 {/* CONMUTADOR DUAL DE VISTAS (❖ MODO DE VISUALIZACIÓN:) */}
@@ -756,10 +792,11 @@ export const TabDiagnosis = ({
                 {/* VISTA 1: PACIENTE Y FAMILIA (4 PILARES EMPÁTICOS TERMODINÁMICOS) */}
                 {activeViewMode === 'patient' ? (
                     <div className="p-6 space-y-4">
-                        {/* Pilar 1: Crecimiento y Salud */}
-                        <div className={`bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 ${
+                        {/* --- PILAR 01: DIAGNÓSTICO GENERAL Y ESTADO DE SALUD (HOMOLOGACIÓN LINEAL DESATURADA) --- */}
+                        <div id="card-diagnostico-general" className={`bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 ${
                             hasActiveAlerts ? 'border-l-amber-500' : 'border-l-[#3AAA35]'
                         } hover:shadow-md transition-all`}>
+                            {/* Cabecera en 3 flex-items (homologada a los Pilares) */}
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
                                 <div>
                                     <div className="flex items-center gap-2">
@@ -768,11 +805,11 @@ export const TabDiagnosis = ({
                                                 ? 'bg-amber-50 text-amber-800 border-amber-300'
                                                 : 'bg-emerald-50 text-[#3AAA35] border-emerald-200/70'
                                         }`}>
-                                            PILAR 01 • SALUD METABÓLICA
+                                            PILAR 01 • EVALUACIÓN INTEGRAL MULTIMODAL
                                         </span>
                                         <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                                            <span>🌱</span>
-                                            <span>{pilarTitle}</span>
+                                            <span>🧬</span>
+                                            <span>Diagnóstico General y Estado de Salud</span>
                                         </h3>
                                     </div>
                                 </div>
@@ -781,31 +818,108 @@ export const TabDiagnosis = ({
                                         ? 'bg-amber-50 text-amber-800 border-amber-300'
                                         : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
                                 }`}>
-                                    {hasActiveAlerts ? `⚠️ ENFOQUE DE REVERSIÓN METABÓLICA (${alertNodesCount} Nodos)` : '✓ HOMEOSTASIS METABÓLICA'}
+                                    {hasActiveAlerts ? `⚠️ ${alertNodesCount} Áreas en Atención Prioritaria` : '✓ Equilibrio Fisiológico'}
                                 </span>
                             </div>
 
-                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3">
-                                {pilar1Text}
-                            </p>
-
-                            <div className="my-3 bg-slate-50/90 border border-slate-200/70 rounded-xl p-2.5 flex items-center justify-between text-[10.5px]">
-                                <span className="font-bold text-slate-500">Estado Biológico General:</span>
-                                {hasActiveAlerts ? (
-                                    <span className="font-extrabold text-amber-800 flex items-center gap-1.5">
-                                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                                        Atención Prioritaria Focalizada ({ageCandidate} años)
+                            {/* Fuentes Integradas Aplanadas (Inline desaturado sin micro-píldoras gruesas) */}
+                            <div className="my-2.5 text-[10.5px] text-slate-500 font-medium flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span className="font-extrabold text-slate-400 uppercase tracking-wider text-[9.5px]">Fuentes Integradas:</span>
+                                {fuentesClinicas.map((f, idx) => (
+                                    <span key={f.id} className="inline-flex items-center gap-1 text-slate-600">
+                                        <span>{f.icon}</span>
+                                        <span className="font-semibold text-slate-700">{f.title.split('(')[0].trim()}</span>
+                                        {idx < fuentesClinicas.length - 1 && <span className="text-slate-300 ml-1">•</span>}
                                     </span>
-                                ) : (
-                                    <span className="font-extrabold text-[#3AAA35] flex items-center gap-1.5">
-                                        <span className="w-2 h-2 rounded-full bg-[#3AAA35] animate-pulse"></span>
-                                        Calibración Óptima para Edad ({ageCandidate} años)
-                                    </span>
-                                )}
+                                ))}
                             </div>
 
-                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400 font-medium">ⓘ Monitoreo Funcional Preventivo Continuo</span>
+                            {/* Texto Base Fluido */}
+                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3 text-justify">
+                                {diagnosticoGeneralPaciente.overviewText}
+                            </p>
+
+                            {/* Bloques Internos Lineales de Ancho Completo (Estilo "Estrategia Dietética") */}
+                            {diagnosticoGeneralPaciente.systemCards.length > 0 && (
+                                <div className="my-3.5 space-y-2">
+                                    {diagnosticoGeneralPaciente.systemCards.map((sys) => (
+                                        <div
+                                            key={sys.id}
+                                            className="bg-slate-50/60 border border-slate-200/60 rounded-xl px-4 py-2.5 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-slate-50 transition-colors"
+                                        >
+                                            <div className="flex items-start sm:items-center gap-2.5 flex-1">
+                                                <span className="text-base shrink-0 mt-0.5 sm:mt-0">{sys.icon}</span>
+                                                <div>
+                                                    <h5 className="font-extrabold text-slate-900 text-xs">{sys.title}</h5>
+                                                    <p className="text-[11.5px] text-slate-600 font-medium leading-relaxed mt-0.5">
+                                                        {sys.desc}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <span className={`text-[9.5px] font-extrabold px-2.5 py-1 rounded-lg border shrink-0 self-start sm:self-center uppercase tracking-wider ${
+                                                sys.severity === 'urgent'
+                                                    ? 'bg-red-50 text-[#E30613] border-red-200'
+                                                    : sys.severity === 'active'
+                                                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                                        : 'bg-blue-50 text-[#1C75BC] border-blue-200'
+                                            }`}>
+                                                {sys.badge}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Acordeón Secundario de Respaldo Clínico Multimodal */}
+                            <div className="mt-3 pt-2.5 border-t border-slate-100">
+                                <details className="group">
+                                    <summary className="cursor-pointer text-[10.5px] font-extrabold text-slate-500 hover:text-slate-800 flex items-center justify-between select-none py-1">
+                                        <span className="flex items-center gap-1.5">
+                                            <span>🔬</span>
+                                            <span>Ver Detalle Clínico de las 6 Fuentes Diagnósticas (Fases 0 a 18)</span>
+                                        </span>
+                                        <span className="text-slate-400 group-open:rotate-180 transition-transform text-xs">▼</span>
+                                    </summary>
+
+                                    <div className="mt-3 divide-y divide-slate-100 border border-slate-200/70 rounded-xl overflow-hidden bg-slate-50/40">
+                                        {fuentesClinicas.map((f) => (
+                                            <div
+                                                key={f.id}
+                                                className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-start justify-between gap-2 hover:bg-slate-100/50 transition-colors"
+                                            >
+                                                <div className="flex-1 space-y-0.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{f.icon}</span>
+                                                        <span className="font-extrabold text-[11px] text-slate-800">
+                                                            {f.title}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-600 leading-relaxed pl-6">
+                                                        {f.summary}
+                                                    </p>
+                                                </div>
+                                                <span className="text-[9.5px] font-bold px-2 py-0.5 rounded bg-white border border-slate-200/90 text-slate-500 shrink-0 self-start sm:self-center pl-6 sm:pl-2">
+                                                    {f.badge}
+                                                </span>
+                                            </div>
+                                        ))}
+
+                                        {correlacionMultimodal?.sintesis_fisiopatologica && (
+                                            <div className="px-4 py-2.5 bg-blue-50/30 text-[11px] text-slate-600 leading-relaxed border-t border-blue-100/60 space-y-0.5">
+                                                <span className="font-bold text-[#1C75BC] flex items-center gap-1.5">
+                                                    <span>👅</span>
+                                                    <span>Telemetría de Soporte Tisular (Topografía Lingual CYTOS):</span>
+                                                </span>
+                                                <p className="pl-6">{correlacionMultimodal.sintesis_fisiopatologica}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </details>
+                            </div>
+
+                            {/* Pie de Tarjeta Estándar */}
+                            <div className="pt-2.5 border-t border-slate-100 mt-3 flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400 font-medium">ⓘ Convergencia diagnóstica de las 6 fuentes clínicas</span>
                             </div>
                         </div>
 
@@ -911,6 +1025,108 @@ export const TabDiagnosis = ({
 
                             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
                                 <span className="text-slate-400 font-medium">ⓘ Sinergia de Ignición Mitocondrial y Reparación Tisular</span>
+                            </div>
+                        </div>
+
+                        {/* --- ARQUITECTURA DE ORO RECOMENDADA (FÓRMULAS 33PLUS® Y 34PLUS®) --- */}
+                        <div id="card-gold-architecture" className="relative pt-2">
+                            {/* Overlay Bloqueo (Solo visual) */}
+                            {isRiskDetected && !overrideActive && (
+                                <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-20 flex items-center justify-center rounded-2xl">
+                                    <Lock className="w-12 h-12 text-white opacity-70 animate-pulse" />
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 gap-4">
+                                {/* 33 Plus (Ignición Mitocondrial - Rojo #E30613) */}
+                                <div className="flex flex-col bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#E30613] p-5 shadow-xs hover:shadow-md transition-all">
+                                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-red-50 text-[#E30613] border border-red-200/70">
+                                                FÓRMULA 33PLUS® • DÍA
+                                            </span>
+                                            <h4 className="text-sm font-extrabold text-slate-900 tracking-tight">
+                                                33 PLUS
+                                            </h4>
+                                        </div>
+                                        <span className="text-[10px] font-extrabold text-[#E30613] uppercase tracking-wider bg-red-50/70 px-2 py-0.5 rounded-md">
+                                            Ignición Mitocondrial
+                                        </span>
+                                    </div>
+
+                                    <p className="text-slate-700 text-xs leading-relaxed font-medium mb-3.5 flex-1">
+                                        Optimización de la cadena respiratoria celular, reducción de fatiga crónica y mejora en la sensibilidad a la insulina mediante cofactores vasculares y antioxidantes diurnos.
+                                    </p>
+
+                                    <div className="mb-4 bg-slate-50 border border-slate-200/70 rounded-xl p-2.5 text-[10.5px] space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-bold">Dosificación:</span>
+                                            <span className="font-extrabold text-slate-800">1 toma al día</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-bold">Momento de ingesta:</span>
+                                            <span className="font-extrabold text-[#E30613]">☀️ Con el desayuno (09:00 AM)</span>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleToggle33}
+                                        className={`mt-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all w-full cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
+                                            is33Added
+                                                ? 'bg-[#E30613] text-white hover:bg-[#E30613]/90 shadow-red-500/20'
+                                                : 'bg-[#1C75BC] text-white hover:bg-[#1C75BC]/90 shadow-blue-500/20'
+                                        }`}
+                                    >
+                                        <HeartPulse className="w-4 h-4 shrink-0" />
+                                        <span>{is33Added ? '✓ Agregado al Plan Nutracéutico' : 'Agregar 33Plus® al Plan'}</span>
+                                    </button>
+                                </div>
+
+                                {/* 34 Plus (Ingeniería Tisular - Verde #3AAA35) */}
+                                <div className="flex flex-col bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#3AAA35] p-5 shadow-xs hover:shadow-md transition-all">
+                                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-[#3AAA35] border border-emerald-200/70">
+                                                FÓRMULA 34PLUS® • NOCHE
+                                            </span>
+                                            <h4 className="text-sm font-extrabold text-slate-900 tracking-tight">
+                                                34 PLUS
+                                            </h4>
+                                        </div>
+                                        <span className="text-[10px] font-extrabold text-[#3AAA35] uppercase tracking-wider bg-emerald-50/70 px-2 py-0.5 rounded-md">
+                                            Ingeniería Tisular
+                                        </span>
+                                    </div>
+
+                                    <p className="text-slate-700 text-xs leading-relaxed font-medium mb-3.5 flex-1">
+                                        Regeneración de matriz extracelular, fortalecimiento articular y optimización de síntesis proteica post-ejercicio durante el sueño profundo.
+                                    </p>
+
+                                    <div className="mb-4 bg-slate-50 border border-slate-200/70 rounded-xl p-2.5 text-[10.5px] space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-bold">Dosificación:</span>
+                                            <span className="font-extrabold text-slate-800">1 toma al día (mínimo 500 ml de agua 💧)</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-bold">Momento de ingesta:</span>
+                                            <span className="font-extrabold text-[#3AAA35]">🌙 Con la cena (08:30 PM)</span>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleToggle34}
+                                        className={`mt-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all w-full cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
+                                            is34Added
+                                                ? 'bg-[#3AAA35] text-white hover:bg-[#3AAA35]/90 shadow-emerald-500/20'
+                                                : 'bg-[#1C75BC] text-white hover:bg-[#1C75BC]/90 shadow-blue-500/20'
+                                        }`}
+                                    >
+                                        <Activity className="w-4 h-4 shrink-0" />
+                                        <span>{is34Added ? '✓ Agregado al Plan Nutracéutico' : 'Agregar 34Plus® al Plan'}</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1115,289 +1331,6 @@ export const TabDiagnosis = ({
                     </div>
                 )}
             </div>
-
-            {/* --- ACORDEÓN PADRE: DIAGNÓSTICO INTEGRAL --- */}
-            <Accordion
-                title="Diagnóstico Integral"
-                id="accordion-diagnosis-parent"
-                isOpen={openSections.parentDiagnosis}
-                onToggle={() => toggleSection('parentDiagnosis')}
-                variant="parent"
-            >
-                <div className="space-y-6">
-                    {/* --- SAFETY ENGINE BANNER --- */}
-                    {isRiskDetected && !overrideActive && (
-                        <div className="bg-tilo-danger/10 border-l-4 border-tilo-danger p-6 rounded-xl flex items-start gap-4 transition-all animate-in zoom-in-95 duration-300">
-                            <ShieldAlert className="w-8 h-8 text-tilo-danger flex-shrink-0" />
-                            <div className="flex-1">
-                                <h3 className="text-tilo-danger font-extrabold text-base uppercase tracking-wider">Alerta de Seguridad Clínica</h3>
-                                <p className="text-tilo-text-main text-xs mt-1 leading-relaxed">
-                                    El sistema ha detectado riesgos potenciales basados en el historial del paciente 
-                                    ({hasAllergies ? 'Alergias registradas' : ''}{hasAllergies && hasPhentermine ? ' y ' : ''}{hasPhentermine ? 'Fentermina detectada' : ''}).
-                                    La prescripción de suplementación avanzada está bloqueada por seguridad.
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => handleOverrideToggle(true)}
-                                className="bg-tilo-danger text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-tilo-danger/80 transition-colors shadow-sm cursor-pointer whitespace-nowrap"
-                            >
-                                Autorización Clínica
-                            </button>
-                        </div>
-                    )}
-
-                    {overrideActive && (
-                        <div className="bg-tilo-warning/10 border border-tilo-warning/30 p-4 rounded-xl flex items-center justify-between transition-all animate-in slide-in-from-top-4 duration-300">
-                            <div className="flex items-center gap-2 text-tilo-warning font-medium">
-                                <AlertTriangle className="w-5 h-5 text-tilo-warning" />
-                                <span className="text-tilo-text-main text-xs">Override Médico Activado. Riesgos asumidos por el especialista.</span>
-                            </div>
-                            <button
-                                onClick={() => handleOverrideToggle(false)}
-                                className="text-tilo-warning hover:text-tilo-warning/80 text-xs font-bold underline cursor-pointer"
-                            >
-                                Restaurar Seguridad
-                            </button>
-                        </div>
-                    )}
-
-                    {/* --- DIAGNÓSTICO GENERAL Y ESTADO DE SALUD (HOMOLOGACIÓN LINEAL DESATURADA) --- */}
-                    <div id="card-diagnostico-general" className={`bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 ${
-                        hasActiveAlerts ? 'border-l-amber-500' : 'border-l-[#3AAA35]'
-                    } hover:shadow-md transition-all`}>
-                        {/* Cabecera en 3 flex-items (homologada a los Pilares) */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border ${
-                                        hasActiveAlerts
-                                            ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                            : 'bg-emerald-50 text-[#3AAA35] border-emerald-200/70'
-                                    }`}>
-                                        EVALUACIÓN INTEGRAL MULTIMODAL
-                                    </span>
-                                    <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                                        <span>🧬</span>
-                                        <span>Diagnóstico General y Estado de Salud</span>
-                                    </h3>
-                                </div>
-                            </div>
-                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide border shrink-0 self-start sm:self-center ${
-                                hasActiveAlerts
-                                    ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                    : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
-                            }`}>
-                                {hasActiveAlerts ? `⚠️ ${alertNodesCount} Áreas en Atención Prioritaria` : '✓ Equilibrio Fisiológico'}
-                            </span>
-                        </div>
-
-                        {/* Fuentes Integradas Aplanadas (Inline desaturado sin micro-píldoras gruesas) */}
-                        <div className="my-2.5 text-[10.5px] text-slate-500 font-medium flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="font-extrabold text-slate-400 uppercase tracking-wider text-[9.5px]">Fuentes Integradas:</span>
-                            {fuentesClinicas.map((f, idx) => (
-                                <span key={f.id} className="inline-flex items-center gap-1 text-slate-600">
-                                    <span>{f.icon}</span>
-                                    <span className="font-semibold text-slate-700">{f.title.split('(')[0].trim()}</span>
-                                    {idx < fuentesClinicas.length - 1 && <span className="text-slate-300 ml-1">•</span>}
-                                </span>
-                            ))}
-                        </div>
-
-                        {/* Texto Base Fluido */}
-                        <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3 text-justify">
-                            {diagnosticoGeneralPaciente.overviewText}
-                        </p>
-
-                        {/* Bloques Internos Lineales de Ancho Completo (Estilo "Estrategia Dietética") */}
-                        {diagnosticoGeneralPaciente.systemCards.length > 0 && (
-                            <div className="my-3.5 space-y-2">
-                                {diagnosticoGeneralPaciente.systemCards.map((sys) => (
-                                    <div
-                                        key={sys.id}
-                                        className="bg-slate-50/60 border border-slate-200/60 rounded-xl px-4 py-2.5 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-slate-50 transition-colors"
-                                    >
-                                        <div className="flex items-start sm:items-center gap-2.5 flex-1">
-                                            <span className="text-base shrink-0 mt-0.5 sm:mt-0">{sys.icon}</span>
-                                            <div className="space-y-0.5">
-                                                <span className="font-bold text-slate-800 text-xs block">
-                                                    {sys.title}
-                                                </span>
-                                                <p className="text-[11.5px] text-slate-600 font-normal leading-relaxed">
-                                                    {sys.description}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <span className={`text-[9.5px] font-extrabold px-2.5 py-1 rounded-lg border shrink-0 self-start sm:self-center ${sys.badgeColor}`}>
-                                            {sys.badge}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Acordeón de Evidencia Multimodal en Lista Vertical (sin cuadrícula densa) */}
-                        <div className="mt-3 pt-2.5 border-t border-slate-100">
-                            <details className="group">
-                                <summary className="cursor-pointer text-[10.5px] font-bold text-slate-500 hover:text-[#1C75BC] flex items-center justify-between select-none">
-                                    <span className="flex items-center gap-1.5">
-                                        <span>🔬</span>
-                                        <span>Ver Detalle Clínico de las 6 Fuentes Diagnósticas (Fases 0 a 18)</span>
-                                    </span>
-                                    <span className="text-[10px] text-slate-400 group-open:rotate-180 transition-transform">▼</span>
-                                </summary>
-
-                                <div className="mt-3 divide-y divide-slate-100 border border-slate-200/70 rounded-xl overflow-hidden bg-slate-50/40">
-                                    {fuentesClinicas.map((f) => (
-                                        <div
-                                            key={f.id}
-                                            className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-start justify-between gap-2 hover:bg-slate-100/50 transition-colors"
-                                        >
-                                            <div className="flex-1 space-y-0.5">
-                                                <div className="flex items-center gap-2">
-                                                    <span>{f.icon}</span>
-                                                    <span className="font-extrabold text-[11px] text-slate-800">
-                                                        {f.title}
-                                                    </span>
-                                                </div>
-                                                <p className="text-[11px] text-slate-600 leading-relaxed pl-6">
-                                                    {f.summary}
-                                                </p>
-                                            </div>
-                                            <span className="text-[9.5px] font-bold px-2 py-0.5 rounded bg-white border border-slate-200/90 text-slate-500 shrink-0 self-start sm:self-center pl-6 sm:pl-2">
-                                                {f.badge}
-                                            </span>
-                                        </div>
-                                    ))}
-
-                                    {correlacionMultimodal?.sintesis_fisiopatologica && (
-                                        <div className="px-4 py-2.5 bg-blue-50/30 text-[11px] text-slate-600 leading-relaxed border-t border-blue-100/60 space-y-0.5">
-                                            <span className="font-bold text-[#1C75BC] flex items-center gap-1.5">
-                                                <span>👅</span>
-                                                <span>Telemetría de Soporte Tisular (Topografía Lingual CYTOS):</span>
-                                            </span>
-                                            <p className="pl-6">{correlacionMultimodal.sintesis_fisiopatologica}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </details>
-                        </div>
-
-                        {/* Pie de Tarjeta Estándar */}
-                        <div className="pt-2.5 border-t border-slate-100 mt-3 flex items-center justify-between text-[10px]">
-                            <span className="text-slate-400 font-medium">ⓘ Convergencia diagnóstica de las 6 fuentes clínicas</span>
-                        </div>
-                    </div>
-
-                    {/* --- CHILD ACCORDION 2: ARQUITECTURA DE ORO RECOMENDADA (BENTO CARDS ORTOMOLECULARES) --- */}
-                    <Accordion
-                        title="Arquitectura de Oro Recomendada"
-                        id="accordion-gold-architecture"
-                        isOpen={openSections.childGoldArchitecture}
-                        onToggle={() => toggleSection('childGoldArchitecture')}
-                    >
-                        <div id="card-gold-architecture" className="relative p-1">
-                            {/* Overlay Bloqueo (Solo visual) */}
-                            {isRiskDetected && !overrideActive && (
-                                <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-20 flex items-center justify-center rounded-2xl">
-                                    <Lock className="w-12 h-12 text-white opacity-70 animate-pulse" />
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 gap-4">
-                                {/* 33 Plus (Ignición Mitocondrial - Rojo #E30613) */}
-                                <div className="flex flex-col bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#E30613] p-5 shadow-xs hover:shadow-md transition-all">
-                                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-red-50 text-[#E30613] border border-red-200/70">
-                                                FÓRMULA 33PLUS® • DÍA
-                                            </span>
-                                            <h4 className="text-sm font-extrabold text-slate-900 tracking-tight">
-                                                33 PLUS
-                                            </h4>
-                                        </div>
-                                        <span className="text-[10px] font-extrabold text-[#E30613] uppercase tracking-wider bg-red-50/70 px-2 py-0.5 rounded-md">
-                                            Ignición Mitocondrial
-                                        </span>
-                                    </div>
-
-                                    <p className="text-slate-700 text-xs leading-relaxed font-medium mb-3.5 flex-1">
-                                        Optimización de la cadena respiratoria celular, reducción de fatiga crónica y mejora en la sensibilidad a la insulina mediante cofactores vasculares y antioxidantes diurnos.
-                                    </p>
-
-                                    <div className="mb-4 bg-slate-50 border border-slate-200/70 rounded-xl p-2.5 text-[10.5px] space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 font-bold">Dosificación:</span>
-                                            <span className="font-extrabold text-slate-800">1 toma al día</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 font-bold">Momento de ingesta:</span>
-                                            <span className="font-extrabold text-[#E30613]">☀️ Con el desayuno (09:00 AM)</span>
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={handleToggle33}
-                                        className={`mt-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all w-full cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
-                                            is33Added
-                                                ? 'bg-[#E30613] text-white hover:bg-[#E30613]/90 shadow-red-500/20'
-                                                : 'bg-[#1C75BC] text-white hover:bg-[#1C75BC]/90 shadow-blue-500/20'
-                                        }`}
-                                    >
-                                        <HeartPulse className="w-4 h-4 shrink-0" />
-                                        <span>{is33Added ? '✓ Agregado al Plan Nutracéutico' : 'Agregar 33Plus® al Plan'}</span>
-                                    </button>
-                                </div>
-
-                                {/* 34 Plus (Ingeniería Tisular - Verde #3AAA35) */}
-                                <div className="flex flex-col bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#3AAA35] p-5 shadow-xs hover:shadow-md transition-all">
-                                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-[#3AAA35] border border-emerald-200/70">
-                                                FÓRMULA 34PLUS® • NOCHE
-                                            </span>
-                                            <h4 className="text-sm font-extrabold text-slate-900 tracking-tight">
-                                                34 PLUS
-                                            </h4>
-                                        </div>
-                                        <span className="text-[10px] font-extrabold text-[#3AAA35] uppercase tracking-wider bg-emerald-50/70 px-2 py-0.5 rounded-md">
-                                            Ingeniería Tisular
-                                        </span>
-                                    </div>
-
-                                    <p className="text-slate-700 text-xs leading-relaxed font-medium mb-3.5 flex-1">
-                                        Regeneración de matriz extracelular, fortalecimiento articular y optimización de síntesis proteica post-ejercicio durante el sueño profundo.
-                                    </p>
-
-                                    <div className="mb-4 bg-slate-50 border border-slate-200/70 rounded-xl p-2.5 text-[10.5px] space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 font-bold">Dosificación:</span>
-                                            <span className="font-extrabold text-slate-800">1 toma al día (mínimo 500 ml de agua 💧)</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 font-bold">Momento de ingesta:</span>
-                                            <span className="font-extrabold text-[#3AAA35]">🌙 Con la cena (08:30 PM)</span>
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={handleToggle34}
-                                        className={`mt-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all w-full cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
-                                            is34Added
-                                                ? 'bg-[#3AAA35] text-white hover:bg-[#3AAA35]/90 shadow-emerald-500/20'
-                                                : 'bg-[#1C75BC] text-white hover:bg-[#1C75BC]/90 shadow-blue-500/20'
-                                        }`}
-                                    >
-                                        <Activity className="w-4 h-4 shrink-0" />
-                                        <span>{is34Added ? '✓ Agregado al Plan Nutracéutico' : 'Agregar 34Plus® al Plan'}</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </Accordion>
-                </div>
-            </Accordion>
         </div>
     );
 };
