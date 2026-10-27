@@ -25,6 +25,14 @@ export const TabDiagnosis = ({
     const node3 = ifmNodes.find(n => n.nodeId === 'NODO_3_ENERGIA');
     const node5 = ifmNodes.find(n => n.nodeId === 'NODO_5_TRANSPORTE');
 
+    // Derivación Reactiva de Alertas de Medicina Funcional (Cero Hardcoding)
+    const activeAlertNodes = React.useMemo(() => {
+        return ifmNodes.filter(n => n.status !== 'HOMEOSTASIS' || (Array.isArray(n.key_biomarkers) && n.key_biomarkers.length > 0));
+    }, [ifmNodes]);
+
+    const hasActiveAlerts = activeAlertNodes.length > 0;
+    const alertNodesCount = activeAlertNodes.length;
+
     // Síntesis Fisiopatológica Multimodal CORTEX (Lectura Defensiva)
     const correlacionMultimodal = React.useMemo(() => {
         const rawCorr = patientData?.scan_data?.correlacion_multimodal || 
@@ -478,6 +486,8 @@ export const TabDiagnosis = ({
         ? `${pName} evoluciona favorablemente en su etapa de crecimiento óseo e infantil con parámetros fisiológicos adecuados.`
         : isGeriatric
         ? `El estado de salud de ${pName} está enfocado en proteger su vitalidad, reserva cognitiva y capacidad funcional autónoma.`
+        : hasActiveAlerts
+        ? `Hemos identificado ${alertNodesCount} ejes metabólicos prioritarios en tu evaluación que atenderemos de raíz con este protocolo personalizado para optimizar tu salud integral.`
         : `Tu cuerpo se encuentra en un estado metabólico estable con parámetros adaptados a tus objetivos de salud y rendimiento.`;
 
     const pilar1Text = (!isGuiaInvalidForAdult && guia?.pilar_salud_crecimiento) ? guia.pilar_salud_crecimiento : defaultPilar1;
@@ -587,11 +597,17 @@ export const TabDiagnosis = ({
                 {activeViewMode === 'patient' ? (
                     <div className="p-6 space-y-4">
                         {/* Pilar 1: Crecimiento y Salud */}
-                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-[#3AAA35] hover:shadow-md transition-all">
+                        <div className={`bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 ${
+                            hasActiveAlerts ? 'border-l-amber-500' : 'border-l-[#3AAA35]'
+                        } hover:shadow-md transition-all`}>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
                                 <div>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-[#3AAA35] border border-emerald-200/70">
+                                        <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                                            hasActiveAlerts
+                                                ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                                : 'bg-emerald-50 text-[#3AAA35] border-emerald-200/70'
+                                        }`}>
                                             PILAR 01 • SALUD METABÓLICA
                                         </span>
                                         <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
@@ -600,8 +616,12 @@ export const TabDiagnosis = ({
                                         </h3>
                                     </div>
                                 </div>
-                                <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide bg-emerald-50 text-[#3AAA35] border border-emerald-200 shrink-0 self-start sm:self-center">
-                                    ✓ HOMEOSTASIS METABÓLICA
+                                <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide border shrink-0 self-start sm:self-center ${
+                                    hasActiveAlerts
+                                        ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                        : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                                }`}>
+                                    {hasActiveAlerts ? `⚠️ ENFOQUE DE REVERSIÓN METABÓLICA (${alertNodesCount} Nodos)` : '✓ HOMEOSTASIS METABÓLICA'}
                                 </span>
                             </div>
 
@@ -611,10 +631,17 @@ export const TabDiagnosis = ({
 
                             <div className="my-3 bg-slate-50/90 border border-slate-200/70 rounded-xl p-2.5 flex items-center justify-between text-[10.5px]">
                                 <span className="font-bold text-slate-500">Estado Biológico General:</span>
-                                <span className="font-extrabold text-[#3AAA35] flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-[#3AAA35] animate-pulse"></span>
-                                    Calibración Óptima para Edad ({ageCandidate} años)
-                                </span>
+                                {hasActiveAlerts ? (
+                                    <span className="font-extrabold text-amber-800 flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                        Atención Prioritaria Focalizada ({ageCandidate} años)
+                                    </span>
+                                ) : (
+                                    <span className="font-extrabold text-[#3AAA35] flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-[#3AAA35] animate-pulse"></span>
+                                        Calibración Óptima para Edad ({ageCandidate} años)
+                                    </span>
+                                )}
                             </div>
 
                             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
@@ -964,11 +991,19 @@ export const TabDiagnosis = ({
                                     </h4>
                                 </div>
                                 <span className={`text-[10px] px-2.5 py-1 rounded-xl font-black uppercase tracking-wider border shrink-0 self-start sm:self-center ${
-                                    correlacionMultimodal.indice_prioridad_clinica === 'Elevado'
+                                    (correlacionMultimodal.indice_prioridad_clinica === 'Elevado' || (hasActiveAlerts && alertNodesCount >= 3))
                                         ? 'bg-red-50 text-[#E30613] border-red-200'
+                                        : hasActiveAlerts
+                                        ? 'bg-amber-50 text-amber-800 border-amber-300'
                                         : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
                                 }`}>
-                                    Prioridad: {correlacionMultimodal.indice_prioridad_clinica || 'Bajo'}
+                                    Prioridad: {
+                                        correlacionMultimodal.indice_prioridad_clinica === 'Pendiente'
+                                            ? 'Pendiente'
+                                            : (hasActiveAlerts && alertNodesCount >= 3
+                                                ? 'Prioritaria'
+                                                : (correlacionMultimodal.indice_prioridad_clinica || (hasActiveAlerts ? 'Moderada' : 'Baja')))
+                                    }
                                 </span>
                             </div>
                             <p className="text-xs text-slate-700 leading-relaxed font-medium mt-3 text-justify">
