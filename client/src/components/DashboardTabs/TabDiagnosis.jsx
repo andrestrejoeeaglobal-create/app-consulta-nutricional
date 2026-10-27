@@ -646,7 +646,6 @@ export const TabDiagnosis = ({
 
                             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
                                 <span className="text-slate-400 font-medium">ⓘ Monitoreo Funcional Preventivo Continuo</span>
-                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
                             </div>
                         </div>
 
@@ -682,7 +681,6 @@ export const TabDiagnosis = ({
 
                             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
                                 <span className="text-slate-400 font-medium">ⓘ Protocolo de Eubiosis y Carga Glucémica</span>
-                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
                             </div>
                         </div>
 
@@ -718,7 +716,6 @@ export const TabDiagnosis = ({
 
                             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
                                 <span className="text-slate-400 font-medium">ⓘ Modelo Lyon & Attia de Longevidad Muscular</span>
-                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
                             </div>
                         </div>
 
@@ -754,7 +751,6 @@ export const TabDiagnosis = ({
 
                             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
                                 <span className="text-slate-400 font-medium">ⓘ Sinergia de Ignición Mitocondrial y Reparación Tisular</span>
-                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
                             </div>
                         </div>
                     </div>
@@ -1011,7 +1007,6 @@ export const TabDiagnosis = ({
                             </p>
                             <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px]">
                                 <span className="text-slate-400 font-medium">Auditoría Ocular Binocular + Topografía Lingual CYTOS + Biorresonancia Electret</span>
-                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
                             </div>
                         </div>
                     )}

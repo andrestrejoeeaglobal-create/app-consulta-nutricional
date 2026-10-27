@@ -696,9 +696,6 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                             </p>
                                         )}
                                     </div>
-                                    <span className="text-[10px] font-extrabold text-[#1C75BC] shrink-0 self-end sm:self-center">
-                                        Correlación Córtex →
-                                    </span>
                                 </div>
                             </div>
                         );
@@ -770,7 +767,6 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
 
                         <div className="pt-3 border-t border-slate-100 mt-4 flex items-center justify-between text-[10px]">
                             <span className="text-slate-400 font-medium">Doctrina Médica Funcional IFM</span>
-                            <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
                         </div>
                     </div>
                 )}
