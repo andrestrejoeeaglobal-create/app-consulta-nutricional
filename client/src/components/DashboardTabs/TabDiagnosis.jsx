@@ -528,6 +528,93 @@ export const TabDiagnosis = ({
     const isPilar4Invalid = (ageCandidate >= 18) && String(guia?.pilar_cuidados_suplementacion || '').toLowerCase().includes('pediatra');
     const pilar4Text = (!isPilar4Invalid && guia?.pilar_cuidados_suplementacion) ? guia.pilar_cuidados_suplementacion : defaultPilar4;
 
+    // Diagnóstico General Integrado en Lenguaje Comprensible para el Paciente
+    const diagnosticoGeneralPaciente = React.useMemo(() => {
+        const patientName = pName || patientData?.profile?.name || patientData?.identificacion?.nombre || "Paciente";
+        const systemCards = [];
+
+        // 1. Transporte Cardiovascular (Nodo 5)
+        const cardioNode = ifmNodes.find(n => n.nodeId === 'NODO_5_TRANSPORTE' || String(n.nodeName || '').toLowerCase().includes('transporte'));
+        if (cardioNode && (cardioNode.status !== 'HOMEOSTASIS' || (Array.isArray(cardioNode.key_biomarkers) && cardioNode.key_biomarkers.length > 0))) {
+            systemCards.push({
+                id: 'cardio',
+                icon: '🫀',
+                title: 'Circulación y Presión Arterial',
+                badge: 'Atención Prioritaria',
+                badgeColor: 'bg-red-50 text-[#E30613] border-red-200',
+                description: 'Tus vasos sanguíneos presentan sobrecarga de resistencia y reactividad. Para cuidar tu corazón, tu plan restringe el ejercicio de alta exigencia (Zona 5 HIIT) y prioriza caminata ligera y movilidad diaria (NEAT).'
+            });
+        }
+
+        // 2. Metabolismo y Energía (Nodo 3)
+        const energyNode = ifmNodes.find(n => n.nodeId === 'NODO_3_ENERGIA' || String(n.nodeName || '').toLowerCase().includes('bioenerg'));
+        if (energyNode && (energyNode.status !== 'HOMEOSTASIS' || (Array.isArray(energyNode.key_biomarkers) && energyNode.key_biomarkers.length > 0))) {
+            systemCards.push({
+                id: 'metabolismo',
+                icon: '⚡',
+                title: 'Metabolismo de Grasas y Colesterol',
+                badge: 'Modulación Activa',
+                badgeColor: 'bg-amber-50 text-amber-800 border-amber-300',
+                description: 'Tus células requieren apoyo para procesar eficazmente el colesterol y las grasas circulantes. La alimentación calculada y la fórmula 33Plus® diurna trabajan para restaurar la sensibilidad metabólica.'
+            });
+        }
+
+        // 3. Piel e Inmunidad (Nodo 6)
+        const defenseNode = ifmNodes.find(n => n.nodeId === 'NODO_6_DEFENSA' || String(n.nodeName || '').toLowerCase().includes('defensa'));
+        if (defenseNode && (defenseNode.status !== 'HOMEOSTASIS' || (Array.isArray(defenseNode.key_biomarkers) && defenseNode.key_biomarkers.length > 0))) {
+            systemCards.push({
+                id: 'piel_inmune',
+                icon: '🛡️',
+                title: 'Barrera Cutánea e Inflamación',
+                badge: 'Inflamación Superficial',
+                badgeColor: 'bg-amber-50 text-amber-800 border-amber-300',
+                description: 'El eritema o reactividad cutánea detectada refleja un proceso inflamatorio tisular. La fórmula 34Plus® nocturna (con colágeno y vitamina C) está formulada para reparar la matriz tisular durante el descanso.'
+            });
+        }
+
+        // 4. Neuroendocrino / Sueño (Nodo 4)
+        const neuroNode = ifmNodes.find(n => n.nodeId === 'NODO_4_COMUNICACION' || String(n.nodeName || '').toLowerCase().includes('comunicación'));
+        if (neuroNode && (neuroNode.status !== 'HOMEOSTASIS' || (Array.isArray(neuroNode.key_biomarkers) && neuroNode.key_biomarkers.length > 0))) {
+            systemCards.push({
+                id: 'neuro_circadiano',
+                icon: '🧠',
+                title: 'Equilibrio Neurovascular y Descanso',
+                badge: 'Vigilancia Funcional',
+                badgeColor: 'bg-blue-50 text-[#1C75BC] border-blue-200',
+                description: 'Es necesario vigilar la elasticidad microvascular cerebral y sincronizar los ritmos circadianos de actividad y sueño para una óptima recuperación cognitiva.'
+            });
+        }
+
+        // 5. Otros nodos alterados que no cayeron en los anteriores
+        activeAlertNodes.forEach(node => {
+            const alreadyHandled = ['NODO_5_TRANSPORTE', 'NODO_3_ENERGIA', 'NODO_6_DEFENSA', 'NODO_4_COMUNICACION'].includes(node.nodeId);
+            if (!alreadyHandled) {
+                const cleanNodeName = String(node.nodeName || node.name || 'Sistema Funcional').replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '');
+                systemCards.push({
+                    id: node.nodeId || Math.random().toString(),
+                    icon: '🔬',
+                    title: cleanNodeName,
+                    badge: 'Enfoque Terapéutico',
+                    badgeColor: 'bg-blue-50 text-[#1C75BC] border-blue-200',
+                    description: node.summary || node.therapeutic_focus || 'Atención de medicina funcional orientada a restablecer la homeostasis de este sistema.'
+                });
+            }
+        });
+
+        const isFullyOptimal = systemCards.length === 0;
+
+        const overviewText = isFullyOptimal
+            ? `Tu evaluación clínica refleja un equilibrio fisiológico óptimo en tus 7 sistemas funcionales. Este plan está diseñado para potenciar tu longevidad, vitalidad celular y rendimiento diario continuo.`
+            : `Hemos integrado tus estudios de laboratorio, bioimpedancia y exploración clínica para identificar las causas de fondo que requieren atención. Tu plan médico-nutricional no es restrictivo; es una intervención estratégica para aliviar la sobrecarga vascular, regular tu metabolismo y desinflamar tu organismo.`;
+
+        return {
+            patientName,
+            overviewText,
+            systemCards,
+            isFullyOptimal
+        };
+    }, [patientData, ifmNodes, activeAlertNodes, pName]);
+
     return (
         <div className="space-y-6 font-sans">
             {/* Tarjeta Principal del Reporte Consolidado (Doctrina CORTEX v2.1 CDSS) */}
@@ -973,43 +1060,91 @@ export const TabDiagnosis = ({
                         </div>
                     )}
 
-                    {/* --- SÍNTESIS FISIOPATOLÓGICA MULTIMODAL CORTEX (BENTO CARD QUIRÚRGICA) --- */}
-                    {correlacionMultimodal && (
-                        <div id="card-correlacion-multimodal" className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#1C75BC] p-5 shadow-xs transition-all duration-300">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                    {/* --- DIAGNÓSTICO GENERAL Y ESTADO DE SALUD (LENGUAJE COMPRENSIBLE PARA EL PACIENTE) --- */}
+                    <div id="card-diagnostico-general" className={`bg-white rounded-2xl border border-slate-200/90 border-l-4 ${
+                        hasActiveAlerts ? 'border-l-amber-500' : 'border-l-[#3AAA35]'
+                    } p-5 shadow-xs transition-all duration-300`}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                            <div>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC]">
-                                        INTEGRACIÓN MULTIMODAL
+                                    <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                                        hasActiveAlerts
+                                            ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                            : 'bg-emerald-50 text-[#3AAA35] border-emerald-200/70'
+                                    }`}>
+                                        EVALUACIÓN INTEGRAL DEL PACIENTE
                                     </span>
                                     <h4 className="font-extrabold text-xs uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
                                         <span>🧬</span>
-                                        <span>Síntesis Fisiopatológica Multimodal CORTEX</span>
+                                        <span>Diagnóstico General y Estado de Salud</span>
                                     </h4>
                                 </div>
-                                <span className={`text-[10px] px-2.5 py-1 rounded-xl font-black uppercase tracking-wider border shrink-0 self-start sm:self-center ${
-                                    (correlacionMultimodal.indice_prioridad_clinica === 'Elevado' || (hasActiveAlerts && alertNodesCount >= 3))
-                                        ? 'bg-red-50 text-[#E30613] border-red-200'
-                                        : hasActiveAlerts
-                                        ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                        : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
-                                }`}>
-                                    Prioridad: {
-                                        correlacionMultimodal.indice_prioridad_clinica === 'Pendiente'
-                                            ? 'Pendiente'
-                                            : (hasActiveAlerts && alertNodesCount >= 3
-                                                ? 'Prioritaria'
-                                                : (correlacionMultimodal.indice_prioridad_clinica || (hasActiveAlerts ? 'Moderada' : 'Baja')))
-                                    }
-                                </span>
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                    Síntesis fisiológica en lenguaje claro basada en tus estudios y exploración clínica
+                                </p>
                             </div>
-                            <p className="text-xs text-slate-700 leading-relaxed font-medium mt-3 text-justify">
-                                {correlacionMultimodal.sintesis_fisiopatologica}
-                            </p>
-                            <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400 font-medium">Auditoría Ocular Binocular + Topografía Lingual CYTOS + Biorresonancia Electret</span>
-                            </div>
+                            <span className={`text-[10px] px-2.5 py-1 rounded-xl font-black uppercase tracking-wider border shrink-0 self-start sm:self-center ${
+                                hasActiveAlerts
+                                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                    : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                            }`}>
+                                {hasActiveAlerts ? `⚠️ ${alertNodesCount} Áreas en Atención Prioritaria` : '✓ Equilibrio Fisiológico'}
+                            </span>
                         </div>
-                    )}
+
+                        {/* Visión General Comprensible */}
+                        <p className="text-xs text-slate-700 leading-relaxed font-medium mt-3.5 text-justify">
+                            {diagnosticoGeneralPaciente.overviewText}
+                        </p>
+
+                        {/* Ejes Clínicos Clave en Lenguaje Humano */}
+                        {diagnosticoGeneralPaciente.systemCards.length > 0 && (
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {diagnosticoGeneralPaciente.systemCards.map((sys) => (
+                                    <div
+                                        key={sys.id}
+                                        className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-xs leading-relaxed flex flex-col justify-between hover:bg-slate-100/70 transition-colors"
+                                    >
+                                        <div>
+                                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                <span className="font-extrabold text-[11px] text-slate-900 flex items-center gap-1.5">
+                                                    <span>{sys.icon}</span>
+                                                    <span>{sys.title}</span>
+                                                </span>
+                                                <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded border shrink-0 ${sys.badgeColor}`}>
+                                                    {sys.badge}
+                                                </span>
+                                            </div>
+                                            <p className="text-[11.5px] text-slate-700 font-medium leading-relaxed">
+                                                {sys.description}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Detalle Técnico de Bioseñales y Topografía Lingual (Fase 18) - Reubicado como detalle secundario colapsable */}
+                        {correlacionMultimodal?.sintesis_fisiopatologica && (
+                            <div className="mt-4 pt-3 border-t border-slate-100">
+                                <details className="group">
+                                    <summary className="cursor-pointer text-[10.5px] font-bold text-slate-500 hover:text-[#1C75BC] flex items-center justify-between select-none">
+                                        <span className="flex items-center gap-1.5">
+                                            <span>🔬</span>
+                                            <span>Detalle Técnico de Bioseñales y Topografía Lingual (Fase 18)</span>
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+                                    </summary>
+                                    <div className="mt-2.5 p-3 bg-slate-50/90 rounded-xl border border-slate-200/70 text-[11px] text-slate-600 leading-relaxed space-y-1.5">
+                                        <p>{correlacionMultimodal.sintesis_fisiopatologica}</p>
+                                        <p className="text-[9.5px] text-slate-400 font-medium border-t border-slate-200/60 pt-1.5">
+                                            Bioseñales de apoyo: Auditoría Ocular Binocular + Topografía Lingual CYTOS + Biorresonancia Electret
+                                        </p>
+                                    </div>
+                                </details>
+                            </div>
+                        )}
+                    </div>
 
                     {/* --- CHILD ACCORDION 2: ARQUITECTURA DE ORO RECOMENDADA (BENTO CARDS ORTOMOLECULARES) --- */}
                     <Accordion
