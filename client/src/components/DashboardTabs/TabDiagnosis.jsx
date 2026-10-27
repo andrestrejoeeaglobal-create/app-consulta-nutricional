@@ -1133,10 +1133,11 @@ export const TabDiagnosis = ({
                         </div>
                     )}
 
-                    {/* --- DIAGNÓSTICO GENERAL Y ESTADO DE SALUD (LENGUAJE COMPRENSIBLE PARA EL PACIENTE) --- */}
-                    <div id="card-diagnostico-general" className={`bg-white rounded-2xl border border-slate-200/90 border-l-4 ${
+                    {/* --- DIAGNÓSTICO GENERAL Y ESTADO DE SALUD (HOMOLOGACIÓN LINEAL DESATURADA) --- */}
+                    <div id="card-diagnostico-general" className={`bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 ${
                         hasActiveAlerts ? 'border-l-amber-500' : 'border-l-[#3AAA35]'
-                    } p-5 shadow-xs transition-all duration-300`}>
+                    } hover:shadow-md transition-all`}>
+                        {/* Cabecera en 3 flex-items (homologada a los Pilares) */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
                             <div>
                                 <div className="flex items-center gap-2">
@@ -1145,18 +1146,15 @@ export const TabDiagnosis = ({
                                             ? 'bg-amber-50 text-amber-800 border-amber-300'
                                             : 'bg-emerald-50 text-[#3AAA35] border-emerald-200/70'
                                     }`}>
-                                        EVALUACIÓN INTEGRAL (6 FUENTES CLÍNICAS)
+                                        EVALUACIÓN INTEGRAL MULTIMODAL
                                     </span>
-                                    <h4 className="font-extrabold text-xs uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                                    <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
                                         <span>🧬</span>
                                         <span>Diagnóstico General y Estado de Salud</span>
-                                    </h4>
+                                    </h3>
                                 </div>
-                                <p className="text-[11px] text-slate-500 mt-1">
-                                    Convergencia diagnóstica de Anamnesis, Electret (+240 Parámetros), Ocular, Lingual, Laboratorio y Evidencia Somática
-                                </p>
                             </div>
-                            <span className={`text-[10px] px-2.5 py-1 rounded-xl font-black uppercase tracking-wider border shrink-0 self-start sm:self-center ${
+                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide border shrink-0 self-start sm:self-center ${
                                 hasActiveAlerts
                                     ? 'bg-amber-50 text-amber-800 border-amber-300'
                                     : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
@@ -1165,105 +1163,100 @@ export const TabDiagnosis = ({
                             </span>
                         </div>
 
-                        {/* Banda de las 6 Fuentes Clínicas Multimodales */}
-                        <div className="mt-3 pt-2.5 border-b border-slate-100/80 pb-3 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1">
-                                Fuentes Integradas:
-                            </span>
-                            {fuentesClinicas.map((f) => (
-                                <span
-                                    key={f.id}
-                                    className="px-2 py-1 rounded-lg text-[10.5px] font-bold bg-slate-100/90 text-slate-700 border border-slate-200/90 flex items-center gap-1.5 hover:bg-slate-200/70 transition-colors"
-                                    title={f.title}
-                                >
+                        {/* Fuentes Integradas Aplanadas (Inline desaturado sin micro-píldoras gruesas) */}
+                        <div className="my-2.5 text-[10.5px] text-slate-500 font-medium flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="font-extrabold text-slate-400 uppercase tracking-wider text-[9.5px]">Fuentes Integradas:</span>
+                            {fuentesClinicas.map((f, idx) => (
+                                <span key={f.id} className="inline-flex items-center gap-1 text-slate-600">
                                     <span>{f.icon}</span>
-                                    <span>{f.title.split('(')[0].trim()}</span>
+                                    <span className="font-semibold text-slate-700">{f.title.split('(')[0].trim()}</span>
+                                    {idx < fuentesClinicas.length - 1 && <span className="text-slate-300 ml-1">•</span>}
                                 </span>
                             ))}
                         </div>
 
-                        {/* Visión General Comprensible */}
-                        <p className="text-xs text-slate-700 leading-relaxed font-medium mt-3.5 text-justify">
+                        {/* Texto Base Fluido */}
+                        <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3 text-justify">
                             {diagnosticoGeneralPaciente.overviewText}
                         </p>
 
-                        {/* Ejes Clínicos Clave en Lenguaje Humano */}
+                        {/* Bloques Internos Lineales de Ancho Completo (Estilo "Estrategia Dietética") */}
                         {diagnosticoGeneralPaciente.systemCards.length > 0 && (
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="my-3.5 space-y-2">
                                 {diagnosticoGeneralPaciente.systemCards.map((sys) => (
                                     <div
                                         key={sys.id}
-                                        className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-xs leading-relaxed flex flex-col justify-between hover:bg-slate-100/70 transition-colors"
+                                        className="bg-slate-50/60 border border-slate-200/60 rounded-xl px-4 py-2.5 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-slate-50 transition-colors"
                                     >
-                                        <div>
-                                            <div className="flex items-center justify-between gap-2 mb-1.5">
-                                                <span className="font-extrabold text-[11px] text-slate-900 flex items-center gap-1.5">
-                                                    <span>{sys.icon}</span>
-                                                    <span>{sys.title}</span>
+                                        <div className="flex items-start sm:items-center gap-2.5 flex-1">
+                                            <span className="text-base shrink-0 mt-0.5 sm:mt-0">{sys.icon}</span>
+                                            <div className="space-y-0.5">
+                                                <span className="font-bold text-slate-800 text-xs block">
+                                                    {sys.title}
                                                 </span>
-                                                <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded border shrink-0 ${sys.badgeColor}`}>
-                                                    {sys.badge}
-                                                </span>
+                                                <p className="text-[11.5px] text-slate-600 font-normal leading-relaxed">
+                                                    {sys.description}
+                                                </p>
                                             </div>
-                                            <p className="text-[11.5px] text-slate-700 font-medium leading-relaxed">
-                                                {sys.description}
-                                            </p>
                                         </div>
+                                        <span className={`text-[9.5px] font-extrabold px-2.5 py-1 rounded-lg border shrink-0 self-start sm:self-center ${sys.badgeColor}`}>
+                                            {sys.badge}
+                                        </span>
                                     </div>
                                 ))}
                             </div>
                         )}
 
-                        {/* Consolidado Multimodal de Evidencia Cruzada (6 Fuentes Clínicas) */}
-                        <div className="mt-4 pt-3 border-t border-slate-100">
+                        {/* Acordeón de Evidencia Multimodal en Lista Vertical (sin cuadrícula densa) */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-100">
                             <details className="group">
-                                <summary className="cursor-pointer text-[10.5px] font-bold text-slate-600 hover:text-[#1C75BC] flex items-center justify-between select-none">
+                                <summary className="cursor-pointer text-[10.5px] font-bold text-slate-500 hover:text-[#1C75BC] flex items-center justify-between select-none">
                                     <span className="flex items-center gap-1.5">
                                         <span>🔬</span>
-                                        <span>Evidencia Multimodal Cruzada: Detalle de las 6 Fuentes Diagnósticas (Fases 0 a 18)</span>
+                                        <span>Ver Detalle Clínico de las 6 Fuentes Diagnósticas (Fases 0 a 18)</span>
                                     </span>
                                     <span className="text-[10px] text-slate-400 group-open:rotate-180 transition-transform">▼</span>
                                 </summary>
 
-                                <div className="mt-3 space-y-3">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                                        {fuentesClinicas.map((f) => (
-                                            <div
-                                                key={f.id}
-                                                className="p-3 bg-slate-50/90 rounded-xl border border-slate-200/70 text-[11px] text-slate-700 leading-relaxed flex flex-col justify-between hover:bg-slate-100/80 transition-colors"
-                                            >
-                                                <div>
-                                                    <div className="flex items-center justify-between gap-1.5 mb-1.5">
-                                                        <span className="font-extrabold text-[11px] text-slate-900 flex items-center gap-1.5">
-                                                            <span>{f.icon}</span>
-                                                            <span>{f.title}</span>
-                                                        </span>
-                                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500 shrink-0">
-                                                            {f.badge}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-                                                        {f.summary}
-                                                    </p>
+                                <div className="mt-3 divide-y divide-slate-100 border border-slate-200/70 rounded-xl overflow-hidden bg-slate-50/40">
+                                    {fuentesClinicas.map((f) => (
+                                        <div
+                                            key={f.id}
+                                            className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-start justify-between gap-2 hover:bg-slate-100/50 transition-colors"
+                                        >
+                                            <div className="flex-1 space-y-0.5">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{f.icon}</span>
+                                                    <span className="font-extrabold text-[11px] text-slate-800">
+                                                        {f.title}
+                                                    </span>
                                                 </div>
+                                                <p className="text-[11px] text-slate-600 leading-relaxed pl-6">
+                                                    {f.summary}
+                                                </p>
                                             </div>
-                                        ))}
-                                    </div>
+                                            <span className="text-[9.5px] font-bold px-2 py-0.5 rounded bg-white border border-slate-200/90 text-slate-500 shrink-0 self-start sm:self-center pl-6 sm:pl-2">
+                                                {f.badge}
+                                            </span>
+                                        </div>
+                                    ))}
 
                                     {correlacionMultimodal?.sintesis_fisiopatologica && (
-                                        <div className="p-3 bg-blue-50/40 rounded-xl border border-blue-100/80 text-[11px] text-slate-600 leading-relaxed space-y-1">
+                                        <div className="px-4 py-2.5 bg-blue-50/30 text-[11px] text-slate-600 leading-relaxed border-t border-blue-100/60 space-y-0.5">
                                             <span className="font-bold text-[#1C75BC] flex items-center gap-1.5">
                                                 <span>👅</span>
                                                 <span>Telemetría de Soporte Tisular (Topografía Lingual CYTOS):</span>
                                             </span>
-                                            <p>{correlacionMultimodal.sintesis_fisiopatologica}</p>
-                                            <p className="text-[9.5px] text-slate-400 font-medium pt-1 border-t border-blue-100/60">
-                                                Integración telemétrica: Auditoría Ocular Binocular + Topografía Lingual CYTOS + Biorresonancia Electret
-                                            </p>
+                                            <p className="pl-6">{correlacionMultimodal.sintesis_fisiopatologica}</p>
                                         </div>
                                     )}
                                 </div>
                             </details>
+                        </div>
+
+                        {/* Pie de Tarjeta Estándar */}
+                        <div className="pt-2.5 border-t border-slate-100 mt-3 flex items-center justify-between text-[10px]">
+                            <span className="text-slate-400 font-medium">ⓘ Convergencia diagnóstica de las 6 fuentes clínicas</span>
                         </div>
                     </div>
 
