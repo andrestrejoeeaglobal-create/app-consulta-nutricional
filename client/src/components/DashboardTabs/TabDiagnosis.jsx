@@ -959,7 +959,7 @@ export const TabDiagnosis = ({
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div className="grid grid-cols-1 gap-4">
                                 {/* 33 Plus (Ignición Mitocondrial - Rojo #E30613) */}
                                 <div className="flex flex-col bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#E30613] p-5 shadow-xs hover:shadow-md transition-all">
                                     <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
