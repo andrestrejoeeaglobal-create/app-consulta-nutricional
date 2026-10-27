@@ -299,6 +299,15 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
         return resolveAlertItems(rawAlertas, rawCriticalAlerts);
     }, [rawAlertas, rawCriticalAlerts]);
 
+    // Filtrar ecos redundantes de biomarcadores crudos para aislar salvaguardas de bioseguridad y hard locks
+    const criticalSafeguards = useMemo(() => {
+        return alertItems.filter(item => {
+            const str = String(item);
+            const isRawEcho = /^ALERTA\s*(?:\d+|NODO)/i.test(str) && /(?:\(Ref:|\d+\.\d+|\b[A-Z_]{4,}\b)/.test(str) && !/SAFEGUARD|BLOQUEAD|CONTRAINDICA|PROHIBID|LOCK|RIESGO/i.test(str);
+            return !isRawEcho;
+        });
+    }, [alertItems]);
+
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
             {/* 1. SELECTOR HORIZONTAL DE PÍLDORAS INTERACTIVAS (❖ NODOS IFM:) */}
@@ -581,119 +590,54 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
 
             {/* 4. BLOQUE INFERIOR DE SÍNTESIS ESTRATÉGICA, CAUSA RAÍZ Y BIOSEGURIDAD (LAYOUT HOMOLOGADO ANCHO COMPLETO) */}
             <div className="space-y-4 pt-1 w-full">
-                {/* Bento Card 1: Diagnóstico Funcional de Causa Raíz */}
-                <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#1C75BC] p-5 shadow-xs">
-                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5">
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/20">
-                                ANÁLISIS ETIOLÓGICO MULTINODO
-                            </span>
-                            <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 select-none">
-                                <Activity className="w-4 h-4 text-[#1C75BC]" />
-                                <span>Diagnóstico Funcional de Causa Raíz</span>
-                            </h3>
-                        </div>
-                        {diagnosticItems.length > 0 && (
-                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                                {diagnosticItems.length} {diagnosticItems.length === 1 ? 'Eje Clínico' : 'Ejes Clínicos'}
-                            </span>
-                        )}
-                    </div>
-
-                    {/* Renderizado Defensivo: Si hay items desglosados, se distribuyen en cuadrícula responsive de 2 columnas */}
-                    {diagnosticItems.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {diagnosticItems.map((item, idx) => {
-                                const cieMatch = String(item).match(/[(\[]?(?:CIE-10:\s*)?([A-Z][0-9]{2}(?:\.[0-9]{1,2})?)[)\]]?/i);
-                                const cleanText = String(item)
-                                    .replace(/^[•\s\d.-]+/, '')
-                                    .trim();
-
-                                return (
-                                    <div
-                                        key={idx}
-                                        className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-xs text-slate-700 leading-relaxed font-medium hover:bg-slate-100/70 transition-colors flex flex-col justify-between"
-                                    >
-                                        <div>
-                                            <div className="flex items-start justify-between gap-2 mb-1.5">
-                                                <span className="font-extrabold text-[11px] text-slate-900 flex items-center gap-1.5">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-[#1C75BC]"></span>
-                                                    <span>Eje Diagnóstico 0{idx + 1}</span>
-                                                </span>
-                                                {cieMatch && (
-                                                    <span className="font-mono text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-blue-50 text-[#1C75BC] border border-blue-200 shrink-0">
-                                                        CIE-10: {cieMatch[1]}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-[11.5px] text-slate-700 leading-relaxed">
-                                                {cleanText}
-                                            </p>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        /* Fallback Seguro para expedientes legacy (String corrido sin items) */
-                        <p className="text-slate-700 text-xs leading-relaxed font-medium text-justify">
-                            {causaRaiz || 'Evaluación de causa raíz completada.'}
-                        </p>
-                    )}
-
-                    <div className="pt-3 border-t border-slate-100 mt-4 flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400 font-medium">Doctrina Médica Funcional IFM</span>
-                        <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
-                    </div>
-                </div>
-
-                {/* Bento Card 2: Bioseguridad y Alertas Clínicas */}
-                {(alertItems.length > 0 || alertas) && (
-                    <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-amber-500 p-5 shadow-xs">
+                {/* Bento Card 1: Diagnóstico Funcional de Causa Raíz (Fallback Exclusivo para Expedientes Legacy sin Matriz IFM) */}
+                {processedNodes.length === 0 && (
+                    <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#1C75BC] p-5 shadow-xs">
                         <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5">
                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/70">
-                                    FILTRO DE INMUNIDAD NORMATIVA
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/20">
+                                    ANÁLISIS ETIOLÓGICO DE BASE
                                 </span>
-                                <h3 className="text-xs font-extrabold text-amber-950 uppercase tracking-wider flex items-center gap-1.5 select-none">
-                                    <ShieldAlert className="w-4 h-4 text-amber-600" />
-                                    <span>Bioseguridad y Alertas Clínicas</span>
+                                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                                    <Activity className="w-4 h-4 text-[#1C75BC]" />
+                                    <span>Diagnóstico Funcional de Causa Raíz</span>
                                 </h3>
                             </div>
-                            <span className="px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
-                                ⚠️ VIGILANCIA ACTIVA
-                            </span>
+                            {diagnosticItems.length > 0 && (
+                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                                    {diagnosticItems.length} {diagnosticItems.length === 1 ? 'Eje Clínico' : 'Ejes Clínicos'}
+                                </span>
+                            )}
                         </div>
 
-                        {/* Desglose Defensivo de Alertas en 2 Columnas */}
-                        {alertItems.length > 0 ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                                {alertItems.map((alt, aIdx) => {
-                                    const isCritical = /SAFEGUARD|BLOQUEADO|CONTRAINDICADA|PROHIBIDO/i.test(alt);
-                                    const cleanAlert = String(alt)
+                        {/* Renderizado Defensivo para Expedientes Legacy */}
+                        {diagnosticItems.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {diagnosticItems.map((item, idx) => {
+                                    const cieMatch = String(item).match(/[(\[]?(?:CIE-10:\s*)?([A-Z][0-9]{2}(?:\.[0-9]{1,2})?)[)\]]?/i);
+                                    const cleanText = String(item)
                                         .replace(/^[•\s\d.-]+/, '')
                                         .trim();
 
                                     return (
                                         <div
-                                            key={aIdx}
-                                            className={`rounded-xl p-3 text-xs leading-relaxed font-medium border flex flex-col justify-between ${
-                                                isCritical
-                                                    ? 'bg-red-50/70 border-red-200/90 text-red-950'
-                                                    : 'bg-amber-50/60 border-amber-200/80 text-amber-950'
-                                            }`}
+                                            key={idx}
+                                            className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-xs text-slate-700 leading-relaxed font-medium hover:bg-slate-100/70 transition-colors flex flex-col justify-between"
                                         >
                                             <div>
-                                                <div className="flex items-center justify-between gap-2 mb-1.5">
-                                                    <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
-                                                        isCritical ? 'text-[#E30613]' : 'text-amber-800'
-                                                    }`}>
-                                                        <span>{isCritical ? '🛑' : '⚠️'}</span>
-                                                        <span>{isCritical ? 'Salvaguarda de Bioseguridad' : 'Alerta Fisiológica'}</span>
+                                                <div className="flex items-start justify-between gap-2 mb-1.5">
+                                                    <span className="font-extrabold text-[11px] text-slate-900 flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-[#1C75BC]"></span>
+                                                        <span>Eje Diagnóstico 0{idx + 1}</span>
                                                     </span>
+                                                    {cieMatch && (
+                                                        <span className="font-mono text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-blue-50 text-[#1C75BC] border border-blue-200 shrink-0">
+                                                            CIE-10: {cieMatch[1]}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <p className="text-[11.5px] leading-relaxed">
-                                                    {cleanAlert}
+                                                <p className="text-[11.5px] text-slate-700 leading-relaxed">
+                                                    {cleanText}
                                                 </p>
                                             </div>
                                         </div>
@@ -701,12 +645,81 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                 })}
                             </div>
                         ) : (
-                            <p className="text-amber-900 text-xs leading-relaxed font-medium text-justify">
-                                {alertas}
+                            <p className="text-slate-700 text-xs leading-relaxed font-medium text-justify">
+                                {causaRaiz || 'Evaluación de causa raíz completada.'}
                             </p>
                         )}
+
+                        <div className="pt-3 border-t border-slate-100 mt-4 flex items-center justify-between text-[10px]">
+                            <span className="text-slate-400 font-medium">Doctrina Médica Funcional IFM</span>
+                            <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
+                        </div>
                     </div>
                 )}
+
+                {/* Bento Card 2: Bioseguridad y Salvaguardas Clínicas (Sin duplicación de biomarcadores crudos) */}
+                <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-amber-500 p-5 shadow-xs">
+                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/70">
+                                FILTRO DE INMUNIDAD NORMATIVA
+                            </span>
+                            <h3 className="text-xs font-extrabold text-amber-950 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                                <ShieldAlert className="w-4 h-4 text-amber-600" />
+                                <span>Bioseguridad y Salvaguardas Clínicas</span>
+                            </h3>
+                        </div>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold ${
+                            criticalSafeguards.length > 0
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                        }`}>
+                            {criticalSafeguards.length > 0 ? '⚠️ VIGILANCIA ACTIVA' : '✓ BIOSEGURIDAD VERIFICADA'}
+                        </span>
+                    </div>
+
+                    {/* Desglose Exclusivo de Salvaguardas Críticas y Hard Locks */}
+                    {criticalSafeguards.length > 0 ? (
+                        <div className="space-y-2.5">
+                            {criticalSafeguards.map((alt, aIdx) => {
+                                const isCritical = /SAFEGUARD|BLOQUEADO|CONTRAINDICADA|PROHIBIDO|LOCK/i.test(alt);
+                                const cleanAlert = String(alt)
+                                    .replace(/^[•\s\d.-]+/, '')
+                                    .trim();
+
+                                return (
+                                    <div
+                                        key={aIdx}
+                                        className={`rounded-xl p-3.5 text-xs leading-relaxed font-medium border flex flex-col justify-between ${
+                                            isCritical
+                                                ? 'bg-red-50/70 border-red-200/90 text-red-950'
+                                                : 'bg-amber-50/60 border-amber-200/80 text-amber-950'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                                                    isCritical ? 'text-[#E30613]' : 'text-amber-800'
+                                                }`}>
+                                                    <span>{isCritical ? '🛑' : '⚠️'}</span>
+                                                    <span>{isCritical ? 'Salvaguarda de Bioseguridad y Esfuerzo' : 'Restricción Clínica'}</span>
+                                                </span>
+                                            </div>
+                                            <p className="text-[11.5px] leading-relaxed font-semibold">
+                                                {cleanAlert}
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3.5 text-xs text-emerald-900 font-medium flex items-center gap-2.5">
+                            <span className="text-base">🛡️</span>
+                            <span>Homeostasis y Bioseguridad Normativa Verificada: Sin contraindicaciones activas ni bloqueos de esfuerzo detectados.</span>
+                        </div>
+                    )}
+                </div>
 
                 {/* Bento Card 3: Estrategia Terapéutica Integral */}
                 <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#3AAA35] p-5 shadow-xs">

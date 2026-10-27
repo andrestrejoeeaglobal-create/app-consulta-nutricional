@@ -822,11 +822,11 @@ export const TabDiagnosis = ({
                                         </div>
                                         <h5 className="font-extrabold text-slate-900 text-xs uppercase mb-1.5">Estabilización Endotelial y Barrera Mucosa</h5>
                                         <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
-                                            {ifmNodes[0]?.therapeutic_focus || 'Optimización digestiva e hidratación estructurada'} + Inicio de cronobiología 33Plus® (mañana) y 34Plus® (noche en 500 ml de agua).
+                                            Sellado epitelial intestinal, hidratación bioestructurada e inicio de cronobiología 33Plus® (09:00 AM) y 34Plus® (08:30 PM en 500 ml de agua).
                                         </p>
                                     </div>
                                     <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between text-[9.5px] text-slate-500 font-bold">
-                                        <span>Microcirculación</span>
+                                        <span>Permeabilidad y Microcirculación</span>
                                         <span className="text-[#1C75BC]">Semana 1-3</span>
                                     </div>
                                 </div>
@@ -843,11 +843,11 @@ export const TabDiagnosis = ({
                                         </div>
                                         <h5 className="font-extrabold text-slate-900 text-xs uppercase mb-1.5">Modulación Lipídica y Reológica Profunda</h5>
                                         <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
-                                            {node3?.therapeutic_focus || 'Corrección de perfil lipídico aterogénico y sensibilidad insulínica'} + {node5?.therapeutic_focus || 'Optimización de perfusión microvascular'}.
+                                            Optimización del transporte lipídico, reducción de viscosidad hemática y síntesis activa de óxido nítrico para reactividad microvascular.
                                         </p>
                                     </div>
                                     <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between text-[9.5px] text-slate-500 font-bold">
-                                        <span>Homeostasis Tisular</span>
+                                        <span>Sensibilidad Insulínica y Vasos</span>
                                         <span className="text-[#3AAA35]">Semana 4-6</span>
                                     </div>
                                 </div>
@@ -864,7 +864,7 @@ export const TabDiagnosis = ({
                                         </div>
                                         <h5 className="font-extrabold text-slate-900 text-xs uppercase mb-1.5">Consolidación Metabólica y Re-Evaluación</h5>
                                         <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
-                                            Auditoría de control de biomarcadores fuera de rango y consolidación de composición corporal ({bioenergetics ? `${bioenergetics.targetKcal} kcal/día` : 'Mantenimiento'}).
+                                            Auditoría de control de biomarcadores fuera de rango y consolidación de composición corporal ({bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal/día` : 'mantenimiento normocalórico'}).
                                         </p>
                                     </div>
                                     <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between text-[9.5px] text-slate-500 font-bold">
