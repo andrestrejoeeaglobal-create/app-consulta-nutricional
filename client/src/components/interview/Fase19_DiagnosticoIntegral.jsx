@@ -381,56 +381,49 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
             )}
 
             {/* 2. CABECERA DE TRIAGE SISTÉMICO (ESTADO CLÍNICO GLOBAL) */}
-            <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div className="space-y-1.5 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded-md bg-[#1C75BC]/10 text-[#1C75BC] text-[10px] font-extrabold uppercase tracking-wider">
-                            {activeNodeMeta ? `NODO IFM 0${activeNodeMeta.indexOrder}` : 'DOCTRINA CORTEX V2.4'}
+            <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-md bg-[#1C75BC]/10 text-[#1C75BC] text-[10px] font-extrabold uppercase tracking-wider">
+                        {activeNodeMeta ? `NODO IFM 0${activeNodeMeta.indexOrder}` : 'DOCTRINA CORTEX V2.4'}
+                    </span>
+                    <span className="text-xs font-bold text-slate-400">
+                        #IFM-{activeNodeMeta ? `700${activeNodeMeta.indexOrder}` : '7000'}
+                    </span>
+                    <span className="text-[11px] font-semibold text-slate-500">
+                        • {totalNodesCount} Nodos IFM: <strong className="text-[#3AAA35]">{normalNodesCount} Normales</strong> / <strong className="text-[#E30613]">{alertNodesCount} Con Hallazgos</strong>
+                    </span>
+
+                    {/* Badge Inline de Estado Clínico Global junto a los Hallazgos */}
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border text-[10.5px] font-extrabold ${
+                        alertNodesCount > 0
+                            ? 'bg-red-50 text-[#E30613] border-red-200/90'
+                            : 'bg-emerald-50 text-[#3AAA35] border-emerald-200/90'
+                    }`}>
+                        <span>{alertNodesCount > 0 ? '⚠️' : '✓'}</span>
+                        <span className="text-[9.5px] uppercase tracking-wider text-slate-500 font-bold">Estado Global:</span>
+                        <span>{alertNodesCount > 0 ? `Alerta Prioritaria (${globalAlertPct}%)` : 'Homeostasis Óptima'}</span>
+                        <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] ${
+                            alertNodesCount > 0 ? 'bg-[#E30613] text-white' : 'bg-[#3AAA35] text-white'
+                        }`}>
+                            {alertNodesCount}/{totalNodesCount}
                         </span>
-                        <span className="text-xs font-bold text-slate-400">
-                            #IFM-{activeNodeMeta ? `700${activeNodeMeta.indexOrder}` : '7000'}
+                    </span>
+
+                    {bioenergetics && (
+                        <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 text-[#3AAA35] border border-emerald-200 text-[10px] font-extrabold">
+                            ⚡ {bioenergetics.equationUsed}: TMB {bioenergetics.bmr} kcal | Meta {bioenergetics.targetKcal} kcal
                         </span>
-                        <span className="text-[11px] font-semibold text-slate-500">
-                            • {totalNodesCount} Nodos IFM: <strong className="text-[#3AAA35]">{normalNodesCount} Normales</strong> / <strong className="text-[#E30613]">{alertNodesCount} Con Hallazgos</strong>
-                        </span>
-                        {bioenergetics && (
-                            <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 text-[#3AAA35] border border-emerald-200 text-[10px] font-extrabold">
-                                ⚡ {bioenergetics.equationUsed}: TMB {bioenergetics.bmr} kcal | Meta {bioenergetics.targetKcal} kcal
-                            </span>
-                        )}
-                    </div>
-                    <h3 className="text-lg font-extrabold text-slate-900 tracking-tight uppercase">
-                        {activeNodeMeta ? activeNodeMeta.nodeName : rutaActiva}
-                    </h3>
-                    <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
-                        {activeNodeMeta
-                            ? activeNodeMeta.clinicalDescription
-                            : (causaRaiz || 'Evaluación funcional integrativa de los 7 Nodos del Institute for Functional Medicine (IFM) con asignación determinista CIE-10 y suero clínico purificado.')}
-                    </p>
+                    )}
                 </div>
 
-                {/* Widget de Estado Clínico Global (Derecha) */}
-                <div className="flex items-center gap-4 bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-3 shrink-0">
-                    <div className="text-right">
-                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
-                            ESTADO CLÍNICO GLOBAL
-                        </span>
-                        <span className={`text-sm font-extrabold ${
-                            alertNodesCount > 0 ? 'text-[#E30613]' : 'text-[#3AAA35]'
-                        }`}>
-                            {alertNodesCount > 0
-                                ? `⚠️ Alerta Prioritaria (${globalAlertPct}%)`
-                                : '✓ Homeostasis Óptima'}
-                        </span>
-                    </div>
-                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-extrabold text-sm border ${
-                        alertNodesCount > 0
-                            ? 'bg-red-50 text-[#E30613] border-red-200'
-                            : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
-                    }`}>
-                        {alertNodesCount}/{totalNodesCount}
-                    </div>
-                </div>
+                <h3 className="text-lg font-extrabold text-slate-900 tracking-tight uppercase">
+                    {activeNodeMeta ? activeNodeMeta.nodeName : rutaActiva}
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                    {activeNodeMeta
+                        ? activeNodeMeta.clinicalDescription
+                        : (causaRaiz || 'Evaluación funcional integrativa de los 7 Nodos del Institute for Functional Medicine (IFM) con asignación determinista CIE-10 y suero clínico purificado.')}
+                </p>
             </div>
 
             {/* 3. BENTO CARDS TERMODINÁMICAS DE LOS NODOS IFM */}
