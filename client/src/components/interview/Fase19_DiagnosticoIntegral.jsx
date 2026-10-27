@@ -122,6 +122,57 @@ function pruneTelemetryPayloadForNetwork(rawPatientData, electretTelemetry, iden
 // SUBCOMPONENTE: DiagnosticoRenderizado (Bento Cards Termodinámicas CORTEX v2.7)
 // Homologado 1:1 con el estándar visual de TabBiochemicals.jsx
 // ==========================================================================
+
+// Resolutor Defensivo y Polimórfico de Items Diagnósticos (Cero Pantallas Blancas)
+function resolveDiagnosticItems(rawCausaRaiz, rawPreliminary) {
+    if (Array.isArray(rawPreliminary) && rawPreliminary.length > 0) {
+        return rawPreliminary.map(item => {
+            if (typeof item === 'string') return item.trim();
+            if (item && typeof item === 'object') return item.nombre || item.name || item.descripcion || JSON.stringify(item);
+            return String(item);
+        }).filter(Boolean);
+    }
+    if (Array.isArray(rawCausaRaiz) && rawCausaRaiz.length > 0) {
+        return rawCausaRaiz.map(item => typeof item === 'string' ? item.trim() : JSON.stringify(item)).filter(Boolean);
+    }
+    if (typeof rawCausaRaiz === 'string' && rawCausaRaiz.trim().length > 0) {
+        const text = rawCausaRaiz.trim();
+        if (text.includes('•')) {
+            const parts = text.split('•').map(p => p.trim()).filter(Boolean);
+            if (parts.length > 0) return parts;
+        }
+        if (text.includes('\n')) {
+            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+            if (lines.length > 0) return lines;
+        }
+        return [text];
+    }
+    return [];
+}
+
+// Resolutor Defensivo y Polimórfico de Alertas Clínicas y Salvaguardas
+function resolveAlertItems(rawAlertas, rawCriticalAlerts) {
+    if (Array.isArray(rawCriticalAlerts) && rawCriticalAlerts.length > 0) {
+        return rawCriticalAlerts.map(a => typeof a === 'string' ? a.trim() : JSON.stringify(a)).filter(Boolean);
+    }
+    if (Array.isArray(rawAlertas) && rawAlertas.length > 0) {
+        return rawAlertas.map(a => typeof a === 'string' ? a.trim() : JSON.stringify(a)).filter(Boolean);
+    }
+    if (typeof rawAlertas === 'string' && rawAlertas.trim().length > 0) {
+        const text = rawAlertas.trim();
+        if (text.includes('•')) {
+            const parts = text.split('•').map(p => p.trim()).filter(Boolean);
+            if (parts.length > 0) return parts;
+        }
+        if (text.includes('\n')) {
+            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+            if (lines.length > 0) return lines;
+        }
+        return [text];
+    }
+    return [];
+}
+
 export function DiagnosticoRenderizado({ cortexSynthesis }) {
     const [selectedNodeId, setSelectedNodeId] = useState('ALL');
 
@@ -211,11 +262,15 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
             normalNodesCount: normals,
             globalAlertPct: pct,
             rutaActiva: data.doctrina_aplicada || "RUTA D: NEUROPSIQUIATRÍA NUTRICIONAL E INMUNIDAD",
+            rawPreliminaryDiagnosis: Array.isArray(data.preliminary_diagnosis) ? data.preliminary_diagnosis : [],
+            rawCriticalAlerts: Array.isArray(data.critical_alerts) ? data.critical_alerts : [],
+            rawCausaRaiz: data.diagnostico_causa_raiz,
+            rawAlertas: data.alertas_bioseguridad,
             causaRaiz: data.diagnostico_causa_raiz || (Array.isArray(data.preliminary_diagnosis) ? data.preliminary_diagnosis.join(". ") : ""),
             alertas: data.alertas_bioseguridad || (Array.isArray(data.critical_alerts) ? data.critical_alerts.join(". ") : ""),
             nutricion: data.estrategia_terapeutica?.nutricion_defensora || (Array.isArray(data.suggested_management) ? data.suggested_management[0] : ""),
             readaptacion: data.estrategia_terapeutica?.readaptacion_fisica || (Array.isArray(data.suggested_management) ? data.suggested_management[1] : ""),
-            sistemas: data.sistemas_afectados || ["Sistema Inmune", "Metabolismo Energético", "Biotensegridad Fascial"],
+            sistemas: Array.isArray(data.sistemas_afectados) ? data.sistemas_afectados : (data.sistemas_afectados ? [data.sistemas_afectados] : ["Sistema Inmune", "Metabolismo Energético", "Biotensegridad Fascial"]),
             bioenergetics: data.bioenergetics || null
         };
     }, [data]);
@@ -227,6 +282,14 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
         : processedNodes.find(n => n.nodeId === selectedNodeId) || null;
 
     const visibleNodes = activeNodeMeta ? [activeNodeMeta] : processedNodes;
+
+    const diagnosticItems = useMemo(() => {
+        return resolveDiagnosticItems(rawCausaRaiz, rawPreliminaryDiagnosis);
+    }, [rawCausaRaiz, rawPreliminaryDiagnosis]);
+
+    const alertItems = useMemo(() => {
+        return resolveAlertItems(rawAlertas, rawCriticalAlerts);
+    }, [rawAlertas, rawCriticalAlerts]);
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
@@ -515,48 +578,189 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                 </div>
             )}
 
-            {/* 4. BLOQUE INFERIOR DE SÍNTESIS ESTRATÉGICA Y BIOSEGURIDAD */}
+            {/* 4. BLOQUE INFERIOR DE SÍNTESIS ESTRATÉGICA, CAUSA RAÍZ Y BIOSEGURIDAD */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-1">
-                {/* Columna Izquierda: Causa Raíz y Alertas */}
+                {/* Columna Izquierda: Causa Raíz y Alertas Clínicas */}
                 <div className="space-y-4 flex flex-col">
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex-1">
-                        <h3 className="text-slate-900 font-extrabold text-xs uppercase tracking-wider mb-2.5 flex items-center gap-2 select-none">
-                            <Activity className="w-4 h-4 text-[#1C75BC]" />
-                            Diagnóstico Funcional de Causa Raíz
-                        </h3>
-                        <p className="text-slate-700 text-xs leading-relaxed font-medium text-justify">
-                            {causaRaiz}
-                        </p>
+                    {/* Bento Card: Diagnóstico Funcional de Causa Raíz */}
+                    <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#1C75BC] p-5 shadow-xs flex-1 flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/20">
+                                        ANÁLISIS ETIOLÓGICO MULTINODO
+                                    </span>
+                                    <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                                        <Activity className="w-4 h-4 text-[#1C75BC]" />
+                                        <span>Diagnóstico Funcional de Causa Raíz</span>
+                                    </h3>
+                                </div>
+                                {diagnosticItems.length > 0 && (
+                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                                        {diagnosticItems.length} {diagnosticItems.length === 1 ? 'Eje Clínico' : 'Ejes Clínicos'}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Renderizado Defensivo: Si hay items desglosados */}
+                            {diagnosticItems.length > 0 ? (
+                                <div className="space-y-2.5">
+                                    {diagnosticItems.map((item, idx) => {
+                                        const cieMatch = String(item).match(/[(\[]?(?:CIE-10:\s*)?([A-Z][0-9]{2}(?:\.[0-9]{1,2})?)[)\]]?/i);
+                                        const cleanText = String(item)
+                                            .replace(/^[•\s\d.-]+/, '')
+                                            .trim();
+
+                                        return (
+                                            <div
+                                                key={idx}
+                                                className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3 text-xs text-slate-700 leading-relaxed font-medium hover:bg-slate-100/70 transition-colors"
+                                            >
+                                                <div className="flex items-start justify-between gap-2 mb-1">
+                                                    <span className="font-extrabold text-[11px] text-slate-900 flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-[#1C75BC]"></span>
+                                                        <span>Eje Diagnóstico 0{idx + 1}</span>
+                                                    </span>
+                                                    {cieMatch && (
+                                                        <span className="font-mono text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-blue-50 text-[#1C75BC] border border-blue-200 shrink-0">
+                                                            CIE-10: {cieMatch[1]}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11.5px] text-slate-700 leading-relaxed">
+                                                    {cleanText}
+                                                </p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                /* Fallback Seguro para expedientes legacy (String corrido sin items) */
+                                <p className="text-slate-700 text-xs leading-relaxed font-medium text-justify">
+                                    {causaRaiz || 'Evaluación de causa raíz completada.'}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-100 mt-4 flex items-center justify-between text-[10px]">
+                            <span className="text-slate-400 font-medium">Doctrina Médica Funcional IFM</span>
+                            <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
+                        </div>
                     </div>
 
-                    {alertas && (
-                        <div className="bg-amber-50/80 p-5 rounded-2xl border border-amber-200 shadow-xs">
-                            <h3 className="text-amber-900 font-extrabold text-xs uppercase tracking-wider mb-2 flex items-center gap-2 select-none">
-                                <ShieldAlert className="w-4 h-4 text-amber-600" />
-                                Bioseguridad y Alertas Clínicas
-                            </h3>
-                            <p className="text-amber-900 text-xs leading-relaxed font-medium text-justify">
-                                {alertas}
-                            </p>
+                    {/* Bento Card: Bioseguridad y Alertas Clínicas */}
+                    {(alertItems.length > 0 || alertas) && (
+                        <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-amber-500 p-5 shadow-xs">
+                            <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/70">
+                                        FILTRO DE INMUNIDAD NORMATIVA
+                                    </span>
+                                    <h3 className="text-xs font-extrabold text-amber-950 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                                        <ShieldAlert className="w-4 h-4 text-amber-600" />
+                                        <span>Bioseguridad y Alertas Clínicas</span>
+                                    </h3>
+                                </div>
+                                <span className="px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                                    ⚠️ VIGILANCIA ACTIVA
+                                </span>
+                            </div>
+
+                            {/* Desglose Defensivo de Alertas */}
+                            {alertItems.length > 0 ? (
+                                <div className="space-y-2">
+                                    {alertItems.map((alt, aIdx) => {
+                                        const isCritical = /SAFEGUARD|BLOQUEADO|CONTRAINDICADA|PROHIBIDO/i.test(alt);
+                                        const cleanAlert = String(alt)
+                                            .replace(/^[•\s\d.-]+/, '')
+                                            .trim();
+
+                                        return (
+                                            <div
+                                                key={aIdx}
+                                                className={`rounded-xl p-3 text-xs leading-relaxed font-medium border ${
+                                                    isCritical
+                                                        ? 'bg-red-50/70 border-red-200/90 text-red-950'
+                                                        : 'bg-amber-50/60 border-amber-200/80 text-amber-950'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                    <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                                                        isCritical ? 'text-[#E30613]' : 'text-amber-800'
+                                                    }`}>
+                                                        <span>{isCritical ? '🛑' : '⚠️'}</span>
+                                                        <span>{isCritical ? 'Salvaguarda de Bioseguridad' : 'Alerta Fisiológica'}</span>
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11.5px] leading-relaxed">
+                                                    {cleanAlert}
+                                                </p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="text-amber-900 text-xs leading-relaxed font-medium text-justify">
+                                    {alertas}
+                                </p>
+                            )}
                         </div>
                     )}
                 </div>
 
-                {/* Columna Derecha: Estrategia Terapéutica Integral */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col justify-between">
+                {/* Columna Derecha: Estrategia Terapéutica y Sistemas Implicados */}
+                <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#3AAA35] p-5 shadow-xs flex flex-col justify-between">
                     <div>
-                        <h3 className="text-slate-900 font-extrabold text-xs uppercase tracking-wider mb-3.5 flex items-center gap-2 border-b border-slate-100 pb-2.5 select-none">
-                            <Zap className="w-4 h-4 text-[#1C75BC]" />
-                            Estrategia Terapéutica Integral
-                        </h3>
+                        <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5 select-none">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-[#3AAA35] border border-emerald-200/70">
+                                    PRESCRIPCIÓN ORTOMOLECULAR INTEGRAL
+                                </span>
+                                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                                    <Zap className="w-4 h-4 text-[#3AAA35]" />
+                                    <span>Estrategia Terapéutica Integral</span>
+                                </h3>
+                            </div>
+                        </div>
+
+                        {/* Chips Métricos Puros del Tronco Matemático (calculatePrecisionBioenergetics) */}
+                        {bioenergetics && (
+                            <div className="flex flex-wrap items-center gap-1.5 pb-3 border-b border-slate-100 mb-3.5">
+                                {bioenergetics.tdee && (
+                                    <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-[#3AAA35] border border-emerald-200/80 text-[10px] font-extrabold flex items-center gap-1">
+                                        <span>⚡ TDEE:</span>
+                                        <span>{bioenergetics.tdee} kcal</span>
+                                    </span>
+                                )}
+                                {bioenergetics.targetKcal && (
+                                    <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-[#1C75BC] border border-blue-200/80 text-[10px] font-extrabold flex items-center gap-1">
+                                        <span>🎯 Meta Calórica:</span>
+                                        <span>{bioenergetics.targetKcal} kcal/día</span>
+                                    </span>
+                                )}
+                                {bioenergetics.bmr && (
+                                    <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-extrabold flex items-center gap-1">
+                                        <span>🔥 TMB:</span>
+                                        <span>{bioenergetics.bmr} kcal</span>
+                                    </span>
+                                )}
+                                {bioenergetics.equationUsed && (
+                                    <span className="px-2 py-0.5 rounded bg-slate-50 text-slate-500 border border-slate-200 text-[9.5px] font-bold">
+                                        {bioenergetics.equationUsed}
+                                    </span>
+                                )}
+                            </div>
+                        )}
 
                         <div className="space-y-3">
                             {nutricion && (
                                 <div>
-                                    <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 select-none">
-                                        Nutrición Defensora y Modulación Metabólica
-                                    </h4>
-                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed font-medium">
+                                    <div className="flex items-center gap-1.5 mb-1.5 select-none">
+                                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                                            Nutrición Defensora y Modulación Metabólica
+                                        </span>
+                                    </div>
+                                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed font-medium">
                                         {nutricion}
                                     </div>
                                 </div>
@@ -564,10 +768,12 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
 
                             {readaptacion && (
                                 <div>
-                                    <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 select-none">
-                                        Prescripción Ortomolecular y Readaptación
-                                    </h4>
-                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed font-medium">
+                                    <div className="flex items-center gap-1.5 mb-1.5 select-none">
+                                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                                            Prescripción Ortomolecular y Readaptación
+                                        </span>
+                                    </div>
+                                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed font-medium">
                                         {readaptacion}
                                     </div>
                                 </div>
@@ -575,7 +781,8 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                         </div>
                     </div>
 
-                    {sistemas && sistemas.length > 0 && (
+                    {/* Sistemas Fisiológicos Implicados */}
+                    {Array.isArray(sistemas) && sistemas.length > 0 && (
                         <div className="pt-3.5 border-t border-slate-100 mt-4">
                             <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2 select-none">
                                 Sistemas Fisiológicos Implicados
