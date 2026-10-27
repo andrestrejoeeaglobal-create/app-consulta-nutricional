@@ -516,33 +516,55 @@ export const TabDiagnosis = ({
         <div className="space-y-6 font-sans">
             {/* Tarjeta Principal del Reporte Consolidado (Doctrina CORTEX v2.1 CDSS) */}
             <div className="w-full bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden flex flex-col mb-6">
-                {/* CONMUTADOR DUAL DE VISTAS (PACIENTE Y FAMILIA vs EXPEDIENTE CLÍNICO) */}
-                <div className="p-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between gap-2 select-none no-print">
-                    <button
-                        type="button"
-                        onClick={() => setActiveViewMode('patient')}
-                        className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                            activeViewMode === 'patient' 
-                                ? 'bg-white text-[#1C75BC] shadow-sm border border-slate-200' 
-                                : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                    >
-                        <span className="text-sm">👤</span>
-                        <span>Vista Paciente y Familia (Resumen Empático)</span>
-                    </button>
+                {/* CONMUTADOR DUAL DE VISTAS (❖ MODO DE VISUALIZACIÓN:) */}
+                <div className="p-3 bg-white border-b border-slate-200/90 flex flex-wrap items-center justify-between gap-2 select-none no-print">
+                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 px-2 shrink-0 select-none">
+                            ❖ MODO DE VISUALIZACIÓN:
+                        </span>
 
-                    <button
-                        type="button"
-                        onClick={() => setActiveViewMode('medical')}
-                        className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                            activeViewMode === 'medical' 
-                                ? 'bg-slate-900 text-white shadow-md' 
-                                : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                    >
-                        <span className="text-sm">🩺</span>
-                        <span>Vista Expediente Clínico (NOM-004)</span>
-                    </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveViewMode('patient')}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer border ${
+                                activeViewMode === 'patient' 
+                                    ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm' 
+                                    : 'bg-slate-100/80 text-slate-700 border-slate-200/80 hover:bg-slate-200/70'
+                            }`}
+                        >
+                            <span>👤 Vista Paciente y Familia</span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                activeViewMode === 'patient'
+                                    ? 'bg-white text-[#1C75BC]'
+                                    : 'bg-slate-200 text-slate-700'
+                            }`}>
+                                4 Pilares
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveViewMode('medical')}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer border ${
+                                activeViewMode === 'medical' 
+                                    ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm' 
+                                    : 'bg-slate-100/80 text-slate-700 border-slate-200/80 hover:bg-slate-200/70'
+                            }`}
+                        >
+                            <span>🩺 Vista Expediente Clínico</span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                activeViewMode === 'medical'
+                                    ? 'bg-white text-[#1C75BC]'
+                                    : 'bg-slate-200 text-slate-700'
+                            }`}>
+                                NOM-004
+                            </span>
+                        </button>
+                    </div>
+
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">
+                        Doctrina T.I.L.O. 2030
+                    </span>
                 </div>
 
                 {/* Indicador discreto de Estado Vitrina / Modo Edición Fina */}
@@ -555,51 +577,152 @@ export const TabDiagnosis = ({
                     </div>
                 )}
 
-                {/* VISTA 1: PACIENTE Y FAMILIA (4 PILARES EMPÁTICOS) */}
+                {/* VISTA 1: PACIENTE Y FAMILIA (4 PILARES EMPÁTICOS TERMODINÁMICOS) */}
                 {activeViewMode === 'patient' ? (
-                    <div className="p-6 space-y-5">
+                    <div className="p-6 space-y-4">
                         {/* Pilar 1: Crecimiento y Salud */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs border-l-4 border-l-emerald-500">
-                            <h3 className="text-slate-900 text-xs font-black uppercase tracking-wider mb-2 flex items-center gap-2">
-                                <span className="text-base">🌱</span>
-                                {pilarTitle}
-                            </h3>
-                            <p className="text-slate-700 text-xs leading-relaxed font-medium">
+                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-[#3AAA35] hover:shadow-md transition-all">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-[#3AAA35] border border-emerald-200/70">
+                                            PILAR 01 • SALUD METABÓLICA
+                                        </span>
+                                        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                                            <span>🌱</span>
+                                            <span>{pilarTitle}</span>
+                                        </h3>
+                                    </div>
+                                </div>
+                                <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide bg-emerald-50 text-[#3AAA35] border border-emerald-200 shrink-0 self-start sm:self-center">
+                                    ✓ HOMEOSTASIS METABÓLICA
+                                </span>
+                            </div>
+
+                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3">
                                 {pilar1Text}
                             </p>
+
+                            <div className="my-3 bg-slate-50/90 border border-slate-200/70 rounded-xl p-2.5 flex items-center justify-between text-[10.5px]">
+                                <span className="font-bold text-slate-500">Estado Biológico General:</span>
+                                <span className="font-extrabold text-[#3AAA35] flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-[#3AAA35] animate-pulse"></span>
+                                    Calibración Óptima para Edad ({ageCandidate} años)
+                                </span>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400 font-medium">ⓘ Monitoreo Funcional Preventivo Continuo</span>
+                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
+                            </div>
                         </div>
 
                         {/* Pilar 2: Guía de Alimentación Diaria */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs border-l-4 border-l-blue-500">
-                            <h3 className="text-slate-900 text-xs font-black uppercase tracking-wider mb-2 flex items-center gap-2">
-                                <span className="text-base">🥗</span>
-                                Guía de Alimentación Diaria
-                            </h3>
-                            <p className="text-slate-700 text-xs leading-relaxed font-medium">
+                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-[#1C75BC] hover:shadow-md transition-all">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-50 text-[#1C75BC] border border-blue-200/70">
+                                            PILAR 02 • NUTRICIÓN DEFENSORA
+                                        </span>
+                                        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                                            <span>🥗</span>
+                                            <span>Guía de Alimentación Diaria</span>
+                                        </h3>
+                                    </div>
+                                </div>
+                                <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide bg-blue-50 text-[#1C75BC] border border-blue-200 shrink-0 self-start sm:self-center">
+                                    🥗 MODULACIÓN METABÓLICA
+                                </span>
+                            </div>
+
+                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3">
                                 {pilar2Text}
                             </p>
+
+                            <div className="my-3 bg-slate-50/90 border border-slate-200/70 rounded-xl p-2.5 flex items-center justify-between text-[10.5px]">
+                                <span className="font-bold text-slate-500">Estrategia Dietética:</span>
+                                <span className="font-extrabold text-[#1C75BC]">
+                                    Densidad Nutricional sin Restricción Punitiva
+                                </span>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400 font-medium">ⓘ Protocolo de Eubiosis y Carga Glucémica</span>
+                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
+                            </div>
                         </div>
 
                         {/* Pilar 3: Actividades y Desarrollo Motor */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs border-l-4 border-l-amber-500">
-                            <h3 className="text-slate-900 text-xs font-black uppercase tracking-wider mb-2 flex items-center gap-2">
-                                <span className="text-base">🧸</span>
-                                Actividades y Movimiento
-                            </h3>
-                            <p className="text-slate-700 text-xs leading-relaxed font-medium">
+                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-amber-500 hover:shadow-md transition-all">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/70">
+                                            PILAR 03 • BIOMECÁNICA Y NEAT
+                                        </span>
+                                        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                                            <span>🧸</span>
+                                            <span>Actividades y Movimiento Funcional</span>
+                                        </h3>
+                                    </div>
+                                </div>
+                                <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide bg-amber-50 text-amber-800 border border-amber-200 shrink-0 self-start sm:self-center">
+                                    🧸 MOVILIDAD ADAPTADA
+                                </span>
+                            </div>
+
+                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3">
                                 {pilar3Text}
                             </p>
+
+                            <div className="my-3 bg-slate-50/90 border border-slate-200/70 rounded-xl p-2.5 flex items-center justify-between text-[10.5px]">
+                                <span className="font-bold text-slate-500">Prescripción Biomecánica:</span>
+                                <span className="font-extrabold text-amber-700">
+                                    Fuerza Muscular (Exoesqueleto) + Estiramiento Miofascial
+                                </span>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400 font-medium">ⓘ Modelo Lyon & Attia de Longevidad Muscular</span>
+                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
+                            </div>
                         </div>
 
                         {/* Pilar 4: Cuidados y Seguimiento */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs border-l-4 border-l-indigo-500">
-                            <h3 className="text-slate-900 text-xs font-black uppercase tracking-wider mb-2 flex items-center gap-2">
-                                <span className="text-base">💧</span>
-                                Cuidados y Seguimiento
-                            </h3>
-                            <p className="text-slate-700 text-xs leading-relaxed font-medium">
+                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-indigo-600 hover:shadow-md transition-all">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/70">
+                                            PILAR 04 • CRONOBIOLOGÍA Y CUIDADOS
+                                        </span>
+                                        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                                            <span>💧</span>
+                                            <span>Cuidados, Suplementación y Seguimiento</span>
+                                        </h3>
+                                    </div>
+                                </div>
+                                <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0 self-start sm:self-center">
+                                    💧 CRONONUTRICIÓN ACTIVA
+                                </span>
+                            </div>
+
+                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3">
                                 {pilar4Text}
                             </p>
+
+                            <div className="my-3 bg-slate-50/90 border border-slate-200/70 rounded-xl p-2.5 flex items-center justify-between text-[10.5px]">
+                                <span className="font-bold text-slate-500">Ventana Crononutricional:</span>
+                                <span className="font-extrabold text-indigo-700">
+                                    Sincronización Diurna (33Plus) / Nocturna (34Plus)
+                                </span>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400 font-medium">ⓘ Sinergia de Ignición Mitocondrial y Reparación Tisular</span>
+                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -790,29 +913,38 @@ export const TabDiagnosis = ({
                         </div>
                     )}
 
-                    {/* --- SÍNTESIS FISIOPATOLÓGICA MULTIMODAL CORTEX --- */}
+                    {/* --- SÍNTESIS FISIOPATOLÓGICA MULTIMODAL CORTEX (BENTO CARD QUIRÚRGICA) --- */}
                     {correlacionMultimodal && (
-                        <div id="card-correlacion-multimodal" className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl p-5 shadow-md space-y-3 font-sans border border-indigo-700/50 transition-all duration-300">
-                            <div className="flex items-center justify-between border-b border-indigo-700/60 pb-2.5">
-                                <div className="flex items-center gap-2.5">
-                                    <span className="text-base">🧬</span>
-                                    <h4 className="font-bold text-xs uppercase tracking-wider text-blue-200">Síntesis Fisiopatológica Multimodal CORTEX</h4>
+                        <div id="card-correlacion-multimodal" className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#1C75BC] p-5 shadow-xs transition-all duration-300">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC]">
+                                        INTEGRACIÓN MULTIMODAL
+                                    </span>
+                                    <h4 className="font-extrabold text-xs uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                                        <span>🧬</span>
+                                        <span>Síntesis Fisiopatológica Multimodal CORTEX</span>
+                                    </h4>
                                 </div>
-                                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${
+                                <span className={`text-[10px] px-2.5 py-1 rounded-xl font-black uppercase tracking-wider border shrink-0 self-start sm:self-center ${
                                     correlacionMultimodal.indice_prioridad_clinica === 'Elevado'
-                                        ? 'bg-red-500/20 text-red-300 border border-red-500/40'
-                                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                        ? 'bg-red-50 text-[#E30613] border-red-200'
+                                        : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
                                 }`}>
                                     Prioridad: {correlacionMultimodal.indice_prioridad_clinica || 'Bajo'}
                                 </span>
                             </div>
-                            <p className="text-xs text-slate-200 leading-relaxed">
+                            <p className="text-xs text-slate-700 leading-relaxed font-medium mt-3 text-justify">
                                 {correlacionMultimodal.sintesis_fisiopatologica}
                             </p>
+                            <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400 font-medium">Auditoría Ocular Binocular + Topografía Lingual CYTOS + Biorresonancia Electret</span>
+                                <span className="font-bold text-[#1C75BC]">Correlación Córtex →</span>
+                            </div>
                         </div>
                     )}
 
-                    {/* --- CHILD ACCORDION 2: ARQUITECTURA DE ORO RECOMENDADA --- */}
+                    {/* --- CHILD ACCORDION 2: ARQUITECTURA DE ORO RECOMENDADA (BENTO CARDS ORTOMOLECULARES) --- */}
                     <Accordion
                         title="Arquitectura de Oro Recomendada"
                         id="accordion-gold-architecture"
@@ -822,53 +954,99 @@ export const TabDiagnosis = ({
                         <div id="card-gold-architecture" className="relative p-1">
                             {/* Overlay Bloqueo (Solo visual) */}
                             {isRiskDetected && !overrideActive && (
-                                <div className="absolute inset-0 bg-tilo-bg-base/60 backdrop-blur-sm z-20 flex items-center justify-center rounded-2xl">
-                                    <Lock className="w-12 h-12 text-tilo-text-muted opacity-50 animate-pulse" />
+                                <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-20 flex items-center justify-center rounded-2xl">
+                                    <Lock className="w-12 h-12 text-white opacity-70 animate-pulse" />
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                {/* 33 Plus */}
-                                <div className="flex flex-col items-center text-center p-6 bg-tilo-bg-base/40 rounded-2xl border border-tilo-border hover:shadow-md transition-shadow">
-                                    <div className="w-20 h-20 bg-tilo-primary/10 text-tilo-primary rounded-full flex items-center justify-center mb-4 shadow-inner">
-                                        <HeartPulse className="w-10 h-10 text-tilo-primary" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                {/* 33 Plus (Ignición Mitocondrial - Rojo #E30613) */}
+                                <div className="flex flex-col bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#E30613] p-5 shadow-xs hover:shadow-md transition-all">
+                                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-red-50 text-[#E30613] border border-red-200/70">
+                                                FÓRMULA 33PLUS® • DÍA
+                                            </span>
+                                            <h4 className="text-sm font-extrabold text-slate-900 tracking-tight">
+                                                33 PLUS
+                                            </h4>
+                                        </div>
+                                        <span className="text-[10px] font-extrabold text-[#E30613] uppercase tracking-wider bg-red-50/70 px-2 py-0.5 rounded-md">
+                                            Ignición Mitocondrial
+                                        </span>
                                     </div>
-                                    <h4 className="text-2xl font-black text-tilo-text-main tracking-tight">33 PLUS</h4>
-                                    <p className="text-tilo-primary font-bold text-xs tracking-widest uppercase mt-1 mb-4">Ignición Mitocondrial</p>
-                                    <p className="text-tilo-text-muted text-xs leading-relaxed mb-6">
-                                        Optimización de la cadena respiratoria celular, reducción de fatiga crónica y mejora en la sensibilidad a la insulina.
+
+                                    <p className="text-slate-700 text-xs leading-relaxed font-medium mb-3.5 flex-1">
+                                        Optimización de la cadena respiratoria celular, reducción de fatiga crónica y mejora en la sensibilidad a la insulina mediante cofactores vasculares y antioxidantes diurnos.
                                     </p>
+
+                                    <div className="mb-4 bg-slate-50 border border-slate-200/70 rounded-xl p-2.5 text-[10.5px] space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-bold">Dosificación:</span>
+                                            <span className="font-extrabold text-slate-800">1 toma al día</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-bold">Momento de ingesta:</span>
+                                            <span className="font-extrabold text-[#E30613]">☀️ Con el desayuno (09:00 AM)</span>
+                                        </div>
+                                    </div>
+
                                     <button
+                                        type="button"
                                         onClick={handleToggle33}
-                                        className={`mt-auto px-6 py-2.5 rounded-full text-xs font-bold transition-all w-full cursor-pointer shadow-sm ${
+                                        className={`mt-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all w-full cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
                                             is33Added
-                                                ? 'bg-tilo-success hover:bg-tilo-success/80 text-white shadow-tilo-success/20'
-                                                : 'bg-tilo-primary hover:bg-tilo-primary/80 text-white shadow-tilo-primary/20'
+                                                ? 'bg-[#E30613] text-white hover:bg-[#E30613]/90 shadow-red-500/20'
+                                                : 'bg-[#1C75BC] text-white hover:bg-[#1C75BC]/90 shadow-blue-500/20'
                                         }`}
                                     >
-                                        {is33Added ? '✓ Agregado al Plan' : 'Agregar al Plan'}
+                                        <HeartPulse className="w-4 h-4 shrink-0" />
+                                        <span>{is33Added ? '✓ Agregado al Plan Nutracéutico' : 'Agregar 33Plus® al Plan'}</span>
                                     </button>
                                 </div>
 
-                                {/* 34 Plus */}
-                                <div className="flex flex-col items-center text-center p-6 bg-tilo-bg-base/40 rounded-2xl border border-tilo-border hover:shadow-md transition-shadow">
-                                    <div className="w-20 h-20 bg-tilo-success/10 text-tilo-success rounded-full flex items-center justify-center mb-4 shadow-inner">
-                                        <Activity className="w-10 h-10 text-tilo-success" />
+                                {/* 34 Plus (Ingeniería Tisular - Verde #3AAA35) */}
+                                <div className="flex flex-col bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#3AAA35] p-5 shadow-xs hover:shadow-md transition-all">
+                                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-[#3AAA35] border border-emerald-200/70">
+                                                FÓRMULA 34PLUS® • NOCHE
+                                            </span>
+                                            <h4 className="text-sm font-extrabold text-slate-900 tracking-tight">
+                                                34 PLUS
+                                            </h4>
+                                        </div>
+                                        <span className="text-[10px] font-extrabold text-[#3AAA35] uppercase tracking-wider bg-emerald-50/70 px-2 py-0.5 rounded-md">
+                                            Ingeniería Tisular
+                                        </span>
                                     </div>
-                                    <h4 className="text-2xl font-black text-tilo-text-main tracking-tight">34 PLUS</h4>
-                                    <p className="text-tilo-success font-bold text-xs tracking-widest uppercase mt-1 mb-4">Ingeniería Tisular</p>
-                                    <p className="text-tilo-text-muted text-xs leading-relaxed mb-6">
-                                        Regeneración de matriz extracelular, fortalecimiento articular y optimización de síntesis proteica post-ejercicio.
+
+                                    <p className="text-slate-700 text-xs leading-relaxed font-medium mb-3.5 flex-1">
+                                        Regeneración de matriz extracelular, fortalecimiento articular y optimización de síntesis proteica post-ejercicio durante el sueño profundo.
                                     </p>
+
+                                    <div className="mb-4 bg-slate-50 border border-slate-200/70 rounded-xl p-2.5 text-[10.5px] space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-bold">Dosificación:</span>
+                                            <span className="font-extrabold text-slate-800">1 toma al día (mínimo 500 ml de agua 💧)</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 font-bold">Momento de ingesta:</span>
+                                            <span className="font-extrabold text-[#3AAA35]">🌙 Con la cena (08:30 PM)</span>
+                                        </div>
+                                    </div>
+
                                     <button
+                                        type="button"
                                         onClick={handleToggle34}
-                                        className={`mt-auto px-6 py-2.5 rounded-full text-xs font-bold transition-all w-full cursor-pointer shadow-sm ${
+                                        className={`mt-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all w-full cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
                                             is34Added
-                                                ? 'bg-tilo-success hover:bg-tilo-success/80 text-white shadow-tilo-success/20'
-                                                : 'bg-tilo-primary hover:bg-tilo-primary/80 text-white shadow-tilo-primary/20'
+                                                ? 'bg-[#3AAA35] text-white hover:bg-[#3AAA35]/90 shadow-emerald-500/20'
+                                                : 'bg-[#1C75BC] text-white hover:bg-[#1C75BC]/90 shadow-blue-500/20'
                                         }`}
                                     >
-                                        {is34Added ? '✓ Agregado al Plan' : 'Agregar al Plan'}
+                                        <Activity className="w-4 h-4 shrink-0" />
+                                        <span>{is34Added ? '✓ Agregado al Plan Nutracéutico' : 'Agregar 34Plus® al Plan'}</span>
                                     </button>
                                 </div>
                             </div>
