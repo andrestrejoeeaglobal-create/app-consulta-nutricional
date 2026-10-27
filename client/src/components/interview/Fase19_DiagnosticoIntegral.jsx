@@ -173,6 +173,116 @@ function resolveAlertItems(rawAlertas, rawCriticalAlerts) {
     return [];
 }
 
+// Diccionario Clínico de Traducción y Sanitización de Biomarcadores y Banderas Somáticas
+const CLINICAL_TRANSLATION_MAP = {
+    'RETICULAR_ERYTHEMA': 'Eritema Reticular',
+    'PUNCTATE_MACULES': 'Máculas Puntiformes',
+    'MICROPAPULAR_ERUPTION': 'Erupción Micropapular',
+    'PERIFOLLICULAR_INVOLVEMENT': 'Compromiso Perifolicular',
+    'CUTANEOUS_EDEMA_SUPERFICIAL': 'Edema Cutáneo Superficial',
+    'SUPERFICIAL_CUTANEOUS_EDEMA': 'Edema Cutáneo Superficial',
+    'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED': 'Insuficiencia Venosa Crónica',
+    'CHRONIC_VENOUS_INSUFFICIENCY': 'Insuficiencia Venosa Crónica',
+    'VARICOSE_VEINS_HIGH_RISK': 'Riesgo Elevado de Várices',
+    'VENOUS_STASIS_DERMATITIS': 'Dermatitis por Estasis Venosa',
+    'EDEMA_PERIPHERAL_MODERATE': 'Edema Periférico Moderado',
+    'PERIPHERAL_EDEMA': 'Edema Periférico',
+    'HYPERPIGMENTATION': 'Hiperpigmentación Cutánea',
+    'HEMOSIDERIN_PIGMENTATION': 'Pigmentación por Hemosiderina',
+    'FOLLICULAR_HYPERKERATOSIS': 'Hiperqueratosis Folicular',
+    'XEROSIS_CUTIS': 'Xerosis Cutánea (Piel Seca)',
+    'TELANGIECTASIA': 'Telangiectasias Superficiales',
+    'VENOUS_ECTASIA': 'Ectasia Venosa',
+    'SUBLINGUAL_VARICES': 'Várices Sublinguales',
+    'LINGUAL_COATING_WHITE': 'Saburra Lingual Blanquecina',
+    'GINGIVAL_CONGESTION': 'Congestión Gingival',
+    'DRY_MUCOSA': 'Resequedad de Mucosa',
+    'ERYTHEMATOUS_EDEMA': 'Edema Eritematoso',
+    'MICROVASCULAR_CONGESTION': 'Congestión Microvascular',
+    'BLOOD_VISCOSITY': 'Viscosidad Sanguínea',
+    'VASCULAR_RESISTANCE': 'Resistencia Vascular',
+    'VASCULAR_ELASTICITY': 'Elasticidad Vascular',
+    'MYOCARDIAL_BLOOD_DEMAND': 'Demanda de Sangre Miocárdica',
+    'STROKE_VOLUME': 'Volumen Sistólico',
+    'LEFT_VENTRICULAR_EJECTION_IMPEDANCE': 'Impedancia Ventricular de Expulsión',
+    'EFFECTIVE_PUMP_FORCE': 'Fuerza de Bombeo Efectiva',
+    'CORONARY_ARTERY_ELASTICITY': 'Elasticidad Coronaria',
+    'CEREBRAL_VESSEL_ELASTICITY': 'Elasticidad de Vaso Cerebral',
+    'CHOLESTEROL_CRYSTAL': 'Cristal de Colesterol'
+};
+
+export function formatClinicalBiomarker(raw) {
+    if (!raw) return '';
+    let text = String(raw).trim();
+
+    const upperKey = text.toUpperCase().replace(/\s+/g, '_');
+    if (CLINICAL_TRANSLATION_MAP[upperKey]) {
+        return CLINICAL_TRANSLATION_MAP[upperKey];
+    }
+
+    if (text.includes(':')) {
+        const parts = text.split(':');
+        const key = parts[0].trim().toUpperCase().replace(/\s+/g, '_');
+        const val = parts.slice(1).join(':').trim();
+        const translatedKey = CLINICAL_TRANSLATION_MAP[key] || key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        const sanitizedVal = val
+            .replace(/\bRef:\s*N\/A\b/gi, 'Rango Observacional')
+            .replace(/\bANORMAL\s+LEVE\b/gi, 'Alerta Leve')
+            .replace(/\bANORMAL\s+MODERADO\b/gi, 'Alerta Moderada')
+            .replace(/\bANORMAL\s+SEVERO\b/gi, 'Alerta Severa');
+        return `${translatedKey}: ${sanitizedVal}`;
+    }
+
+    Object.entries(CLINICAL_TRANSLATION_MAP).forEach(([key, val]) => {
+        const regex = new RegExp(`\\b${key}\\b`, 'gi');
+        text = text.replace(regex, val);
+    });
+
+    text = text
+        .replace(/SAFEGUARD\s*(?:DE)?/gi, 'Salvaguarda de')
+        .replace(/\bHIIT\b/gi, 'Zona 5 HIIT')
+        .replace(/\bNEAT\b/gi, 'Movilidad Diaria NEAT')
+        .replace(/\bRef:\s*N\/A\b/gi, 'Rango Observacional')
+        .replace(/\bANORMAL\s+LEVE\b/gi, 'Alerta Leve')
+        .replace(/\bANORMAL\s+MODERADO\b/gi, 'Alerta Moderada')
+        .replace(/\bANORMAL\s+SEVERO\b/gi, 'Alerta Severa')
+        .replace(/\bOPTIMAL\b/gi, 'Óptimo')
+        .replace(/\bNORMAL\b/gi, 'Normal');
+
+    if (/^[A-Z0-9_]{3,}$/.test(text)) {
+        text = text
+            .split('_')
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(' ');
+    }
+
+    return text;
+}
+
+export function formatClinicalText(text) {
+    if (!text) return '';
+    let result = String(text);
+
+    Object.entries(CLINICAL_TRANSLATION_MAP).forEach(([key, val]) => {
+        const regex = new RegExp(`\\b${key}\\b`, 'gi');
+        result = result.replace(regex, val);
+    });
+
+    return result
+        .replace(/SAFEGUARD DE ESFUERZO ADULTO/gi, 'Salvaguarda de Esfuerzo Físico (Adulto)')
+        .replace(/SAFEGUARD\s*(?:DE)?/gi, 'Salvaguarda de')
+        .replace(/\bHIIT\b/gi, 'Zona 5 HIIT')
+        .replace(/\bNEAT\b/gi, 'Movilidad Diaria NEAT')
+        .replace(/\bRef:\s*N\/A\b/gi, 'Rango Observacional')
+        .replace(/\bANORMAL\s+LEVE\b/gi, 'Alerta Leve')
+        .replace(/\bANORMAL\s+MODERADO\b/gi, 'Alerta Moderada')
+        .replace(/\bANORMAL\s+SEVERO\b/gi, 'Alerta Severa')
+        .replace(/\bOPTIMAL\b/gi, 'Óptimo')
+        .replace(/\bNORMAL\b/gi, 'Normal')
+        .replace(/\bRUTA_([A-D]):\s*/gi, 'Ruta Clínica $1 • ')
+        .replace(/\bRUTA_([A-D])\b/gi, 'Ruta Clínica $1');
+}
+
 export function DiagnosticoRenderizado({ cortexSynthesis }) {
     const [selectedNodeId, setSelectedNodeId] = useState('ALL');
 
@@ -425,13 +535,13 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                     )}
                 </div>
 
-                <h3 className="text-lg font-extrabold text-slate-900 tracking-tight uppercase">
-                    {activeNodeMeta ? activeNodeMeta.nodeName : rutaActiva}
+                <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                    {activeNodeMeta ? activeNodeMeta.nodeName : formatClinicalText(rutaActiva)}
                 </h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
                     {activeNodeMeta
                         ? activeNodeMeta.clinicalDescription
-                        : (causaRaiz || 'Evaluación funcional integrativa de los 7 Nodos del Institute for Functional Medicine (IFM) con asignación determinista CIE-10 y suero clínico purificado.')}
+                        : 'Evaluación funcional integrativa de los 7 Nodos del Institute for Functional Medicine (IFM) con correlación biomarcadora multimodal y dosificación de precisión.'}
                 </p>
             </div>
 
@@ -543,7 +653,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                     </div>
                                 </div>
 
-                                {/* Biomarcadores Clave Aislados en el Nodo */}
+                                {/* Biomarcadores Clave Aislados en el Nodo (Sanitizados y Traducidos a Español Clínico) */}
                                 {node.safeBiomarkers.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mb-3.5">
                                         {node.safeBiomarkers.map((bm, bIdx) => (
@@ -551,7 +661,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                                 key={bIdx}
                                                 className="text-[10.5px] font-bold bg-slate-50 text-slate-700 border border-slate-200/90 px-2.5 py-1 rounded-lg"
                                             >
-                                                🔬 {bm}
+                                                🔬 {formatClinicalBiomarker(bm)}
                                             </span>
                                         ))}
                                     </div>
@@ -569,12 +679,12 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                                 ⓘ Síntesis Clínica
                                             </span>
                                             <p className="font-medium leading-relaxed text-xs">
-                                                {node.summary}
+                                                {formatClinicalText(node.summary)}
                                             </p>
                                         </div>
                                         {node.therapeutic_focus && (
                                             <p className="text-[11px] font-bold text-[#1C75BC] pl-1 pt-0.5">
-                                                🎯 Enfoque Terapéutico: <span className="font-semibold text-slate-700">{node.therapeutic_focus}</span>
+                                                🎯 Enfoque Terapéutico: <span className="font-semibold text-slate-700">{formatClinicalText(node.therapeutic_focus)}</span>
                                             </p>
                                         )}
                                     </div>
@@ -682,10 +792,16 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                     {criticalSafeguards.length > 0 ? (
                         <div className="space-y-2.5">
                             {criticalSafeguards.map((alt, aIdx) => {
-                                const isCritical = /SAFEGUARD|BLOQUEADO|CONTRAINDICADA|PROHIBIDO|LOCK/i.test(alt);
-                                const cleanAlert = String(alt)
+                                const isCritical = /SAFEGUARD|SALVAGUARDA|BLOQUEADO|CONTRAINDICADA|PROHIBIDO|LOCK/i.test(alt);
+                                let cleanAlert = String(alt)
                                     .replace(/^[•\s\d.-]+/, '')
                                     .trim();
+
+                                cleanAlert = cleanAlert
+                                    .replace(/^SAFEGUARD DE ESFUERZO ADULTO:/i, 'Salvaguarda de Esfuerzo Físico (Adulto):')
+                                    .replace(/SAFEGUARD/gi, 'Salvaguarda')
+                                    .replace(/\bHIIT\b/gi, 'Zona 5 HIIT')
+                                    .replace(/\bNEAT\b/gi, 'Movilidad Diaria NEAT');
 
                                 return (
                                     <div
@@ -706,7 +822,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                                 </span>
                                             </div>
                                             <p className="text-[11.5px] leading-relaxed font-semibold">
-                                                {cleanAlert}
+                                                {formatClinicalText(cleanAlert)}
                                             </p>
                                         </div>
                                     </div>

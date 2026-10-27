@@ -521,23 +521,48 @@ function distillClinicalSerum(patientData, isLactanteExplicit = false) {
     }
 
     // F. Hallazgos de Evidencia Somática Multi-Foto (Paso 5 de Fase 18)
+    const SOMATIC_TRANSLATE_MAP = {
+        'RETICULAR_ERYTHEMA': 'Eritema Reticular',
+        'PUNCTATE_MACULES': 'Máculas Puntiformes',
+        'MICROPAPULAR_ERUPTION': 'Erupción Micropapular',
+        'PERIFOLLICULAR_INVOLVEMENT': 'Compromiso Perifolicular',
+        'CUTANEOUS_EDEMA_SUPERFICIAL': 'Edema Cutáneo Superficial',
+        'SUPERFICIAL_CUTANEOUS_EDEMA': 'Edema Cutáneo Superficial',
+        'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED': 'Insuficiencia Venosa Crónica',
+        'CHRONIC_VENOUS_INSUFFICIENCY': 'Insuficiencia Venosa Crónica',
+        'VARICOSE_VEINS_HIGH_RISK': 'Riesgo Elevado de Várices',
+        'VENOUS_STASIS_DERMATITIS': 'Dermatitis por Estasis Venosa',
+        'EDEMA_PERIPHERAL_MODERATE': 'Edema Periférico Moderado',
+        'PERIPHERAL_EDEMA': 'Edema Periférico',
+        'HYPERPIGMENTATION': 'Hiperpigmentación Cutánea',
+        'HEMOSIDERIN_PIGMENTATION': 'Pigmentación por Hemosiderina',
+        'FOLLICULAR_HYPERKERATOSIS': 'Hiperqueratosis Folicular',
+        'XEROSIS_CUTIS': 'Xerosis Cutánea (Piel Seca)',
+        'TELANGIECTASIA': 'Telangiectasias Superficiales',
+        'VENOUS_ECTASIA': 'Ectasia Venosa'
+    };
+
     const visual = patientData?.scan_data?.visual_metrics;
     if (visual && visual.status !== 'SKIPPED') {
         const items = Array.isArray(visual.items) ? visual.items : [];
         if (items.length > 0) {
             items.forEach((it, idx) => {
-                const flagsStr = Array.isArray(it.clinical_flags) ? it.clinical_flags.join(', ') : '';
+                const flagsStr = Array.isArray(it.clinical_flags)
+                    ? it.clinical_flags.map(f => SOMATIC_TRANSLATE_MAP[String(f).toUpperCase().replace(/\s+/g, '_')] || f).join(', ')
+                    : '';
                 pushAnomaly(
                     'NODO_6_DEFENSA',
                     'SOMATIC_VISION',
                     `Evidencia Somática #${idx + 1} (${it.region || 'Región Cutánea'})`,
-                    `${it.finding || ''} ${flagsStr ? `[Banderas: ${flagsStr}]` : ''}`.trim(),
+                    `${it.finding || ''} ${flagsStr ? `[Hallazgos: ${flagsStr}]` : ''}`.trim(),
                     String(it.severity || visual.severity || 'MODERADA').toUpperCase()
                 );
             });
         } else if (visual.findings) {
-            const flagsStr = Array.isArray(visual.clinical_flags) ? visual.clinical_flags.join(', ') : '';
-            pushAnomaly('NODO_6_DEFENSA', 'SOMATIC_VISION', 'Evidencia Somática Cutánea', `${visual.findings} ${flagsStr ? `[${flagsStr}]` : ''}`.trim(), 'MODERADA');
+            const flagsStr = Array.isArray(visual.clinical_flags)
+                ? visual.clinical_flags.map(f => SOMATIC_TRANSLATE_MAP[String(f).toUpperCase().replace(/\s+/g, '_')] || f).join(', ')
+                : '';
+            pushAnomaly('NODO_6_DEFENSA', 'SOMATIC_VISION', 'Evidencia Somática Cutánea', `${visual.findings} ${flagsStr ? `[Hallazgos: ${flagsStr}]` : ''}`.trim(), 'MODERADA');
         }
     }
 
@@ -1041,7 +1066,7 @@ const synthesizeDossier = async (req, res) => {
         if (isLactanteExplicit) {
             critical_alerts.push(`PROTOCOLO LACTANTE: Constantes vitales normales en escala PALS/OMS (FC ${heartRate} LPM). Prescrita Estimulación Psicomotriz.`);
         } else if (isExerciseRestricted) {
-            critical_alerts.push("SAFEGUARD DE ESFUERZO ADULTO: Bloqueado entrenamiento en Zona 5 HIIT por perfil sedentario/hemodinámico. Prescrita Zona 2 Ligera + NEAT.");
+            critical_alerts.push("Salvaguarda de Esfuerzo Físico (Adulto): Bloqueado entrenamiento en Zona 5 (HIIT) por perfil sedentario o hemodinámico. Prescrita Zona 2 Ligera + Movilidad Diaria Adaptada (NEAT).");
         }
 
         if (hasStimulantsConflict) {
@@ -1078,8 +1103,8 @@ const synthesizeDossier = async (req, res) => {
 
         const payload = {
             doctrina_aplicada: determinedRoute === 'RUTA_A'
-                ? 'RUTA_A: Endocrinología y Desarrollo Pediátrico L-OMS (Primeros 1000 Días)'
-                : `${determinedRoute}: Medicina Funcional de Sistemas (Matriz IFM de 7 Nodos v2.4)`,
+                ? 'Ruta Clínica A • Endocrinología y Desarrollo Pediátrico L-OMS (Primeros 1000 Días)'
+                : `Ruta Clínica ${determinedRoute.replace('RUTA_', '')} • Medicina Funcional de Sistemas (Matriz IFM de 7 Nodos v2.4)`,
             diagnostico_causa_raiz: diagnosticoCausaRaiz,
             preliminary_diagnosis,
             ifm_nodes_matrix: processedIfmNodes,
