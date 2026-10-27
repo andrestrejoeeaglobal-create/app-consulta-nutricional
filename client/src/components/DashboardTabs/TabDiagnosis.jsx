@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { Activity, ShieldAlert, AlertTriangle, Zap, HeartPulse, Lock, FileText, Calendar } from 'lucide-react';
-import TabNotes from './TabNotes';
-import TabIntervention from './TabIntervention';
 import { TabRecommendations } from './TabRecommendations';
 import { DiagnosticoRenderizado } from '../interview/Fase19_DiagnosticoIntegral';
 import tiloImg from '../../assets/tilo.png';
@@ -1052,26 +1050,6 @@ export const TabDiagnosis = ({
                             </div>
                         </div>
                     </Accordion>
-
-                    {/* --- CHILD ACCORDION 3: NOTAS DE EVOLUCIÓN (SOAP) --- */}
-                    <TabNotes
-                        patientData={patientData}
-                        setPatientData={setPatientData}
-                        isEditing={isEditing}
-                        Accordion={Accordion}
-                        openSections={openSections}
-                        toggleSection={toggleSection}
-                    />
-
-                    {/* --- CHILD ACCORDION 4: PLAN DE INTERVENCIÓN --- */}
-                    <TabIntervention
-                        patientData={patientData}
-                        setPatientData={setPatientData}
-                        isEditing={isEditing}
-                        Accordion={Accordion}
-                        openSections={openSections}
-                        toggleSection={toggleSection}
-                    />
                 </div>
             </Accordion>
         </div>
