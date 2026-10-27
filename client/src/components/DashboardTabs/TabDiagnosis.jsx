@@ -962,14 +962,15 @@ export const TabDiagnosis = ({
                             </div>
                         )}
 
-                        {/* Algoritmo de Secuenciación Terapéutica Cronológica (Línea de Tiempo 60-30-10) */}
-                        <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#1C75BC] p-5 shadow-xs space-y-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+                        {/* Algoritmo de Secuenciación Terapéutica Cronológica (Homologación Lineal Desaturada) */}
+                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-[#1C75BC] hover:shadow-md transition-all">
+                            {/* Cabecera en 3 flex-items */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5 select-none">
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/20">
                                         CRONOBIOLOGÍA METABÓLICA
                                     </span>
-                                    <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                                    <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
                                         <Clock className="w-4 h-4 text-[#1C75BC]" />
                                         <span>Algoritmo de Secuenciación Terapéutica Cronológica</span>
                                     </h3>
@@ -992,69 +993,96 @@ export const TabDiagnosis = ({
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                                <div className={`rounded-xl p-4 border transition-all space-y-2.5 flex flex-col justify-between ${
-                                    activeTimelinePhase === 1
-                                        ? 'bg-blue-50/70 border-[#1C75BC] ring-2 ring-[#1C75BC]/20 shadow-xs'
-                                        : 'bg-slate-50/60 border-slate-200/80 opacity-90'
-                                }`}>
-                                    <div>
-                                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2 mb-2">
-                                            <span className="text-[10px] font-black text-[#1C75BC] uppercase tracking-wider">Días 1 a 21</span>
-                                            <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-blue-100 text-blue-900">FASE 1</span>
+                            {/* Secuencia Cronológica Lineal en Filas Horizontales de Ancho Completo */}
+                            <div className="space-y-2.5 my-3">
+                                {/* Fase 1 */}
+                                <div
+                                    onClick={() => setActiveTimelinePhase(1)}
+                                    className={`rounded-xl px-4 py-3 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all border ${
+                                        activeTimelinePhase === 1
+                                            ? 'bg-blue-50/70 border-[#1C75BC] ring-1 ring-[#1C75BC]/30 shadow-xs'
+                                            : 'bg-slate-50/60 border-slate-200/60 hover:bg-slate-100/50'
+                                    }`}
+                                >
+                                    <div className="flex-1 space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9.5px] font-black px-2 py-0.5 rounded bg-blue-100 text-blue-900 border border-blue-200 uppercase tracking-wider">
+                                                FASE 1
+                                            </span>
+                                            <span className="font-extrabold text-xs text-slate-900">
+                                                Estabilización Endotelial y Barrera Mucosa
+                                            </span>
                                         </div>
-                                        <h5 className="font-extrabold text-slate-900 text-xs uppercase mb-1.5">Estabilización Endotelial y Barrera Mucosa</h5>
-                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
+                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium pl-6">
                                             Sellado epitelial intestinal, hidratación bioestructurada e inicio de cronobiología 33Plus® (09:00 AM) y 34Plus® (08:30 PM en 500 ml de agua).
                                         </p>
                                     </div>
-                                    <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between text-[9.5px] text-slate-500 font-bold">
-                                        <span>Permeabilidad y Microcirculación</span>
-                                        <span className="text-[#1C75BC]">Semana 1-3</span>
+                                    <div className="shrink-0 flex items-center sm:flex-col sm:items-end gap-1.5 pl-6 sm:pl-0">
+                                        <span className="text-[10px] font-black text-[#1C75BC] uppercase tracking-wider">Días 1 a 21</span>
+                                        <span className="text-[9px] font-bold text-slate-400">Semana 1-3</span>
                                     </div>
                                 </div>
 
-                                <div className={`rounded-xl p-4 border transition-all space-y-2.5 flex flex-col justify-between ${
-                                    activeTimelinePhase === 2
-                                        ? 'bg-emerald-50/70 border-[#3AAA35] ring-2 ring-[#3AAA35]/20 shadow-xs'
-                                        : 'bg-slate-50/60 border-slate-200/80 opacity-90'
-                                }`}>
-                                    <div>
-                                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2 mb-2">
-                                            <span className="text-[10px] font-black text-[#3AAA35] uppercase tracking-wider">Días 22 a 45</span>
-                                            <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900">FASE 2</span>
+                                {/* Fase 2 */}
+                                <div
+                                    onClick={() => setActiveTimelinePhase(2)}
+                                    className={`rounded-xl px-4 py-3 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all border ${
+                                        activeTimelinePhase === 2
+                                            ? 'bg-emerald-50/70 border-[#3AAA35] ring-1 ring-[#3AAA35]/30 shadow-xs'
+                                            : 'bg-slate-50/60 border-slate-200/60 hover:bg-slate-100/50'
+                                    }`}
+                                >
+                                    <div className="flex-1 space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9.5px] font-black px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-200 uppercase tracking-wider">
+                                                FASE 2
+                                            </span>
+                                            <span className="font-extrabold text-xs text-slate-900">
+                                                Modulación Lipídica y Reológica Profunda
+                                            </span>
                                         </div>
-                                        <h5 className="font-extrabold text-slate-900 text-xs uppercase mb-1.5">Modulación Lipídica y Reológica Profunda</h5>
-                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
+                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium pl-6">
                                             Optimización del transporte lipídico, reducción de viscosidad hemática y síntesis activa de óxido nítrico para reactividad microvascular.
                                         </p>
                                     </div>
-                                    <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between text-[9.5px] text-slate-500 font-bold">
-                                        <span>Sensibilidad Insulínica y Vasos</span>
-                                        <span className="text-[#3AAA35]">Semana 4-6</span>
+                                    <div className="shrink-0 flex items-center sm:flex-col sm:items-end gap-1.5 pl-6 sm:pl-0">
+                                        <span className="text-[10px] font-black text-[#3AAA35] uppercase tracking-wider">Días 22 a 45</span>
+                                        <span className="text-[9px] font-bold text-slate-400">Semana 4-6</span>
                                     </div>
                                 </div>
 
-                                <div className={`rounded-xl p-4 border transition-all space-y-2.5 flex flex-col justify-between ${
-                                    activeTimelinePhase === 3
-                                        ? 'bg-indigo-50/70 border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
-                                        : 'bg-slate-50/60 border-slate-200/80 opacity-90'
-                                }`}>
-                                    <div>
-                                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2 mb-2">
-                                            <span className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">Días 46+</span>
-                                            <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-indigo-100 text-indigo-900">FASE 3</span>
+                                {/* Fase 3 */}
+                                <div
+                                    onClick={() => setActiveTimelinePhase(3)}
+                                    className={`rounded-xl px-4 py-3 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all border ${
+                                        activeTimelinePhase === 3
+                                            ? 'bg-indigo-50/70 border-indigo-500 ring-1 ring-indigo-500/30 shadow-xs'
+                                            : 'bg-slate-50/60 border-slate-200/60 hover:bg-slate-100/50'
+                                    }`}
+                                >
+                                    <div className="flex-1 space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9.5px] font-black px-2 py-0.5 rounded bg-indigo-100 text-indigo-900 border border-indigo-200 uppercase tracking-wider">
+                                                FASE 3
+                                            </span>
+                                            <span className="font-extrabold text-xs text-slate-900">
+                                                Consolidación Metabólica y Re-Evaluación
+                                            </span>
                                         </div>
-                                        <h5 className="font-extrabold text-slate-900 text-xs uppercase mb-1.5">Consolidación Metabólica y Re-Evaluación</h5>
-                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium">
+                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium pl-6">
                                             Auditoría de control de biomarcadores fuera de rango y consolidación de composición corporal ({bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal/día` : 'mantenimiento normocalórico'}).
                                         </p>
                                     </div>
-                                    <div className="pt-2 border-t border-slate-200/50 flex items-center justify-between text-[9.5px] text-slate-500 font-bold">
-                                        <span>Biometría de Control</span>
-                                        <span className="text-indigo-600">Semana 7+</span>
+                                    <div className="shrink-0 flex items-center sm:flex-col sm:items-end gap-1.5 pl-6 sm:pl-0">
+                                        <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">Días 46+</span>
+                                        <span className="text-[9px] font-bold text-slate-400">Semana 7+</span>
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Pie de Tarjeta Estándar */}
+                            <div className="pt-2.5 border-t border-slate-100 mt-3 flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400 font-medium">ⓘ Secuenciación cronobiológica ortomolecular para adaptación celular progresiva</span>
                             </div>
                         </div>
 

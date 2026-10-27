@@ -771,30 +771,33 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                     </div>
                 )}
 
-                {/* Bento Card 2: Bioseguridad y Salvaguardas Clínicas (Sin duplicación de biomarcadores crudos) */}
-                <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-amber-500 p-5 shadow-xs">
-                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5">
+                {/* Bento Card 2: Bioseguridad y Salvaguardas Clínicas (Homologación Lineal Desaturada) */}
+                <div className={`bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 ${
+                    criticalSafeguards.length > 0 ? 'border-l-amber-500' : 'border-l-[#3AAA35]'
+                } hover:shadow-md transition-all`}>
+                    {/* Cabecera en 3 flex-items */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5">
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/70">
                                 FILTRO DE INMUNIDAD NORMATIVA
                             </span>
-                            <h3 className="text-xs font-extrabold text-amber-950 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5 select-none">
                                 <ShieldAlert className="w-4 h-4 text-amber-600" />
                                 <span>Bioseguridad y Salvaguardas Clínicas</span>
                             </h3>
                         </div>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold ${
+                        <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide border shrink-0 self-start sm:self-center ${
                             criticalSafeguards.length > 0
-                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
                         }`}>
                             {criticalSafeguards.length > 0 ? '⚠️ VIGILANCIA ACTIVA' : '✓ BIOSEGURIDAD VERIFICADA'}
                         </span>
                     </div>
 
-                    {/* Desglose Exclusivo de Salvaguardas Críticas y Hard Locks */}
+                    {/* Desglose Exclusivo de Salvaguardas en Filas Horizontales Lineales */}
                     {criticalSafeguards.length > 0 ? (
-                        <div className="space-y-2.5">
+                        <div className="space-y-2">
                             {criticalSafeguards.map((alt, aIdx) => {
                                 const isCritical = /SAFEGUARD|SALVAGUARDA|BLOQUEADO|CONTRAINDICADA|PROHIBIDO|LOCK/i.test(alt);
                                 const cleanAlert = String(alt)
@@ -804,25 +807,26 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                 return (
                                     <div
                                         key={aIdx}
-                                        className={`rounded-xl p-3.5 text-xs leading-relaxed font-medium border flex flex-col justify-between ${
-                                            isCritical
-                                                ? 'bg-red-50/70 border-red-200/90 text-red-950'
-                                                : 'bg-amber-50/60 border-amber-200/80 text-amber-950'
-                                        }`}
+                                        className="bg-slate-50/60 border border-slate-200/60 rounded-xl px-4 py-2.5 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-100/50 transition-colors"
                                     >
-                                        <div>
-                                            <div className="flex items-center justify-between gap-2 mb-1.5">
-                                                <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
-                                                    isCritical ? 'text-[#E30613]' : 'text-amber-800'
-                                                }`}>
-                                                    <span>{isCritical ? '🛑' : '⚠️'}</span>
-                                                    <span>{isCritical ? 'Salvaguarda de Bioseguridad y Esfuerzo' : 'Restricción Clínica'}</span>
+                                        <div className="flex-1 space-y-0.5">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm">{isCritical ? '🛑' : '⚠️'}</span>
+                                                <span className="font-extrabold text-xs text-slate-800">
+                                                    {isCritical ? 'Salvaguarda de Bioseguridad y Esfuerzo' : 'Restricción Clínica'}
                                                 </span>
                                             </div>
-                                            <p className="text-[11.5px] leading-relaxed font-semibold">
+                                            <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium pl-6">
                                                 {formatClinicalText(cleanAlert)}
                                             </p>
                                         </div>
+                                        <span className={`text-[9.5px] font-extrabold px-2.5 py-1 rounded-lg border shrink-0 self-start sm:self-center uppercase tracking-wider pl-6 sm:pl-2.5 ${
+                                            isCritical
+                                                ? 'bg-red-50 text-[#E30613] border-red-200'
+                                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                                        }`}>
+                                            {isCritical ? 'Bloqueo Activo' : 'Restricción'}
+                                        </span>
                                     </div>
                                 );
                             })}
@@ -833,98 +837,126 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                             <span>Homeostasis y Bioseguridad Normativa Verificada: Sin contraindicaciones activas ni bloqueos de esfuerzo detectados.</span>
                         </div>
                     )}
+
+                    {/* Pie de Tarjeta Estándar */}
+                    <div className="pt-2.5 border-t border-slate-100 mt-3 flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400 font-medium">ⓘ Salvaguarda biomecánica y hemodinámica de prescripción</span>
+                    </div>
                 </div>
 
-                {/* Bento Card 3: Estrategia Terapéutica Integral */}
-                <div className="bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#3AAA35] p-5 shadow-xs">
-                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5 select-none">
+                {/* Bento Card 3: Estrategia Terapéutica Integral (Homologación Lineal Desaturada) */}
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-[#3AAA35] hover:shadow-md transition-all">
+                    {/* Cabecera en 3 flex-items */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3 select-none">
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-[#3AAA35] border border-emerald-200/70">
                                 PRESCRIPCIÓN ORTOMOLECULAR INTEGRAL
                             </span>
-                            <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
                                 <Zap className="w-4 h-4 text-[#3AAA35]" />
                                 <span>Estrategia Terapéutica Integral</span>
                             </h3>
                         </div>
+                        <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide border shrink-0 self-start sm:self-center bg-emerald-50 text-[#3AAA35] border-emerald-200">
+                            Prescripción Adaptativa
+                        </span>
                     </div>
 
-                    {/* Chips Métricos Puros del Tronco Matemático (calculatePrecisionBioenergetics) */}
+                    {/* Metas Bioenergéticas Aplanadas (Inline desaturado sin micro-píldoras gruesas) */}
                     {bioenergetics && (
-                        <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100 mb-4">
+                        <div className="my-2.5 text-[10.5px] text-slate-500 font-medium flex flex-wrap items-center gap-x-2 gap-y-1 pb-3 border-b border-slate-100/80">
+                            <span className="font-extrabold text-slate-400 uppercase tracking-wider text-[9.5px]">Metas Bioenergéticas:</span>
                             {bioenergetics.tdee && (
-                                <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-[#3AAA35] border border-emerald-200/80 text-[10px] font-extrabold flex items-center gap-1">
-                                    <span>⚡ TDEE:</span>
-                                    <span>{bioenergetics.tdee} kcal</span>
+                                <span className="inline-flex items-center gap-1">
+                                    <span className="text-slate-400">⚡ TDEE:</span>
+                                    <strong className="text-slate-700 font-bold">{bioenergetics.tdee} kcal</strong>
                                 </span>
                             )}
                             {bioenergetics.targetKcal && (
-                                <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-[#1C75BC] border border-blue-200/80 text-[10px] font-extrabold flex items-center gap-1">
-                                    <span>🎯 Meta Calórica:</span>
-                                    <span>{bioenergetics.targetKcal} kcal/día</span>
-                                </span>
+                                <>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-1">
+                                        <span className="text-slate-400">🎯 Meta Calórica:</span>
+                                        <strong className="text-slate-700 font-bold">{bioenergetics.targetKcal} kcal/día</strong>
+                                    </span>
+                                </>
                             )}
                             {bioenergetics.bmr && (
-                                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-extrabold flex items-center gap-1">
-                                    <span>🔥 TMB:</span>
-                                    <span>{bioenergetics.bmr} kcal</span>
-                                </span>
+                                <>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-1">
+                                        <span className="text-slate-400">🔥 TMB:</span>
+                                        <strong className="text-slate-700 font-bold">{bioenergetics.bmr} kcal</strong>
+                                    </span>
+                                </>
                             )}
                             {bioenergetics.equationUsed && (
-                                <span className="px-2.5 py-1 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 text-[9.5px] font-bold">
-                                    Fórmula: {bioenergetics.equationUsed}
-                                </span>
+                                <>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="text-slate-400 text-[10px]">Fórmula: {bioenergetics.equationUsed}</span>
+                                </>
                             )}
                         </div>
                     )}
 
-                    {/* Distribución Equilibrada en 2 Columnas: Nutrición y Readaptación */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Distribución Lineal en Filas Horizontales de Ancho Completo */}
+                    <div className="space-y-2.5 my-3">
                         {nutricion && (
-                            <div>
-                                <div className="flex items-center gap-1.5 mb-1.5 select-none">
-                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                                        Nutrición Defensora y Modulación Metabólica
-                                    </span>
+                            <div className="bg-slate-50/60 border border-slate-200/60 rounded-xl px-4 py-3 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-100/50 transition-colors">
+                                <div className="flex-1 space-y-0.5">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm">🥗</span>
+                                        <span className="font-extrabold text-xs text-slate-800">
+                                            Nutrición Defensora y Modulación Metabólica
+                                        </span>
+                                    </div>
+                                    <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium pl-6">
+                                        {nutricion}
+                                    </p>
                                 </div>
-                                <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed font-medium">
-                                    {nutricion}
-                                </div>
+                                <span className="text-[9.5px] font-extrabold px-2.5 py-1 rounded-lg border shrink-0 self-start sm:self-center uppercase tracking-wider bg-emerald-50 text-[#3AAA35] border-emerald-200 pl-6 sm:pl-2.5">
+                                    Modulación Activa
+                                </span>
                             </div>
                         )}
 
                         {readaptacion && (
-                            <div>
-                                <div className="flex items-center gap-1.5 mb-1.5 select-none">
-                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                                        Prescripción Ortomolecular y Readaptación
-                                    </span>
+                            <div className="bg-slate-50/60 border border-slate-200/60 rounded-xl px-4 py-3 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-100/50 transition-colors">
+                                <div className="flex-1 space-y-0.5">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm">🏃</span>
+                                        <span className="font-extrabold text-xs text-slate-800">
+                                            Prescripción Ortomolecular y Readaptación
+                                        </span>
+                                    </div>
+                                    <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium pl-6">
+                                        {readaptacion}
+                                    </p>
                                 </div>
-                                <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed font-medium">
-                                    {readaptacion}
-                                </div>
+                                <span className="text-[9.5px] font-extrabold px-2.5 py-1 rounded-lg border shrink-0 self-start sm:self-center uppercase tracking-wider bg-blue-50 text-[#1C75BC] border-blue-200 pl-6 sm:pl-2.5">
+                                    Zona 2 + NEAT
+                                </span>
                             </div>
                         )}
                     </div>
 
-                    {/* Sistemas Fisiológicos Implicados */}
+                    {/* Sistemas Fisiológicos Implicados Aplanados */}
                     {Array.isArray(sistemas) && sistemas.length > 0 && (
-                        <div className="pt-3.5 border-t border-slate-100 mt-4">
-                            <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2 select-none">
-                                Sistemas Fisiológicos Implicados
-                            </h4>
-                            <div className="flex flex-wrap gap-1.5 select-none">
-                                {sistemas.map((sistema, idx) => (
-                                    <span
-                                        key={idx}
-                                        className="bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/20 text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-wider"
-                                    >
-                                        {sistema}
-                                    </span>
-                                ))}
-                            </div>
+                        <div className="my-2 text-[10.5px] text-slate-500 font-medium flex flex-wrap items-center gap-x-2 gap-y-1 pt-2.5 border-t border-slate-100">
+                            <span className="font-extrabold text-slate-400 uppercase tracking-wider text-[9.5px]">Sistemas Fisiológicos:</span>
+                            {sistemas.map((sistema, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1.5">
+                                    <span className="text-slate-700 font-semibold">{sistema}</span>
+                                    {idx < sistemas.length - 1 && <span className="text-slate-300">•</span>}
+                                </span>
+                            ))}
                         </div>
                     )}
+
+                    {/* Pie de Tarjeta Estándar */}
+                    <div className="pt-2.5 border-t border-slate-100 mt-3 flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400 font-medium">ⓘ Prescripción nutricional adaptativa basada en biometría y bioenergética</span>
+                    </div>
                 </div>
             </div>
         </div>
