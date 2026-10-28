@@ -500,8 +500,8 @@ export const useCortex = () => {
     const [messages, setMessages] = useState(() => {
         if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') {
             const saved = getSavedState('messages', []);
-            const hasP18 = saved?.some?.(m => m.content?.includes("Fase 18"));
-            return hasP18 ? saved : INITIAL_MESSAGES;
+            const validP18 = saved?.find?.(m => m.content?.includes("Fase 18") && Array.isArray(m.options) && m.options.length > 0);
+            return validP18 ? [validP18] : INITIAL_MESSAGES;
         }
         return getSavedState('messages', INITIAL_MESSAGES) || INITIAL_MESSAGES;
     });

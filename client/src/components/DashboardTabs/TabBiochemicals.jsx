@@ -280,10 +280,11 @@ export const TabBiochemicals = ({
     const categoriesKeys = Object.keys(activeMetrics);
 
     // 🔄 Auto-Rescate de Reporte Consolidado Completo (37 Categorías):
-    // Si el expediente tiene telemetría incompleta (< 10 categorías, ej. solo Cardiovascular por caché previa) o acaba de recargar F5 en Fase 18, sincronizar automáticamente con ResultOne.htm
+    // Solo si el expediente YA fue escaneado legítimamente en la sesión activa y se requiere completar categorías
     const hasAutoUpgradedRef = React.useRef(false);
     React.useEffect(() => {
         if (!activePatientFullName) return;
+        if (!isScanned) return; // 🛡️ NOM-004: Freno absoluto si el escaneo aún no se ha realizado
         if (categoriesKeys.length >= 20) return;
         if (hasAutoUpgradedRef.current) return;
 
