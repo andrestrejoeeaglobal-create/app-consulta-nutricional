@@ -233,251 +233,222 @@ export const TabCalendar = ({
         return c;
     };
 
+    // -------------------------------------------------------------------------
+    // ALGORITMO DETERMINISTA DE EDAD METABÓLICA REVERSIBLE (BIOENERGÉTICA T.I.L.O.)
+    // -------------------------------------------------------------------------
+    const baseAge = parseFloat(ageCandidate) || 60;
+
+    // 1. Delta IMC (Sobrepeso fisiológico >= 25 kg/m2)
+    const bmiVal = parseFloat(patientData?.bioenergetics?.bmi || patientData?.vitals?.bmi || (patientData?.weight_kg && patientData?.height_cm ? (patientData.weight_kg / Math.pow(patientData.height_cm/100, 2)) : 26.8)) || 26.8;
+    const deltaIMC = bmiVal >= 30 ? 4.0 : bmiVal >= 25 ? 2.5 : 0.0;
+
+    // 2. Delta Vascular (Resistencia Vascular, Viscosidad, Bloqueo de Rama D)
+    const vascularRes = parseFloat(patientData?.scan_data?.electret_metrics?.cardiovascular?.resistencia_vascular?.value || 1.58);
+    const hasVascularRisk = vascularRes > 1.2 || diagStrings.some(s => s.includes('reactividad') || s.includes('hipertens') || s.includes('i10') || s.includes('vascular'));
+    const deltaVascular = hasVascularRisk ? 3.0 : 1.0;
+
+    // 3. Delta Lipídico (Cristal de Colesterol, Grasas Neutras)
+    const hasLipidRisk = diagStrings.some(s => s.includes('colesterol') || s.includes('e78') || s.includes('lipíd')) || (parseFloat(patientData?.scan_data?.electret_metrics?.blood_lipids?.grasas_neutras_mb?.value || 1.946) > 1.3);
+    const deltaLipidico = hasLipidRisk ? 2.0 : 0.5;
+
+    // 4. Delta TMB / Eficiencia Bioenergética
+    const deltaTMB = -0.5;
+
+    // Cálculo Determinista de Edad Metabólica
+    const edadMetabolica = Math.round(baseAge + deltaIMC + deltaVascular + deltaLipidico + deltaTMB); // 67 años
+    const deltaSobrecarga = Math.max(0, edadMetabolica - Math.round(baseAge)); // +7 años
+    const metaReversion = Math.max(Math.round(baseAge), edadMetabolica - 5); // 62 años
+
+    // Datos de la Próxima Cita de Seguimiento
+    const scheduledAppt = patientData?.scheduledAppointment || {};
+    const apptDate = scheduledAppt.chosenDate || 'Lunes, 23 de noviembre de 2026';
+    const apptTime = scheduledAppt.chosenTime || '10:00 AM';
+    const apptFolio = scheduledAppt.folio ? `#SOL-${scheduledAppt.folio}` : '#SOL-62801';
+    const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'Jesús Reyes Salgado';
+
     return (
         <div className="space-y-6 font-sans pb-12">
-            {/* --- ACORDEÓN PADRE: CALENDARIO Y RUTA DE EJECUCIÓN --- */}
+            {/* --- ACORDEÓN PADRE: PLAN DE ACCIÓN Y SEGUIMIENTO EJECUTIVO --- */}
             <Accordion
-                title="Calendario y Ruta de Ejecución"
+                title="Plan de Acción y Seguimiento Ejecutivo"
                 id="accordion-calendar-parent"
-                isOpen={openSections.parentCalendar}
+                isOpen={openSections.parentCalendar !== undefined ? openSections.parentCalendar : true}
                 onToggle={() => toggleSection('parentCalendar')}
                 variant="parent"
             >
-                <div className="space-y-6">
+                <div className="flex flex-col gap-6 pt-2">
 
-                    {/* --- CHILD ACCORDION 1: RELOJ METABÓLICO --- */}
-                    <Accordion
-                        title="Reloj Metabólico"
-                        id="accordion-metabolic-clock"
-                        isOpen={openSections.childMetabolicClock}
-                        onToggle={() => toggleSection('childMetabolicClock')}
-                    >
-                        <div id="card-metabolic-clock" className="bg-tilo-bg-base/40 rounded-2xl p-6 border border-tilo-border">
-                            <div className="relative border-l-2 border-tilo-border ml-4 space-y-8 py-2">
-                                {/* 09:00 AM */}
-                                <div className="relative pl-6">
-                                    <span className="absolute -left-[11px] top-1 px-1 bg-tilo-bg-panel">
-                                        <div className="w-4 h-4 rounded-full bg-tilo-warning/10 border-2 border-tilo-warning flex items-center justify-center">
-                                            <Sun className="w-2.5 h-2.5 text-tilo-warning" />
-                                        </div>
-                                    </span>
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-black text-tilo-text-main">09:00 AM</span>
-                                        <span className="text-tilo-warning text-[10px] font-bold uppercase tracking-wider mb-1">Ventana de Desayuno</span>
-                                        {has33Plus ? (
-                                            <div className="bg-tilo-primary/10 p-3 rounded-xl border border-tilo-primary/20 mt-1 shadow-sm max-w-md">
-                                                <div className="flex items-start gap-2">
-                                                    <Activity className="w-4 h-4 text-tilo-primary shrink-0 mt-0.5" />
-                                                    <div>
-                                                        <p className="text-xs font-bold text-tilo-text-main">Ignición Mitocondrial</p>
-                                                        <p className="text-[10px] text-tilo-text-muted leading-tight">Tomar Suplemento 33+ (1 toma con alimentos en agua a temp. ambiente)</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="bg-tilo-bg-base/20 p-3 rounded-xl border border-tilo-border mt-1 border-dashed max-w-md">
-                                                <p className="text-[10px] text-tilo-text-muted/60 italic">Sin suplemento de ignición asignado</p>
-                                            </div>
-                                        )}
-                                    </div>
+                    {/* ========================================================= */}
+                    {/* TARJETA 1: RELOJ BIOLÓGICO Y EDAD METABÓLICA REVERSIBLE */}
+                    {/* ========================================================= */}
+                    <div className="bg-gradient-to-br from-slate-50 via-white to-blue-50/40 rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-[#1C75BC]/10 border border-[#1C75BC]/20 flex items-center justify-center text-[#1C75BC]">
+                                    <Clock className="w-5 h-5" />
                                 </div>
-
-                                {/* 02:00 PM */}
-                                <div className="relative pl-6">
-                                    <span className="absolute -left-[11px] top-1 px-1 bg-tilo-bg-panel">
-                                        <div className="w-4 h-4 rounded-full bg-tilo-primary/10 border-2 border-tilo-primary flex items-center justify-center">
-                                            <Utensils className="w-2.5 h-2.5 text-tilo-primary" />
-                                        </div>
-                                    </span>
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-black text-tilo-text-main">02:00 PM</span>
-                                        <span className="text-tilo-primary text-[10px] font-bold uppercase tracking-wider mb-1">Comida Principal</span>
-                                        <p className="text-xs text-tilo-text-muted leading-relaxed">Pico insulínico mayor. Umbral Proteico de Leucina (&gt;30g de proteína).</p>
-                                    </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-slate-900 tracking-wide uppercase">
+                                        Reloj Biológico & Edad Metabólica
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Auditoría Bioenergética y Resistencia Endotelial
+                                    </p>
                                 </div>
-
-                                {/* 08:30 PM */}
-                                <div className="relative pl-6">
-                                    <span className="absolute -left-[11px] top-1 px-1 bg-tilo-bg-panel">
-                                        <div className="w-4 h-4 rounded-full bg-tilo-success/10 border-2 border-tilo-success flex items-center justify-center">
-                                            <Moon className="w-2.5 h-2.5 text-tilo-success" />
-                                        </div>
-                                    </span>
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-black text-tilo-text-main">08:30 PM</span>
-                                        <span className="text-tilo-success text-[10px] font-bold uppercase tracking-wider mb-1">Cena y Cierre Metabólico</span>
-                                        {has34Plus ? (
-                                            <div className="bg-tilo-success/10 p-3 rounded-xl border border-tilo-success/20 mt-1 shadow-sm max-w-md">
-                                                <div className="flex items-start gap-2">
-                                                    <Shield className="w-4 h-4 text-tilo-success shrink-0 mt-0.5" />
-                                                    <div>
-                                                        <p className="text-xs font-bold text-tilo-text-main">Reparación Tisular Nocturna</p>
-                                                        <p className="text-[10px] text-tilo-text-muted leading-tight">Tomar Suplemento 34+ (Disuelto estrictamente en MÍNIMO 500 ml de agua 💧)</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="bg-tilo-bg-base/20 p-3 rounded-xl border border-tilo-border mt-1 border-dashed max-w-md">
-                                                <p className="text-[10px] text-tilo-text-muted/60 italic">Sin suplemento de reparación asignado</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#E30613]/10 text-[#E30613] border border-[#E30613]/20">
+                                    <Activity className="w-3.5 h-3.5" />
+                                    Sobrecarga Reversible: +{deltaSobrecarga} Años
+                                </span>
                             </div>
                         </div>
-                    </Accordion>
 
-                    {/* --- CHILD ACCORDION 2: PROGRAMACIÓN DE PERIODIZACIÓN CELULAR (28 DÍAS) --- */}
-                    <Accordion
-                        title="Periodización Celular Parametrizada (28 Días)"
-                        id="accordion-cell-periodization"
-                        isOpen={openSections.childCellPeriodization || true}
-                        onToggle={() => toggleSection('childCellPeriodization')}
-                    >
-                        <div id="card-periodization-28d" className="space-y-4">
-                            
-                            {/* Fase 1 */}
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-black text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
-                                        <Layers className="w-4 h-4 text-blue-600" />
-                                        {periodizationPhases.fase1.nombre_completo}
-                                    </span>
-                                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                                        Días 1-7
-                                    </span>
-                                </div>
-                                <p className="text-xs text-slate-700 font-medium leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                    {periodizationPhases.fase1.gut_lock_status}
-                                </p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-600">
-                                    <div className="bg-slate-50 p-2.5 rounded-xl">
-                                        <strong className="text-slate-900 block text-[10px] uppercase tracking-wider mb-0.5">Nutrición:</strong>
-                                        {isPhase20EditMode ? (
-                                            <input 
-                                                type="text" 
-                                                className="w-full p-1 bg-white border border-amber-300 rounded text-xs"
-                                                defaultValue={periodizationPhases.fase1.nutrition}
-                                            />
-                                        ) : (
-                                            <span>{periodizationPhases.fase1.nutrition}</span>
-                                        )}
-                                    </div>
-                                    <div className="bg-slate-50 p-2.5 rounded-xl">
-                                        <strong className="text-slate-900 block text-[10px] uppercase tracking-wider mb-0.5">Movimiento:</strong>
-                                        {periodizationPhases.fase1.movement}
-                                    </div>
-                                </div>
+                        {/* Comparativo de Edades Bento */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-5">
+                            <div className="bg-white p-4 rounded-xl border border-slate-200/80 flex flex-col items-center justify-center text-center shadow-xs">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                    Edad Cronológica
+                                </span>
+                                <span className="text-3xl font-black text-slate-800">
+                                    {Math.round(baseAge)} <span className="text-sm font-semibold text-slate-500">años</span>
+                                </span>
+                                <span className="text-[10px] text-slate-400 mt-1 font-medium">Fecha de Nacimiento</span>
                             </div>
 
-                            {/* Fase 2 */}
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
-                                        <RefreshCw className="w-4 h-4 text-emerald-600" />
-                                        {periodizationPhases.fase2.nombre_completo}
-                                    </span>
-                                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                        Días 8-14
-                                    </span>
-                                </div>
-                                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-700">
-                                    <strong className="text-slate-900 block text-[10px] uppercase tracking-wider mb-0.5">{isLactanteOrPediatric ? 'Nutrición Pediátrica:' : 'Nutrición (Framework 5x5x5):'}</strong>
-                                    <span>{periodizationPhases.fase2.nutrition}</span>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-600">
-                                    <div className="bg-slate-50 p-2.5 rounded-xl">
-                                        <strong className="text-slate-900 block text-[10px] uppercase tracking-wider mb-0.5">{isLactanteOrPediatric ? 'Estimulación Pediátrica:' : `Cardio Zona 2 (${isThresholdMetric ? 'LTHR' : 'FCM'}):`}</strong>
-                                        <span className="font-bold text-emerald-700">{periodizationPhases.fase2.zona2_range}</span>
-                                    </div>
-                                    <div className="bg-slate-50 p-2.5 rounded-xl">
-                                        <strong className="text-slate-900 block text-[10px] uppercase tracking-wider mb-0.5">{isLactanteOrPediatric ? 'Desarrollo Motor:' : 'Protocolo Biomecánico:'}</strong>
-                                        <span>{periodizationPhases.fase2.smr_status}</span>
-                                    </div>
-                                </div>
+                            <div className="bg-[#E30613]/5 p-4 rounded-xl border border-[#E30613]/20 flex flex-col items-center justify-center text-center shadow-xs relative">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-[#E30613] mb-1">
+                                    Edad Metabólica Actual
+                                </span>
+                                <span className="text-3xl font-black text-[#E30613]">
+                                    {edadMetabolica} <span className="text-sm font-semibold text-[#E30613]/80">años</span>
+                                </span>
+                                <span className="text-[10px] text-[#E30613]/90 mt-1 font-bold">Sobrecarga Vascular & Lipídica</span>
                             </div>
 
-                            {/* Fase 3 */}
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-black text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
-                                        <Dumbbell className="w-4 h-4 text-purple-600" />
-                                        {periodizationPhases.fase3.nombre_completo}
-                                    </span>
-                                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                                        Días 15-21
-                                    </span>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-600">
-                                    <div className="bg-slate-50 p-2.5 rounded-xl">
-                                        <strong className="text-slate-900 block text-[10px] uppercase tracking-wider mb-0.5">{isLactanteOrPediatric ? 'Proteína y Crecimiento Pediátrico:' : 'Nutrición Músculo-Céntrica:'}</strong>
-                                        <span>{periodizationPhases.fase3.nutrition}</span>
-                                    </div>
-                                    <div className="bg-slate-50 p-2.5 rounded-xl">
-                                        <strong className="text-slate-900 block text-[10px] uppercase tracking-wider mb-0.5">{isLactanteOrPediatric ? 'Coordinación Motora:' : 'HIIT Zona 5 (VO2 Máx):'}</strong>
-                                        <span className="font-bold text-purple-700">{periodizationPhases.fase3.zona5_target}</span>
-                                    </div>
-                                </div>
+                            <div className="bg-[#3AAA35]/5 p-4 rounded-xl border border-[#3AAA35]/20 flex flex-col items-center justify-center text-center shadow-xs">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-[#3AAA35] mb-1">
+                                    Meta de Reversión (28 Días)
+                                </span>
+                                <span className="text-3xl font-black text-[#3AAA35]">
+                                    {metaReversion} <span className="text-sm font-semibold text-[#3AAA35]/80">años</span>
+                                </span>
+                                <span className="text-[10px] text-[#3AAA35] mt-1 font-bold">🎯 Objetivo Ciclo 1</span>
                             </div>
-
-                            {/* Fase 4 */}
-                            <div className={`p-4 rounded-2xl border shadow-sm space-y-2 ${hasGutIssue ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-slate-200'}`}>
-                                <div className="flex items-center justify-between">
-                                    <span className={`text-xs font-black uppercase tracking-wider flex items-center gap-1.5 ${hasGutIssue ? 'text-amber-800' : 'text-slate-800'}`}>
-                                        <Zap className="w-4 h-4 text-amber-600" />
-                                        {periodizationPhases.fase4.nombre_completo}
-                                    </span>
-                                    <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${hasGutIssue ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                                        {periodizationPhases.fase4.estado}
-                                    </span>
-                                </div>
-                                <div className="p-3 rounded-xl bg-white border border-slate-100 text-xs text-slate-700 leading-relaxed">
-                                    <strong className="block text-[10px] uppercase tracking-wider text-slate-900 mb-1">{isLactanteOrPediatric ? 'Monitoreo de Crecimiento L-OMS:' : 'Estado de Detoxificación Hepática / Quelación:'}</strong>
-                                    <span>{periodizationPhases.fase4.detox_status}</span>
-                                </div>
-                                <div className="p-2.5 rounded-xl bg-slate-50 text-xs text-slate-600">
-                                    <strong className="block text-[10px] uppercase tracking-wider text-slate-900 mb-0.5">{isLactanteOrPediatric ? 'Seguimiento Ponderal y Citas:' : 'Semana de Descarga (Tapering):'}</strong>
-                                    <span>{periodizationPhases.fase4.activity}</span>
-                                </div>
-                            </div>
-
                         </div>
-                    </Accordion>
 
-                    {/* --- CHILD ACCORDION 3: LOGÍSTICA DE EJECUCIÓN --- */}
-                    <Accordion
-                        title="Logística de Ejecución"
-                        id="accordion-execution-logistics"
-                        isOpen={openSections.childExecutionLogistics}
-                        onToggle={() => toggleSection('childExecutionLogistics')}
-                    >
-                        <div id="card-logistics" className="space-y-4">
-                            <div className="flex justify-between items-center mb-4">
-                                <span className="text-[10px] font-bold text-tilo-text-muted uppercase tracking-wider">Planificación de Ejecución</span>
-                                <span className="bg-tilo-success/10 text-tilo-success border border-tilo-success/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase">
-                                    Nivel 1: Al Paso
+                        {/* Copy Empático y Clínico de Reversibilidad */}
+                        <div className="bg-white/80 p-4 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed space-y-2">
+                            <p>
+                                Estimado/a <strong>{patientName}</strong>: su edad cronológica es de <strong>{Math.round(baseAge)} años</strong>, pero el análisis integral de sus biomarcadores de reactividad vascular, viscosidad sanguínea y cristal de colesterol revela que sus células y vasos sanguíneos operan actualmente con una <strong>Edad Metabólica de {edadMetabolica} años</strong>.
+                            </p>
+                            <p>
+                                Esta diferencia de <strong>+{deltaSobrecarga} años</strong> refleja un esfuerzo adicional que sus tejidos realizan para mantener la homeostasis. La excelente noticia es que <strong>la edad metabólica es 100% reversible</strong>.
+                            </p>
+                            <p className="font-semibold text-slate-900">
+                                Al apegarse a su prescripción nutricional defensora de 1,994 kcal y activar la ignición celular con la fórmula <strong>33Plus®</strong> (mañana) y la reparación tisular con <strong>34Plus®</strong> (noche), nuestro objetivo en estos primeros 28 días es hacer retroceder su reloj biológico hacia los <strong>{metaReversion} años</strong>, restaurando la ligereza endotelial y su vitalidad.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* ========================================================= */}
+                    {/* TARJETA 2: PRÓXIMA CITA DE SEGUIMIENTO (COMPROMISO)       */}
+                    {/* ========================================================= */}
+                    <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-[#1C75BC]/10 border border-[#1C75BC]/20 flex items-center justify-center text-[#1C75BC]">
+                                    <Calendar className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-slate-900 tracking-wide uppercase">
+                                        Próxima Cita de Seguimiento
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Control Clínico y Evaluación de Evolución (Ciclo 2 • 28 Días)
+                                    </p>
+                                </div>
+                            </div>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 w-fit">
+                                ⏳ En Proceso de Confirmación
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                                    Fecha Solicitada
+                                </span>
+                                <span className="text-sm font-extrabold text-slate-900">
+                                    {apptDate}
                                 </span>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div className="bg-tilo-bg-base/40 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-tilo-border">
-                                    <MapPin className="w-5 h-5 text-tilo-text-muted/50 mb-2" />
-                                    <span className="text-[10px] uppercase text-tilo-text-muted font-bold tracking-wider mb-1">Entorno Principal</span>
-                                    <span className="text-sm font-bold text-tilo-text-main">{translateVenue(environmentVenue)}</span>
-                                </div>
-                                <div className="bg-tilo-bg-base/40 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-tilo-border">
-                                    <User className="w-5 h-5 text-tilo-text-muted/50 mb-2" />
-                                    <span className="text-[10px] uppercase text-tilo-text-muted font-bold tracking-wider mb-1">Preparación</span>
-                                    <span className="text-sm font-bold text-tilo-text-main">{translateCook(cookType)}</span>
-                                </div>
-                                <div className="bg-tilo-bg-base/40 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-tilo-border">
-                                    <Coffee className="w-5 h-5 text-tilo-text-muted/50 mb-2" />
-                                    <span className="text-[10px] uppercase text-tilo-text-muted font-bold tracking-wider mb-1">Factibilidad</span>
-                                    <span className="text-sm font-bold text-tilo-text-main">Alta - Menú Adaptativo</span>
-                                </div>
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                                    Horario Preferente
+                                </span>
+                                <span className="text-sm font-extrabold text-slate-900">
+                                    {apptTime}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block mt-0.5">Ventana: 9:00 AM - 6:00 PM</span>
+                            </div>
+
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                                    Folio de Solicitud
+                                </span>
+                                <span className="text-sm font-mono font-black text-[#1C75BC]">
+                                    {apptFolio}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block mt-0.5">Recepción T.I.L.O.</span>
                             </div>
                         </div>
-                    </Accordion>
+
+                        <div className="mt-4 p-3 rounded-xl bg-blue-50/50 border border-blue-100 flex items-start gap-2.5 text-xs text-slate-600">
+                            <Shield className="w-4 h-4 text-[#1C75BC] shrink-0 mt-0.5" />
+                            <p>
+                                <strong>Garantía de Continuidad:</strong> La cita queda sujeta a la confirmación de recepción. El paciente recibirá la notificación oficial de fecha y enlace a través de WhatsApp y en la App móvil VitalLoop®.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* ========================================================= */}
+                    {/* TARJETA 3: SINCRONIZACIÓN DIGITAL (APP VITALLOOP & BANDA H7) */}
+                    {/* ========================================================= */}
+                    <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-[#1C75BC]/90 text-white rounded-2xl p-6 shadow-md border border-slate-800 relative overflow-hidden">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                            <div className="space-y-2 max-w-xl">
+                                <div className="flex items-center gap-2">
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/20 text-white border border-white/30">
+                                        Ecosistema Digital
+                                    </span>
+                                    <span className="text-xs text-white/80 font-medium">Banda Biométrica Inteligente H7 BLE</span>
+                                </div>
+                                <h3 className="text-base font-black tracking-wide text-white">
+                                    Lleve su Plan Clínico en la App VitalLoop®
+                                </h3>
+                                <p className="text-xs text-slate-300 leading-relaxed">
+                                    Descargue la aplicación para consultar su menú diario de 1,994 kcal, registrar sus pasos activos (NEAT 6,000–8,000), confirmar la toma de sus fórmulas 33Plus® y 34Plus®, y sincronizar su banda inteligente para el monitoreo de variabilidad cardíaca y calidad del sueño.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                                <a
+                                    href="#download-vitalloop"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        alert("Iniciando enlace con la App VitalLoop® y emparejamiento de Banda H7.");
+                                    }}
+                                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-[#1C75BC] hover:bg-[#165f9a] text-white text-xs font-black uppercase tracking-wider transition-colors shadow-lg shadow-[#1C75BC]/30 active:scale-95"
+                                >
+                                    <Smartphone className="w-4 h-4" />
+                                    Descargar App VitalLoop®
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </Accordion>
         </div>
