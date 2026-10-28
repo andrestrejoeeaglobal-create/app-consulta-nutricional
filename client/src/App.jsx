@@ -1005,16 +1005,16 @@ function App() {
         return;
       }
 
-      // Caso E: Corregir mensajes con tuteo o infantilización en la cita de seguimiento
-      const hasInfantilizedMsg = messages.some(m => m.role === 'assistant' && (m.content?.includes('selecciona la fecha de preferencia para la evaluación de 28 días de') || m.content?.includes('selecciona la **fecha de preferencia**') || m.content?.includes('de 28 días de **')));
+      // Caso E: Corregir mensajes con tuteo, infantilización o apelativos forzados en la cita de seguimiento
+      const hasInfantilizedMsg = messages.some(m => m.role === 'assistant' && m.content?.includes('Solicitud de Cita de Seguimiento (4 Semanas)') && (m.content?.includes('selecciona') || m.content?.includes('de 28 días de') || m.content?.includes('Don Jesus') || m.content?.includes('Don Jesús') || m.content?.includes('Estimado/a')));
       if (hasInfantilizedMsg) {
         const addr = getPatientAddressing();
         const properPrompt = addr.isPediatric
           ? `Por favor, seleccione la **fecha de preferencia** para la evaluación de seguimiento a 28 días del menor **${addr.fullName}** (a coordinar con su tutor/a):`
-          : `Estimado/a **${addr.honorific}**, por favor **seleccione su fecha de preferencia** para su evaluación clínica y metabólica de 28 días:`;
+          : `Por favor, **seleccione su fecha de preferencia** para su evaluación clínica y metabólica de 28 días:`;
 
         setMessages(prev => prev.map(m => {
-          if (m.role === 'assistant' && m.content?.includes('Solicitud de Cita de Seguimiento (4 Semanas)') && (m.content?.includes('selecciona') || m.content?.includes('de 28 días de'))) {
+          if (m.role === 'assistant' && m.content?.includes('Solicitud de Cita de Seguimiento (4 Semanas)')) {
             return {
               ...m,
               content: `📅 **Solicitud de Cita de Seguimiento (4 Semanas)**\n\nHorario de atención clínica: **Lunes a Viernes de 9:00 AM a 6:00 PM**.\n\n${properPrompt}`
@@ -1193,7 +1193,7 @@ function App() {
       const dateOpts = getWeekdayOptions();
       const promptIntro = addr.isPediatric
         ? `Por favor, seleccione la **fecha de preferencia** para la evaluación de seguimiento a 28 días del menor **${addr.fullName}** (a coordinar con su tutor/a):`
-        : `Estimado/a **${addr.honorific}**, por favor **seleccione su fecha de preferencia** para su evaluación clínica y metabólica de 28 días:`;
+        : `Por favor, **seleccione su fecha de preferencia** para su evaluación clínica y metabólica de 28 días:`;
 
       setMessages(prev => [
         ...prev, 
@@ -1213,7 +1213,7 @@ function App() {
       const addr = getPatientAddressing();
       const timeIntro = addr.isPediatric
         ? `Por favor, seleccione el **horario de preferencia** para la atención:`
-        : `Estimado/a **${addr.honorific}**, por favor **seleccione el horario de su preferencia**:`;
+        : `Por favor, **seleccione el horario de su preferencia**:`;
 
       setMessages(prev => [
         ...prev,
@@ -1246,7 +1246,7 @@ function App() {
 
       const confirmIntro = addr.isPediatric
         ? `Se ha enviado la petición de cita para el menor **${addr.fullName}** con la información acordada:`
-        : `Estimado/a **${addr.honorific}**, se ha enviado su petición de cita de seguimiento con la información acordada:`;
+        : `Se ha enviado su solicitud de cita de seguimiento con la información acordada:`;
 
       setMessages(prev => [
         ...prev,
@@ -1267,7 +1267,7 @@ function App() {
       const addr = getPatientAddressing();
       const finalMsg = addr.isPediatric
         ? `Se ha completado satisfactoriamente la atención pediátrica de **${addr.fullName}**.`
-        : `Estimado/a **${addr.honorific}**, se ha completado satisfactoriamente su atención clínica y diseño biológico.`;
+        : `Se ha completado satisfactoriamente su atención clínica y diseño biológico.`;
 
       setMessages(prev => [
         ...prev,
