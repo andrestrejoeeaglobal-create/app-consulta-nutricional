@@ -643,6 +643,38 @@ export const cleanBinaryGateMessage = (text) => {
     Object.keys(CLINICAL_GOALS_MAP).forEach(key => {
         cleaned = cleaned.replace(new RegExp(key, 'g'), CLINICAL_GOALS_MAP[key]);
     });
+
+    // Traducir identificadores y banderas somáticas/biomarcadores en inglés
+    const SOMATIC_TRANSLATE_MAP = {
+        'RETICULAR_ERYTHEMA': 'Eritema Reticular',
+        'PUNCTATE_MACULES': 'Máculas Puntiformes',
+        'MICROPAPULAR_ERUPTION': 'Erupción Micropapular',
+        'PERIFOLLICULAR_INVOLVEMENT': 'Compromiso Perifolicular',
+        'CUTANEOUS_EDEMA_SUPERFICIAL': 'Edema Cutáneo Superficial',
+        'SUPERFICIAL_CUTANEOUS_EDEMA': 'Edema Cutáneo Superficial',
+        'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED': 'Insuficiencia Venosa Crónica',
+        'CHRONIC_VENOUS_INSUFFICIENCY': 'Insuficiencia Venosa Crónica',
+        'VARICOSE_VEINS_HIGH_RISK': 'Riesgo Elevado de Várices',
+        'VENOUS_STASIS_DERMATITIS': 'Dermatitis por Estasis Venosa',
+        'EDEMA_PERIPHERAL_MODERATE': 'Edema Periférico Moderado',
+        'PERIPHERAL_EDEMA': 'Edema Periférico',
+        'HYPERPIGMENTATION': 'Hiperpigmentación Cutánea',
+        'HEMOSIDERIN_PIGMENTATION': 'Pigmentación por Hemosiderina',
+        'FOLLICULAR_HYPERKERATOSIS': 'Hiperqueratosis Folicular',
+        'XEROSIS_CUTIS': 'Xerosis Cutánea (Piel Seca)',
+        'TELANGIECTASIA': 'Telangiectasias Superficiales',
+        'VENOUS_ECTASIA': 'Ectasia Venosa'
+    };
+
+    Object.entries(SOMATIC_TRANSLATE_MAP).forEach(([key, val]) => {
+        cleaned = cleaned.replace(new RegExp('\\b' + key + '\\b', 'gi'), val);
+    });
+
+    // Formatear renglones pegados de Dosis e Indicación si aparecen en el texto
+    cleaned = cleaned.replace(/([^\n])\s*(Dosis:)/g, '$1\n\n• **$2**');
+    cleaned = cleaned.replace(/([^\n])\s*(Indicación:)/g, '$1\n\n• **$2**');
+    cleaned = cleaned.replace(/\*\*(Dosis:)\*\*/g, '**Dosis:**');
+    cleaned = cleaned.replace(/\*\*(Indicación:)\*\*/g, '**Indicación:**');
     
     return cleaned.trim();
 };
