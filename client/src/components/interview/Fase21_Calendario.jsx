@@ -151,7 +151,23 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
     const defaultMacros = bio.macros || { carbs: 40, protein: 30, fat: 30 };
 
     const hasGreetedRef = useRef(false);
-    const [internalStep, setInternalStep] = useState('CALORIES'); // CALORIES (unificado), CARBS, PROTEIN, FAT, CONSTRAINTS, FINAL
+    const [internalStep, setInternalStep] = useState(() => {
+        if (!messages || !Array.isArray(messages)) return 'CALORIES';
+        const lastQuestionMsg = [...messages].reverse().find(m => 
+            m.role === 'assistant' && 
+            m.content && 
+            !m.content.includes("Por favor, ingresa un valor numérico") &&
+            !m.content.includes("Porcentaje inválido")
+        );
+        if (!lastQuestionMsg) return 'CALORIES';
+        const text = lastQuestionMsg.content;
+        if (text.includes("El protocolo dietético y la consulta médica han sido cerrados")) return 'FINAL';
+        if (text.includes("restricción logística o alimentaria") || text.includes("Distribución perfecta") || text.includes("Restricción")) return 'CONSTRAINTS';
+        if (text.includes("porcentaje de Lípidos")) return 'FAT';
+        if (text.includes("porcentaje de Proteínas")) return 'PROTEIN';
+        if (text.includes("porcentaje de Carbohidratos")) return 'CARBS';
+        return 'CALORIES';
+    });
     const [tdee, setTdee] = useState(defaultTdee);
     const [target, setTarget] = useState(defaultTarget);
     const [macros, setMacros] = useState(defaultMacros);
@@ -162,6 +178,14 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
     // Deduplicación reactiva y sanitización de opciones de mensajes preexistentes en historial
     useEffect(() => {
         setMessages(prev => {
+            // Eliminar mensaje de error espurio de valor numérico si quedó al final tras F5
+            if (prev.length > 0 && prev[prev.length - 1].content?.includes("Por favor, ingresa un valor numérico válido")) {
+                prev = prev.slice(0, -1);
+            }
+            // Eliminar respuesta de usuario huérfana de 'Terminar y Consolidar Plan' si quedó bloqueada antes del error
+            if (prev.length > 0 && prev[prev.length - 1].role === 'user' && (prev[prev.length - 1].content?.includes('Terminar y Consolidar') || prev[prev.length - 1].content === 'DONE')) {
+                prev = prev.slice(0, -1);
+            }
             let seen = false;
             let changed = false;
             const sanitized = prev
@@ -252,6 +276,88 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
             setMessages(prev => [...prev, newMsg]);
         };
 
+        const normalizedMsg = String(userMsg || '').toUpperCase().trim();
+        const isConstraintSignal = ['DONE', 'SHELF', 'FODMAP', 'NODAIRY', 'NOGLUTEN', 'TERMINAR', 'CONSOLIDAR', 'NINGUNA', 'NINGUNO'].some(term => normalizedMsg.includes(term));
+
+        // Prioridad absoluta a restricciones y consolidación (Inmune a desincronización de internalStep)
+        if (isConstraintSignal || internalStep === 'CONSTRAINTS') {
+            const isDoneSignal = ['DONE', 'NINGUNA', 'NINGUNO', 'NO', 'TERMINAR', 'FIN', 'LISTO', 'OK', 'CONSOLIDAR'].some(term => normalizedMsg.includes(term));
+
+            if (isDoneSignal) {
+                setInternalStep('FINAL');
+                if (registerInputHandler) registerInputHandler(null);
+
+                if (setPatientData) {
+                    setPatientData(prev => ({
+                        ...prev,
+                        nutrition: {
+                            ...prev.nutrition,
+                            protocol: {
+                                equationUsed: bio.equationUsed,
+                                bmr: bio.bmr,
+                                weights: bio.weights,
+                                tdee,
+                                target,
+                                macros,
+                                constraints
+                            }
+                        }
+                    }));
+                }
+
+                addBotMsg("📋 **Plan Consolidado**\n\nEl protocolo dietético y la consulta médica han sido cerrados exitosamente.");
+                setTimeout(() => onPhaseComplete && onPhaseComplete(), 600);
+            } else {
+                let label = "";
+                let updatedConstraints = { ...constraints };
+                if (userMsg === 'FODMAPS' || userMsg === 'LOW_FODMAP' || normalizedMsg.includes('FODMAP')) { updatedConstraints.fodmaps = true; label = "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)"; }
+                else if (userMsg === 'SHELF' || userMsg === 'SHELF_STABLE' || normalizedMsg.includes('SHELF') || normalizedMsg.includes('PERECEDERO')) { updatedConstraints.shelfStable = true; label = "Logística de No Perecederos"; }
+                else if (userMsg === 'NODAIRY' || normalizedMsg.includes('LÁCTEO') || normalizedMsg.includes('LACTEO')) { updatedConstraints.noDairy = true; label = "Sin Lácteos"; }
+                else if (userMsg === 'NOGLUTEN' || normalizedMsg.includes('GLUTEN')) { updatedConstraints.noGluten = true; label = "Sin Gluten"; }
+                else { label = userMsg; }
+
+                setConstraints(updatedConstraints);
+
+                const getRemainingOptions = (curr) => {
+                    const opts = [{ label: '✅ Terminar y Consolidar Plan', value: 'DONE' }];
+                    if (!curr.fodmaps) opts.push({ label: "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)", value: "LOW_FODMAP" });
+                    if (!curr.shelfStable) opts.push({ label: "Logística de No Perecederos", value: "SHELF_STABLE" });
+                    if (!curr.noDairy) opts.push({ label: 'Sin Lácteos', value: 'NODAIRY' });
+                    if (!curr.noGluten) opts.push({ label: 'Sin Gluten', value: 'NOGLUTEN' });
+                    return opts;
+                };
+
+                const remaining = getRemainingOptions(updatedConstraints);
+                if (remaining.length <= 1) {
+                    setInternalStep('FINAL');
+                    if (registerInputHandler) registerInputHandler(null);
+
+                    if (setPatientData) {
+                        setPatientData(prev => ({
+                            ...prev,
+                            nutrition: {
+                                ...prev.nutrition,
+                                protocol: {
+                                    equationUsed: bio.equationUsed,
+                                    bmr: bio.bmr,
+                                    weights: bio.weights,
+                                    tdee,
+                                    target,
+                                    macros,
+                                    constraints: updatedConstraints
+                                }
+                            }
+                        }));
+                    }
+                    addBotMsg("📋 **Plan Consolidado**\n\nTodas las restricciones registradas. El protocolo dietético ha sido cerrado exitosamente.");
+                    setTimeout(() => onPhaseComplete && onPhaseComplete(), 600);
+                } else {
+                    addBotMsg(`Restricción **${label}** agregada. ¿Desea agregar alguna otra restricción o finalizar?`, remaining);
+                }
+            }
+            return;
+        }
+
         const val = parseInt(userMsg, 10);
         const minVal = isLactante ? 400 : 500;
 
@@ -332,83 +438,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
                 getRemainingOptions(constraints)
             );
         }
-        else if (internalStep === 'CONSTRAINTS') {
-            const normalizedMsg = String(userMsg || '').toUpperCase().trim();
-            const isDoneSignal = ['DONE', 'NINGUNA', 'NINGUNO', 'NO', 'TERMINAR', 'FIN', 'LISTO', 'OK', 'CONSOLIDAR'].some(term => normalizedMsg.includes(term));
 
-            if (isDoneSignal) {
-                setInternalStep('FINAL');
-                if (registerInputHandler) registerInputHandler(null);
-
-                if (setPatientData) {
-                    setPatientData(prev => ({
-                        ...prev,
-                        nutrition: {
-                            ...prev.nutrition,
-                            protocol: {
-                                equationUsed: bio.equationUsed,
-                                bmr: bio.bmr,
-                                weights: bio.weights,
-                                tdee,
-                                target,
-                                macros,
-                                constraints
-                            }
-                        }
-                    }));
-                }
-
-                addBotMsg("📋 **Plan Consolidado**\n\nEl protocolo dietético y la consulta médica han sido cerrados exitosamente.");
-                setTimeout(() => onPhaseComplete && onPhaseComplete(), 600);
-            } else {
-                let label = "";
-                let updatedConstraints = { ...constraints };
-                if (userMsg === 'FODMAPS' || userMsg === 'LOW_FODMAP' || normalizedMsg.includes('FODMAP')) { updatedConstraints.fodmaps = true; label = "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)"; }
-                else if (userMsg === 'SHELF' || userMsg === 'SHELF_STABLE' || normalizedMsg.includes('SHELF') || normalizedMsg.includes('PERECEDERO')) { updatedConstraints.shelfStable = true; label = "Logística de No Perecederos"; }
-                else if (userMsg === 'NODAIRY' || normalizedMsg.includes('LÁCTEO') || normalizedMsg.includes('LACTEO')) { updatedConstraints.noDairy = true; label = "Sin Lácteos"; }
-                else if (userMsg === 'NOGLUTEN' || normalizedMsg.includes('GLUTEN')) { updatedConstraints.noGluten = true; label = "Sin Gluten"; }
-                else { label = userMsg; }
-
-                setConstraints(updatedConstraints);
-
-                const getRemainingOptions = (curr) => {
-                    const opts = [{ label: '✅ Terminar y Consolidar Plan', value: 'DONE' }];
-                    if (!curr.fodmaps) opts.push({ label: "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)", value: "LOW_FODMAP" });
-                    if (!curr.shelfStable) opts.push({ label: "Logística de No Perecederos", value: "SHELF_STABLE" });
-                    if (!curr.noDairy) opts.push({ label: 'Sin Lácteos', value: 'NODAIRY' });
-                    if (!curr.noGluten) opts.push({ label: 'Sin Gluten', value: 'NOGLUTEN' });
-                    return opts;
-                };
-
-                const remaining = getRemainingOptions(updatedConstraints);
-                if (remaining.length <= 1) {
-                    setInternalStep('FINAL');
-                    if (registerInputHandler) registerInputHandler(null);
-
-                    if (setPatientData) {
-                        setPatientData(prev => ({
-                            ...prev,
-                            nutrition: {
-                                ...prev.nutrition,
-                                protocol: {
-                                    equationUsed: bio.equationUsed,
-                                    bmr: bio.bmr,
-                                    weights: bio.weights,
-                                    tdee,
-                                    target,
-                                    macros,
-                                    constraints: updatedConstraints
-                                }
-                            }
-                        }));
-                    }
-                    addBotMsg("📋 **Plan Consolidado**\n\nTodas las restricciones registradas. El protocolo dietético ha sido cerrado exitosamente.");
-                    setTimeout(() => onPhaseComplete && onPhaseComplete(), 600);
-                } else {
-                    addBotMsg(`Restricción **${label}** agregada. ¿Desea agregar alguna otra restricción o finalizar?`, remaining);
-                }
-            }
-        }
     };
 
     useEffect(() => {
