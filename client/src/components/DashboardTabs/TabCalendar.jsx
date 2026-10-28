@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+    Calendar,
     Clock, Coffee, Moon, Sun, Utensils,
     Navigation, Activity, MapPin, Briefcase, User, Smartphone, Shield,
     Layers, Dumbbell, Zap, RefreshCw, Lock
