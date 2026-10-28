@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import tiloImg from '../../assets/tilo.png';
 
 /**
@@ -150,7 +150,8 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
     const defaultTarget = String(bio.targetKcal || (isLactante ? '950' : isJuvenilAdolescente ? '1800' : isGeriatric ? '1600' : '2000'));
     const defaultMacros = bio.macros || { carbs: 40, protein: 30, fat: 30 };
 
-    const [internalStep, setInternalStep] = useState('TDEE'); // TDEE, TARGET, CARBS, PROTEIN, FAT, CONSTRAINTS, FINAL
+    const hasGreetedRef = useRef(false);
+    const [internalStep, setInternalStep] = useState('CALORIES'); // CALORIES (unificado), CARBS, PROTEIN, FAT, CONSTRAINTS, FINAL
     const [tdee, setTdee] = useState(defaultTdee);
     const [target, setTarget] = useState(defaultTarget);
     const [macros, setMacros] = useState(defaultMacros);
@@ -158,33 +159,65 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
         fodmaps: false, shelfStable: false, noDairy: false, noGluten: false
     });
 
+    // Deduplicación reactiva de mensajes de Protocolo Dietético en el historial
     useEffect(() => {
-        if (internalStep === 'TDEE') {
-            const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("Protocolo Dietético"));
-            if (!alreadyGreeted) {
-                const promptText =
-                    `⚖️ **Protocolo Dietético y Árbol Bioenergético (${bio.equationUsed})**\n\n` +
-                    `• **Fórmula Aplicada:** ${bio.equationUsed}\n` +
-                    `• **Detalle Antropométrico:** ${bio.formulaExplanation}\n` +
-                    `• **Tasa Metabólica Basal (TMB):** **${bio.bmr} kcal/día**\n` +
-                    `• **Gasto Energético Total Calculado (TDEE):** **${defaultTdee} kcal/día**\n` +
-                    `• **Meta Calórica Sugerida:** **${defaultTarget} kcal/día**\n\n` +
-                    `¿Confirma el **TDEE Calculado de ${defaultTdee} kcal** o desea ingresar otro valor en kcal?`;
+        setMessages(prev => {
+            let seen = false;
+            const deduplicated = prev.filter(msg => {
+                if (msg.role === 'assistant' && typeof msg.content === 'string' && msg.content.includes("Protocolo Dietético")) {
+                    if (seen) return false;
+                    seen = true;
+                }
+                return true;
+            });
+            return deduplicated.length === prev.length ? prev : deduplicated;
+        });
+    }, [setMessages]);
 
-                setMessages(prev => [
+    useEffect(() => {
+        if (internalStep === 'CALORIES' || internalStep === 'TDEE' || internalStep === 'TARGET') {
+            if (hasGreetedRef.current) return;
+            const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("Protocolo Dietético"));
+            if (alreadyGreeted) {
+                hasGreetedRef.current = true;
+                return;
+            }
+
+            hasGreetedRef.current = true;
+            const deficitOrSurplus = (Number(defaultTarget) || 0) - (Number(defaultTdee) || 0);
+            const deficitTag = deficitOrSurplus < 0
+                ? ` (Déficit de ${Math.abs(deficitOrSurplus)} kcal para reducción metabólica)`
+                : deficitOrSurplus > 0
+                ? ` (Superávit de +${deficitOrSurplus} kcal)`
+                : ` (Mantenimiento isocalórico)`;
+
+            const promptText =
+                `⚖️ **Protocolo Dietético y Árbol Bioenergético (${bio.equationUsed})**\n\n` +
+                `• **Fórmula Aplicada:** ${bio.equationUsed}\n` +
+                `• **Detalle Antropométrico:** ${bio.formulaExplanation}\n` +
+                `• **Tasa Metabólica Basal (TMB):** **${bio.bmr} kcal/día**\n` +
+                `• **Gasto Energético Total Calculado (TDEE):** **${defaultTdee} kcal/día**\n` +
+                `• **Meta Calórica Sugerida:** **${defaultTarget} kcal/día**${deficitTag}\n\n` +
+                `¿Confirma la **Meta Calórica Prescrita de ${defaultTarget} kcal/día** o desea ingresar otro valor en kcal?`;
+
+            setMessages(prev => {
+                if (prev.some(m => m.role === 'assistant' && typeof m.content === 'string' && m.content.includes("Protocolo Dietético"))) {
+                    return prev;
+                }
+                return [
                     ...prev,
                     {
                         role: 'assistant',
                         content: promptText,
                         avatar: tiloImg,
                         options: [
-                            { label: `✅ Confirmar TDEE (${defaultTdee} kcal)`, value: defaultTdee }
+                            { label: `✅ Confirmar Meta Calórica (${defaultTarget} kcal)`, value: defaultTarget }
                         ]
                     }
-                ]);
-            }
+                ];
+            });
         }
-    }, [internalStep, bio, defaultTdee, defaultTarget]);
+    }, [internalStep, bio, defaultTdee, defaultTarget, messages, setMessages]);
 
     const handleSend = (userMsg) => {
         const addBotMsg = (msg, options = null) => {
@@ -196,23 +229,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
         const val = parseInt(userMsg, 10);
         const minVal = isLactante ? 400 : 500;
 
-        if (internalStep === 'TDEE') {
-            if (isNaN(val) || val < minVal) {
-                addBotMsg(`Por favor, ingresa un valor numérico válido para el TDEE (Ej: ${defaultTdee}).`);
-                return;
-            }
-            setTdee(val.toString());
-            setInternalStep('TARGET');
-
-            const targetPrompt = isLactante
-                ? `TDEE Pediátrico guardado: **${val} kcal**.\n\n¿Cuál es la **Prescripción Final** en kcal? (Sugerida: **${defaultTarget} kcal**)`
-                : `TDEE guardado: **${val} kcal**.\n\n¿Cuál es la **Prescripción Calórica Final** en kcal? (Sugerida por CORTEX: **${defaultTarget} kcal**)`;
-
-            addBotMsg(targetPrompt, [
-                { label: `✅ Confirmar Meta (${defaultTarget} kcal)`, value: defaultTarget }
-            ]);
-        }
-        else if (internalStep === 'TARGET') {
+        if (internalStep === 'CALORIES' || internalStep === 'TDEE' || internalStep === 'TARGET') {
             if (isNaN(val) || val < minVal) {
                 addBotMsg(`Por favor, ingresa un valor numérico válido (Ej: ${defaultTarget}).`);
                 return;
@@ -221,7 +238,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
             setInternalStep('CARBS');
 
             const carbsPrompt =
-                `Prescripción guardada: **${val} kcal**.\n\n` +
+                `Prescripción Calórica guardada: **${val} kcal/día** (TDEE base: ${defaultTdee} kcal).\n\n` +
                 `Distribución sugerida por CORTEX: **${defaultMacros.carbs}% Carbohidratos / ${defaultMacros.protein}% Proteínas / ${defaultMacros.fat}% Lípidos**.\n\n` +
                 `¿Qué **porcentaje de Carbohidratos** desea asignar?`;
 
