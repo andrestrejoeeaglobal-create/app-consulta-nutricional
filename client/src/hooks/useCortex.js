@@ -423,6 +423,20 @@ export const useCortex = () => {
                                     )) {
                                         msg.inputType = 'tel';
                                     }
+
+                                    // V8.8: Auto-sanitización de restricciones clínicas Fase 21 persistidas en localStorage
+                                    if (msg.options && Array.isArray(msg.options)) {
+                                        msg.options = msg.options.map(opt => {
+                                            if (!opt) return opt;
+                                            if (opt.value === 'FODMAPS' || (typeof opt.label === 'string' && opt.label.includes('FODMAP') && !opt.label.includes('Fermentables'))) {
+                                                return { label: "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)", value: "LOW_FODMAP" };
+                                            }
+                                            if (opt.value === 'SHELF' || (typeof opt.label === 'string' && opt.label.includes('Shelf Stable'))) {
+                                                return { label: "Logística de No Perecederos", value: "SHELF_STABLE" };
+                                            }
+                                            return opt;
+                                        });
+                                    }
                                 }
                             });
                         }

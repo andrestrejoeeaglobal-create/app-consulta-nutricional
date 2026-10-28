@@ -1054,7 +1054,11 @@ function App() {
   // V8.0 Shared Option Selection Dispatch
   const handleOptionSelect = (msg, val) => {
     console.log("🖱️ [handleOptionSelect] Clicked option value:", val, "in message:", msg);
-    const opt = msg?.options?.find(o => o.value === val);
+    let opt = msg?.options?.find(o => o.value === val);
+    if (!opt) {
+      if (val === 'LOW_FODMAP') opt = msg?.options?.find(o => o.value === 'FODMAPS' || o.label?.includes('FODMAP'));
+      if (val === 'SHELF_STABLE') opt = msg?.options?.find(o => o.value === 'SHELF' || o.label?.includes('Shelf Stable'));
+    }
     if (!opt) {
       if (val) {
         console.log("✍️ [handleOptionSelect] Custom option selected:", val);
@@ -6699,7 +6703,16 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                             messagesList[messagesList.length - 1].options &&
                             (messagesList[messagesList.length - 1].options.length > 3) && (
                               <SearchableVerticalMenu
-                                options={messagesList[messagesList.length - 1].options}
+                                options={(messagesList[messagesList.length - 1].options || []).map(opt => {
+                                  if (!opt) return opt;
+                                  if (opt.value === 'FODMAPS' || opt.value === 'LOW_FODMAP' || (typeof opt.label === 'string' && opt.label.includes('FODMAP'))) {
+                                    return { label: "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)", value: "LOW_FODMAP" };
+                                  }
+                                  if (opt.value === 'SHELF' || opt.value === 'SHELF_STABLE' || (typeof opt.label === 'string' && opt.label.includes('Shelf Stable'))) {
+                                    return { label: "Logística de No Perecederos", value: "SHELF_STABLE" };
+                                  }
+                                  return opt;
+                                })}
                                 onSelect={(selectedValue) => handleOptionSelect(messagesList[messagesList.length - 1], selectedValue)}
                               />
                             )}
