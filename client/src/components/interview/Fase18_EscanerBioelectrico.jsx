@@ -587,7 +587,6 @@ Se ha emitido la orden de apertura para **"Sistema Cuántico Bio-Eléctrico"** e
 
             // Encender el centinela auto-sync reactivo encadenado (Sutura 5)
             startAutoSyncSentinel();
-            executePollCycle();
             return;
         }
 
