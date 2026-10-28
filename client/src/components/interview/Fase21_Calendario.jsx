@@ -159,18 +159,44 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
         fodmaps: false, shelfStable: false, noDairy: false, noGluten: false
     });
 
-    // Deduplicación reactiva de mensajes de Protocolo Dietético en el historial
+    // Deduplicación reactiva y sanitización de opciones de mensajes preexistentes en historial
     useEffect(() => {
         setMessages(prev => {
             let seen = false;
-            const deduplicated = prev.filter(msg => {
-                if (msg.role === 'assistant' && typeof msg.content === 'string' && msg.content.includes("Protocolo Dietético")) {
-                    if (seen) return false;
-                    seen = true;
-                }
-                return true;
-            });
-            return deduplicated.length === prev.length ? prev : deduplicated;
+            let changed = false;
+            const sanitized = prev
+                .filter(msg => {
+                    if (msg.role === 'assistant' && typeof msg.content === 'string' && msg.content.includes("Protocolo Dietético")) {
+                        if (seen) {
+                            changed = true;
+                            return false;
+                        }
+                        seen = true;
+                    }
+                    return true;
+                })
+                .map(msg => {
+                    if (msg.options && Array.isArray(msg.options)) {
+                        let optChanged = false;
+                        const newOptions = msg.options.map(opt => {
+                            if (opt.value === 'FODMAPS' || (typeof opt.label === 'string' && opt.label.includes('FODMAP') && !opt.label.includes('Fermentables'))) {
+                                optChanged = true;
+                                return { label: "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)", value: "LOW_FODMAP" };
+                            }
+                            if (opt.value === 'SHELF' || (typeof opt.label === 'string' && opt.label.includes('Shelf Stable'))) {
+                                optChanged = true;
+                                return { label: "Logística de No Perecederos", value: "SHELF_STABLE" };
+                            }
+                            return opt;
+                        });
+                        if (optChanged) {
+                            changed = true;
+                            return { ...msg, options: newOptions };
+                        }
+                    }
+                    return msg;
+                });
+            return changed ? sanitized : prev;
         });
     }, [setMessages]);
 

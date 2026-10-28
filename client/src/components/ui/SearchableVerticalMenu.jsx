@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 
+const LABEL_STANDARDIZATION_MAP = {
+    'FODMAPS': 'Protocolo Bajo en Carbohidratos Fermentables (FODMAP)',
+    'LOW_FODMAP': 'Protocolo Bajo en Carbohidratos Fermentables (FODMAP)',
+    'SHELF': 'Logística de No Perecederos',
+    'SHELF_STABLE': 'Logística de No Perecederos'
+};
+
 const SearchableVerticalMenu = ({ 
-    options, 
+    options: rawOptions, 
     onSelect, 
     searchQuery: externalSearchQuery, 
     setSearchQuery: externalSetSearchQuery,
@@ -10,6 +17,23 @@ const SearchableVerticalMenu = ({
     emptyMessage = "No se encontraron resultados para la búsqueda.",
     isMedicamentoSearch = false
 }) => {
+    // Normalización reactiva al vuelo de etiquetas clínicas institucionalizadas
+    const options = (rawOptions || []).map(opt => {
+        if (!opt || typeof opt !== 'object') return opt;
+        let newLabel = opt.label;
+        let newValue = opt.value;
+        if (opt.value === 'FODMAPS' || opt.value === 'LOW_FODMAP' || (typeof opt.label === 'string' && opt.label.includes('FODMAP'))) {
+            newLabel = 'Protocolo Bajo en Carbohidratos Fermentables (FODMAP)';
+            newValue = 'LOW_FODMAP';
+        } else if (opt.value === 'SHELF' || opt.value === 'SHELF_STABLE' || (typeof opt.label === 'string' && opt.label.includes('Shelf Stable'))) {
+            newLabel = 'Logística de No Perecederos';
+            newValue = 'SHELF_STABLE';
+        }
+        if (newLabel !== opt.label || newValue !== opt.value) {
+            return { ...opt, label: newLabel, value: newValue };
+        }
+        return opt;
+    });
     const [localSearchQuery, setLocalSearchQuery] = useState('');
     const [asyncOptions, setAsyncOptions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
