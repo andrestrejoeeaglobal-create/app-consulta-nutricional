@@ -505,7 +505,7 @@ export const useCortex = () => {
     const [messages, setMessages] = useState(() => {
         if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') {
             const saved = getSavedState('messages', []);
-            const validP18 = saved?.find?.(m => m.content?.includes("Fase 18") && Array.isArray(m.options) && m.options.length > 0);
+            const validP18 = saved?.find?.(m => m.content?.includes("Fase 18") && m.content?.includes("Jorge Muñoz Padilla") && Array.isArray(m.options) && m.options.length > 0);
             return validP18 ? [validP18] : INITIAL_MESSAGES;
         }
         return getSavedState('messages', INITIAL_MESSAGES) || INITIAL_MESSAGES;
@@ -513,6 +513,13 @@ export const useCortex = () => {
 
     // 4. ESTADO GLOBAL DEL PACIENTE (Data Lake)
     const [patientData, setPatientData] = useState(() => {
+        if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') {
+            const saved = getSavedState('patientData', INITIAL_PATIENT_DATA);
+            if (!saved?.profile?.name?.includes("Jorge Muñoz")) {
+                return INITIAL_PATIENT_DATA;
+            }
+            return saved;
+        }
         const saved = getSavedState('patientData', INITIAL_PATIENT_DATA);
         if (!saved?.profile?.name && INITIAL_PATIENT_DATA.profile?.name) {
             return { ...INITIAL_PATIENT_DATA, ...(saved || {}) };
