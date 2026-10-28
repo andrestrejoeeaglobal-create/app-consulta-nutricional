@@ -246,27 +246,19 @@ Si dispone de estudios de laboratorio recientes para **${pName}** (PDF de Quími
                 role: 'assistant',
                 content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
 
-Para iniciar la toma con **${pName}**, puede abrir el software de consultorio directamente o sincronizar de forma manual:
+Para iniciar la toma con **${pName}**, seleccione una de las siguientes opciones:
 
-1. Presione **"🚀 Abrir Software Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
+1. Presione **"🚀 Realizar Escaneo Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
 2. Pídale a **${pName}** que sujete firmemente los electrodos cilíndricos del sensor.
 3. Ejecute la prueba (60s) en Electret, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
-4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*
-
-*(Si ya tiene el software abierto y el informe listo, presione "🔄 Sincronizar Hardware").*`,
+4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*`,
                 inputType: 'electret_scan_widget',
                 actions: [
                     {
                         id: 'btn_launch_electret',
-                        label: '🚀 Abrir Software Electret',
+                        label: '🚀 Realizar Escaneo Electret',
                         style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
                         value: 'LAUNCH_ELECTRET_APP'
-                    },
-                    {
-                        id: 'btn_sync_electret',
-                        label: '🔄 Sincronizar Hardware',
-                        style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
-                        value: 'SYNC_ELECTRET_HARDWARE'
                     },
                     {
                         id: 'btn_skip_electret',
@@ -276,8 +268,7 @@ Para iniciar la toma con **${pName}**, puede abrir el software de consultorio di
                     }
                 ],
                 options: [
-                    { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
-                    { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
                     { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
@@ -382,15 +373,13 @@ Se detectó una lectura en el hardware a nombre de **"${scannedNameFound}"**, la
 
 Para prevenir la contaminación cruzada de datos clínicos entre pacientes, esta lectura ha sido bloqueada automáticamente.
 
-Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pName}"** y presione el botón a continuación para sincronizar.`,
+Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pName}"** y seleccione una opción:`,
                     actions: [
-                        { id: 'btn_launch_electret', label: '🚀 Abrir Software Electret', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
-                        { id: 'btn_retry_sync', label: '🔄 Reintentar Sincronización USB', style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
+                        { id: 'btn_launch_electret', label: '🚀 Realizar Escaneo Electret', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
                         { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
                     ],
                     options: [
-                        { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
-                        { label: "🔄 Reintentar Sincronización USB", value: "SYNC_ELECTRET_HARDWARE" },
+                        { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
                         { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                     ]
                 };
@@ -466,16 +455,14 @@ Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pNam
 
 No se detectó la finalización del reporte en el software Electret durante el periodo de vigilancia activa.
 
-* **Si aún está realizando la prueba física:** Al concluir en Electret y hacer clic en *"Obtener Informe"*, presione **"🔄 Sincronizar Hardware"**.
+* **Si aún está realizando la prueba física:** Al concluir en Electret y hacer clic en *"Obtener Informe"*, presione **"🚀 Reactivar Vigilancia"**.
 * **O bien:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"**.`,
                     actions: [
                         { id: 'btn_launch_electret', label: '🚀 Reactivar Vigilancia', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
-                        { id: 'btn_sync_electret', label: '🔄 Sincronizar Hardware', style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
                         { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
                     ],
                     options: [
                         { label: "🚀 Reactivar Vigilancia", value: "LAUNCH_ELECTRET_APP" },
-                        { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
                         { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                     ]
                 };
@@ -517,13 +504,11 @@ No se detectó la finalización del reporte en el software Electret durante el p
 
 ${data.message || `El escaneo detectado no corresponde al titular del expediente actual (${pName}). Por favor verifique el nombre en el software Electret y reintente.`}`,
                         actions: [
-                            { id: 'btn_launch_electret', label: '🚀 Abrir Software Electret', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
-                            { id: 'btn_retry_sync', label: '🔄 Reintentar Sincronización USB', style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all', value: 'SYNC_ELECTRET_HARDWARE' },
+                            { id: 'btn_launch_electret', label: '🚀 Realizar Escaneo Electret', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
                             { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
                         ],
                         options: [
-                            { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
-                            { label: "🔄 Reintentar Sincronización USB", value: "SYNC_ELECTRET_HARDWARE" },
+                            { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
                             { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                         ]
                     };
@@ -581,10 +566,10 @@ Se ha emitido la orden de apertura para **"Sistema Cuántico Bio-Eléctrico"** e
                 inputType: 'status_progress',
                 actions: [
                     {
-                        id: 'btn_sync_electret',
-                        label: '🔄 Sincronizar Manualmente',
-                        style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
-                        value: 'SYNC_ELECTRET_HARDWARE'
+                        id: 'btn_launch_electret',
+                        label: '🚀 Realizar Escaneo Electret',
+                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                        value: 'LAUNCH_ELECTRET_APP'
                     },
                     {
                         id: 'btn_skip_electret',
@@ -594,7 +579,7 @@ Se ha emitido la orden de apertura para **"Sistema Cuántico Bio-Eléctrico"** e
                     }
                 ],
                 options: [
-                    { label: "🔄 Sincronizar Manualmente", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
                     { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
@@ -602,6 +587,7 @@ Se ha emitido la orden de apertura para **"Sistema Cuántico Bio-Eléctrico"** e
 
             // Encender el centinela auto-sync reactivo encadenado (Sutura 5)
             startAutoSyncSentinel();
+            executePollCycle();
             return;
         }
 
@@ -610,26 +596,18 @@ Se ha emitido la orden de apertura para **"Sistema Cuántico Bio-Eléctrico"** e
                 role: 'assistant',
                 content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
 
-Para iniciar la toma con **${pName}**, puede abrir el software de consultorio directamente o sincronizar de forma manual:
+Para iniciar la toma con **${pName}**, seleccione una de las siguientes opciones:
 
-1. Presione **"🚀 Abrir Software Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
+1. Presione **"🚀 Realizar Escaneo Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
 2. Pídale a **${pName}** que sujete firmemente los electrodos cilíndricos del sensor.
 3. Ejecute la prueba (60s) en Electret, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
-4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*
-
-*(Si ya tiene el software abierto y el informe listo, presione "🔄 Sincronizar Hardware").*`,
+4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*`,
                 actions: [
                     {
                         id: 'btn_launch_electret',
-                        label: '🚀 Abrir Software Electret',
+                        label: '🚀 Realizar Escaneo Electret',
                         style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
                         value: 'LAUNCH_ELECTRET_APP'
-                    },
-                    {
-                        id: 'btn_sync_electret',
-                        label: '🔄 Sincronizar Hardware',
-                        style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
-                        value: 'SYNC_ELECTRET_HARDWARE'
                     },
                     {
                         id: 'btn_skip_electret',
@@ -639,8 +617,7 @@ Para iniciar la toma con **${pName}**, puede abrir el software de consultorio di
                     }
                 ],
                 options: [
-                    { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
-                    { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
                     { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
@@ -690,14 +667,14 @@ Para iniciar la toma con **${pName}**, puede abrir el software de consultorio di
 
                 const errCode = err?.data?.error;
                 let errorTitle = '📡 Compuerta en Espera (NOM-004)';
-                let errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Presione **"🚀 Abrir Software Electret"**, realice el test con el paciente sujetando los electrodos y haga clic en *"Obtener Informe"*.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
+                let errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Presione **"🚀 Realizar Escaneo Electret"**, realice el test con el paciente sujetando los electrodos y haga clic en *"Obtener Informe"*.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
 
                 if (errCode === 'CROSS_PATIENT_CONTAMINATION_PREVENTED') {
                     errorTitle = '🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB';
                     errorBody = err?.data?.message || `El escaneo reciente detectado no corresponde al titular del expediente actual (${pName}). Por favor verifique el nombre en el software Electret y reintente.`;
                 } else if (errCode === 'NO_ACTIVE_STUDY' || errCode === 'NO_RECENT_SCAN' || errCode === 'SCAN_EXPIRED_OR_OBSOLETE') {
                     errorTitle = '📡 Compuerta en Espera (NOM-004)';
-                    errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Presione **"🚀 Abrir Software Electret"**, realice el test con el paciente sujetando los electrodos y haga clic en *"Obtener Informe"*.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
+                    errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Presione **"🚀 Realizar Escaneo Electret"**, realice el test con el paciente sujetando los electrodos y haga clic en *"Obtener Informe"*.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
                 }
 
                 const errorMsg = {
@@ -708,15 +685,9 @@ ${errorBody}`,
                     actions: [
                         {
                             id: 'btn_launch_electret',
-                            label: '🚀 Abrir Software Electret',
+                            label: '🚀 Realizar Escaneo Electret',
                             style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
                             value: 'LAUNCH_ELECTRET_APP'
-                        },
-                        {
-                            id: 'btn_retry_sync',
-                            label: '🔄 Sincronizar Hardware',
-                            style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
-                            value: 'SYNC_ELECTRET_HARDWARE'
                         },
                         {
                             id: 'btn_skip_electret',
@@ -726,8 +697,7 @@ ${errorBody}`,
                         }
                     ],
                     options: [
-                        { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
-                        { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
+                        { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
                         { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                     ]
                 };
@@ -758,20 +728,14 @@ ${errorBody}`,
 
             const retryMsg = {
                 role: 'assistant',
-                content: `🔄 *Escáner Electret vaciado de memoria y listo para reevaluación.* Puede abrir el software asistido o forzar sincronización:`,
+                content: `🔄 *Escáner Electret vaciado de memoria y listo para reevaluación.* Seleccione para iniciar la prueba física o continuar sin escáner:`,
                 inputType: 'electret_scan_widget',
                 actions: [
                     {
                         id: 'btn_launch_electret',
-                        label: '🚀 Abrir Software Electret',
+                        label: '🚀 Realizar Escaneo Electret',
                         style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
                         value: 'LAUNCH_ELECTRET_APP'
-                    },
-                    {
-                        id: 'btn_retry_sync',
-                        label: '🔄 Sincronizar Hardware',
-                        style: 'bg-blue-50 text-[#1C75BC] border border-blue-200 hover:bg-blue-100 font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-2',
-                        value: 'SYNC_ELECTRET_HARDWARE'
                     },
                     {
                         id: 'btn_skip_electret',
@@ -781,8 +745,7 @@ ${errorBody}`,
                     }
                 ],
                 options: [
-                    { label: "🚀 Abrir Software Electret", value: "LAUNCH_ELECTRET_APP" },
-                    { label: "🔄 Sincronizar Hardware", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
                     { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
