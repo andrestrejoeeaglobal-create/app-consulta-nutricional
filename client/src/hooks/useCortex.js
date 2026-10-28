@@ -13,10 +13,10 @@ const INITIAL_MESSAGES = INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET' ? [
         role: 'assistant',
         content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
 
-Para iniciar la toma con **Jesús Reyes Salgado**, seleccione una de las siguientes opciones:
+Para iniciar la toma con **Jorge Muñoz Padilla**, seleccione una de las siguientes opciones:
 
 1. Presione **"🚀 Realizar Escaneo Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
-2. Pídale a **Jesús Reyes Salgado** que sujete firmemente los electrodos cilíndricos del sensor.
+2. Pídale a **Jorge Muñoz Padilla** que sujete firmemente los electrodos cilíndricos del sensor.
 3. Ejecute la prueba (60s) en Electret, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
 4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*`,
         inputType: 'electret_scan_widget',
@@ -52,17 +52,17 @@ Para iniciar la toma con **Jesús Reyes Salgado**, seleccione una de las siguien
 const INITIAL_PATIENT_DATA = {
     // Fases 1, 2, 4
     profile: {
-        first_name: "Jesús",
-        last_name_pat: "Reyes",
-        last_name_mat: "Salgado",
-        name: "Jesús Reyes Salgado", // Full name
-        birthdate: "1966-05-12",
+        first_name: "Jorge",
+        last_name_pat: "Muñoz",
+        last_name_mat: "Padilla",
+        name: "Jorge Muñoz Padilla", // Full name
+        birthdate: "1975-08-20",
         pediatric_profile: null,
-        age: 60,
+        age: 51,
         sex: "M",
-        occupation: "Contador",
-        ocupacion_descriptor: "Sedentario de oficina", // V15.8 NEAT-005
-        factor_pal: 1.2,          // V15.8 NEAT-005
+        occupation: "Comerciante",
+        ocupacion_descriptor: "Activo", // V15.8 NEAT-005
+        factor_pal: 1.4,          // V15.8 NEAT-005
         phone: "5551234567",
         emergencyContact: { name: "", kin: "", phone: "" },
         curp: "",
@@ -70,23 +70,28 @@ const INITIAL_PATIENT_DATA = {
         passport_id: "",
         religion: "",
         marital_status: "Casado",
-        address: { zip_code: "06700", colony: "Roma Norte", street: "Insurgentes Sur" }
+        address: { zip_code: "06700", colony: "Roma Norte", street: "Insurgentes Sur" },
+        citaId: "21006",
+        usuarioId: "67197"
     },
     // Fases 1, 2, 4 (Legacy Compatibility)
     identificacion: {
-        nombre: "Jesús Reyes Salgado",
-        apellidoPaterno: "Reyes",
-        apellidoMaterno: "Salgado",
-        fechanac: "1966-05-12",
+        nombre: "Jorge Muñoz Padilla",
+        apellidoPaterno: "Muñoz",
+        apellidoMaterno: "Padilla",
+        fechanac: "1975-08-20",
         sexo: "M",
-        ocupacion: "Contador",
-        ocupacion_descriptor: "Sedentario de oficina", // V15.8 NEAT-005
-        factor_pal: 1.2,          // V15.8 NEAT-005
+        ocupacion: "Comerciante",
+        ocupacion_descriptor: "Activo", // V15.8 NEAT-005
+        factor_pal: 1.4,          // V15.8 NEAT-005
         curp: "",
         nationality_type: "MX",
         passport_id: "",
         telefono: "5551234567",
-        religion: ""
+        religion: "",
+        citaId: "21006",
+        idCita: "21006",
+        usuarioId: "67197"
     },
     domicilio: {
         cp: "",

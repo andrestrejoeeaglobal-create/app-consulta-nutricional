@@ -890,6 +890,11 @@ function App() {
         setIsIdentityConfirmed(true);
         if (currentPhase.startsWith('PHASE_18') || currentPhase === 'PHASE_18_ELECTRET') {
           setInterviewStep('phase_18');
+          setSessionMetadata(prev => ({
+            userId: prev.userId || patientData?.identificacion?.usuarioId || '67197',
+            citation: prev.citation || patientData?.identificacion?.citaId || '21006',
+            serverName: prev.serverName || 'EA_PROD'
+          }));
         }
       } else {
         setIsIdentityConfirmed(false);
