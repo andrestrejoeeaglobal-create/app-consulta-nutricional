@@ -1005,6 +1005,25 @@ function App() {
         return;
       }
 
+      // Caso E: Corregir mensajes con tuteo o infantilización en la cita de seguimiento
+      const hasInfantilizedMsg = messages.some(m => m.role === 'assistant' && (m.content?.includes('selecciona la fecha de preferencia para la evaluación de 28 días de') || m.content?.includes('selecciona la **fecha de preferencia**') || m.content?.includes('de 28 días de **')));
+      if (hasInfantilizedMsg) {
+        const addr = getPatientAddressing();
+        const properPrompt = addr.isPediatric
+          ? `Por favor, seleccione la **fecha de preferencia** para la evaluación de seguimiento a 28 días del menor **${addr.fullName}** (a coordinar con su tutor/a):`
+          : `Estimado/a **${addr.honorific}**, por favor **seleccione su fecha de preferencia** para su evaluación clínica y metabólica de 28 días:`;
+
+        setMessages(prev => prev.map(m => {
+          if (m.role === 'assistant' && m.content?.includes('Solicitud de Cita de Seguimiento (4 Semanas)') && (m.content?.includes('selecciona') || m.content?.includes('de 28 días de'))) {
+            return {
+              ...m,
+              content: `📅 **Solicitud de Cita de Seguimiento (4 Semanas)**\n\nHorario de atención clínica: **Lunes a Viernes de 9:00 AM a 6:00 PM**.\n\n${properPrompt}`
+            };
+          }
+          return m;
+        }));
+      }
+
       // Caso D: Si el último mensaje es de consolidación, asegurar que solo quede Agendar Cita y purgar la descarga como opción a escoger
       if (lastMsg && lastMsg.role === 'assistant' && (lastMsg.content?.includes('Consulta Médica y Plan Metabólico Consolidados') || lastMsg.content?.includes('Sincronización VitalLoop') || lastMsg.content?.includes('Resumen Clínico y Expediente'))) {
         const hasSyncOpt = lastMsg.options?.some(o => o.value === 'SYNC_VITALLOOP_APP');
@@ -1054,6 +1073,30 @@ function App() {
 
   // --- PERSISTENCE PROTOCOL STATE (V15.5) ---
   const [recoveryData, setRecoveryData] = useState(null); // Stores potential session to resume
+
+  // Calibración Dinámica de Autoridad y Respeto según Edad y Sexo (NOM-004 & TILO Protocol)
+  const getPatientAddressing = () => {
+    const ageCandidate = Number(patientData?.identificacion?.edad ?? patientData?.identityLock?.patientInfo?.age ?? patientData?.edad ?? 30);
+    const genderStr = String(patientData?.sex || patientData?.genero || patientData?.profile?.gender || patientData?.identificacion?.genero || 'Masculino').toLowerCase();
+    const isMale = genderStr.startsWith('masc') || genderStr === 'hombre' || genderStr === 'm';
+    const isPediatric = ageCandidate < 18;
+    const isSenior = ageCandidate >= 60;
+    const fullName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+    const firstName = fullName.split(' ')[0] || fullName;
+    const honorific = isSenior 
+      ? (isMale ? ("Don " + firstName) : ("Doña " + firstName)) 
+      : (isMale ? ("Sr. " + fullName) : ("Sra. " + fullName));
+    
+    return {
+      ageCandidate,
+      isPediatric,
+      isSenior,
+      fullName,
+      firstName,
+      honorific,
+      isMale
+    };
+  };
 
   // V8.0 Shared Option Selection Dispatch
   const handleOptionSelect = (msg, val) => {
@@ -1117,7 +1160,7 @@ function App() {
       return;
     }
     if (opt.value === 'SCHEDULE_FOLLOWUP_APPOINTMENT') {
-      const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+      const addr = getPatientAddressing();
       
       const getWeekdayOptions = () => {
         const opts = [];
@@ -1148,13 +1191,16 @@ function App() {
       };
 
       const dateOpts = getWeekdayOptions();
+      const promptIntro = addr.isPediatric
+        ? `Por favor, seleccione la **fecha de preferencia** para la evaluación de seguimiento a 28 días del menor **${addr.fullName}** (a coordinar con su tutor/a):`
+        : `Estimado/a **${addr.honorific}**, por favor **seleccione su fecha de preferencia** para su evaluación clínica y metabólica de 28 días:`;
 
       setMessages(prev => [
         ...prev, 
         { role: 'user', content: opt.label },
         {
           role: 'assistant',
-          content: `📅 **Solicitud de Cita de Seguimiento (4 Semanas)**\n\nHorario de atención clínica: **Lunes a Viernes de 9:00 AM a 6:00 PM**.\n\nPor favor, selecciona la **fecha de preferencia** para la evaluación de 28 días de **${patientName}**:`,
+          content: `📅 **Solicitud de Cita de Seguimiento (4 Semanas)**\n\nHorario de atención clínica: **Lunes a Viernes de 9:00 AM a 6:00 PM**.\n\n${promptIntro}`,
           avatar: tiloImg,
           options: dateOpts
         }
@@ -1164,12 +1210,17 @@ function App() {
 
     if (opt.value && opt.value.startsWith('APPT_DATE_')) {
       const dateText = opt.value.replace('APPT_DATE_', '');
+      const addr = getPatientAddressing();
+      const timeIntro = addr.isPediatric
+        ? `Por favor, seleccione el **horario de preferencia** para la atención:`
+        : `Estimado/a **${addr.honorific}**, por favor **seleccione el horario de su preferencia**:`;
+
       setMessages(prev => [
         ...prev,
         { role: 'user', content: opt.label },
         {
           role: 'assistant',
-          content: `🕒 **Selección de Horario de Atención**\n\nFecha elegida: **${dateText}**.\n\nPor favor, elige el **horario de preferencia** (horario hábil de 9:00 AM a 6:00 PM):`,
+          content: `🕒 **Selección de Horario de Atención**\n\nFecha elegida: **${dateText}**.\n\n${timeIntro} (horario hábil de 9:00 AM a 6:00 PM):`,
           avatar: tiloImg,
           options: [
             { label: "🌅 Mañana: 10:00 AM", value: `APPT_SLOT_${dateText}_10:00 AM` },
@@ -1190,15 +1241,19 @@ function App() {
       const parts = raw.split('_');
       const chosenDate = parts[0] || 'Fecha solicitada';
       const chosenTime = parts[1] || '10:00 AM';
-      const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+      const addr = getPatientAddressing();
       const folio = Math.floor(10000 + Math.random() * 90000);
+
+      const confirmIntro = addr.isPediatric
+        ? `Se ha enviado la petición de cita para el menor **${addr.fullName}** con la información acordada:`
+        : `Estimado/a **${addr.honorific}**, se ha enviado su petición de cita de seguimiento con la información acordada:`;
 
       setMessages(prev => [
         ...prev,
         { role: 'user', content: opt.label },
         {
           role: 'assistant',
-          content: `📩 **Solicitud de Cita Registrada (Sujeta a Confirmación)**\n\nSe ha enviado la petición de cita para **${patientName}** con la información acordada:\n\n• **Fecha Solicitada:** ${chosenDate}\n• **Horario Preferente:** ${chosenTime}\n• **Ventana de Atención:** Lunes a Viernes (9:00 AM - 6:00 PM)\n• **Estado:** ⏳ Pendiente de Confirmación por Recepción T.I.L.O.\n• **Folio Solicitud:** #SOL-${folio}\n\n*La cita queda sujeta a la confirmación del sistema de recepción. Se notificará la fecha oficial vía WhatsApp y en la App VitalLoop®.*`,
+          content: `📩 **Solicitud de Cita Registrada (Sujeta a Confirmación)**\n\n${confirmIntro}\n\n• **Paciente Titular:** ${addr.fullName}\n• **Fecha Solicitada:** ${chosenDate}\n• **Horario Preferente:** ${chosenTime}\n• **Ventana de Atención:** Lunes a Viernes (9:00 AM - 6:00 PM)\n• **Estado:** ⏳ Pendiente de Confirmación por Recepción T.I.L.O.\n• **Folio Solicitud:** #SOL-${folio}\n\n📲 **Recomendación para el Paciente:**\nDescargue la App móvil **VitalLoop®** para consultar su periodización de 28 días, vincular su Banda H7 BLE y recibir la confirmación de su cita.\n\n*La cita queda sujeta a la confirmación de recepción. Se notificará la fecha oficial vía WhatsApp y a través de la App.*`,
           avatar: tiloImg,
           options: [
             { label: "🏁 Finalizar Consulta Médica", value: "FINAL_CONSULTATION_CLOSE" }
@@ -1209,13 +1264,17 @@ function App() {
     }
 
     if (opt.value === 'FINAL_CONSULTATION_CLOSE') {
-      const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+      const addr = getPatientAddressing();
+      const finalMsg = addr.isPediatric
+        ? `Se ha completado satisfactoriamente la atención pediátrica de **${addr.fullName}**.`
+        : `Estimado/a **${addr.honorific}**, se ha completado satisfactoriamente su atención clínica y diseño biológico.`;
+
       setMessages(prev => [
         ...prev,
         { role: 'user', content: opt.label },
         {
           role: 'assistant',
-          content: `🏁 **Consulta Médica Concluida y Cincelada en Expediente (NOM-004)**\n\nSe ha completado satisfactoriamente la atención de **${patientName}**.\n\n• Todos los datos biométricos, diagnóstico CORTEX v2.0 y solicitud de cita de seguimiento han sido guardados de forma inmutable.\n• El expediente completo queda disponible en el panel principal.\n\n¡Gracias por confiar en el Ecosistema T.I.L.O. & Sinergix!`,
+          content: `🏁 **Consulta Médica Concluida y Cincelada en Expediente (NOM-004)**\n\n${finalMsg}\n\n• Todos sus datos biométricos, diagnóstico CORTEX v2.0 y solicitud de cita de seguimiento han sido guardados de forma inmutable.\n• Su expediente completo queda disponible en el panel principal.\n\n¡Gracias por confiar en el Ecosistema T.I.L.O. & Sinergix!`,
           avatar: tiloImg
         }
       ]);
