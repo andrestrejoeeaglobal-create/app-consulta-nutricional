@@ -1044,8 +1044,27 @@ export default function Fase19_DiagnosticoIntegral({
                 "Sin síntomas adicionales. Recuperación automática de síntesis tras actualización.",
                 true
             );
+        } else if (hasPersistedIfmMatrix && setMessages) {
+            // Rehidratación atómica de opciones de confirmación tras F5
+            setMessages(prev => {
+                if (!Array.isArray(prev) || prev.length === 0) return prev;
+                const lastIdx = prev.length - 1;
+                const lastMsg = prev[lastIdx];
+                if (lastMsg?.role === 'assistant' && (!Array.isArray(lastMsg.options) || lastMsg.options.length === 0)) {
+                    const updated = [...prev];
+                    updated[lastIdx] = {
+                        ...lastMsg,
+                        options: [
+                            { label: "✅ Confirmar y Sellar Expediente ➔", value: "APPROVE_AND_SEAL_DOSSIER" },
+                            { label: "🔄 Re-Sintetizar Expediente", value: "RESYNTHESIZE_DOSSIER" }
+                        ]
+                    };
+                    return updated;
+                }
+                return prev;
+            });
         }
-    }, [messages, patientData?.clinical_dossier]);
+    }, [messages, patientData?.clinical_dossier, setMessages]);
 
     // 3. Acción Principal: Detonar Síntesis CORTEX v2.4 y Persistir de Inmediato en patientData + SQLite
     const triggerSynthesis = async (patientText, silentChat = false) => {
@@ -1259,6 +1278,21 @@ export default function Fase19_DiagnosticoIntegral({
 
         // Texto libre ingresado por el usuario en la barra del chat
         if (source === 'text') {
+            const cleanText = String(userMsg).trim().toLowerCase();
+            const isAffirmative = /^(confirmar|sellar|aprobar|avanzar|continuar|listo|ok|siguiente|proceder|adelante|si|sí)\b/i.test(cleanText) ||
+                cleanText.includes('confirmar') || cleanText.includes('sellar') || cleanText.includes('aprobar');
+
+            if (isAffirmative && patientData?.clinical_dossier?.ifm_nodes_matrix?.length > 0) {
+                if (setMessages) {
+                    setMessages(prev => [
+                        ...prev.map(m => m.options ? { ...m, options: undefined } : m),
+                        { role: 'user', content: userMsg }
+                    ]);
+                }
+                await handleApproveDossier();
+                return;
+            }
+
             if (setMessages) {
                 setMessages(prev => [
                     ...prev.map(m => m.options ? { ...m, options: undefined } : m),
