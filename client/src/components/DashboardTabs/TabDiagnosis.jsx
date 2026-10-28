@@ -400,6 +400,12 @@ export const TabDiagnosis = ({
         racional: "Sin conteo calórico. Adición estratégica diaria de alimentos 'Grand Slammers' (té verde, frutos rojos, nueces, champiñones, aceite de oliva VE) para potenciar angiogénesis, regeneración, microbioma, ADN e inmunidad."
     });
 
+    // Regla 7: Recomendación Digital - App VitalLoop® (Banda H7)
+    dynamicManagement.push({
+        accion: "7. [Biotelemetría Digital VitalLoop®] Monitoreo Continuo y Vinculación Banda H7",
+        racional: "Descarga de la App VitalLoop® en el dispositivo móvil del paciente para consultar el plan nutricional de 28 días, registrar biotelemetría en tiempo real y recibir alertas de evolución clínica."
+    });
+
     const rawMgmt = patientData?.clinical_dossier?.human_approved_management || 
                     patientData?.clinical_dossier?.expediente_medico_nom004?.suggested_management || [];
 

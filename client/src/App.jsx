@@ -958,10 +958,9 @@ function App() {
           if (!hasOptionsMsg) {
             cleaned.push({
               role: "assistant",
-              content: "✨ **Consulta Médica y Plan Metabólico Consolidados**\n\nEl expediente clínico y la periodización de 28 días se han generado en el panel principal. ¿Qué deseas hacer a continuación?",
+              content: "✨ **Consulta Médica y Plan Metabólico Consolidados**\n\nEl expediente clínico, las recomendaciones y la periodización de 28 días se han generado en el panel principal.\n\n📅 A continuación, procedemos a agendar la **Cita de Seguimiento (4 Semanas)** para evaluar la adaptación celular y evolución clínica del paciente:",
               avatar: tiloImg,
               options: [
-                { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
                 { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
               ]
             });
@@ -1006,18 +1005,23 @@ function App() {
         return;
       }
 
-      // Caso D: Si el último mensaje es un mensaje asistencial de consolidación que carece del botón de agendamiento
+      // Caso D: Si el último mensaje es de consolidación, asegurar que solo quede Agendar Cita y purgar la descarga como opción a escoger
       if (lastMsg && lastMsg.role === 'assistant' && (lastMsg.content?.includes('Consulta Médica y Plan Metabólico Consolidados') || lastMsg.content?.includes('Sincronización VitalLoop') || lastMsg.content?.includes('Resumen Clínico y Expediente'))) {
+        const hasSyncOpt = lastMsg.options?.some(o => o.value === 'SYNC_VITALLOOP_APP');
         const hasScheduleOpt = lastMsg.options?.some(o => o.value === 'SCHEDULE_FOLLOWUP_APPOINTMENT');
-        if (!hasScheduleOpt) {
+        if (hasSyncOpt || !hasScheduleOpt) {
           setMessages(prev => {
             const copy = [...prev];
             const last = copy[copy.length - 1];
-            const newOpts = (last.options || []).filter(o => o.value !== 'NEW_CONSULTATION');
+            const newOpts = (last.options || []).filter(o => o.value !== 'SYNC_VITALLOOP_APP' && o.value !== 'NEW_CONSULTATION');
             if (!newOpts.some(o => o.value === 'SCHEDULE_FOLLOWUP_APPOINTMENT')) {
               newOpts.push({ label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" });
             }
-            copy[copy.length - 1] = { ...last, options: newOpts };
+            copy[copy.length - 1] = {
+              ...last,
+              content: "✨ **Consulta Médica y Plan Metabólico Consolidados**\n\nEl expediente clínico, las recomendaciones y la periodización de 28 días se han generado en el panel principal.\n\n📅 A continuación, procedemos a agendar la **Cita de Seguimiento (4 Semanas)** para evaluar la adaptación celular y evolución clínica del paciente:",
+              options: newOpts
+            };
             return copy;
           });
         }
@@ -6319,10 +6323,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                           ...prev,
                           {
                             role: 'assistant',
-                            content: "✨ **Consulta Médica y Plan Metabólico Consolidados**\n\nEl expediente clínico y la periodización de 28 días se han generado en el panel principal. ¿Qué deseas hacer a continuación?",
+                            content: "✨ **Consulta Médica y Plan Metabólico Consolidados**\n\nEl expediente clínico, las recomendaciones y la periodización de 28 días se han generado en el panel principal.\n\n📅 A continuación, procedemos a agendar la **Cita de Seguimiento (4 Semanas)** para evaluar la adaptación celular y evolución clínica del paciente:",
                             avatar: tiloImg,
                             options: [
-                              { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
                               { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
                             ]
                           }
