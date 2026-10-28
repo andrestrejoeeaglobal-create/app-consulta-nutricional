@@ -22,6 +22,38 @@ const mockSuggestions = [
     }
 ];
 
+// Diccionario de traducción clínica de contingencia (Cero enums/variables en inglés en UI)
+const SOMATIC_TRANSLATE_MAP = {
+    'RETICULAR_ERYTHEMA': 'Eritema Reticular',
+    'PUNCTATE_MACULES': 'Máculas Puntiformes',
+    'MICROPAPULAR_ERUPTION': 'Erupción Micropapular',
+    'PERIFOLLICULAR_INVOLVEMENT': 'Compromiso Perifolicular',
+    'CUTANEOUS_EDEMA_SUPERFICIAL': 'Edema Cutáneo Superficial',
+    'SUPERFICIAL_CUTANEOUS_EDEMA': 'Edema Cutáneo Superficial',
+    'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED': 'Insuficiencia Venosa Crónica',
+    'CHRONIC_VENOUS_INSUFFICIENCY': 'Insuficiencia Venosa Crónica',
+    'VARICOSE_VEINS_HIGH_RISK': 'Riesgo Elevado de Várices',
+    'VENOUS_STASIS_DERMATITIS': 'Dermatitis por Estasis Venosa',
+    'EDEMA_PERIPHERAL_MODERATE': 'Edema Periférico Moderado',
+    'PERIPHERAL_EDEMA': 'Edema Periférico',
+    'HYPERPIGMENTATION': 'Hiperpigmentación Cutánea',
+    'HEMOSIDERIN_PIGMENTATION': 'Pigmentación por Hemosiderina',
+    'FOLLICULAR_HYPERKERATOSIS': 'Hiperqueratosis Folicular',
+    'XEROSIS_CUTIS': 'Xerosis Cutánea (Piel Seca)',
+    'TELANGIECTASIA': 'Telangiectasias Superficiales',
+    'VENOUS_ECTASIA': 'Ectasia Venosa'
+};
+
+function cleanClinicalRationale(text) {
+    if (!text) return '';
+    let str = String(text);
+    Object.entries(SOMATIC_TRANSLATE_MAP).forEach(([key, val]) => {
+        const regex = new RegExp('\\b' + key + '\\b', 'gi');
+        str = str.replace(regex, val);
+    });
+    return str;
+}
+
 const Fase15_SuplementacionAv = ({ patientData, onPhaseComplete, setPatientData, messages, setMessages, registerInputHandler }) => {
     const [suggestions, setSuggestions] = useState(mockSuggestions);
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -83,11 +115,26 @@ const Fase15_SuplementacionAv = ({ patientData, onPhaseComplete, setPatientData,
     }, [patientData]);
 
     useEffect(() => {
-        if (internalStep === 'INTRO') {
-            const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("Suplementación Avanzada"));
-            if (!alreadyGreeted) {
-                setMessages(prev => [
-                    ...prev,
+        if (internalStep === 'INTRO' && setMessages) {
+            setMessages(prev => {
+                const targetText = "Suplementación Avanzada (33Plus / 34Plus)";
+                // Deduplicación atómica y purga de mensajes gemelos en historial
+                let seen = false;
+                const cleaned = prev.filter(msg => {
+                    if (msg.role === 'assistant' && typeof msg.content === 'string' && msg.content.includes(targetText)) {
+                        if (seen) return false;
+                        seen = true;
+                        return true;
+                    }
+                    return true;
+                });
+
+                if (seen) {
+                    return cleaned.length !== prev.length ? cleaned : prev;
+                }
+
+                return [
+                    ...cleaned,
                     {
                         role: 'assistant',
                         content: "🔬 **Cortex de Suplementación Avanzada (33Plus / 34Plus)**\n\n---\n\nHe formulado un protocolo de suplementación sugerido para el paciente. Recuerde que la IA actúa únicamente como soporte a la decisión clínica (CANDADO LEGAL COFEPRIS / NOM-004).\n\n¿Desea revisar las sugerencias una por una para aprobarlas, rechazarlas o ajustarlas?",
@@ -97,10 +144,10 @@ const Fase15_SuplementacionAv = ({ patientData, onPhaseComplete, setPatientData,
                             { label: 'Omitir Suplementación', value: 'OMITIR' }
                         ]
                     }
-                ]);
-            }
+                ];
+            });
         }
-    }, [internalStep]);
+    }, [internalStep, setMessages]);
 
     const handleSend = (userMsg) => {
         const addBotMsg = (msg, options = null) => {
@@ -167,13 +214,16 @@ const Fase15_SuplementacionAv = ({ patientData, onPhaseComplete, setPatientData,
             setMessages(prev => [...prev, newMsg]);
         };
 
+        const cleanRationale = cleanClinicalRationale(current.rationale);
+        const cleanName = cleanClinicalRationale(current.name);
+
         addBotMsg(
             `💊 **Sugerencia ${index + 1} de ${suggestions.length}**\n\n` +
-            `**Motor:** ${current.cortex}\n` +
-            `**Suplemento:** ${current.name}\n` +
-            `**Dosis:** ${current.dosage}\n` +
-            `**Indicación:** ${current.timing}\n\n` +
-            `🧠 **Racional:** ${current.rationale}\n\n` +
+            `• **Motor:** ${current.cortex}\n\n` +
+            `• **Suplemento:** ${cleanName}\n\n` +
+            `• **Dosis:** ${current.dosage}\n\n` +
+            `• **Indicación:** ${current.timing}\n\n` +
+            `🧠 **Racional Clínico:**\n${cleanRationale}\n\n` +
             `¿Qué acción desea tomar?`,
             [
                 { label: 'Aprobar', value: 'APROBAR' },

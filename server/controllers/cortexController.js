@@ -786,14 +786,62 @@ async function processCortexNodesInBatches(nodes, ai, batchSize = 3) {
 // ============================================================================
 // 5. CONSTRUCTOR CENTRALIZADO DE PRESCRIPCIÓN ORTOMOLECULAR (33Plus® / 34Plus®)
 // ============================================================================
+const CLINICAL_BIOMARKER_TRANSLATE = {
+    'RETICULAR_ERYTHEMA': 'Eritema Reticular',
+    'PUNCTATE_MACULES': 'Máculas Puntiformes',
+    'MICROPAPULAR_ERUPTION': 'Erupción Micropapular',
+    'PERIFOLLICULAR_INVOLVEMENT': 'Compromiso Perifolicular',
+    'CUTANEOUS_EDEMA_SUPERFICIAL': 'Edema Cutáneo Superficial',
+    'SUPERFICIAL_CUTANEOUS_EDEMA': 'Edema Cutáneo Superficial',
+    'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED': 'Insuficiencia Venosa Crónica',
+    'CHRONIC_VENOUS_INSUFFICIENCY': 'Insuficiencia Venosa Crónica',
+    'VARICOSE_VEINS_HIGH_RISK': 'Riesgo Elevado de Várices',
+    'VENOUS_STASIS_DERMATITIS': 'Dermatitis por Estasis Venosa',
+    'EDEMA_PERIPHERAL_MODERATE': 'Edema Periférico Moderado',
+    'PERIPHERAL_EDEMA': 'Edema Periférico',
+    'HYPERPIGMENTATION': 'Hiperpigmentación Cutánea',
+    'HEMOSIDERIN_PIGMENTATION': 'Pigmentación por Hemosiderina',
+    'FOLLICULAR_HYPERKERATOSIS': 'Hiperqueratosis Folicular',
+    'XEROSIS_CUTIS': 'Xerosis Cutánea (Piel Seca)',
+    'TELANGIECTASIA': 'Telangiectasias Superficiales',
+    'VENOUS_ECTASIA': 'Ectasia Venosa',
+    'SUBLINGUAL_VARICES': 'Várices Sublinguales',
+    'LINGUAL_COATING_WHITE': 'Saburra Lingual Blanquecina',
+    'GINGIVAL_CONGESTION': 'Congestión Gingival',
+    'DRY_MUCOSA': 'Resequedad de Mucosa',
+    'ERYTHEMATOUS_EDEMA': 'Edema Eritematoso',
+    'MICROVASCULAR_CONGESTION': 'Congestión Microvascular',
+    'BLOOD_VISCOSITY': 'Viscosidad Sanguínea',
+    'VASCULAR_RESISTANCE': 'Resistencia Vascular',
+    'VASCULAR_ELASTICITY': 'Elasticidad Vascular',
+    'MYOCARDIAL_BLOOD_DEMAND': 'Demanda de Sangre Miocárdica',
+    'STROKE_VOLUME': 'Volumen Sistólico',
+    'LEFT_VENTRICULAR_EJECTION_IMPEDANCE': 'Impedancia Ventricular de Expulsión',
+    'EFFECTIVE_PUMP_FORCE': 'Fuerza de Bombeo Efectiva',
+    'CORONARY_ARTERY_ELASTICITY': 'Elasticidad Coronaria',
+    'CEREBRAL_VESSEL_ELASTICITY': 'Elasticidad de Vaso Cerebral',
+    'CHOLESTEROL_CRYSTAL': 'Cristal de Colesterol'
+};
+
+function translateBiomarkerToSpanish(b) {
+    if (!b) return '';
+    const raw = String(b).trim();
+    const key = raw.toUpperCase().replace(/\s+/g, '_');
+    return CLINICAL_BIOMARKER_TRANSLATE[key] || raw;
+}
+
 function buildOrthomolecularPrescription(patientData, processedNodes, serum, bioenergetics, hasStimulantsConflict) {
     const node3 = processedNodes.find(n => n.nodeId === 'NODO_3_ENERGIA');
     const node5 = processedNodes.find(n => n.nodeId === 'NODO_5_TRANSPORTE');
     const node6 = processedNodes.find(n => n.nodeId === 'NODO_6_DEFENSA');
     const node7 = processedNodes.find(n => n.nodeId === 'NODO_7_ESTRUCTURAL');
 
-    const energyBiomarkers = [...(node3?.key_biomarkers || []), ...(node5?.key_biomarkers || [])].slice(0, 4);
-    const tissueBiomarkers = [...(node6?.key_biomarkers || []), ...(node7?.key_biomarkers || [])].slice(0, 4);
+    const energyBiomarkers = [...(node3?.key_biomarkers || []), ...(node5?.key_biomarkers || [])]
+        .slice(0, 4)
+        .map(translateBiomarkerToSpanish);
+    const tissueBiomarkers = [...(node6?.key_biomarkers || []), ...(node7?.key_biomarkers || [])]
+        .slice(0, 4)
+        .map(translateBiomarkerToSpanish);
 
     const sup33 = hasStimulantsConflict
         ? {
