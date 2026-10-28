@@ -291,8 +291,8 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
 
             const getRemainingOptions = (curr) => {
                 const opts = [{ label: '✅ Terminar y Consolidar Plan', value: 'DONE' }];
-                if (!curr.fodmaps) opts.push({ label: 'Protocolo Bajo en FODMAPS', value: 'FODMAPS' });
-                if (!curr.shelfStable) opts.push({ label: "Logística 'Shelf Stable'", value: 'SHELF' });
+                if (!curr.fodmaps) opts.push({ label: "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)", value: "LOW_FODMAP" });
+                if (!curr.shelfStable) opts.push({ label: "Logística de No Perecederos", value: "SHELF_STABLE" });
                 if (!curr.noDairy) opts.push({ label: 'Sin Lácteos', value: 'NODAIRY' });
                 if (!curr.noGluten) opts.push({ label: 'Sin Gluten', value: 'NOGLUTEN' });
                 return opts;
@@ -337,8 +337,8 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
             } else {
                 let label = "";
                 let updatedConstraints = { ...constraints };
-                if (userMsg === 'FODMAPS' || normalizedMsg.includes('FODMAP')) { updatedConstraints.fodmaps = true; label = "Bajo en FODMAPS"; }
-                else if (userMsg === 'SHELF' || normalizedMsg.includes('SHELF')) { updatedConstraints.shelfStable = true; label = "Shelf Stable"; }
+                if (userMsg === 'FODMAPS' || userMsg === 'LOW_FODMAP' || normalizedMsg.includes('FODMAP')) { updatedConstraints.fodmaps = true; label = "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)"; }
+                else if (userMsg === 'SHELF' || userMsg === 'SHELF_STABLE' || normalizedMsg.includes('SHELF') || normalizedMsg.includes('PERECEDERO')) { updatedConstraints.shelfStable = true; label = "Logística de No Perecederos"; }
                 else if (userMsg === 'NODAIRY' || normalizedMsg.includes('LÁCTEO') || normalizedMsg.includes('LACTEO')) { updatedConstraints.noDairy = true; label = "Sin Lácteos"; }
                 else if (userMsg === 'NOGLUTEN' || normalizedMsg.includes('GLUTEN')) { updatedConstraints.noGluten = true; label = "Sin Gluten"; }
                 else { label = userMsg; }
@@ -347,8 +347,8 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
 
                 const getRemainingOptions = (curr) => {
                     const opts = [{ label: '✅ Terminar y Consolidar Plan', value: 'DONE' }];
-                    if (!curr.fodmaps) opts.push({ label: 'Protocolo Bajo en FODMAPS', value: 'FODMAPS' });
-                    if (!curr.shelfStable) opts.push({ label: "Logística 'Shelf Stable'", value: 'SHELF' });
+                    if (!curr.fodmaps) opts.push({ label: "Protocolo Bajo en Carbohidratos Fermentables (FODMAP)", value: "LOW_FODMAP" });
+                    if (!curr.shelfStable) opts.push({ label: "Logística de No Perecederos", value: "SHELF_STABLE" });
                     if (!curr.noDairy) opts.push({ label: 'Sin Lácteos', value: 'NODAIRY' });
                     if (!curr.noGluten) opts.push({ label: 'Sin Gluten', value: 'NOGLUTEN' });
                     return opts;

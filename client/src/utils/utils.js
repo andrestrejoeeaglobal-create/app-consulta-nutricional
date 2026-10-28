@@ -663,7 +663,9 @@ export const cleanBinaryGateMessage = (text) => {
         'FOLLICULAR_HYPERKERATOSIS': 'Hiperqueratosis Folicular',
         'XEROSIS_CUTIS': 'Xerosis Cutánea (Piel Seca)',
         'TELANGIECTASIA': 'Telangiectasias Superficiales',
-        'VENOUS_ECTASIA': 'Ectasia Venosa'
+        'VENOUS_ECTASIA': 'Ectasia Venosa',
+        'SHELF_STABLE': 'Logística de No Perecederos',
+        'LOW_FODMAP': 'Protocolo Bajo en Carbohidratos Fermentables (FODMAP)'
     };
 
     Object.entries(SOMATIC_TRANSLATE_MAP).forEach(([key, val]) => {
