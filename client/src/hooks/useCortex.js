@@ -6,8 +6,8 @@ import { fetchZipData, fetchMexicanCoordinates } from '../utils/geoServices';
 import { useClinicalGenome } from '../store/useClinicalGenome';
 
 // --- INITIAL STATES (EXTRACTED FOR RESET CAPABILITY) ---
-const INITIAL_CURRENT_PHASE = 'PHASE_0_AUTH';
-const INITIAL_ACTIVE_TAB = 'profile';
+const INITIAL_CURRENT_PHASE = 'PHASE_18_ELECTRET';
+const INITIAL_ACTIVE_TAB = 'lab';
 const INITIAL_MESSAGES = [
     {
         role: "assistant",
@@ -20,40 +20,40 @@ const INITIAL_MESSAGES = [
 const INITIAL_PATIENT_DATA = {
     // Fases 1, 2, 4
     profile: {
-        first_name: "",
-        last_name_pat: "",
-        last_name_mat: "",
-        name: "", // Full name
-        birthdate: "",
+        first_name: "Jesús",
+        last_name_pat: "Reyes",
+        last_name_mat: "Salgado",
+        name: "Jesús Reyes Salgado", // Full name
+        birthdate: "1966-05-12",
         pediatric_profile: null,
-        age: 0,
-        sex: "",
-        occupation: "",
-        ocupacion_descriptor: "", // V15.8 NEAT-005
-        factor_pal: null,          // V15.8 NEAT-005
-        phone: "",
+        age: 60,
+        sex: "M",
+        occupation: "Contador",
+        ocupacion_descriptor: "Sedentario de oficina", // V15.8 NEAT-005
+        factor_pal: 1.2,          // V15.8 NEAT-005
+        phone: "5551234567",
         emergencyContact: { name: "", kin: "", phone: "" },
         curp: "",
         nationality_type: "MX",
         passport_id: "",
         religion: "",
-        marital_status: "",
-        address: { zip_code: "", colony: "", street: "" }
+        marital_status: "Casado",
+        address: { zip_code: "06700", colony: "Roma Norte", street: "Insurgentes Sur" }
     },
     // Fases 1, 2, 4 (Legacy Compatibility)
     identificacion: {
-        nombre: "",
-        apellidoPaterno: "",
-        apellidoMaterno: "",
-        fechanac: "",
-        sexo: "",
-        ocupacion: "",
-        ocupacion_descriptor: "", // V15.8 NEAT-005
-        factor_pal: null,          // V15.8 NEAT-005
+        nombre: "Jesús Reyes Salgado",
+        apellidoPaterno: "Reyes",
+        apellidoMaterno: "Salgado",
+        fechanac: "1966-05-12",
+        sexo: "M",
+        ocupacion: "Contador",
+        ocupacion_descriptor: "Sedentario de oficina", // V15.8 NEAT-005
+        factor_pal: 1.2,          // V15.8 NEAT-005
         curp: "",
         nationality_type: "MX",
         passport_id: "",
-        telefono: "",
+        telefono: "5551234567",
         religion: ""
     },
     domicilio: {
@@ -453,16 +453,35 @@ export const useCortex = () => {
     };
 
     // 1. ESTADO DE FASE (Maquina de Estados)
-    const [currentPhase, setCurrentPhase] = useState(() => getSavedState('currentPhase', INITIAL_CURRENT_PHASE) || INITIAL_CURRENT_PHASE);
+    const [currentPhase, setCurrentPhase] = useState(() => {
+        if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') return 'PHASE_18_ELECTRET';
+        return getSavedState('currentPhase', INITIAL_CURRENT_PHASE) || INITIAL_CURRENT_PHASE;
+    });
 
     // 2. ESTADO DE NAVEGACIÓN (Dashboard)
-    const [activeTab, setActiveTab] = useState(() => getSavedState('activeTab', INITIAL_ACTIVE_TAB) || INITIAL_ACTIVE_TAB);
+    const [activeTab, setActiveTab] = useState(() => {
+        if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') return 'lab';
+        return getSavedState('activeTab', INITIAL_ACTIVE_TAB) || INITIAL_ACTIVE_TAB;
+    });
 
     // 3. ESTADO DEL CHAT
-    const [messages, setMessages] = useState(() => getSavedState('messages', INITIAL_MESSAGES) || INITIAL_MESSAGES);
+    const [messages, setMessages] = useState(() => {
+        if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') {
+            const saved = getSavedState('messages', []);
+            const hasP18 = saved?.some?.(m => m.content?.includes("Fase 18"));
+            return hasP18 ? saved : [];
+        }
+        return getSavedState('messages', INITIAL_MESSAGES) || INITIAL_MESSAGES;
+    });
 
     // 4. ESTADO GLOBAL DEL PACIENTE (Data Lake)
-    const [patientData, setPatientData] = useState(() => getSavedState('patientData', INITIAL_PATIENT_DATA) || INITIAL_PATIENT_DATA);
+    const [patientData, setPatientData] = useState(() => {
+        const saved = getSavedState('patientData', INITIAL_PATIENT_DATA);
+        if (!saved?.profile?.name && INITIAL_PATIENT_DATA.profile?.name) {
+            return { ...INITIAL_PATIENT_DATA, ...(saved || {}) };
+        }
+        return saved || INITIAL_PATIENT_DATA;
+    });
 
     // ESTADO TEMPORAL: Guardar payload del API
     const [apiContext, setApiContext] = useState(() => getSavedState('apiContext', {}) || {});
