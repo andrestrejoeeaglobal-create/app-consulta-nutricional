@@ -888,6 +888,9 @@ function App() {
       const isPhaseZero = ['PHASE_0_AUTH', 'PHASE_0_IDENTITY_CHECK', 'PHASE_0_PRIVACY'].includes(currentPhase);
       if (!isPhaseZero) {
         setIsIdentityConfirmed(true);
+        if (currentPhase.startsWith('PHASE_18') || currentPhase === 'PHASE_18_ELECTRET') {
+          setInterviewStep('phase_18');
+        }
       } else {
         setIsIdentityConfirmed(false);
         setInterviewStep("appointment");
@@ -1117,6 +1120,12 @@ function App() {
       return;
     }
     console.log("✅ [handleOptionSelect] Option found:", opt);
+
+    if (opt.value === 'CONFIRM_ANNEX' || opt.value === 'CANCEL_ANNEX') {
+      setMessages(prev => [...prev, { role: 'user', content: opt.label }]);
+      handleSend(opt.value);
+      return;
+    }
 
     if (opt.value === 'SYNC_VITALLOOP_APP') {
       setMessages(prev => [
@@ -1619,6 +1628,7 @@ function App() {
 
     // 3. De lo contrario, tratar como Ingesta Universal (Anexo Clínico de Soporte)
     console.log("➡️ [processClinicalFiles] Iniciando proceso de Ingesta Universal de Anexo Clínico");
+    pendingClinicalFilesRef.current = fileArray;
     
     // Guardar el inputHandler actual en la clausura
     const previousHandler = inputHandler;
@@ -1731,6 +1741,7 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
 
   // 4. Candado Anti-Duplicación de Reentrada v2.0 (Plan de Implementación v2.0)
   const isSendingRef = useRef(false);
+  const pendingClinicalFilesRef = useRef(null);
 
   // Actualizamos handleSend para que sea una "Máquina de Estados" blindada
   const handleSend = async (optionalInput = null, evt = null) => {
@@ -1770,6 +1781,70 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
     setInput("");
 
     try {
+      // ----------------------------------------------------------------------
+      // 📎 INTERCEPCIÓN UNIVERSAL DE ANEXOS CLÍNICOS (NOM-004)
+      // ----------------------------------------------------------------------
+      const isConfirmAnnex = userMsg === 'CONFIRM_ANNEX' || userMsg.includes('Confirmar e Integrar');
+      const isCancelAnnex = userMsg === 'CANCEL_ANNEX' || userMsg.includes('Cancelar Carga');
+
+      if (isConfirmAnnex || isCancelAnnex) {
+        console.log("📎 [handleSend] Intercepción Universal de Anexo Clínico:", userMsg);
+        const filesToIntegrate = pendingClinicalFilesRef.current || [];
+
+        if (isConfirmAnnex) {
+          if (filesToIntegrate.length > 0) {
+            const newAnnexes = filesToIntegrate.map(file => ({
+              file_name: file.name,
+              file_type: file.name.slice(file.name.lastIndexOf('.')).toLowerCase().replace('.', '').toUpperCase(),
+              file_size_bytes: file.size,
+              uploaded_at: new Date().toISOString(),
+              status: "VALIDATED"
+            }));
+
+            setPatientData(prev => {
+              const currentAnnexes = prev.clinical_context?.annexes || [];
+              return {
+                ...prev,
+                clinical_context: {
+                  ...prev.clinical_context,
+                  annexes: [...currentAnnexes, ...newAnnexes]
+                }
+              };
+            });
+
+            setMessages(prev => [
+              ...prev,
+              {
+                role: 'assistant',
+                content: `✅ **Documento(s) integrado(s) con éxito:** ${filesToIntegrate.map(f => `\`${f.name}\``).join(', ')} ha(n) sido anexado(s) de forma digital a su expediente clínico bajo la NOM-004.`,
+                avatar: tiloImg
+              }
+            ]);
+          } else {
+            setMessages(prev => [
+              ...prev,
+              {
+                role: 'assistant',
+                content: `✅ **Material clínico confirmado y vinculado al expediente digital bajo la NOM-004.**`,
+                avatar: tiloImg
+              }
+            ]);
+          }
+        } else {
+          setMessages(prev => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: "Carga de documento cancelada de forma segura.",
+              avatar: tiloImg
+            }
+          ]);
+        }
+
+        pendingClinicalFilesRef.current = null;
+        return;
+      }
+
       console.log("🔍 [handleSend] Checking inputHandler:", inputHandler);
       // REDIRECCIÓN HEADLESS: Si hay un handler registrado de fase headless y la identidad está confirmada, delegar
       if (isIdentityConfirmed && inputHandler) {

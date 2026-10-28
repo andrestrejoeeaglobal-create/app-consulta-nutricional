@@ -8,7 +8,39 @@ import { useClinicalGenome } from '../store/useClinicalGenome';
 // --- INITIAL STATES (EXTRACTED FOR RESET CAPABILITY) ---
 const INITIAL_CURRENT_PHASE = 'PHASE_18_ELECTRET';
 const INITIAL_ACTIVE_TAB = 'lab';
-const INITIAL_MESSAGES = [
+const INITIAL_MESSAGES = INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET' ? [
+    {
+        role: 'assistant',
+        content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
+
+Para iniciar la toma con **Jesús Reyes Salgado**, seleccione una de las siguientes opciones:
+
+1. Presione **"🚀 Realizar Escaneo Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
+2. Pídale a **Jesús Reyes Salgado** que sujete firmemente los electrodos cilíndricos del sensor.
+3. Ejecute la prueba (60s) en Electret, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
+4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*`,
+        inputType: 'electret_scan_widget',
+        avatar: tiloImg,
+        actions: [
+            {
+                id: 'btn_launch_electret',
+                label: '🚀 Realizar Escaneo Electret',
+                style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                value: 'LAUNCH_ELECTRET_APP'
+            },
+            {
+                id: 'btn_skip_electret',
+                label: '⏩ Continuar sin Escáner Electret',
+                style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
+                value: 'ELECTRET_SKIP'
+            }
+        ],
+        options: [
+            { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
+            { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
+        ]
+    }
+] : [
     {
         role: "assistant",
         content: "Hola, soy el Ecosistema de Transformación Inteligente y Logro Optimizado (T.I.L.O.), el **Copiloto Clínico y Metabólico** de Equipo en Acción. He inicializado mis protocolos de seguridad para garantizar la protección absoluta de su información clínica y validar la vigencia de su consulta.\n\n---\n\nPara blindar su sesión e iniciar el proceso, por favor **proporcione su número de cita** (recuerde que esta es personal e intransferible):",
@@ -469,7 +501,7 @@ export const useCortex = () => {
         if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') {
             const saved = getSavedState('messages', []);
             const hasP18 = saved?.some?.(m => m.content?.includes("Fase 18"));
-            return hasP18 ? saved : [];
+            return hasP18 ? saved : INITIAL_MESSAGES;
         }
         return getSavedState('messages', INITIAL_MESSAGES) || INITIAL_MESSAGES;
     });
