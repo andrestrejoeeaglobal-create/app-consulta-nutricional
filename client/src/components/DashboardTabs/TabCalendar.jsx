@@ -269,186 +269,205 @@ export const TabCalendar = ({
 
     return (
         <div className="space-y-6 font-sans pb-12">
-            {/* --- ACORDEÓN PADRE: PLAN DE ACCIÓN Y SEGUIMIENTO EJECUTIVO --- */}
+            {/* --- ACORDEÓN PADRE: CALENDARIO Y RUTA DE EJECUCIÓN --- */}
             <Accordion
-                title="Plan de Acción y Seguimiento Ejecutivo"
+                title="Calendario y Ruta de Ejecución"
                 id="accordion-calendar-parent"
-                isOpen={openSections.parentCalendar !== undefined ? openSections.parentCalendar : true}
+                isOpen={openSections.parentCalendar}
                 onToggle={() => toggleSection('parentCalendar')}
                 variant="parent"
             >
-                <div className="flex flex-col gap-6 pt-2">
+                <div className="space-y-6">
 
-                    {/* ========================================================= */}
-                    {/* TARJETA 1: RELOJ BIOLÓGICO Y EDAD METABÓLICA REVERSIBLE */}
-                    {/* ========================================================= */}
-                    <div className="bg-gradient-to-br from-slate-50 via-white to-blue-50/40 rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-[#1C75BC]/10 border border-[#1C75BC]/20 flex items-center justify-center text-[#1C75BC]">
-                                    <Clock className="w-5 h-5" />
+                    {/* --- CHILD ACCORDION 1: RELOJ BIOLÓGICO Y EDAD METABÓLICA --- */}
+                    <Accordion
+                        title="Reloj Biológico y Edad Metabólica"
+                        id="accordion-metabolic-clock"
+                        isOpen={openSections.childMetabolicClock !== undefined ? openSections.childMetabolicClock : true}
+                        onToggle={() => toggleSection('childMetabolicClock')}
+                    >
+                        <div id="card-metabolic-clock" className="bg-tilo-bg-base/40 rounded-2xl p-6 border border-tilo-border space-y-5">
+                            
+                            {/* Header del Bloque */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-tilo-border">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-tilo-primary/10 border border-tilo-primary/20 flex items-center justify-center text-tilo-primary">
+                                        <Clock className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-bold text-tilo-text-main">Auditoría Bioenergética y Reología Tisular</div>
+                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">Metabolismo y Reactividad Vascular</div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-sm font-black text-slate-900 tracking-wide uppercase">
-                                        Reloj Biológico & Edad Metabólica
-                                    </h3>
-                                    <p className="text-xs text-slate-500 font-medium">
-                                        Auditoría Bioenergética y Resistencia Endotelial
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#E30613]/10 text-[#E30613] border border-[#E30613]/20">
-                                    <Activity className="w-3.5 h-3.5" />
+                                <span className="bg-[#E30613]/10 text-[#E30613] border border-[#E30613]/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase flex items-center gap-1 w-fit">
+                                    <Activity className="w-3 h-3" />
                                     Sobrecarga Reversible: +{deltaSobrecarga} Años
                                 </span>
                             </div>
-                        </div>
 
-                        {/* Comparativo de Edades Bento */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-5">
-                            <div className="bg-white p-4 rounded-xl border border-slate-200/80 flex flex-col items-center justify-center text-center shadow-xs">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                                    Edad Cronológica
-                                </span>
-                                <span className="text-3xl font-black text-slate-800">
-                                    {Math.round(baseAge)} <span className="text-sm font-semibold text-slate-500">años</span>
-                                </span>
-                                <span className="text-[10px] text-slate-400 mt-1 font-medium">Fecha de Nacimiento</span>
-                            </div>
-
-                            <div className="bg-[#E30613]/5 p-4 rounded-xl border border-[#E30613]/20 flex flex-col items-center justify-center text-center shadow-xs relative">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-[#E30613] mb-1">
-                                    Edad Metabólica Actual
-                                </span>
-                                <span className="text-3xl font-black text-[#E30613]">
-                                    {edadMetabolica} <span className="text-sm font-semibold text-[#E30613]/80">años</span>
-                                </span>
-                                <span className="text-[10px] text-[#E30613]/90 mt-1 font-bold">Sobrecarga Vascular & Lipídica</span>
-                            </div>
-
-                            <div className="bg-[#3AAA35]/5 p-4 rounded-xl border border-[#3AAA35]/20 flex flex-col items-center justify-center text-center shadow-xs">
-                                <span className="text-[11px] font-bold uppercase tracking-wider text-[#3AAA35] mb-1">
-                                    Meta de Reversión (28 Días)
-                                </span>
-                                <span className="text-3xl font-black text-[#3AAA35]">
-                                    {metaReversion} <span className="text-sm font-semibold text-[#3AAA35]/80">años</span>
-                                </span>
-                                <span className="text-[10px] text-[#3AAA35] mt-1 font-bold">🎯 Objetivo Ciclo 1</span>
-                            </div>
-                        </div>
-
-                        {/* Copy Empático y Clínico de Reversibilidad */}
-                        <div className="bg-white/80 p-4 rounded-xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed space-y-2">
-                            <p>
-                                Estimado/a <strong>{patientName}</strong>: su edad cronológica es de <strong>{Math.round(baseAge)} años</strong>, pero el análisis integral de sus biomarcadores de reactividad vascular, viscosidad sanguínea y cristal de colesterol revela que sus células y vasos sanguíneos operan actualmente con una <strong>Edad Metabólica de {edadMetabolica} años</strong>.
-                            </p>
-                            <p>
-                                Esta diferencia de <strong>+{deltaSobrecarga} años</strong> refleja un esfuerzo adicional que sus tejidos realizan para mantener la homeostasis. La excelente noticia es que <strong>la edad metabólica es 100% reversible</strong>.
-                            </p>
-                            <p className="font-semibold text-slate-900">
-                                Al apegarse a su prescripción nutricional defensora de 1,994 kcal y activar la ignición celular con la fórmula <strong>33Plus®</strong> (mañana) y la reparación tisular con <strong>34Plus®</strong> (noche), nuestro objetivo en estos primeros 28 días es hacer retroceder su reloj biológico hacia los <strong>{metaReversion} años</strong>, restaurando la ligereza endotelial y su vitalidad.
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* ========================================================= */}
-                    {/* TARJETA 2: PRÓXIMA CITA DE SEGUIMIENTO (COMPROMISO)       */}
-                    {/* ========================================================= */}
-                    <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-[#1C75BC]/10 border border-[#1C75BC]/20 flex items-center justify-center text-[#1C75BC]">
-                                    <Calendar className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-black text-slate-900 tracking-wide uppercase">
-                                        Próxima Cita de Seguimiento
-                                    </h3>
-                                    <p className="text-xs text-slate-500 font-medium">
-                                        Control Clínico y Evaluación de Evolución (Ciclo 2 • 28 Días)
-                                    </p>
-                                </div>
-                            </div>
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 w-fit">
-                                ⏳ En Proceso de Confirmación
-                            </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-                                    Fecha Solicitada
-                                </span>
-                                <span className="text-sm font-extrabold text-slate-900">
-                                    {apptDate}
-                                </span>
-                            </div>
-
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-                                    Horario Preferente
-                                </span>
-                                <span className="text-sm font-extrabold text-slate-900">
-                                    {apptTime}
-                                </span>
-                                <span className="text-[10px] text-slate-400 block mt-0.5">Ventana: 9:00 AM - 6:00 PM</span>
-                            </div>
-
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-                                    Folio de Solicitud
-                                </span>
-                                <span className="text-sm font-mono font-black text-[#1C75BC]">
-                                    {apptFolio}
-                                </span>
-                                <span className="text-[10px] text-slate-400 block mt-0.5">Recepción T.I.L.O.</span>
-                            </div>
-                        </div>
-
-                        <div className="mt-4 p-3 rounded-xl bg-blue-50/50 border border-blue-100 flex items-start gap-2.5 text-xs text-slate-600">
-                            <Shield className="w-4 h-4 text-[#1C75BC] shrink-0 mt-0.5" />
-                            <p>
-                                <strong>Garantía de Continuidad:</strong> La cita queda sujeta a la confirmación de recepción. El paciente recibirá la notificación oficial de fecha y enlace a través de WhatsApp y en la App móvil VitalLoop®.
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* ========================================================= */}
-                    {/* TARJETA 3: SINCRONIZACIÓN DIGITAL (APP VITALLOOP & BANDA H7) */}
-                    {/* ========================================================= */}
-                    <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-[#1C75BC]/90 text-white rounded-2xl p-6 shadow-md border border-slate-800 relative overflow-hidden">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                            <div className="space-y-2 max-w-xl">
-                                <div className="flex items-center gap-2">
-                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/20 text-white border border-white/30">
-                                        Ecosistema Digital
+                            {/* Bento de Edades Comparativas */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="bg-white/60 dark:bg-slate-800/60 p-4 rounded-xl border border-tilo-border/60 flex flex-col items-center justify-center text-center transition-all duration-300">
+                                    <span className="text-[10px] uppercase font-bold text-tilo-text-muted tracking-wider mb-1">
+                                        Edad Cronológica
                                     </span>
-                                    <span className="text-xs text-white/80 font-medium">Banda Biométrica Inteligente H7 BLE</span>
+                                    <span className="text-2xl font-bold text-tilo-text-main dashboard-data-text">
+                                        {Math.round(baseAge)} <span className="text-xs font-normal text-tilo-text-muted">años</span>
+                                    </span>
+                                    <span className="text-[9px] text-tilo-text-muted mt-1 uppercase font-semibold">Registro de Nacimiento</span>
                                 </div>
-                                <h3 className="text-base font-black tracking-wide text-white">
-                                    Lleve su Plan Clínico en la App VitalLoop®
-                                </h3>
-                                <p className="text-xs text-slate-300 leading-relaxed">
-                                    Descargue la aplicación para consultar su menú diario de 1,994 kcal, registrar sus pasos activos (NEAT 6,000–8,000), confirmar la toma de sus fórmulas 33Plus® y 34Plus®, y sincronizar su banda inteligente para el monitoreo de variabilidad cardíaca y calidad del sueño.
+
+                                <div className="bg-[#E30613]/5 dark:bg-[#E30613]/10 p-4 rounded-xl border border-[#E30613]/20 flex flex-col items-center justify-center text-center transition-all duration-300">
+                                    <span className="text-[10px] uppercase font-bold text-[#E30613] tracking-wider mb-1">
+                                        Edad Metabólica Actual
+                                    </span>
+                                    <span className="text-2xl font-black text-[#E30613] dashboard-data-text">
+                                        {edadMetabolica} <span className="text-xs font-semibold text-[#E30613]/80">años</span>
+                                    </span>
+                                    <span className="text-[9px] text-[#E30613] mt-1 uppercase font-bold">Sobrecarga Vascular & Lipídica</span>
+                                </div>
+
+                                <div className="bg-tilo-success/5 dark:bg-tilo-success/10 p-4 rounded-xl border border-tilo-success/20 flex flex-col items-center justify-center text-center transition-all duration-300">
+                                    <span className="text-[10px] uppercase font-bold text-tilo-success tracking-wider mb-1">
+                                        Meta Reversión (28 Días)
+                                    </span>
+                                    <span className="text-2xl font-black text-tilo-success dashboard-data-text">
+                                        {metaReversion} <span className="text-xs font-semibold text-tilo-success/80">años</span>
+                                    </span>
+                                    <span className="text-[9px] text-tilo-success mt-1 uppercase font-bold">🎯 Objetivo Ciclo 1</span>
+                                </div>
+                            </div>
+
+                            {/* Párrafo de Poder Empático */}
+                            <div className="bg-white/80 dark:bg-slate-800/80 p-4 rounded-xl border border-tilo-border text-xs text-tilo-text-main leading-relaxed space-y-2">
+                                <p>
+                                    Estimado/a <strong>{patientName}</strong>: su edad cronológica es de <strong>{Math.round(baseAge)} años</strong>, pero el análisis integral de sus biomarcadores de reactividad vascular, viscosidad sanguínea y cristal de colesterol revela que sus células y vasos sanguíneos operan actualmente con una <strong>Edad Metabólica de {edadMetabolica} años</strong>.
+                                </p>
+                                <p className="text-tilo-text-muted">
+                                    Esta diferencia de <strong>+{deltaSobrecarga} años</strong> refleja un esfuerzo adicional que sus tejidos realizan para mantener la homeostasis. La excelente noticia es que <strong>la edad metabólica es 100% reversible</strong>.
+                                </p>
+                                <p className="font-semibold text-tilo-text-main pt-1 border-t border-tilo-border/60">
+                                    Al apegarse a su prescripción nutricional de 1,994 kcal y activar la ignición celular con la fórmula <strong>33Plus®</strong> (mañana) y la reparación tisular con <strong>34Plus®</strong> (noche), nuestro objetivo en estos primeros 28 días es hacer retroceder su reloj biológico hacia los <strong>{metaReversion} años</strong>, restaurando la ligereza endotelial y su vitalidad.
                                 </p>
                             </div>
+                        </div>
+                    </Accordion>
 
-                            <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
-                                <a
-                                    href="#download-vitalloop"
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        alert("Iniciando enlace con la App VitalLoop® y emparejamiento de Banda H7.");
-                                    }}
-                                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-[#1C75BC] hover:bg-[#165f9a] text-white text-xs font-black uppercase tracking-wider transition-colors shadow-lg shadow-[#1C75BC]/30 active:scale-95"
-                                >
-                                    <Smartphone className="w-4 h-4" />
-                                    Descargar App VitalLoop®
-                                </a>
+                    {/* --- CHILD ACCORDION 2: PRÓXIMA CITA DE SEGUIMIENTO --- */}
+                    <Accordion
+                        title="Próxima Cita de Seguimiento"
+                        id="accordion-followup-appointment"
+                        isOpen={openSections.childEvolutionRoute !== undefined ? openSections.childEvolutionRoute : true}
+                        onToggle={() => toggleSection('childEvolutionRoute')}
+                    >
+                        <div id="card-followup-appointment" className="bg-tilo-bg-base/40 rounded-2xl p-6 border border-tilo-border space-y-4">
+                            
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-tilo-border">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-tilo-primary/10 border border-tilo-primary/20 flex items-center justify-center text-tilo-primary">
+                                        <Calendar className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-bold text-tilo-text-main">Control Clínico y Evaluación de Evolución</div>
+                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">Ciclo 2 • Período de 28 Días</div>
+                                    </div>
+                                </div>
+                                <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase w-fit">
+                                    ⏳ En Proceso de Confirmación
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="bg-white/60 dark:bg-slate-800/60 rounded-xl p-3.5 border border-tilo-border/60">
+                                    <span className="text-[10px] uppercase font-bold text-tilo-text-muted tracking-wider block mb-1">
+                                        Fecha Solicitada
+                                    </span>
+                                    <span className="text-sm font-bold text-tilo-text-main dashboard-data-text">
+                                        {apptDate}
+                                    </span>
+                                </div>
+
+                                <div className="bg-white/60 dark:bg-slate-800/60 rounded-xl p-3.5 border border-tilo-border/60">
+                                    <span className="text-[10px] uppercase font-bold text-tilo-text-muted tracking-wider block mb-1">
+                                        Horario Preferente
+                                    </span>
+                                    <span className="text-sm font-bold text-tilo-text-main dashboard-data-text">
+                                        {apptTime}
+                                    </span>
+                                    <span className="text-[9px] text-tilo-text-muted block mt-0.5 uppercase">Ventana: 9:00 AM - 6:00 PM</span>
+                                </div>
+
+                                <div className="bg-white/60 dark:bg-slate-800/60 rounded-xl p-3.5 border border-tilo-border/60">
+                                    <span className="text-[10px] uppercase font-bold text-tilo-text-muted tracking-wider block mb-1">
+                                        Folio de Solicitud
+                                    </span>
+                                    <span className="text-sm font-mono font-bold text-tilo-primary">
+                                        {apptFolio}
+                                    </span>
+                                    <span className="text-[9px] text-tilo-text-muted block mt-0.5 uppercase">Recepción T.I.L.O.</span>
+                                </div>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-tilo-primary/5 border border-tilo-primary/20 flex items-start gap-2.5 text-xs text-tilo-text-muted leading-relaxed">
+                                <Shield className="w-4 h-4 text-tilo-primary shrink-0 mt-0.5" />
+                                <p>
+                                    <strong className="text-tilo-text-main">Garantía de Continuidad:</strong> La cita queda sujeta a la confirmación de recepción. El paciente recibirá la notificación oficial de fecha y enlace a través de WhatsApp y en la App móvil VitalLoop®.
+                                </p>
                             </div>
                         </div>
-                    </div>
+                    </Accordion>
+
+                    {/* --- CHILD ACCORDION 3: SINCRONIZACIÓN DIGITAL (APP VITALLOOP®) --- */}
+                    <Accordion
+                        title="Sincronización Digital y Monitoreo (App VitalLoop®)"
+                        id="accordion-execution-logistics"
+                        isOpen={openSections.childExecutionLogistics !== undefined ? openSections.childExecutionLogistics : true}
+                        onToggle={() => toggleSection('childExecutionLogistics')}
+                    >
+                        <div id="card-execution-logistics" className="bg-tilo-bg-base/40 rounded-2xl p-6 border border-tilo-border space-y-4">
+                            
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-tilo-border">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-tilo-primary/10 border border-tilo-primary/20 flex items-center justify-center text-tilo-primary">
+                                        <Smartphone className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-bold text-tilo-text-main">Ecosistema Digital y Telemetría</div>
+                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">Banda Biométrica Inteligente H7 BLE</div>
+                                    </div>
+                                </div>
+                                <span className="bg-tilo-primary/10 text-tilo-primary border border-tilo-primary/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase w-fit">
+                                    Sincronización Móvil
+                                </span>
+                            </div>
+
+                            <div className="bg-white/60 dark:bg-slate-800/60 p-4 rounded-xl border border-tilo-border/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="space-y-1 max-w-xl">
+                                    <div className="text-xs font-bold text-tilo-text-main">
+                                        Lleve su Plan Clínico y Telemetría en el Bolsillo
+                                    </div>
+                                    <p className="text-xs text-tilo-text-muted leading-relaxed">
+                                        Descargue la aplicación móvil para consultar su menú de 1,994 kcal, registrar sus pasos diarios (NEAT 6,000–8,000), confirmar sus tomas de 33Plus® y 34Plus®, y enlazar su banda inteligente para el monitoreo de variabilidad cardíaca y calidad del sueño.
+                                    </p>
+                                </div>
+
+                                <div className="shrink-0">
+                                    <a
+                                        href="#download-vitalloop"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            alert("Iniciando enlace con la App VitalLoop® y emparejamiento de Banda H7.");
+                                        }}
+                                        className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#1C75BC] hover:bg-[#165f9a] text-white text-xs font-bold uppercase tracking-wider transition-all duration-200 shadow-sm active:scale-95"
+                                    >
+                                        <Smartphone className="w-4 h-4" />
+                                        Descargar App VitalLoop®
+                                    </a>
+                                </div>
+                            </div>
+
+                        </div>
+                    </Accordion>
 
                 </div>
             </Accordion>
