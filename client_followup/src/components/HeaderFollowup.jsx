@@ -81,8 +81,13 @@ export const HeaderFollowup = ({
         {/* MÓDULO IZQUIERDO: Branding & Sesión */}
         <div className="flex items-center h-full">
           {/* Brand Block / Patient Info */}
-          <div className="flex items-center gap-4 pr-6 border-r border-slate-200 h-10">
-            <img src={logo} alt="Logo" className="h-10 w-auto object-contain" />
+          <div className="flex items-center gap-4 pr-6 border-r border-slate-200 h-12">
+            <img 
+              data-gov-id="TCK-2026-GOV-HEADER-001"
+              src={logo} 
+              alt="Equipo en Acción®" 
+              className="h-10 sm:h-12 w-auto object-contain" 
+            />
             <div className="flex flex-col leading-none justify-center">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{phaseTag}</span>
               <span className="text-[18px] font-bold text-black tracking-tight truncate max-w-[280px]" title={patientName}>

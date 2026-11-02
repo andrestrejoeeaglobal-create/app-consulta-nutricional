@@ -429,7 +429,8 @@ REGLAS:
 });
 
 // --- EXPANSIÓN DE DOSSIER CLÍNICO DE SÍNTESIS ---
-const { synthesizeDossier, approveDossier } = require('../controllers/cortexController');
+const { synthesizeDossier, approveDossier, presyncBaselineSnapshot } = require('../controllers/cortexController');
+router.post('/presync-baseline', presyncBaselineSnapshot);
 router.post('/synthesize-dossier', synthesizeDossier);
 router.post('/approve-dossier', approveDossier);
 

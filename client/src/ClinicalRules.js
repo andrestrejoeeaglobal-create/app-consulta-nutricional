@@ -1,7 +1,15 @@
 export const generateSecurityConstraints = (religion, bmiValue) => {
-    // Estructura base
+    // 3 Reglas Universales Inmutables de Equipo en Acción® / T.I.L.O.®: 0 Picante, 0 Cerdo, 0 Azúcares refinados
+    const UNIVERSAL_EXCLUSIONS = ['PICANTE', 'CERDO', 'AZUCARES_REFINADOS'];
+    const addForbidden = (items) => {
+        items.forEach(it => {
+            if (!constraints.forbidden_ingredients.includes(it)) {
+                constraints.forbidden_ingredients.push(it);
+            }
+        });
+    };
     const constraints = {
-        forbidden_ingredients: [],
+        forbidden_ingredients: [...UNIVERSAL_EXCLUSIONS],
         clinical_alerts: [],
         mix_restrictions: [],
         waiver_log: null
@@ -14,7 +22,7 @@ export const generateSecurityConstraints = (religion, bmiValue) => {
 
     switch (normalizedReligion) {
         case 'ADVENTISTA':
-            constraints.forbidden_ingredients = ['CERDO', 'MARISCO', 'CAFE', 'ALCOHOL'];
+            addForbidden(['MARISCO', 'CAFE', 'ALCOHOL']);
             constraints.clinical_alerts = ['CHECK_B12_LEVELS'];
             break;
 
@@ -22,7 +30,7 @@ export const generateSecurityConstraints = (religion, bmiValue) => {
         case 'MORMÓN':
         case 'SUD':
         case 'LDS':
-            constraints.forbidden_ingredients = ['CAFE', 'TE', 'ALCOHOL', 'TABACO'];
+            addForbidden(['CAFE', 'TE', 'ALCOHOL', 'TABACO']);
             // Regla Condicional: Trampa del Almacenamiento
             if (bmi > 30) {
                 constraints.forbidden_ingredients.push('HARINAS_REFINADAS');
@@ -33,21 +41,21 @@ export const generateSecurityConstraints = (religion, bmiValue) => {
         case 'HALAL':
         case 'MUSULMAN':
         case 'MUSULMÁN':
-            constraints.forbidden_ingredients = ['CERDO', 'ALCOHOL', 'SANGRE'];
+            addForbidden(['ALCOHOL', 'SANGRE']);
             constraints.clinical_alerts = ['RAMADAN_FASTING_CHECK'];
             break;
 
         case 'JUDIO':
         case 'JUDÍO':
         case 'KOSHER':
-            constraints.forbidden_ingredients = ['CERDO', 'MARISCO', 'SANGRE'];
+            addForbidden(['MARISCO', 'SANGRE']);
             constraints.mix_restrictions = ['NO_MEAT_AND_DAIRY'];
             break;
 
         case 'HINDUISMO':
         case 'HINDU':
         case 'HINDÚ':
-            constraints.forbidden_ingredients = ['RES', 'VACA'];
+            addForbidden(['RES', 'VACA']);
             constraints.clinical_alerts = ['PROTEIN_DEFICIT_RISK'];
             break;
 

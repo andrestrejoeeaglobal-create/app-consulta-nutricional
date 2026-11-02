@@ -1,4 +1,5 @@
 const { db } = require('../db');
+const cryptoVault = require('../utils/cryptoVault');
 
 // ============================================================================
 // 1. DICCIONARIO DETERMINISTA LOCAL DE CÓDIGOS CIE-10 Y REGLA DE FALLBACK
@@ -386,7 +387,147 @@ function distillClinicalSerum(patientData, isLactanteExplicit = false) {
         });
     };
 
-    // A. Anomalías de Entrevista Clínica (Fases 5, 6, 7, 8, 12, 13)
+    // Declaración e inicialización estricta de variables de control clínico
+    let hasHighSerumCalciumOrCalcification = false;
+
+    // A. INGESTA DE FASE 3: MOTIVO PRINCIPAL & SUFRIMIENTO CLÍNICO
+    const clinicalContext = patientData?.clinical_context || {};
+    const patientQuote = clinicalContext.patient_quote || patientData?.motivo || "";
+    const specificAilment = clinicalContext.specific_ailment || "";
+    const emotionalAnchor = clinicalContext.emotional_anchor || "";
+    if (patientQuote || specificAilment) {
+        pushAnomaly('NODO_4_COMUNICACION', 'CHIEF_COMPLAINT', 'Motivo de Consulta y Carga Alostática', 
+            `Voz del Paciente: "${patientQuote}". Afección específica: ${specificAilment}. Ancla emocional: ${emotionalAnchor}`, 'MODERADA');
+    }
+
+    // B. INGESTA DE FASE 4: ANTECEDENTES HEREDOFAMILIARES (AHF - Carga Genética)
+    const rawFamily = patientData?.history?.family_structured || patientData?.history?.family_history || [];
+    const familyHistory = Array.isArray(rawFamily) ? rawFamily : [];
+    familyHistory.forEach(item => {
+        const disease = (typeof item === 'object' ? item.disease || item.condicion : item) || '';
+        const kin = (typeof item === 'object' ? item.relationship || item.parentesco : 'Familiar') || '';
+        if (disease) {
+            const upper = String(disease).toUpperCase();
+            if (upper.includes('DIABET') || upper.includes('GLUCOSA') || upper.includes('METABOL')) {
+                pushAnomaly('NODO_3_ENERGIA', 'AHF', `Carga Familiar: ${disease} (${kin})`, 'Riesgo genético metabólico y disglucemia', 'ALTA');
+            } else if (upper.includes('HIPERTENSI') || upper.includes('INFARTO') || upper.includes('CARDIO')) {
+                pushAnomaly('NODO_5_TRANSPORTE', 'AHF', `Carga Familiar: ${disease} (${kin})`, 'Predisposición a rigidez endotelial y riesgo cardiovascular', 'ALTA');
+            } else if (upper.includes('CANCER') || upper.includes('AUTOINMUNE') || upper.includes('TIROID')) {
+                pushAnomaly('NODO_6_DEFENSA', 'AHF', `Carga Familiar: ${disease} (${kin})`, 'Vulnerabilidad inflamatoria / inmunológica', 'MODERADA');
+            }
+        }
+    });
+
+    // C. INGESTA DE FASES 5 Y 6: ANTECEDENTES PATOLÓGICOS PERSONALES (APP) Y CIRUGÍAS
+    const rawPathologies = patientData?.history?.pathologies || patientData?.antecedentesPersonales || [];
+    const pathologies = Array.isArray(rawPathologies) ? rawPathologies : [];
+    pathologies.forEach(p => {
+        const name = (typeof p === 'object' ? p.name || p.patologia : p) || '';
+        const upper = String(name).toUpperCase();
+        if (upper.includes('COLECIST') || upper.includes('VESÍCULA') || upper.includes('VESICULA')) {
+            pushAnomaly('NODO_1_ASIMILACION', 'SURGICAL', 'Colecistectomía Declarada', 'Pérdida de reservorio biliar; requiere emulsión enzimática y modulación lipídica estricta.', 'ALTA');
+        } else if (upper.includes('GASTRITIS') || upper.includes('REFLUJO') || upper.includes('COLITIS') || upper.includes('DISBIOSIS')) {
+            pushAnomaly('NODO_1_ASIMILACION', 'APP_DIGESTIVE', `Patología Digestiva: ${name}`, 'Compromiso mucoso / permeabilidad epitelial', 'ALTA');
+        } else if (upper.includes('HÍGADO GRASO') || upper.includes('HIGADO GRASO') || upper.includes('HEPAT')) {
+            pushAnomaly('NODO_2_BIOTRANSFORMACION', 'APP_HEPATIC', `Sobrecarga Hepática: ${name}`, 'Sobrecarga de biotransformación Fase I/II', 'ALTA');
+        }
+    });
+
+    // D. INGESTA DE FASE 9: ESTADO FISIOLÓGICO Y REPRODUCTIVO
+    const physio = patientData?.physio || {};
+    const isPregnant = physio.is_pregnant === true || clinicalContext.isPregnant === true;
+    const isLactating = physio.is_lactating === true;
+    const gestationWeeks = parseInt(physio.gestation_weeks || 0, 10);
+    if (isPregnant) {
+        pushAnomaly('NODO_3_ENERGIA', 'PHYSIO_STATE', 'Estado Gestacional Activo', 
+            `Semana de gestación: ${gestationWeeks || 'No precisada'}. Prioridad de balance energético y soporte de micronutrientes fetoplacentario.`, 'CRÍTICA');
+        pushAnomaly('NODO_4_COMUNICACION', 'PHYSIO_STATE', 'Modulación Neuroendocrina Gestacional', 
+            'Ajuste hormonal progesterona/prolactina y control glucémico estricto.', 'ALTA');
+    } else if (isLactating) {
+        pushAnomaly('NODO_3_ENERGIA', 'PHYSIO_STATE', 'Lactancia Materna Activa', 
+            'Incremento en demanda hídrica y calórica; prescripción adaptada libre de estimulantes.', 'ALTA');
+    }
+
+    // E. INGESTA DE FASES 10 Y 11: CRONOBIOLOGÍA, SUEÑO, ESTRÉS Y TOXICOMANÍAS
+    const lifestyle = patientData?.lifestyle || {};
+    const sleep = lifestyle.sleep || patientData?.habitos?.sueno || {};
+    const stress = lifestyle.stress || patientData?.habitos?.estres || {};
+    const toxic = lifestyle.toxic_habits || patientData?.habitos?.toxicos || {};
+
+    if (sleep.insomnia || sleep.quality === 'POOR' || (sleep.hours && sleep.hours < 6)) {
+        pushAnomaly('NODO_4_COMUNICACION', 'LIFESTYLE_SLEEP', 'Disrupción Circadiana / Deuda de Sueño', 
+            `Horas reportadas: ${sleep.hours || '<6'} h/noche. Calidad: ${sleep.quality || 'Mala'}. Insomnio: ${sleep.insomnia ? 'Sí' : 'No'}`, 'ALTA');
+    }
+    if (stress.level === 'HIGH' || stress.level === 'SEVERE' || parseInt(stress.score || 0) >= 8) {
+        pushAnomaly('NODO_4_COMUNICACION', 'LIFESTYLE_STRESS', 'Carga Alostática Elevada (Eje HPA)', 
+            `Nivel de estrés percibido: ${stress.level || stress.score}/10. Riesgo de hipercortisolemia y resistencia a la insulina`, 'ALTA');
+    }
+    if (toxic.smoking || toxic.alcohol_frequency === 'FREQUENT') {
+        pushAnomaly('NODO_2_BIOTRANSFORMACION', 'TOXIC_BURDEN', 'Exposición a Xenobióticos / Tóxicos', 
+            `Tabaco: ${toxic.smoking ? 'Activo' : 'No'}. Alcohol: ${toxic.alcohol_frequency || 'Ocasional'}`, 'MODERADA');
+    }
+
+    // F. INGESTA DE FASES 12 Y 13: PREFERENCIAS, AVERSIÓN Y RESTRICCIONES ALIMENTARIAS
+    const nutritionPrefs = patientData?.nutrition?.preferences || {};
+    const dietEval = patientData?.evaluacionDietetica?.preferencias || {};
+    const rawExcluded = Array.isArray(nutritionPrefs.excluded_ingredients)
+        ? nutritionPrefs.excluded_ingredients
+        : (Array.isArray(nutritionPrefs.dislikes) ? nutritionPrefs.dislikes : []);
+    const textAversions = dietEval.aversiones ? String(dietEval.aversiones).split(/[,;]/).map(s => s.trim()) : [];
+    const combinedExclusions = Array.from(new Set([...rawExcluded, ...textAversions])).filter(Boolean);
+
+    // G. INGESTA DE FASE 14: CRONONUTRICIÓN R24H (Ventanas de Ayuno y Horarios Nocturnos)
+    const crono = patientData?.nutrition?.crononutricion || patientData?.crononutricion || patientData?.r24h || {};
+    const cenaTime = crono.hora_cena || crono.cena_horario || crono.dinner_time || '';
+    const hasLateEating = cenaTime && (cenaTime.includes('22:') || cenaTime.includes('23:') || cenaTime.includes('00:') || cenaTime.includes('01:') || cenaTime.includes('10 PM') || cenaTime.includes('11 PM'));
+    const fastingHours = parseFloat(crono.horas_ayuno || crono.fasting_hours || 0);
+    if (hasLateEating || (crono.ingesta_nocturna && crono.ingesta_nocturna !== 'NO')) {
+        pushAnomaly('NODO_4_COMUNICACION', 'R24H_CHRONO', 'Ingesta Tardía / Desalineación Cronobiológica', 
+            `Horario de última ingesta (${cenaTime || 'Nocturno tardío'}) interfiere con la secreción de melatonina y GH somatotrópica`, 'ALTA');
+    }
+    if (fastingHours > 0 && fastingHours < 10) {
+        pushAnomaly('NODO_4_COMUNICACION', 'R24H_FASTING', 'Ventana de Reposo Metabólico Reducida', 
+            `Ayuno nocturno de solo ${fastingHours} hrs. Se recomienda extender a mínimo 12 hrs para autofagia basal`, 'MODERADA');
+    }
+
+    // H. INGESTA DE FASE 15: FRECUENCIA DE ALIMENTOS FFQ (Ultraprocesados y Azúcares)
+    const ffq = patientData?.nutrition?.ffq || patientData?.frecuenciaConsumo || {};
+    const ultraprocessedFreq = String(ffq.ultraprocesados || ffq.comida_chatarra || ffq.fast_food || '').toUpperCase();
+    const sugaryBeveragesFreq = String(ffq.bebidas_azucaradas || ffq.refrescos || ffq.sodas || '').toUpperCase();
+    if (ultraprocessedFreq.includes('DIARIO') || ultraprocessedFreq.includes('FRECUENTE') || ultraprocessedFreq.includes('3-4')) {
+        pushAnomaly('NODO_1_ASIMILACION', 'FFQ_ULTRAPROCESSED', 'Consumo Recurrente de Ultraprocesados', 
+            'Ingesta elevada de emulsificantes y grasas hidrogenadas; riesgo de disrupción en la barrera mucosa enterocitaria', 'ALTA');
+    }
+    if (sugaryBeveragesFreq.includes('DIARIO') || sugaryBeveragesFreq.includes('FRECUENTE') || sugaryBeveragesFreq.includes('3-4')) {
+        pushAnomaly('NODO_3_ENERGIA', 'FFQ_SUGARS', 'Sobrecarga de Fructosa / Azúcares Líquidos', 
+            'Frecuencia elevada de azúcares simples; riesgo de esteatosis hepática y resistencia periférica a la insulina', 'ALTA');
+    }
+
+    // I. INGESTA DE FASES 16 Y 17: ANTROPOMETRÍA, PRESIÓN ARTERIAL Y GLUCOSA CAPILAR
+    const vitals = patientData?.vitals || patientData?.signosVitales || {};
+    const biometria = patientData?.biometria || {};
+    const bp = vitals.bloodPressure || {};
+    const sys = parseInt(bp.systolic || vitals.ta_sistolica || vitals.ta?.split('/')[0] || 0, 10);
+    const dia = parseInt(bp.diastolic || vitals.ta_diastolica || vitals.ta?.split('/')[1] || 0, 10);
+    const glu = parseFloat(vitals.glucose || vitals.glucosa || 0);
+    const waist = parseFloat(biometria.cintura || patientData?.cintura || 0);
+    const hip = parseFloat(biometria.cadera || patientData?.cadera || 0);
+    const icc = (waist > 0 && hip > 0) ? parseFloat((waist / hip).toFixed(2)) : null;
+
+    if (sys >= 130 || dia >= 85) {
+        pushAnomaly('NODO_5_TRANSPORTE', 'VITALS_BP', `Tensión Arterial Elevada (${sys}/${dia} mmHg)`, 
+            'Riesgo de sobrecarga vascular y disfunción endotelial', sys >= 140 || dia >= 90 ? 'CRÍTICA' : 'ALTA');
+    }
+    if (glu >= 100) {
+        pushAnomaly('NODO_3_ENERGIA', 'VITALS_GLUCOSE', `Glucosa Capilar Alterada (${glu} mg/dL)`, 
+            glu >= 126 ? 'Glucemia en rango compatible con diabetes' : 'Disglucemia basal en ayuno', 'CRÍTICA');
+    }
+    if (icc && ((patientData?.sexo === 'F' && icc > 0.85) || (patientData?.sexo !== 'F' && icc > 0.90))) {
+        pushAnomaly('NODO_3_ENERGIA', 'ANTHRO_ICC', `Riesgo Cardiometabólico Visceral (ICC: ${icc})`, 
+            `Cintura: ${waist} cm, Cadera: ${hip} cm. Adiposidad troncular profunda`, 'ALTA');
+    }
+
+    // J. Anomalías de Entrevista Clínica (Fases 7 y 8)
     const digestiveProfile = patientData?.digestive_profile || {};
     if (digestiveProfile.has_issues || patientData?.history?.has_digestive_issues || (Array.isArray(digestiveProfile.symptoms) && digestiveProfile.symptoms.length > 0)) {
         const symp = Array.isArray(digestiveProfile.symptoms) ? digestiveProfile.symptoms.join(', ') : (digestiveProfile.phenotype || 'Sintomatología digestiva reportada');
@@ -405,26 +546,68 @@ function distillClinicalSerum(patientData, isLactanteExplicit = false) {
         if (agent) pushAnomaly('NODO_6_DEFENSA', 'INTERVIEW', `Alergia Farmacológica: ${agent}`, 'Hipersensibilidad medicamentosa declarada en Fase 7', 'CRÍTICA');
     });
 
-    // B. Anomalías de Laboratorio Clínico OCR (Paso 4 de Fase 18)
+    // B. Anomalías de Laboratorio Clínico OCR e Índices Funcionales (Paso 4 de Fase 18)
     const extMetrics = patientData?.scan_data?.external_metrics || {};
     const labSections = extMetrics.sections || {};
+    const flatLabs = extMetrics.biomarkers || extMetrics.labs || patientData?.lab_results || patientData?.ocr_labs || {};
     const seenLabKeys = new Set();
+
+    // Diccionario de valores numéricos extraídos para cálculo de índices funcionales
+    const labValues = {};
+
+    function registerLabNumeric(name, rawVal) {
+        if (rawVal === undefined || rawVal === null) return;
+        const num = parseFloat(String(rawVal).replace(/[^0-9.]/g, ''));
+        if (isNaN(num)) return;
+        const normKey = String(name).toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, '_');
+
+        if (normKey.includes('triglic')) labValues.triglycerides = num;
+        else if (normKey.includes('hdl') && !normKey.includes('no_hdl')) labValues.hdl = num;
+        else if (normKey.includes('ldl')) labValues.ldl = num;
+        else if (normKey.includes('colesterol') && !normKey.includes('ldl') && !normKey.includes('hdl')) labValues.totalCholesterol = num;
+        else if (normKey.includes('glucosa') || normKey.includes('glucose')) labValues.glucose = num;
+        else if (normKey.includes('insulina') || normKey.includes('insulin')) labValues.insulin = num;
+        else if (normKey.includes('hba1c') || normKey.includes('glicosilada') || normKey.includes('hemoglobina_a1c')) labValues.hba1c = num;
+        else if (normKey.includes('calcio') || normKey.includes('calcium')) labValues.serumCalcium = num;
+        else if (normKey.includes('vitamina_d') || normKey.includes('25_oh') || normKey.includes('calcidiol')) labValues.vitaminD = num;
+        else if (normKey.includes('creatinina')) labValues.creatinine = num;
+        else if (normKey.includes('filtrado') || normKey.includes('tfg') || normKey.includes('egfr')) labValues.gfr = num;
+        else if (normKey.includes('bun') || normKey.includes('urea')) labValues.bun = num;
+        else if (normKey.includes('urico')) labValues.uricAcid = num;
+        else if (normKey.includes('alt') || normKey.includes('tgp')) labValues.alt = num;
+        else if (normKey.includes('ast') || normKey.includes('tgo')) labValues.ast = num;
+        else if (normKey.includes('ggt')) labValues.ggt = num;
+        else if (normKey.includes('bilirrubina') || normKey.includes('bilirubin')) labValues.bilirubin = num;
+        else if (normKey.includes('pcr') || normKey.includes('proteina_c_reactiva')) labValues.hscrp = num;
+        else if (normKey.includes('homocisteina')) labValues.homocysteine = num;
+        else if (normKey.includes('leucocito') || normKey.includes('white_blood')) labValues.leukocytes = num;
+        else if (normKey.includes('vsg') || normKey.includes('sedimentacion')) labValues.vsg = num;
+        else if (normKey.includes('ferritina')) labValues.ferritin = num;
+        else if (normKey.includes('tsh')) labValues.tsh = num;
+        else if (normKey.includes('t3_libre') || normKey.includes('t3')) labValues.freeT3 = num;
+        else if (normKey.includes('t4_libre') || normKey.includes('t4')) labValues.freeT4 = num;
+        else if (normKey.includes('cortisol')) labValues.cortisol = num;
+    }
 
     Object.entries(labSections).forEach(([secKey, secObj]) => {
         const items = Array.isArray(secObj?.items) ? secObj.items : (Array.isArray(secObj) ? secObj : []);
         items.forEach(item => {
+            const name = item.name || item.label || item.parameter || 'Biomarcador';
+            registerLabNumeric(name, item.val ?? item.value);
+
             const st = String(item.status || '').toUpperCase();
             if (st && st !== 'NORMAL' && st !== 'OPTIMAL' && st !== 'OPTIMO' && st !== 'NEGATIVO') {
-                const name = item.name || item.label || item.parameter || 'Biomarcador';
                 seenLabKeys.add(name.toUpperCase());
-                const detail = `${item.value ?? ''} ${item.unit || ''} (Ref: ${item.ref || item.reference || 'N/A'} | Estado: ${st})`.trim();
+                const detail = `${item.val ?? item.value ?? ''} ${item.unit || ''} (Ref: ${item.ref || item.reference || 'N/A'} | Estado: ${st})`.trim();
                 const upperName = `${secKey} ${name}`.toUpperCase();
 
                 if (upperName.includes('COLESTEROL') || upperName.includes('LDL') || upperName.includes('HDL') || upperName.includes('TRIGLIC') || upperName.includes('ATEROG') || upperName.includes('GLUCOSA') || upperName.includes('INSULINA') || upperName.includes('HBA1C')) {
                     pushAnomaly('NODO_3_ENERGIA', 'OCR_LAB', name, detail, 'ALTA');
-                } else if (upperName.includes('BASÓFIL') || upperName.includes('BASOFIL') || upperName.includes('LEUCOCIT') || upperName.includes('EOSIN') || upperName.includes('LINFOCIT') || upperName.includes('NEUTRÓFIL') || upperName.includes('PCR')) {
+                } else if (upperName.includes('BASÓFIL') || upperName.includes('BASOFIL') || upperName.includes('LEUCOCIT') || upperName.includes('EOSIN') || upperName.includes('LINFOCIT') || upperName.includes('NEUTRÓFIL') || upperName.includes('PCR') || upperName.includes('VSG') || upperName.includes('FERRITINA')) {
                     pushAnomaly('NODO_6_DEFENSA', 'OCR_LAB', name, detail, 'MODERADA');
-                } else if (upperName.includes('HEMOGLOBINA') || upperName.includes('HEMATOCRITO') || upperName.includes('ERITROCIT') || upperName.includes('PLAQUETA') || upperName.includes('HIERRO')) {
+                } else if (upperName.includes('HEMOGLOBINA') || upperName.includes('HEMATOCRITO') || upperName.includes('ERITROCIT') || upperName.includes('PLAQUETA') || upperName.includes('HIERRO') || upperName.includes('HOMOCISTEINA')) {
                     pushAnomaly('NODO_5_TRANSPORTE', 'OCR_LAB', name, detail, 'MODERADA');
                 } else if (upperName.includes('CREATININA') || upperName.includes('UREA') || upperName.includes('BUN') || upperName.includes('ÁCIDO ÚRICO') || upperName.includes('AST') || upperName.includes('ALT') || upperName.includes('GGT') || upperName.includes('BILIRRUBINA') || upperName.includes('ORINA')) {
                     pushAnomaly('NODO_2_BIOTRANSFORMACION', 'OCR_LAB', name, detail, 'MODERADA');
@@ -439,18 +622,19 @@ function distillClinicalSerum(patientData, isLactanteExplicit = false) {
         });
     });
 
-    // Fallback si biomarkers planos en external_metrics contienen alertas no listadas en sections
-    const flatLabs = extMetrics.biomarkers || extMetrics.labs || patientData?.lab_results || {};
     Object.entries(flatLabs).forEach(([k, v]) => {
-        if (!v || typeof v !== 'object') return;
-        const st = String(v.status || '').toUpperCase();
-        const name = v.name || v.label || k;
+        if (!v) return;
+        const name = typeof v === 'object' ? (v.name || v.label || k) : k;
+        const rawVal = typeof v === 'object' ? (v.value ?? v.val) : v;
+        registerLabNumeric(name, rawVal);
+
+        const st = typeof v === 'object' ? String(v.status || '').toUpperCase() : '';
         if (st && st !== 'NORMAL' && st !== 'OPTIMAL' && !seenLabKeys.has(name.toUpperCase())) {
-            const detail = `${v.value ?? ''} ${v.unit || ''} (${st})`.trim();
+            const detail = `${rawVal ?? ''} ${typeof v === 'object' ? (v.unit || '') : ''} (${st})`.trim();
             const upperName = name.toUpperCase();
-            if (upperName.includes('COLESTEROL') || upperName.includes('LDL') || upperName.includes('ATEROG') || upperName.includes('GLUCOSA')) {
+            if (upperName.includes('COLESTEROL') || upperName.includes('LDL') || upperName.includes('ATEROG') || upperName.includes('GLUCOSA') || upperName.includes('TRIGLIC')) {
                 pushAnomaly('NODO_3_ENERGIA', 'OCR_LAB', name, detail, 'ALTA');
-            } else if (upperName.includes('BASÓFIL') || upperName.includes('BASOFIL') || upperName.includes('LEUCOCIT')) {
+            } else if (upperName.includes('BASÓFIL') || upperName.includes('BASOFIL') || upperName.includes('LEUCOCIT') || upperName.includes('PCR')) {
                 pushAnomaly('NODO_6_DEFENSA', 'OCR_LAB', name, detail, 'MODERADA');
             } else {
                 pushAnomaly('NODO_2_BIOTRANSFORMACION', 'OCR_LAB', name, detail, 'MODERADA');
@@ -458,9 +642,85 @@ function distillClinicalSerum(patientData, isLactanteExplicit = false) {
         }
     });
 
+    // EVALUACIÓN DE ÍNDICES FUNCIONALES Y CORTE BIOLÓGICO CLÍNICO
+    // 1. Ratio Triglicéridos / HDL (> 2.0)
+    if (labValues.triglycerides > 0 && labValues.hdl > 0) {
+        const tgHdl = labValues.triglycerides / labValues.hdl;
+        if (tgHdl > 2.0) {
+            pushAnomaly('NODO_3_ENERGIA', 'FUNCTIONAL_INDEX', 'Ratio Triglicéridos/HDL Elevado',
+                `TG: ${labValues.triglycerides} mg/dL, HDL: ${labValues.hdl} mg/dL | Ratio = ${tgHdl.toFixed(2)} (> 2.0). Marcador subrogado de aterogenicidad y resistencia a la insulina`, 'ALTA');
+        }
+    }
+
+    // 2. Índice HOMA-IR (> 2.5) o Glucosa / HbA1c
+    if (labValues.glucose > 0 && labValues.insulin > 0) {
+        const homa = (labValues.glucose * labValues.insulin) / 405;
+        if (homa > 2.5) {
+            pushAnomaly('NODO_3_ENERGIA', 'FUNCTIONAL_INDEX', 'Índice HOMA-IR Elevado',
+                `Glucosa: ${labValues.glucose} mg/dL, Insulina: ${labValues.insulin} µUI/mL | HOMA-IR = ${homa.toFixed(2)} (> 2.5). Resistencia periférica a la insulina`, 'ALTA');
+        }
+    } else if (labValues.hba1c >= 5.7) {
+        pushAnomaly('NODO_3_ENERGIA', 'OCR_LAB', `Hemoglobina Glucosilada Alterada (${labValues.hba1c}%)`,
+            `HbA1c = ${labValues.hba1c}%. Glicación proteica tisular fuera de rango óptimo`, labValues.hba1c >= 6.5 ? 'CRÍTICA' : 'ALTA');
+    }
+
+    // 3. Calcio Sérico (> 10.2 mg/dL) y Vitamina D
+    if (labValues.serumCalcium > 10.2) {
+        hasHighSerumCalciumOrCalcification = true;
+        pushAnomaly('NODO_7_ESTRUCTURAL', 'OCR_LAB', 'Calcio Sérico Elevado (Hipercalcemia Funcional)',
+            `Calcio sérico: ${labValues.serumCalcium} mg/dL (> 10.2 mg/dL). Alerta de desregulación mineral y riesgo de calcificación vascular`, 'ALTA');
+    }
+    if (labValues.vitaminD > 0 && labValues.vitaminD < 30) {
+        pushAnomaly('NODO_7_ESTRUCTURAL', 'OCR_LAB', 'Hipovitaminosis D (25-OH)',
+            `Vitamina D (25-OH): ${labValues.vitaminD} ng/mL (< 30 ng/mL). Deficiencia de mineralización esquelética`, 'MODERADA');
+    }
+
+    // 4. Biotransformación Hepatorrenal (Creatinina, TFG, BUN, Ácido Úrico, TGO/AST, TGP/ALT, GGT, Bilirrubinas)
+    if (labValues.alt > 35 || labValues.ast > 35 || labValues.ggt > 50 || labValues.bilirubin > 1.2 || labValues.uricAcid > 6.5 || labValues.creatinine > 1.2 || (labValues.gfr > 0 && labValues.gfr < 60)) {
+        pushAnomaly('NODO_2_BIOTRANSFORMACION', 'OCR_LAB', 'Sobrecarga de Biotransformación Hepatorrenal',
+            `Parámetros alterados: ${[
+                labValues.alt > 35 ? `ALT/TGP: ${labValues.alt} U/L` : null,
+                labValues.ast > 35 ? `AST/TGO: ${labValues.ast} U/L` : null,
+                labValues.ggt > 50 ? `GGT: ${labValues.ggt} U/L` : null,
+                labValues.bilirubin > 1.2 ? `Bilirrubina: ${labValues.bilirubin} mg/dL` : null,
+                labValues.uricAcid > 6.5 ? `Ácido Úrico: ${labValues.uricAcid} mg/dL` : null,
+                labValues.creatinine > 1.2 ? `Creatinina: ${labValues.creatinine} mg/dL` : null,
+                (labValues.gfr > 0 && labValues.gfr < 60) ? `TFG: ${labValues.gfr} mL/min` : null
+            ].filter(Boolean).join(' • ')}`, 'ALTA');
+    }
+
+    // 5. Transporte Vascular (Colesterol Total, LDL, PCR-us, Homocisteína)
+    if (labValues.totalCholesterol > 200 || labValues.ldl > 130 || labValues.hscrp > 1.0 || labValues.homocysteine > 12) {
+        pushAnomaly('NODO_5_TRANSPORTE', 'OCR_LAB', 'Sobrecarga Aterogénica e Inflamación Vascular',
+            `Marcadores vasculares: ${[
+                labValues.totalCholesterol > 200 ? `Colesterol Total: ${labValues.totalCholesterol} mg/dL` : null,
+                labValues.ldl > 130 ? `LDL: ${labValues.ldl} mg/dL` : null,
+                labValues.hscrp > 1.0 ? `PCR-us: ${labValues.hscrp} mg/L` : null,
+                labValues.homocysteine > 12 ? `Homocisteína: ${labValues.homocysteine} µmol/L` : null
+            ].filter(Boolean).join(' • ')}`, 'ALTA');
+    }
+
+    // 6. Defensa e Inmunología (Leucocitos, VSG, Ferritina)
+    if (labValues.leukocytes > 10000 || (labValues.leukocytes > 0 && labValues.leukocytes < 4000) || labValues.vsg > 20 || labValues.ferritin > 300) {
+        pushAnomaly('NODO_6_DEFENSA', 'OCR_LAB', 'Reactividad Inmunológica / Reactantes de Fase Aguda',
+            `Analitos: ${[
+                labValues.leukocytes ? `Leucocitos: ${labValues.leukocytes} /µL` : null,
+                labValues.vsg ? `VSG: ${labValues.vsg} mm/h` : null,
+                labValues.ferritin ? `Ferritina: ${labValues.ferritin} ng/mL` : null
+            ].filter(Boolean).join(' • ')}`, 'MODERADA');
+    }
+
+    // 7. Comunicación Neuroendocrina (TSH, T3 libre, T4 libre, Cortisol)
+    if (labValues.tsh > 4.5 || (labValues.tsh > 0 && labValues.tsh < 0.4) || labValues.cortisol > 20) {
+        pushAnomaly('NODO_4_COMUNICACION', 'OCR_LAB', 'Eje Neuroendocrino / Tiroideo-Adrenal Alterado',
+            `Hormonas: ${[
+                labValues.tsh ? `TSH: ${labValues.tsh} µUI/mL` : null,
+                labValues.cortisol ? `Cortisol: ${labValues.cortisol} µg/dL` : null
+            ].filter(Boolean).join(' • ')}`, 'MODERADA');
+    }
+
     // C. Anomalías de Bioimpedancia Cuántica Electret (Paso 1 de Fase 18)
     const electretCats = patientData?.scan_data?.electret_metrics || patientData?.electretTelemetry?.categories || {};
-    let hasHighSerumCalciumOrCalcification = false;
 
     if (electretCats && typeof electretCats === 'object') {
         Object.entries(electretCats).forEach(([catKey, catData]) => {
@@ -497,73 +757,139 @@ function distillClinicalSerum(patientData, isLactanteExplicit = false) {
     }
 
     // D. Hallazgos de Auditoría Ocular Binocular (Paso 2 de Fase 18)
-    const ocular = patientData?.scan_data?.ocular_metrics;
+    const ocular = patientData?.scan_data?.ocular_metrics || patientData?.ocular_metrics || patientData?.oculomics;
     if (ocular && ocular.status !== 'SKIPPED') {
         const ocSeverity = String(ocular.severity || 'LOW').toUpperCase();
         const ocFindings = ocular.findings || ocular.summary || '';
         const ocFlags = Array.isArray(ocular.clinical_flags) ? ocular.clinical_flags.join(', ') : '';
-        if (ocFindings || ocFlags) {
+        const fullOcText = `${ocFindings} ${ocFlags} ${JSON.stringify(ocular.pilares || {})}`.toUpperCase();
+
+        // 1. Palidez conjuntival -> Nodo 5 (Transporte) y Nodo 1 (Déficit de hierro/B12)
+        if (fullOcText.includes('PALIDEZ') || fullOcText.includes('CONJUNCTIVAL_PALLOR') || fullOcText.includes('ANEMIA')) {
+            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Palidez Conjuntival / Hipoperfusión Tisular',
+                'Signo de hipoperfusión microvascular detectable en lecho conjuntival tarsal', ocSeverity === 'HIGH' ? 'ALTA' : 'MODERADA');
+            pushAnomaly('NODO_1_ASIMILACION', 'OCULAR_VISION', 'Sospecha de Déficit Malabsortivo (Hierro / B12)',
+                'La palidez conjuntival sugiere compromiso en la asimilación y reserva de micronutrientes hematopoyéticos', 'MODERADA');
+        }
+
+        // 2. Esclera ictérica o congestión -> Nodo 2 (Sobrecarga hepatobiliar)
+        if (fullOcText.includes('ICTER') || fullOcText.includes('SUBICTER') || fullOcText.includes('CONGESTION') || fullOcText.includes('HIPEREMIA ESCLERAL')) {
+            pushAnomaly('NODO_2_BIOTRANSFORMACION', 'OCULAR_VISION', 'Cromatismo Escleral / Congestión Hepatobiliar',
+                'Tinte subictérico o congestión vascular en esclera compatible con sobrecarga en vías de eliminación hepatobiliar', 'ALTA');
+        }
+
+        // 3. Arco corneal / Xantelasmas -> Nodo 3 (Metabolismo lipídico) y Nodo 5 (Riesgo vascular)
+        if (fullOcText.includes('ARCO SENIL') || fullOcText.includes('ARCO CORNEAL') || fullOcText.includes('GERONTOXON') || fullOcText.includes('XANTELASMA')) {
+            pushAnomaly('NODO_3_ENERGIA', 'OCULAR_VISION', 'Depósito Lipídico Corneal (Arco Senil / Xantelasma)',
+                'Extravasación lipídica periférica corneal indicativa de dislipidemia y desregulación del metabolismo lipídico', 'ALTA');
+            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Riesgo Microvascular por Aterogénesis Ocular',
+                'Signo oftalmológico de depósito perivascular con correlación de riesgo aterosclerótico sistémico', 'ALTA');
+        }
+
+        if (ocFindings && !fullOcText.includes('PALIDEZ') && !fullOcText.includes('ICTER') && !fullOcText.includes('ARCO')) {
             pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Trofismo Microvascular Escleral/Conjuntival', `${ocFindings} ${ocFlags ? `[${ocFlags}]` : ''}`.trim(), ocSeverity === 'HIGH' ? 'ALTA' : 'MODERADA');
         }
     }
 
     // E. Hallazgos de Glosodiagnóstico 6 Ejes (Paso 3 de Fase 18)
-    const lingual = patientData?.scan_data?.lingual_metrics;
+    const lingual = patientData?.scan_data?.lingual_metrics || patientData?.lingual_metrics || patientData?.glosodiagnostico;
     if (lingual && lingual.status !== 'SKIPPED') {
         const lgFindings = lingual.findings || lingual.summary || '';
         const lgFlags = Array.isArray(lingual.clinical_flags) ? lingual.clinical_flags.join(', ') : '';
-        if (lgFindings || lgFlags) {
-            pushAnomaly('NODO_1_ASIMILACION', 'LINGUAL_VISION', 'Glosodiagnóstico Dorsal/Ventral', `${lgFindings} ${lgFlags ? `[${lgFlags}]` : ''}`.trim(), 'MODERADA');
+        const fullLgText = `${lgFindings} ${lgFlags} ${JSON.stringify(lingual.pilares || {})}`.toUpperCase();
+
+        // 1. Saburra espesa / amarilla / blanca y marcas dentales -> Nodo 1 (Asimilación y Disbiosis)
+        if (fullLgText.includes('SABURRA') || fullLgText.includes('MARCAS DENTALES') || fullLgText.includes('SCALLOPED') || fullLgText.includes('FESTONEADA') || fullLgText.includes('INDENTACION') || fullLgText.includes('BLANCA') || fullLgText.includes('AMARILLA')) {
+            pushAnomaly('NODO_1_ASIMILACION', 'LINGUAL_VISION', 'Saburra Patológica y/o Marcas Dentales (Disbiosis)',
+                `Glosodiagnóstico: Saburra alterada o bordes festoneados por edema mucoso. Compatible con permeabilidad intestinal y disbiosis`, 'ALTA');
         }
-        if (String(lgFindings).toUpperCase().includes('RANINA') || String(lgFindings).toUpperCase().includes('ESTASIS') || String(lgFindings).toUpperCase().includes('VENOSA')) {
-            pushAnomaly('NODO_5_TRANSPORTE', 'LINGUAL_VISION', 'Red Venosa Sublingual (Venas Raninas)', lgFindings, 'MODERADA');
+
+        // 2. Bordes rojizos / sobrecarga hepática -> Nodo 2 (Biotransformación)
+        if (fullLgText.includes('BORDES ROJ') || fullLgText.includes('BORDES ERITEMATOSOS') || fullLgText.includes('HEPATOBILIAR') || fullLgText.includes('FUEGO HEPATICO')) {
+            pushAnomaly('NODO_2_BIOTRANSFORMACION', 'LINGUAL_VISION', 'Eritema Lateral Lingual (Sobrecarga Hepatobiliar)',
+                'Hiperemia marcada en bordes laterales de la lengua correspondiente al territorio reflexológico hepatobiliar', 'ALTA');
+        }
+
+        // 3. Punta roja -> Nodo 4 (Estrés / HPA / Comunicación Neuroendocrina)
+        if (fullLgText.includes('PUNTA ROJA') || fullLgText.includes('RED TIP') || fullLgText.includes('ERITEMA APICAL') || fullLgText.includes('ESTRES') || fullLgText.includes('ESTRÉS') || fullLgText.includes('HPA')) {
+            pushAnomaly('NODO_4_COMUNICACION', 'LINGUAL_VISION', 'Punta Lingual Hiperémica (Hiperactividad Simpática / HPA)',
+                'Eritema en ápice lingual indicativo de sobrecarga adrenocortical, estrés neurovegetativo y alteración circadiana', 'ALTA');
+        }
+
+        // 4. Venas sublinguales ingurgitadas o cuerpo violáceo -> Nodo 5 (Reología / Microcirculación y Transporte)
+        if (fullLgText.includes('RANINA') || fullLgText.includes('SUBLINGUAL') || fullLgText.includes('ESTASIS') || fullLgText.includes('INGURGIT') || fullLgText.includes('VIOLACEO') || fullLgText.includes('VIOLÁCEO') || fullLgText.includes('CIANOSIS') || fullLgText.includes('PURPURA') || fullLgText.includes('PÚRPURA')) {
+            pushAnomaly('NODO_5_TRANSPORTE', 'LINGUAL_VISION', 'Estasis Venosa Sublingual / Microcirculación Hipóxica',
+                'Venas raninas dilatadas o tinte violáceo lingual compatible con lentitud reológica y sobrecarga venosa periférica', 'ALTA');
+        }
+
+        if (lgFindings && !fullLgText.includes('SABURRA') && !fullLgText.includes('BORDES') && !fullLgText.includes('PUNTA') && !fullLgText.includes('RANINA')) {
+            pushAnomaly('NODO_1_ASIMILACION', 'LINGUAL_VISION', 'Glosodiagnóstico Funcional', `${lgFindings} ${lgFlags ? `[${lgFlags}]` : ''}`.trim(), 'MODERADA');
         }
     }
 
-    // F. Hallazgos de Evidencia Somática Multi-Foto (Paso 5 de Fase 18)
-    const SOMATIC_TRANSLATE_MAP = {
-        'RETICULAR_ERYTHEMA': 'Eritema Reticular',
-        'PUNCTATE_MACULES': 'Máculas Puntiformes',
-        'MICROPAPULAR_ERUPTION': 'Erupción Micropapular',
-        'PERIFOLLICULAR_INVOLVEMENT': 'Compromiso Perifolicular',
-        'CUTANEOUS_EDEMA_SUPERFICIAL': 'Edema Cutáneo Superficial',
-        'SUPERFICIAL_CUTANEOUS_EDEMA': 'Edema Cutáneo Superficial',
-        'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED': 'Insuficiencia Venosa Crónica',
-        'CHRONIC_VENOUS_INSUFFICIENCY': 'Insuficiencia Venosa Crónica',
-        'VARICOSE_VEINS_HIGH_RISK': 'Riesgo Elevado de Várices',
-        'VENOUS_STASIS_DERMATITIS': 'Dermatitis por Estasis Venosa',
-        'EDEMA_PERIPHERAL_MODERATE': 'Edema Periférico Moderado',
-        'PERIPHERAL_EDEMA': 'Edema Periférico',
-        'HYPERPIGMENTATION': 'Hiperpigmentación Cutánea',
-        'HEMOSIDERIN_PIGMENTATION': 'Pigmentación por Hemosiderina',
-        'FOLLICULAR_HYPERKERATOSIS': 'Hiperqueratosis Folicular',
-        'XEROSIS_CUTIS': 'Xerosis Cutánea (Piel Seca)',
-        'TELANGIECTASIA': 'Telangiectasias Superficiales',
-        'VENOUS_ECTASIA': 'Ectasia Venosa'
-    };
-
+    // F. Hallazgos de Evidencia Somática Multi-Foto y Mapa Corporal (Paso 5 de Fase 18 + VisualBodyMap)
     const visual = patientData?.scan_data?.visual_metrics;
+    const somaticFindings = patientData?.somatic_findings || patientData?.body_zones || patientData?.VisualBodyMap || patientData?.mapaCorporal || [];
+    const allSomaticItems = [];
+
     if (visual && visual.status !== 'SKIPPED') {
-        const items = Array.isArray(visual.items) ? visual.items : [];
-        if (items.length > 0) {
-            items.forEach((it, idx) => {
-                const flagsStr = Array.isArray(it.clinical_flags)
-                    ? it.clinical_flags.map(f => SOMATIC_TRANSLATE_MAP[String(f).toUpperCase().replace(/\s+/g, '_')] || f).join(', ')
-                    : '';
-                pushAnomaly(
-                    'NODO_6_DEFENSA',
-                    'SOMATIC_VISION',
-                    `Evidencia Somática #${idx + 1} (${it.region || 'Región Cutánea'})`,
-                    `${it.finding || ''} ${flagsStr ? `[Hallazgos: ${flagsStr}]` : ''}`.trim(),
-                    String(it.severity || visual.severity || 'MODERADA').toUpperCase()
-                );
-            });
+        const vItems = Array.isArray(visual.items) ? visual.items : [];
+        if (vItems.length > 0) {
+            allSomaticItems.push(...vItems);
         } else if (visual.findings) {
-            const flagsStr = Array.isArray(visual.clinical_flags)
-                ? visual.clinical_flags.map(f => SOMATIC_TRANSLATE_MAP[String(f).toUpperCase().replace(/\s+/g, '_')] || f).join(', ')
-                : '';
-            pushAnomaly('NODO_6_DEFENSA', 'SOMATIC_VISION', 'Evidencia Somática Cutánea', `${visual.findings} ${flagsStr ? `[Hallazgos: ${flagsStr}]` : ''}`.trim(), 'MODERADA');
+            allSomaticItems.push({ region: 'Superficie Corporal', finding: visual.findings, clinical_flags: visual.clinical_flags, severity: visual.severity });
         }
+    }
+
+    if (Array.isArray(somaticFindings)) {
+        somaticFindings.forEach(sf => {
+            if (typeof sf === 'string') {
+                allSomaticItems.push({ region: 'Mapa Corporal', finding: sf, severity: 'MODERADA' });
+            } else if (typeof sf === 'object') {
+                allSomaticItems.push({
+                    region: sf.zone || sf.region || sf.label || sf.bodyPart || 'Zona Corporal',
+                    finding: sf.finding || sf.notes || sf.description || sf.symptom || 'Hallazgo somático reportado',
+                    severity: sf.severity || 'MODERADA',
+                    clinical_flags: sf.clinical_flags || sf.flags || []
+                });
+            }
+        });
+    }
+
+    if (allSomaticItems.length > 0) {
+        allSomaticItems.forEach((it, idx) => {
+            const region = it.region || `Zona #${idx + 1}`;
+            const desc = it.finding || '';
+            const flags = Array.isArray(it.clinical_flags) ? it.clinical_flags.join(', ') : (it.clinical_flags || '');
+            const fullSomText = `${region} ${desc} ${flags}`.toUpperCase();
+            const sev = String(it.severity || 'MODERADA').toUpperCase();
+
+            // 1. Acantosis nigricans o adiposidad localizada -> Nodo 3
+            if (fullSomText.includes('ACANTOSIS') || fullSomText.includes('NIGRICANS') || fullSomText.includes('ADIPOSIDAD') || fullSomText.includes('GRASA LOCALIZADA') || (fullSomText.includes('CUELLO') && fullSomText.includes('OSCURA'))) {
+                pushAnomaly('NODO_3_ENERGIA', 'SOMATIC_VISION', `Acantosis Nigricans / Adiposidad (${region})`,
+                    `${desc} ${flags ? `[${flags}]` : ''}. Marcador cutáneo de hiperinsulinemia y resistencia a la insulina`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
+            }
+
+            // 2. Edema maleolar, insuficiencia venosa, várices o cianosis -> Nodo 5
+            if (fullSomText.includes('EDEMA') || fullSomText.includes('MALEOLAR') || fullSomText.includes('VENOSA') || fullSomText.includes('VARICES') || fullSomText.includes('VÁRICES') || fullSomText.includes('HEMOSIDERINA') || fullSomText.includes('CIANOSIS')) {
+                pushAnomaly('NODO_5_TRANSPORTE', 'SOMATIC_VISION', `Insuficiencia Venosa / Edema Periférico (${region})`,
+                    `${desc} ${flags ? `[${flags}]` : ''}. Compromiso del retorno venoso y reología vascular`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
+            }
+
+            // 3. Dermatitis, eccema, psoriasis o lesiones en piel -> Nodo 6 (Defensa) y Nodo 1 (Intestino-Piel)
+            if (fullSomText.includes('DERMATITIS') || fullSomText.includes('ECCEMA') || fullSomText.includes('ECZEMA') || fullSomText.includes('PSORIASIS') || fullSomText.includes('ERITEMA') || fullSomText.includes('ERUPCION') || fullSomText.includes('ERUPCIÓN') || fullSomText.includes('PRURITO') || fullSomText.includes('LESION') || fullSomText.includes('LESIÓN')) {
+                pushAnomaly('NODO_6_DEFENSA', 'SOMATIC_VISION', `Reactividad Cutánea Inflamatoria (${region})`,
+                    `${desc} ${flags ? `[${flags}]` : ''}. Activación de respuesta inmunológica dérmica`, 'MODERADA');
+                pushAnomaly('NODO_1_ASIMILACION', 'SOMATIC_VISION', `Eje Intestino-Piel (${region})`,
+                    'Manifestación dérmica vinculada a hiperpermeabilidad mucosa e inmunotolerancia alterada', 'MODERADA');
+            }
+
+            // 4. Inflamación o dolor articular / musculoesquelético -> Nodo 7
+            if (fullSomText.includes('ARTICULAR') || fullSomText.includes('RODILLA') || fullSomText.includes('DOLOR') || fullSomText.includes('INFLAMACION') || fullSomText.includes('INFLAMACIÓN') || fullSomText.includes('ARTROSIS') || fullSomText.includes('ARTRITIS') || fullSomText.includes('COLUMNA') || fullSomText.includes('LUMBAR') || fullSomText.includes('CERVICAL') || fullSomText.includes('HOMBRO')) {
+                pushAnomaly('NODO_7_ESTRUCTURAL', 'SOMATIC_VISION', `Compromiso Estructural / Articular (${region})`,
+                    `${desc} ${flags ? `[${flags}]` : ''}. Alteración de la integridad biomecánica y articular`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
+            }
+        });
     }
 
     // Construir arreglo final de las 7 Micro-Cápsulas IFM con CIE-10 determinista pre-asignado
@@ -573,6 +899,7 @@ function distillClinicalSerum(patientData, isLactanteExplicit = false) {
         return {
             ...node,
             hasAnomalies,
+            anomaliesCount: node.anomalies.length,
             preAssignedCie10: resolvedCie.cie10,
             preAssignedLabel: resolvedCie.label,
             validation_status: resolvedCie.validation_status
@@ -581,7 +908,17 @@ function distillClinicalSerum(patientData, isLactanteExplicit = false) {
 
     return {
         nodes,
-        hasHighSerumCalciumOrCalcification
+        hasHighSerumCalciumOrCalcification,
+        combinedExclusions,
+        anamnesis360Context: {
+            chiefComplaint: patientQuote,
+            pathologiesCount: pathologies.length,
+            highRiskVitals: sys >= 130 || glu >= 100,
+            combinedExclusions,
+            isPregnant,
+            isLactating,
+            gestationWeeks
+        }
     };
 }
 
@@ -843,22 +1180,65 @@ function buildOrthomolecularPrescription(patientData, processedNodes, serum, bio
         .slice(0, 4)
         .map(translateBiomarkerToSpanish);
 
-    const sup33 = hasStimulantsConflict
+    const isPregnantOrLactating = Boolean(serum?.anamnesis360Context?.isPregnant || serum?.anamnesis360Context?.isLactating);
+    const switch33PlusToDecaf = Boolean(hasStimulantsConflict || isPregnantOrLactating);
+
+    // Protocolo Circadiano Dual de 4 Tomas (🔴 33Plus® y 🟢 34Plus®)
+    const circadianSchedule = [
+        {
+            tomaNumber: 1,
+            timeSlot: "04:00 hrs (Al Despertar / Alba)",
+            phase: "FASE DIURNA — Ignición Mitocondrial y Biogénesis",
+            formula: switch33PlusToDecaf ? "🔴 33Plus® (Variante Modulada Sin Estimulantes)" : "🔴 33Plus® (Fórmula Maestra de Ignición)",
+            dosage: "1 sobre (10g) diluido en 300 ml de agua tibia",
+            clinicalObjective: "Inducción rápida de ATP mitocondrial, oxigenación cerebral y activación del ciclo de Krebs.",
+            waterVolumeMl: 300
+        },
+        {
+            tomaNumber: 2,
+            timeSlot: "09:30 hrs (Media Mañana)",
+            phase: "FASE DIURNA — Rendimiento Cognitivo y Estabilidad Metabólica",
+            formula: switch33PlusToDecaf ? "🔴 33Plus® (Variante Modulada Sin Estimulantes)" : "🔴 33Plus® (Fórmula Maestra de Ignición)",
+            dosage: "1 sobre (10g) diluido en 300 ml de agua a temperatura ambiente",
+            clinicalObjective: "Sostén de neurotransmisores catecolaminérgicos, concentración sostenida y modulación termogénica limpia.",
+            waterVolumeMl: 300
+        },
+        {
+            tomaNumber: 3,
+            timeSlot: "15:00 hrs (Media Tarde)",
+            phase: "FASE VESPERTINA — Homeostasis Tisular y Desinflamación",
+            formula: "🟢 34Plus® (Fórmula Maestra de Regeneración Tisular)",
+            dosage: "1 sobre (10g) diluido en 500 ml de agua purificada 💧",
+            clinicalObjective: "Reparación de la barrera enterocitaria intestinal, alcalinización sistémica y modulación del estrés oxidativo vespertino.",
+            waterVolumeMl: 500
+        },
+        {
+            tomaNumber: 4,
+            timeSlot: "20:30 hrs (Previa al Sueño / Anabolismo Nocturno)",
+            phase: "FASE NOCTURNA — Reconstrucción Miofascial y Carga Anabólica Somatotrópica",
+            formula: "🟢 34Plus® (Fórmula Maestra de Regeneración Tisular)",
+            dosage: "1 sobre (10g) diluido en 500 ml de agua purificada 💧",
+            clinicalObjective: "Inducción del anabolismo profundo nocturno de las 21:00 hrs, cross-linking de colágeno tipo I/III, remineralización y detoxificación de matriz celular.",
+            waterVolumeMl: 500
+        }
+    ];
+
+    const sup33 = switch33PlusToDecaf
         ? {
             id: 'sup_33plus',
             cortex: '33Plus® (Modulación Mitocondrial con Candado NOM-028)',
-            name: 'L-Teanina Pura + Picolinato de Cromo (Protocolo Libre de Estimulantes)',
-            dosage: '150 mg L-Teanina + 200 mcg Cromo al día',
-            timing: 'Por la mañana con el primer alimento',
-            rationale: `⚠️ BLOQUEO DE BIOSEGURIDAD (NOM-028): Se suspendieron xantinas/termogénicos por interacción farmacológica o sensibilidad simpaticomimética. Se indica modulación nootrópica y sensibilidad insulínica libre de estimulantes${energyBiomarkers.length > 0 ? ` para atender: ${energyBiomarkers.join(' | ')}` : ''}.`,
+            name: '33 PLUS® (Protocolo Libre de Estimulantes) - L-Teanina Pura, CoQ10, Cromo (200mcg) y Polifenoles',
+            dosage: '2 tomas al día: Toma 1 (04:00 hrs) y Toma 2 (09:30 hrs), cada una en 300 ml de agua tibia',
+            timing: 'Cronobiología Matutina Circadiana (04:00 y 09:30 hrs)',
+            rationale: `⚠️ BLOQUEO DE BIOSEGURIDAD (NOM-028 / Fisiológico): Conmutación a variante libre de estimulantes para resguardar la hemodinámica y neuroestabilidad${energyBiomarkers.length > 0 ? ` para atender: ${energyBiomarkers.join(' | ')}` : ''}.`,
             status: 'approved'
         }
         : {
             id: 'sup_33plus',
             cortex: '33Plus® (Ignición Mitocondrial y Reología Vascular)',
             name: '33 PLUS® - Polifenoles de Semilla de Uva, CoQ10, Cromo (200mcg) y L-Teanina',
-            dosage: '1 toma al día (disuelto en 250 ml de agua temp. ambiente)',
-            timing: 'Por la mañana con el primer alimento',
+            dosage: '2 tomas al día: Toma 1 (04:00 hrs) y Toma 2 (09:30 hrs), cada una en 300 ml de agua tibia',
+            timing: 'Cronobiología Matutina Circadiana (04:00 y 09:30 hrs)',
             rationale: energyBiomarkers.length > 0
                 ? `Prescripción dirigida por hallazgos en expediente (${energyBiomarkers.join(' | ')}): optimiza la oxidación de lipoproteínas aterogénicas (LDL/sdLDL), reduce la viscosidad sanguínea y mejora la perfusión endotelial diurna.`
                 : 'Optimización de microcirculación, oxigenación tisular diurna y sensibilidad a la insulina.',
@@ -869,8 +1249,8 @@ function buildOrthomolecularPrescription(patientData, processedNodes, serum, bio
         id: 'sup_34plus',
         cortex: '34Plus® (Ingeniería Tisular y Homeostasis Mucosa)',
         name: '34 PLUS® - Péptidos de Colágeno Hidrolizado, Vitamina C, L-Arginina e Inulina Prebiótica',
-        dosage: '1 toma al día (disuelto en MÍNIMO 500 ml de agua 💧)',
-        timing: 'Por la noche (60 min antes de dormir)',
+        dosage: '2 tomas al día: Toma 3 (15:00 hrs) y Toma 4 (20:30 hrs), cada una en MÍNIMO 500 ml de agua 💧',
+        timing: 'Cronobiología Vespertina / Nocturna Circadiana (15:00 y 20:30 hrs)',
         rationale: tissueBiomarkers.length > 0
             ? `Prescripción dirigida por hallazgos tisulares/inmunológicos (${tissueBiomarkers.join(' | ')}): promueve la regeneración de la barrera epitelial y matriz dérmica durante el sueño profundo. La dilución en 500 ml de agua es obligatoria para proteger el vaciado gástrico y el aclaramiento glinfático.`
             : 'Reparación de matriz extracelular y trofismo mucoso nocturno. Dilución obligatoria en 500 ml de agua para favorecer el aclaramiento glinfático.',
@@ -878,9 +1258,16 @@ function buildOrthomolecularPrescription(patientData, processedNodes, serum, bio
     };
 
     return {
+        protocolName: "Protocolo Circadiano Dual de Restauración Celular (33Plus® & 34Plus®)",
+        dietaryPlan: {
+            regimen: "NutriKeto Personalizado",
+            universalExclusions: ["0 Picante", "0 Cerdo", "0 Azúcares refinados"],
+            patientSpecificExclusions: serum?.combinedExclusions || []
+        },
+        circadianSchedule,
         supplements: [sup33, sup34],
-        has_calcium_contraction_lock: Boolean(serum.hasHighSerumCalciumOrCalcification),
-        calcium_alert_text: serum.hasHighSerumCalciumOrCalcification
+        has_calcium_contraction_lock: Boolean(serum?.hasHighSerumCalciumOrCalcification),
+        calcium_alert_text: serum?.hasHighSerumCalciumOrCalcification
             ? 'Se detectaron indicadores de sobrecarga cálcica o calcificación tisular en telemetría. Se contraindican sales de calcio inorgánico aisladas y se prioriza direccionamiento con Vitamina K2 (MK-7) + Magnesio.'
             : null,
         bioenergetics_summary: bioenergetics
@@ -910,7 +1297,12 @@ const synthesizeDossier = async (req, res) => {
             const row = stmtSelect.get(citationId.toString());
 
             if (row && row.patient_data_snapshot) {
-                patientData = JSON.parse(row.patient_data_snapshot || '{}');
+                const rawSnapshot = cryptoVault.decryptClinicalData(row.patient_data_snapshot);
+                try {
+                    patientData = typeof rawSnapshot === 'string' ? JSON.parse(rawSnapshot || '{}') : (rawSnapshot || {});
+                } catch (pe) {
+                    patientData = {};
+                }
             } else {
                 patientData = {};
             }
@@ -1287,7 +1679,15 @@ const approveDossier = async (req, res) => {
                 last_updated = CURRENT_TIMESTAMP
         `);
 
-        stmtSave.run(citationId.toString(), nextPhase, nextBlock, JSON.stringify(patientData));
+        const cipherSnapshot = cryptoVault.encryptClinicalData(patientData);
+        stmtSave.run(citationId.toString(), nextPhase, nextBlock, cipherSnapshot);
+
+        cryptoVault.appendAuditLedger({
+            actorId: 'SPECIALIST_SHERPA',
+            action: 'APPROVE_DOSSIER',
+            patientId: citationId.toString(),
+            payload: { phase: nextPhase, approvedAt: new Date().toISOString() }
+        });
 
         console.log(`💾 [RLHF SUCCESS] Expediente v2.4 sellado con deltas de especialista para Cita #${citationId}`);
         res.json({ success: true, message: "Expediente sellado por el especialista con metadatos RLHF." });
@@ -1298,9 +1698,64 @@ const approveDossier = async (req, res) => {
     }
 };
 
+/**
+ * POST /api/cortex/presync-baseline
+ * Persiste silenciosamente el snapshot basal completo ($T_0$) de los 245 biomarcadores
+ * antes de la reducción del payload de red, blindando la línea base para revaloración a 28 días.
+ */
+const presyncBaselineSnapshot = async (req, res) => {
+    const { citationId, rawPatientData, electret245Baseline } = req.body;
+
+    if (!citationId) {
+        return res.status(400).json({ success: false, message: "Falta el parámetro citationId." });
+    }
+
+    try {
+        const fullBaseline = {
+            ...(rawPatientData || {}),
+            electretTelemetry: electret245Baseline || rawPatientData?.electretTelemetry || {},
+            presyncedAt: new Date().toISOString(),
+            isBaselineT0: true
+        };
+
+        const cipherSnapshot = cryptoVault.encryptClinicalData(fullBaseline);
+
+        const stmt = db.prepare(`
+            INSERT INTO session_persistence (citation_id, last_active_phase, last_active_block, patient_data_snapshot, is_completed, last_updated)
+            VALUES (?, 19, 'BASELINE_T0', 0, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(citation_id) DO UPDATE SET
+                patient_data_snapshot = excluded.patient_data_snapshot,
+                last_active_phase = 19,
+                last_active_block = 'BASELINE_T0',
+                last_updated = CURRENT_TIMESTAMP
+        `);
+        stmt.run(citationId.toString(), cipherSnapshot);
+
+        cryptoVault.appendAuditLedger({
+            actorId: 'CORTEX_PRESYNC',
+            action: 'PRESYNC_BASELINE_T0',
+            patientId: citationId.toString(),
+            payload: { baselineSaved: true, timestamp: new Date().toISOString() }
+        });
+
+        console.log(`💾 [PRESYNC T0] Línea base de 245 biomarcadores Electret asegurada para Cita #${citationId}`);
+        res.json({
+            success: true,
+            message: "Línea base cuántica T0 de 245 biomarcadores preservada exitosamente en SQLite.",
+            citationId
+        });
+    } catch (err) {
+        console.error("🔥 Error en presyncBaselineSnapshot:", err.message);
+        res.status(500).json({ success: false, message: "Error al presincronizar la línea base T0.", details: err.message });
+    }
+};
+
 module.exports = {
     synthesizeDossier,
     approveDossier,
+    presyncBaselineSnapshot,
+    distillClinicalSerum,
+    buildOrthomolecularPrescription,
     calculatePrecisionWeights,
     calculatePrecisionBioenergetics,
     processCortexNodesInBatches

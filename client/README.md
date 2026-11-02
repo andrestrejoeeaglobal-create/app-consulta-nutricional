@@ -1,16 +1,25 @@
-# React + Vite
+# Client (App Consulta Nutricional Frontend)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Overview
+Single Page Application (SPA) clínica construida con React 19 y Vite para el ecosistema T.I.L.O. / Equipo en Acción®. Gestiona la toma de consulta nutricional completa a través de un flujo estructurado de 21 fases clínicas (anamnesis, signos vitales, antropometría, bio-resonancia Electret, semiótica de lengua e iris, formulación ortomolecular y entrega de plan terapéutico).
 
-Currently, two official plugins are available:
+## Interface
+- `src/main.jsx`: Punto de entrada DOM de React con Vite HMR.
+- `src/App.jsx`: Componente maestro de consulta nutricional; orquesta la máquina de estados de las 21 fases clínicas y renderizado de módulos.
+- `src/store/useClinicalGenome.js`: Estado global reactivo con Zustand que preserva el genoma clínico del paciente en sesión.
+- `src/services/InteractionEngine.js`: Motor de detección y validación de interacciones fármaco-nutriente y compatibilidad metabólica.
+- `src/ClinicalRules.js`: Conjunto de heurísticas clínicas y reglas de cálculo antropométrico (TMB, IMC, fórmulas Mifflin-St Jeor / Harris-Benedict).
+- `src/SafetyEngine.js`: Motor de alertas y contraindicaciones clínicas según normativa sanitaria.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Invariants
+- Invarianza de layout y Thumb Zone: La arquitectura visual, ergonomía táctil y rejilla de componentes deben mantenerse estables sin colapsar vistas activas.
+- Integridad de fases: La navegación entre las fases clínicas (Fase 1 a 21) debe preservar el estado del paciente sin pérdida de datos en memoria local o store.
+- Las animaciones con Framer Motion y simulaciones DOM con Matter.js no deben bloquear el hilo principal de renderizado ni la interactividad del teclado/touch.
 
-## React Compiler
+## Side Effects
+- Peticiones HTTP vía Axios a endpoints locales del servidor (`/api/cortex`, `/api/bio`, `/api/clinical/validate-appointment`).
+- Almacenamiento local temporal en `localStorage` / `sessionStorage` para recuperación ante caídas.
+- Generación de reportes PDF en el cliente mediante `html2pdf.js`.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Verification
+- Run: `npm run build`

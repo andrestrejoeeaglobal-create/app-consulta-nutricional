@@ -41,18 +41,22 @@ export default function App() {
   const [isFinished, setIsFinished] = useState(false);
   const [input, setInput] = useState("");
   const [isValidating, setIsValidating] = useState(false);
+  const [patientSnapshot, setPatientSnapshot] = useState(null);
 
   const { telemetryData, isSyncing, safetyStatus } = useH7Telemetry();
-  const { deltaMetrics, isScanning } = useDeltaElectret();
+  const { deltaMetrics, isScanning } = useDeltaElectret(patientSnapshot, sessionInfo.citation);
 
   const patientData = {
     identificacion: {
       nombre: isIdentityConfirmed ? sessionInfo.patientName : "---",
-      edad: "12 Meses",
-      sexo: "Femenino",
+      edad: patientSnapshot?.identificacion?.edad ? `${patientSnapshot.identificacion.edad} Años` : (sessionInfo.patientAge || "45 Años"),
+      sexo: patientSnapshot?.identificacion?.sexo || sessionInfo.patientSex || "Femenino",
       usuarioId: sessionInfo.userId || "---",
       citaId: sessionInfo.citation || "---"
-    }
+    },
+    electret_scan_data: patientSnapshot?.electret_scan_data || null,
+    biometria: patientSnapshot?.biometria || null,
+    estiloVida: patientSnapshot?.estiloVida || null
   };
 
   // Historial del Chat Conversacional con Tilo en Fase 0
@@ -219,15 +223,19 @@ export default function App() {
 
         if (data.valid && data.allowedApp2) {
           // ✅ ACCESO PERMITIDO A APP 2 (ESTUDIO COMPLETO PREVIO)
-          const pName = data.patientData?.name || 'JOSE LUIS IGLESIAS RAMON';
-          const pUser = String(data.patientData?.userId || '79890');
+          const pName = data.patientData?.name || 'ROSA MENDEZ PADRON';
+          const pUser = String(data.patientData?.userId || '165');
           const pCita = String(data.patientData?.idCita || userMsg);
+          const pInfo = data.patientData?.info || null;
 
+          setPatientSnapshot(pInfo);
           setSessionInfo(prev => ({
             ...prev,
             userId: pUser,
             citation: pCita,
-            patientName: pName
+            patientName: pName,
+            patientAge: pInfo?.identificacion?.edad ? `${pInfo.identificacion.edad} Años` : "45 Años",
+            patientSex: pInfo?.identificacion?.sexo || "Femenino"
           }));
           setIsIdentityConfirmed(true);
 

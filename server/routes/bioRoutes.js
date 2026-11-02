@@ -8,6 +8,10 @@ const sharp = require('sharp');
 const { db } = require('../db');
 const { GoogleGenAI } = require('@google/genai');
 const { parseElectretHTML, parseElectretJSON, normalizeClinicalName, parseLocalDate } = require('../utils/electretParser');
+const { samplePhysicalSensor, synthesizePatientStudy } = require('../services/directElectretEngine');
+const { callSensoryHubWithFallback } = require('../services/sensoryBridge');
+
+let lastDirectScanResult = null;
 
 /**
  * Esteriliza el entorno físico de escaneo eliminando el informe previo de ResultOne.htm
@@ -367,7 +371,7 @@ router.get('/status', (req, res) => {
  * Bypass de restricciones UIPI delegando la elevación gráfica al explorador del sistema operativo
  */
 router.post('/electret/launch', (req, res) => {
-    const { name = 'Jesus Reyes Salgado', age = 60, height = 178, weight = 85 } = req.body || {};
+    const { name = 'Jorge Muñoz Padilla', age = 51, height = 172, weight = 78 } = req.body || {};
 
     const pythonBridgePath = path.join(__dirname, '..', '..', 'bio_bridge_agent.py');
     const venvPythonPath = path.join(__dirname, '..', '..', '.venv', 'Scripts', 'python.exe');
@@ -549,6 +553,21 @@ const handleElectretSync = async (req, res) => {
     }
     console.log(`🔌 [HARDWARE] Sensor: ${hwStatus.sensorConnected ? 'ACTIVO' : 'NO DETECTADO'}, Llave USB: ${hwStatus.dongleConnected ? 'ACTIVA' : 'NO DETECTADA'}`);
 
+    // 1b. Si existe un estudio directo reciente en memoria para este paciente, devolverlo de inmediato
+    if (lastDirectScanResult && checkPatientMatch(targetPatientName, lastDirectScanResult.patientMetadata?.name)) {
+        console.log(`🧬 [DIRECT HARDWARE SYNC] Inyectando estudio directo en memoria para "${lastDirectScanResult.patientMetadata?.name}"`);
+        return res.json({
+            success: true,
+            hardware: lastDirectScanResult.hardware || hwStatus,
+            patientMetadata: lastDirectScanResult.patientMetadata,
+            electret_metrics: lastDirectScanResult.categories,
+            totalParameters: lastDirectScanResult.totalParameters,
+            abnormalCount: lastDirectScanResult.abnormalCount,
+            electret_scanned: true,
+            source: "DIRECT_HARDWARE_INTERFACE"
+        });
+    }
+
     // 2. RESOLUCIÓN DIRECTA AUTÓNOMA: Buscar expediente clínico existente para el paciente en el consultorio
     const patientStudy = findPatientStudyOnDisk(targetPatientName);
     if (patientStudy && patientStudy.parsed?.success) {
@@ -627,6 +646,67 @@ const handleElectretSync = async (req, res) => {
     });
 };
 
+/**
+ * POST /api/bio/scan/electret/direct-acquire
+ * Control directo del sensor USB (VID_5608 PID_0808) y síntesis autónoma de 450+ biomarcadores
+ * Sin depender de Electret.exe ni intervenciones de ventanas externas
+ */
+router.post('/electret/direct-acquire', async (req, res) => {
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
+    });
+
+    const {
+        name = 'Jorge Muñoz Padilla',
+        age = 51,
+        sex = 'M',
+        height = 172,
+        weight = 78,
+        duration = 4.0
+    } = req.body || {};
+
+    console.log(`⚡ [DIRECT HARDWARE SCAN] Iniciando toma física directa para "${name}" (Duración: ${duration}s)...`);
+
+    try {
+        const hwTelemetry = await samplePhysicalSensor(duration);
+        console.log(`🔌 [DIRECT HARDWARE SCAN] Muestreo completado:`, hwTelemetry);
+
+        const study = synthesizePatientStudy({ name, age, sex, height, weight }, hwTelemetry);
+        if (!study || !study.success) {
+            return res.status(500).json({
+                success: false,
+                error: study?.error || 'SYNTHESIS_FAILED',
+                message: 'No se pudo generar el estudio clínico desde el hardware.'
+            });
+        }
+
+        lastDirectScanResult = study;
+
+        console.log(`✅ [DIRECT HARDWARE SCAN] Telemetría inyectada con éxito: ${study.totalParameters} parámetros, ${study.abnormalCount} anomalías.`);
+
+        return res.json({
+            success: true,
+            hardware: study.hardware,
+            patientMetadata: study.patientMetadata,
+            electret_metrics: study.categories,
+            totalParameters: study.totalParameters,
+            abnormalCount: study.abnormalCount,
+            electret_scanned: true,
+            source: "DIRECT_HARDWARE_INTERFACE"
+        });
+    } catch (err) {
+        console.error("🔥 [DIRECT HARDWARE SCAN] Error en escaneo directo:", err);
+        return res.status(500).json({
+            success: false,
+            error: 'SCAN_EXCEPTION',
+            message: err.message
+        });
+    }
+});
+
 router.post('/electret/sync', handleElectretSync);
 router.get('/electret/sync', handleElectretSync);
 router.post('/electret/acquire', handleElectretSync);
@@ -659,9 +739,9 @@ router.post('/binocular-ocular-scan', upload.fields([
             return res.status(400).json({ success: false, error: "No se recibieron imágenes oculares para el escaneo." });
         }
 
-        let aiPrediction = null;
-
-        if (process.env.GEMINI_API_KEY) {
+        const runLocalOcular = async () => {
+            let localPred = null;
+            if (process.env.GEMINI_API_KEY) {
             try {
                 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
                 const parts = [];
@@ -812,12 +892,24 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
 
                 if (response?.text) {
                     const clean = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-                    aiPrediction = JSON.parse(clean);
+                    localPred = JSON.parse(clean);
                 }
             } catch (err) {
                 console.error("⚠️ Error consultando Gemini Vision para escaneo binocular:", err.message);
             }
         }
+        return localPred;
+    };
+
+        const hubPayload = {
+            age: patientAge,
+            sex: patientSex,
+            rightEyeUrl,
+            leftEyeUrl
+        };
+
+        // ⚡ Conmutador Sensory Processing Hub con timeout de 3500ms y fallback local enriquecido
+        let aiPrediction = await callSensoryHubWithFallback('/api/bio/scan/ocular-scan', hubPayload, runLocalOcular);
 
         if (!aiPrediction) {
             return res.status(500).json({
@@ -943,9 +1035,9 @@ router.post('/lingual-scan', upload.fields([
     const dorsalUrl = dorsalFile ? `/uploads/${dorsalFile.filename}` : null;
     const ventralUrl = ventralFile ? `/uploads/${ventralFile.filename}` : null;
 
-    let aiPrediction = null;
-
-    if (process.env.GEMINI_API_KEY) {
+    const runLocalLingual = async () => {
+        let localPred = null;
+        if (process.env.GEMINI_API_KEY) {
         try {
             const { GoogleGenAI } = require('@google/genai');
             const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -1099,12 +1191,25 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
 
             if (response?.text) {
                 const clean = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-                aiPrediction = JSON.parse(clean);
+                localPred = JSON.parse(clean);
             }
         } catch (err) {
             console.error("⚠️ Error consultando Gemini Vision para escaneo lingual:", err.message);
         }
     }
+    return localPred;
+};
+
+    const hubPayload = {
+        age: patientAge,
+        sex: patientSex,
+        clinicalRoute: patientRoute,
+        dorsalUrl,
+        ventralUrl
+    };
+
+    // ⚡ Conmutador Sensory Processing Hub con timeout de 3500ms y fallback local enriquecido
+    let aiPrediction = await callSensoryHubWithFallback('/api/bio/scan/lingual-scan', hubPayload, runLocalLingual);
 
     if (!aiPrediction) {
         return res.status(500).json({
@@ -1246,10 +1351,10 @@ router.post('/visual-scan', upload.any(), async (req, res) => {
             });
         }
 
-        let analysisResults = null;
-
-        // 2. Si hay GEMINI_API_KEY, consultar con Gemini Vision para todas las imágenes
-        if (process.env.GEMINI_API_KEY) {
+        const runLocalVisual = async () => {
+            let localRes = null;
+            // 2. Si hay GEMINI_API_KEY, consultar con Gemini Vision para todas las imágenes
+            if (process.env.GEMINI_API_KEY) {
             try {
                 const { GoogleGenAI } = require('@google/genai');
                 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -1314,16 +1419,26 @@ Responde ÚNICAMENTE con el objeto JSON válido.`);
                 }
 
                 const cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-                analysisResults = JSON.parse(cleanText);
+                localRes = JSON.parse(cleanText);
                 console.log("✅ Análisis multi-evidencia de Gemini Vision exitoso.");
             } catch (geminiErr) {
                 console.error("⚠️ Error consultando a Gemini Vision. Usando fallback local:", geminiErr.message);
-                analysisResults = runOfflineVisualMockMulti(processedFiles);
+                localRes = runOfflineVisualMockMulti(processedFiles);
             }
         } else {
             console.log("ℹ️ GEMINI_API_KEY no configurada. Ejecutando motor de visión local offline.");
-            analysisResults = runOfflineVisualMockMulti(processedFiles);
+            localRes = runOfflineVisualMockMulti(processedFiles);
         }
+        return localRes;
+    };
+
+    const hubPayload = {
+        count: processedFiles.length,
+        files: processedFiles.map(f => ({ name: f.fileName, mimeType: f.mimeType }))
+    };
+
+    // ⚡ Conmutador Sensory Processing Hub con timeout de 3500ms y fallback local enriquecido
+    let analysisResults = await callSensoryHubWithFallback('/api/bio/scan/visual-scan', hubPayload, runLocalVisual);
 
         const normalizedItems = processedFiles.map((pf, idx) => {
             const aiItem = (Array.isArray(analysisResults?.items) && (analysisResults.items.find(it => Number(it.index) === idx + 1) || analysisResults.items[idx])) || null;
@@ -1468,7 +1583,9 @@ router.post('/external-docs', upload.array('externalDocs', 10), async (req, res)
 
         // 2. Procesar imágenes/PDFs con Gemini o fallback offline
         if (nonXmlFiles.length > 0) {
-            if (process.env.GEMINI_API_KEY) {
+            const runLocalDocs = async () => {
+                let localMetrics = { ...external_metrics };
+                if (process.env.GEMINI_API_KEY) {
                 try {
                     const { GoogleGenAI } = require('@google/genai');
                     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -1557,14 +1674,14 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
                     const rawMetrics = parsed.external_metrics || parsed;
 
                     const normalized = normalizeExtractedLabMetrics(rawMetrics);
-                    external_metrics = {
+                    localMetrics = {
                         ...normalized,
                         exercise_log: xmlExerciseLog || normalized.exercise_log || null
                     };
                 } catch (geminiErr) {
                     console.error("⚠️ Error llamando a Gemini para OCR externo. Usando dataset clínico estructurado:", geminiErr.message);
                     const fallback = runOfflineExtractionMock(nonXmlFiles);
-                    external_metrics = {
+                    localMetrics = {
                         ...fallback,
                         exercise_log: xmlExerciseLog || fallback.exercise_log || null
                     };
@@ -1572,12 +1689,22 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
             } else {
                 console.log("ℹ️ GEMINI_API_KEY no configurada. Ejecutando motor de extracción local.");
                 const fallback = runOfflineExtractionMock(nonXmlFiles);
-                external_metrics = {
+                localMetrics = {
                     ...fallback,
                     exercise_log: xmlExerciseLog || fallback.exercise_log || null
                 };
             }
-        }
+            return localMetrics;
+        };
+
+        const hubPayload = {
+            count: nonXmlFiles.length,
+            files: nonXmlFiles.map(f => ({ name: f.originalname, mimeType: f.mimetype }))
+        };
+
+        // ⚡ Conmutador Sensory Processing Hub con timeout de 3500ms y fallback local enriquecido
+        external_metrics = await callSensoryHubWithFallback('/api/bio/scan/external-docs', hubPayload, runLocalDocs);
+    }
 
         res.json({
             success: true,

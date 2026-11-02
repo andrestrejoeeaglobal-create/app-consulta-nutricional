@@ -52,23 +52,24 @@ function pruneTelemetryPayloadForNetwork(rawPatientData, electretTelemetry, iden
         const prunedSections = {};
         Object.entries(rawExt.sections || {}).forEach(([secKey, secObj]) => {
             const items = Array.isArray(secObj?.items) ? secObj.items : (Array.isArray(secObj) ? secObj : []);
-            const abnormalItems = items.filter(it => {
-                const st = String(it?.status || '').toUpperCase();
-                return st && st !== 'NORMAL' && st !== 'OPTIMAL' && st !== 'OPTIMO' && st !== 'NEGATIVO';
-            }).map(it => ({
+            // Preservar todos los analitos de laboratorio con sus valores numéricos íntegros (para cálculo de índices funcionales TG/HDL, HOMA-IR, etc.)
+            const cleanItems = items.map(it => ({
                 name: it.name || it.label || it.parameter,
-                value: it.value,
+                val: it.val ?? it.value,
+                value: it.value ?? it.val,
                 unit: it.unit,
                 ref: it.ref || it.reference,
-                status: it.status
+                status: it.status || 'NORMAL'
             }));
-            if (abnormalItems.length > 0) {
-                prunedSections[secKey] = { items: abnormalItems };
+            if (cleanItems.length > 0) {
+                prunedSections[secKey] = { items: cleanItems };
             }
         });
         prunedExt = {
             abnormalCount: rawExt.abnormalCount,
-            sections: prunedSections
+            sections: prunedSections,
+            labs: rawExt.labs || null,
+            biomarkers: rawExt.biomarkers || null
         };
     }
 
@@ -76,14 +77,16 @@ function pruneTelemetryPayloadForNetwork(rawPatientData, electretTelemetry, iden
         status: rawScan.ocular_metrics.status,
         severity: rawScan.ocular_metrics.severity,
         findings: rawScan.ocular_metrics.findings,
-        clinical_flags: rawScan.ocular_metrics.clinical_flags || []
+        clinical_flags: rawScan.ocular_metrics.clinical_flags || [],
+        pilares: rawScan.ocular_metrics.pilares || null
     } : null;
 
     const prunedLingual = rawScan.lingual_metrics ? {
         status: rawScan.lingual_metrics.status,
         severity: rawScan.lingual_metrics.severity,
         findings: rawScan.lingual_metrics.findings,
-        clinical_flags: rawScan.lingual_metrics.clinical_flags || []
+        clinical_flags: rawScan.lingual_metrics.clinical_flags || [],
+        pilares: rawScan.lingual_metrics.pilares || null
     } : null;
 
     const prunedVisual = rawScan.visual_metrics ? {
@@ -111,6 +114,10 @@ function pruneTelemetryPayloadForNetwork(rawPatientData, electretTelemetry, iden
             lingual_metrics: prunedLingual,
             visual_metrics: prunedVisual
         },
+        lab_results: base.lab_results || rawExt?.labs || null,
+        somatic_findings: base.somatic_findings || base.body_zones || base.VisualBodyMap || null,
+        body_zones: base.body_zones || null,
+        VisualBodyMap: base.VisualBodyMap || null,
         identityLock,
         isLactante: isLactante || base.isLactante || (identityLock?.patientInfo?.age < 2),
         isPediatrico: isPediatrico || base.isPediatrico || (identityLock?.patientInfo?.age < 18),
@@ -953,6 +960,48 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                         </div>
                     )}
 
+                    {/* Cronobiología Circadiana de 4 Tomas (🔴 33Plus® y 🟢 34Plus®) */}
+                    <div className="mt-4 pt-3 border-t border-slate-100">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                                ⏱️ Cronobiología Circadiana de 4 Tomas (33Plus® / 34Plus®)
+                            </span>
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                NutriKeto (0 Picante • 0 Cerdo • 0 Azúcares)
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <div className="bg-red-50/50 border border-red-200/70 rounded-xl p-2.5 space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span className="font-extrabold text-[#E30613] text-[11px]">🔴 Toma 1 (04:00 hrs)</span>
+                                    <span className="text-[10px] text-slate-500 font-medium">300 ml agua tibia</span>
+                                </div>
+                                <p className="text-[10.5px] text-slate-700 leading-snug">33Plus®: Ignición mitocondrial, oxigenación y producción limpia de ATP.</p>
+                            </div>
+                            <div className="bg-red-50/50 border border-red-200/70 rounded-xl p-2.5 space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span className="font-extrabold text-[#E30613] text-[11px]">🔴 Toma 2 (09:30 hrs)</span>
+                                    <span className="text-[10px] text-slate-500 font-medium">300 ml agua</span>
+                                </div>
+                                <p className="text-[10.5px] text-slate-700 leading-snug">33Plus®: Enfoque cognitivo, catecolaminas y modulación termogénica.</p>
+                            </div>
+                            <div className="bg-emerald-50/50 border border-emerald-200/70 rounded-xl p-2.5 space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span className="font-extrabold text-[#3AAA35] text-[11px]">🟢 Toma 3 (15:00 hrs)</span>
+                                    <span className="text-[10px] text-slate-500 font-medium">500 ml agua 💧</span>
+                                </div>
+                                <p className="text-[10.5px] text-slate-700 leading-snug">34Plus®: Reparación de barrera mucosa intestinal y homeostasis tisular.</p>
+                            </div>
+                            <div className="bg-emerald-50/50 border border-emerald-200/70 rounded-xl p-2.5 space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <span className="font-extrabold text-[#3AAA35] text-[11px]">🟢 Toma 4 (20:30 hrs)</span>
+                                    <span className="text-[10px] text-slate-500 font-medium">500 ml agua 💧</span>
+                                </div>
+                                <p className="text-[10.5px] text-slate-700 leading-snug">34Plus®: Anabolismo nocturno (21:00 hrs) y cross-linking de colágeno.</p>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Pie de Tarjeta Estándar */}
                     <div className="pt-2.5 border-t border-slate-100 mt-3 flex items-center justify-between text-[10px]">
                         <span className="text-slate-400 font-medium">ⓘ Prescripción nutricional adaptativa basada en biometría y bioenergética</span>
@@ -1101,6 +1150,22 @@ export default function Fase19_DiagnosticoIntegral({
             let data;
             if (!isCloudStandalone) {
                 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+                // 🛡️ SIN CONDICIÓN DE CARRERA: Presincronización Basal T0 de los 245 biomarcadores ANTES de la síntesis
+                try {
+                    await fetch(`${apiUrl}/api/cortex/presync-baseline`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            citationId,
+                            rawPatientData: patientData,
+                            electret245Baseline: electretTelemetry || patientData?.electretTelemetry || {}
+                        })
+                    });
+                } catch (presyncErr) {
+                    console.warn("⚠️ Presync baseline notice:", presyncErr);
+                }
+
                 const response = await fetch(`${apiUrl}/api/cortex/synthesize-dossier`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

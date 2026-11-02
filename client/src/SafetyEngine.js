@@ -77,9 +77,9 @@ const SUPP_DB = [
     },
     {
         id: "supp_203",
-        common_name: "Malla Biológica Tropical",
-        active_ingredients: ["Jengibre", "Cúrcuma"],
-        risk_tags: ["ANTICOAGULANTE_NATURAL", "HIPOGLUCEMIANTE"],
+        common_name: "34 Plus® (Regeneración Tisular)",
+        active_ingredients: ["Colágeno Hidrolizado", "Vitamina C", "Inulina", "L-Arginina"],
+        risk_tags: ["REGENERADOR_TISULAR", "HOMEOSTASIS_MUCOSA"],
         image: "https://via.placeholder.com/50?text=MALLA"
     },
     {
