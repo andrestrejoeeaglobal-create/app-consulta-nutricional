@@ -4,6 +4,7 @@ const OUTBOX_STORAGE_KEY = 'tilo_sync_outbox_v1';
 
 let queue = [];
 let isProcessing = false;
+let inFlightItemId = null;
 let retryTimer = null;
 let retryAttempt = 0;
 
@@ -79,17 +80,34 @@ export async function drainCitationOutbox() {
 
     while (queue.length > 0) {
         const item = queue[0];
+        inFlightItemId = item.id;
         try {
-            await axios.patch(item.url, item.payload, { timeout: 12000 });
-            queue.shift();
-            retryAttempt = 0;
-            persistQueue();
+            const response = await axios.patch(item.url, item.payload, { timeout: 12000 });
+            if (response && response.status >= 200 && response.status < 300) {
+                if (queue[0]?.id === item.id) {
+                    queue.shift();
+                } else {
+                    const idx = queue.findIndex((entry) => entry.id === item.id);
+                    if (idx >= 0) queue.splice(idx, 1);
+                }
+                inFlightItemId = null;
+                retryAttempt = 0;
+                persistQueue();
+            } else {
+                throw new Error(`Unexpected HTTP status ${response?.status}`);
+            }
         } catch (err) {
+            inFlightItemId = null;
             const status = err?.response?.status;
             // Errores 4xx definitivos (excepto 408/429) no deben atascar eternamente la cola
             if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
                 console.warn('[SyncOutbox] Petición descartada por rechazo 4xx no recuperable:', status);
-                queue.shift();
+                if (queue[0]?.id === item.id) {
+                    queue.shift();
+                } else {
+                    const idx = queue.findIndex((entry) => entry.id === item.id);
+                    if (idx >= 0) queue.splice(idx, 1);
+                }
                 persistQueue();
                 continue;
             }
@@ -99,28 +117,40 @@ export async function drainCitationOutbox() {
         }
     }
 
+    inFlightItemId = null;
     isProcessing = false;
     notifyStatus();
 }
 
 export function enqueueCitationProgressPatch(url, payload) {
     if (!url || !payload) return;
-    // Compactar parches consecutivos de la misma URL conservando orden FIFO para reducir tráfico sin perder monotonicidad
-    const existingIdx = queue.findIndex((entry) => entry.url === url);
+
+    const normalizedPhase = payload.phase ?? payload.current_phase;
+    const normalizedPayload = normalizedPhase !== undefined
+        ? { ...payload, phase: normalizedPhase, current_phase: normalizedPhase }
+        : { ...payload };
+
+    // Jamás sobrescribir un elemento actualmente en vuelo (inFlightItemId) para no perder mutaciones tras shift()
+    const existingIdx = queue.findIndex((entry) => entry.url === url && entry.id !== inFlightItemId);
     const nextItem = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         url,
-        payload,
+        payload: normalizedPayload,
         queuedAt: new Date().toISOString(),
     };
 
     if (existingIdx >= 0) {
         const prev = queue[existingIdx].payload || {};
+        const mergedPhase = Math.max(
+            Number(prev.phase ?? prev.current_phase) || 0,
+            Number(normalizedPayload.phase ?? normalizedPayload.current_phase) || 0
+        );
         nextItem.payload = {
             ...prev,
-            ...payload,
-            current_phase: Math.max(Number(prev.current_phase) || 0, Number(payload.current_phase) || 0),
-            is_completed: Boolean(prev.is_completed || payload.is_completed),
+            ...normalizedPayload,
+            phase: mergedPhase,
+            current_phase: mergedPhase,
+            is_completed: Boolean(prev.is_completed || normalizedPayload.is_completed),
         };
         queue[existingIdx] = nextItem;
     } else {

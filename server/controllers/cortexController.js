@@ -1722,8 +1722,8 @@ NODOS ACTIVOS A SINTETIZAR:
 ${nodesDigestText}`;
 
     const candidateModels = [
-        'gemini-3.8-flash',
-        'gemini-flash-lite-latest'
+        'gemini-flash-lite-latest',
+        'gemini-2.5-flash'
     ];
 
     let llmSummariesByNodeId = new Map();

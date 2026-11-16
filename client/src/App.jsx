@@ -419,8 +419,8 @@ const generateCurpPrefix = (nombre, apPaterno, apMaterno, fechanac, sexo, estado
 
 // ---------------------------------------------------------
 // 🛠️ CONFIGURACIÓN DE INGENIERÍA (SAFE DEBUG SWITCH)
-// Cambiar a FALSE antes de liberar a producción (Master)
-const ENABLE_INTEGRITY_DEBUG = true;
+// Desactivado en producción para evitar diálogos nativos confirm() bloqueantes frente al paciente
+const ENABLE_INTEGRITY_DEBUG = false;
 
 function auditLog(label, val1, val2) {
   if (!ENABLE_INTEGRITY_DEBUG) return;
@@ -1831,9 +1831,17 @@ function App() {
     if (currentPhase === 'PHASE_0_PRIVACY' && !showPrivacyPolicy && !isIdentityConfirmed) {
       setShowPrivacyPolicy(true);
     } else if (currentPhase === 'PHASE_0_AUTH') {
-      // ✅ V15.6 FIX: Resetear el estado de privacidad si el usuario reinicia la validación de cita (ej. si ingresa otro paciente)
+      // ✅ V15.6 / v3.1.1 FIX: Resetear privacidad y estados modulares en RAM al iniciar/limpiar sesión (NUEVA CONSULTA)
       setShowPrivacyPolicy(false);
       setIsIdentityConfirmed(false);
+      setFase3Step(null);
+      setFase4State(null);
+      setFase5State(null);
+      setFase6State(null);
+      setFase7State(null);
+      setFase8State(null);
+      setFase9State(null);
+      setPlanViewMode('patient');
     }
 
     if (currentPhase === 'PHASE_2_COMPLETE_HANDOFF' && interviewStep === 'appointment') {

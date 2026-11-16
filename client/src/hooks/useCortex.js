@@ -546,9 +546,6 @@ export const useCortex = () => {
                         }
 
                         // Deep merge for critical top-level structures to prevent undefined crashes
-                        if (isJorge) {
-                            return savedData;
-                        }
                         return {
                             ...initialValue,
                             ...savedData,
@@ -1113,6 +1110,16 @@ export const useCortex = () => {
             setMessages(INITIAL_MESSAGES);
             setPatientData(JSON.parse(JSON.stringify(INITIAL_PATIENT_DATA)));
             setApiContext({});
+            setFase3State({
+                patient_quote: "",
+                specific_ailment: "",
+                alert_level: "NONE",
+                emotional_anchor: "",
+                detective_radiography: { chronology: "", suspicion: "" },
+                goal_standard: "",
+                isGoal: false,
+                isPregnant: false
+            });
             setAuthAttempts(0);
             console.log("♻️ Cortex Session & Clinical Genome Cleared to Default.");
         } catch (error) {

@@ -713,7 +713,7 @@ router.post('/electret/direct-acquire', async (req, res) => {
     });
 
     const {
-        name = 'Jorge Muñoz Padilla',
+        name = 'Paciente',
         age = 51,
         sex = 'M',
         height = 172,
@@ -726,6 +726,18 @@ router.post('/electret/direct-acquire', async (req, res) => {
     try {
         const hwTelemetry = await samplePhysicalSensor(duration);
         console.log(`🔌 [DIRECT HARDWARE SCAN] Muestreo completado:`, hwTelemetry);
+
+        // 🛡️ REGLA 8 NOM-004 (FAIL-CLOSED): Prohibido sintetizar 253 parámetros basales si el sensor USB físico no respondió
+        if (!hwTelemetry || hwTelemetry.success !== true) {
+            const hwError = hwTelemetry?.error || 'DEVICE_NOT_FOUND';
+            console.warn(`🛑 [DIRECT HARDWARE SCAN — FAIL-CLOSED] Sensor USB físico no disponible (${hwError}). Derivando a centinela o contingencia.`);
+            return res.status(503).json({
+                success: false,
+                error: hwError,
+                fallbackToSentinel: true,
+                message: 'Sensor bioeléctrico USB no detectado o sin contacto activo. Sincronice reporte real o continúe por contingencia.'
+            });
+        }
 
         const study = synthesizePatientStudy({ name, age, sex, height, weight }, hwTelemetry);
         if (!study || !study.success) {
@@ -1726,10 +1738,10 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
                     }
 
                     const candidateModels = [
-                        'gemini-2.5-flash',
+                        'gemini-flash-lite-latest',
                         'gemini-flash-latest',
-                        'gemini-2.5-pro',
-                        'gemini-flash-lite-latest'
+                        'gemini-2.5-flash',
+                        'gemini-2.5-pro'
                     ];
                     let response = null;
                     for (const targetModel of candidateModels) {
@@ -1765,20 +1777,16 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
                         exercise_log: xmlExerciseLog || normalized.exercise_log || null
                     };
                 } catch (geminiErr) {
-                    console.error("⚠️ Error llamando a Gemini para OCR externo. Usando dataset clínico estructurado:", geminiErr.message);
-                    const fallback = runOfflineExtractionMock(nonXmlFiles);
-                    localMetrics = {
-                        ...fallback,
-                        exercise_log: xmlExerciseLog || fallback.exercise_log || null
-                    };
+                    console.error("🛑 [NOM-004 FAIL-CLOSED] Error en extracción OCR de documentos externos:", geminiErr.message);
+                    const ocrErr = new Error("Servicio de extracción OCR no disponible temporalmente. Verifique conexión o reintente.");
+                    ocrErr.code = 'OCR_UNAVAILABLE';
+                    throw ocrErr;
                 }
             } else {
-                console.log("ℹ️ GEMINI_API_KEY no configurada. Ejecutando motor de extracción local.");
-                const fallback = runOfflineExtractionMock(nonXmlFiles);
-                localMetrics = {
-                    ...fallback,
-                    exercise_log: xmlExerciseLog || fallback.exercise_log || null
-                };
+                console.error("🛑 [NOM-004 FAIL-CLOSED] GEMINI_API_KEY no configurada para extracción OCR.");
+                const ocrErr = new Error("Motor OCR no configurado en el servidor.");
+                ocrErr.code = 'OCR_UNAVAILABLE';
+                throw ocrErr;
             }
             return localMetrics;
         };
@@ -1788,7 +1796,7 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
             files: nonXmlFiles.map(f => ({ name: f.originalname, mimeType: f.mimetype }))
         };
 
-        // ⚡ Conmutador Sensory Processing Hub con timeout de 3500ms y fallback local enriquecido
+        // ⚡ Conmutador Sensory Processing Hub con timeout de 3500ms y fallback local OCR real (Cero mocks sintéticos)
         external_metrics = await callSensoryHubWithFallback('/api/bio/scan/external-docs', hubPayload, runLocalDocs);
     }
 
@@ -1799,7 +1807,14 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
 
     } catch (err) {
         console.error("🔥 Error en endpoint external-docs:", err.message);
-        res.status(500).json({ success: false, message: "Error al procesar los documentos externos." });
+        if (err.code === 'OCR_UNAVAILABLE') {
+            return res.status(503).json({
+                success: false,
+                error: 'OCR_UNAVAILABLE',
+                message: err.message
+            });
+        }
+        res.status(500).json({ success: false, error: 'EXTERNAL_DOCS_ERROR', message: "Error al procesar los documentos externos." });
     } finally {
         // Limpiar archivos temporales subidos (Destrucción física efímera LFPDPPP / HIPAA)
         if (req.files) {
@@ -1892,112 +1907,6 @@ function normalizeExtractedLabMetrics(raw) {
         allergies_detected: raw?.allergies_detected || [],
         exercise_log: raw?.exercise_log || null
     };
-}
-
-// Helper de respaldo estructurado con los 64 parámetros analíticos completos
-function runOfflineExtractionMock() {
-    const structuredLabs = {
-        patient_name: "JESÚS REYES SALGADO",
-        sections: {
-            quimica_renal_electrolitos: {
-                title: "1. Química Integral / Función Renal y Electrolitos",
-                items: [
-                    { name: "Glucosa", val: "88", unit: "mg/dL", ref: "55 - 99", status: "NORMAL" },
-                    { name: "Nitrógeno de urea en sangre (BUN)", val: "17.6", unit: "mg/dL", ref: "8 - 23", status: "NORMAL" },
-                    { name: "Urea", val: "37", unit: "mg/dL", ref: "14 - 50", status: "NORMAL" },
-                    { name: "Creatinina", val: "1.11", unit: "mg/dL", ref: "0.70 - 1.2", status: "NORMAL" },
-                    { name: "Relación BUN/creat", val: "15", unit: "", ref: "9.3 - 19.5", status: "NORMAL" },
-                    { name: "Ácido úrico", val: "5.5", unit: "mg/dL", ref: "3.4 - 7.0", status: "NORMAL" },
-                    { name: "Fósforo", val: "2.9", unit: "mg/dL", ref: "2.5 - 4.5", status: "NORMAL" },
-                    { name: "Calcio", val: "9.8", unit: "mg/dL", ref: "8.2 - 10.2", status: "NORMAL" },
-                    { name: "Magnesio", val: "2.2", unit: "mg/dL", ref: "1.6 - 2.4", status: "NORMAL" },
-                    { name: "Sodio", val: "139", unit: "meq/L", ref: "136 - 145", status: "NORMAL" },
-                    { name: "Potasio", val: "4.4", unit: "meq/L", ref: "3.5 - 5.1", status: "NORMAL" },
-                    { name: "Cloro", val: "105", unit: "meq/L", ref: "99 - 109", status: "NORMAL" },
-                    { name: "Tasa de filtración glomerular estimada (TFGe)", val: "71.8", unit: "mL/min/1.73 m²", ref: "> 60", status: "NORMAL" }
-                ]
-            },
-            riesgo_cardiovascular_lipidos: {
-                title: "2. Riesgo Cardiovascular y Perfil Lipídico",
-                items: [
-                    { name: "Colesterol total", val: "231", unit: "mg/dL", ref: "< 200", status: "ELEVADO" },
-                    { name: "Colesterol HDL", val: "44", unit: "mg/dL", ref: "40 - 60", status: "NORMAL" },
-                    { name: "Colesterol LDL directo", val: "168", unit: "mg/dL", ref: "< 100", status: "ELEVADO" },
-                    { name: "Triglicéridos", val: "86", unit: "mg/dL", ref: "< 150", status: "NORMAL" },
-                    { name: "Colesterol no-HDL", val: "187", unit: "mg/dL", ref: "< 130", status: "ELEVADO" },
-                    { name: "Índice aterogénico", val: "5.3", unit: "", ref: "< 4.5", status: "ELEVADO" },
-                    { name: "Relación LDL/HDL", val: "3.8", unit: "", ref: "< 3.0", status: "ELEVADO" },
-                    { name: "sd LDL (LDL pequeña y densa)", val: "1.95", unit: "mg/dL", ref: "0 - 1.35", status: "ELEVADO" },
-                    { name: "VLDL colesterol", val: "17", unit: "mg/dL", ref: "< 35", status: "NORMAL" },
-                    { name: "Lípidos totales", val: "502", unit: "mg/dL", ref: "380 - 748", status: "NORMAL" },
-                    { name: "Fosfolípidos en suero", val: "237", unit: "mg/dL", ref: "161 - 265", status: "NORMAL" },
-                    { name: "Proteína C Reactiva ultrasensible (PCR-us)", val: "0.103", unit: "mg/dL", ref: "< 0.5", status: "NORMAL" }
-                ]
-            },
-            funcionamiento_hepatico: {
-                title: "3. Funcionamiento Hepático y Enzimas",
-                items: [
-                    { name: "Bilirrubina total", val: "0.51", unit: "mg/dL", ref: "< 1.2", status: "NORMAL" },
-                    { name: "Bilirrubina directa", val: "0.19", unit: "mg/dL", ref: "0.09 - 0.3", status: "NORMAL" },
-                    { name: "Bilirrubina indirecta", val: "0.32", unit: "mg/dL", ref: "0.01 - 0.9", status: "NORMAL" },
-                    { name: "AST (TGO)", val: "31", unit: "U/L", ref: "< 39", status: "NORMAL" },
-                    { name: "ALT (TGP)", val: "31", unit: "U/L", ref: "< 61", status: "NORMAL" },
-                    { name: "Relación AST/ALT", val: "1.0", unit: "", ref: "< 2.0", status: "NORMAL" },
-                    { name: "Gama glutamil transpeptidasa (GGT)", val: "33", unit: "U/L", ref: "8 - 61", status: "NORMAL" },
-                    { name: "Proteínas totales", val: "7.3", unit: "g/dL", ref: "6.3 - 8.1", status: "NORMAL" },
-                    { name: "Albúmina", val: "4.6", unit: "g/dL", ref: "3.9 - 5.1", status: "NORMAL" },
-                    { name: "Globulinas", val: "2.6", unit: "g/dL", ref: "2.4 - 3.0", status: "NORMAL" },
-                    { name: "Relación A/G", val: "1.75", unit: "", ref: "1.18 - 2.33", status: "NORMAL" },
-                    { name: "Fosfatasa Alcalina total", val: "62", unit: "U/L", ref: "45 - 128", status: "NORMAL" },
-                    { name: "LDH (Deshidrogenasa Láctica)", val: "207", unit: "U/L", ref: "125 - 239", status: "NORMAL" }
-                ]
-            },
-            metabolismo_hierro: {
-                title: "4. Metabolismo de Hierro",
-                items: [
-                    { name: "Hierro sérico", val: "111", unit: "µg/dL", ref: "33 - 193", status: "NORMAL" },
-                    { name: "UIBC (Capacidad no saturada de fijación)", val: "172", unit: "µg/dL", ref: "125 - 345", status: "NORMAL" },
-                    { name: "Captación de hierro (TIBC)", val: "283", unit: "µg/dL", ref: "250 - 450", status: "NORMAL" },
-                    { name: "Porcentaje de saturación de Hierro", val: "39", unit: "%", ref: "15 - 50", status: "NORMAL" }
-                ]
-            },
-            respuesta_inmunologica: {
-                title: "5. Respuesta Inmunológica",
-                items: [
-                    { name: "Inmunoglobulina G (IgG)", val: "1446", unit: "mg/dL", ref: "700 - 1600", status: "NORMAL" },
-                    { name: "Inmunoglobulina A (IgA)", val: "229", unit: "mg/dL", ref: "70 - 400", status: "NORMAL" },
-                    { name: "Inmunoglobulina M (IgM)", val: "227", unit: "mg/dL", ref: "40 - 230", status: "NORMAL" }
-                ]
-            },
-            biometria_hematica: {
-                title: "6. Biometría Hemática Completa",
-                items: [
-                    { name: "Eritrocitos", val: "5.10", unit: "millones/µL", ref: "4.70 - 5.80", status: "NORMAL" },
-                    { name: "Hemoglobina", val: "15.3", unit: "g/dL", ref: "14.0 - 18.0", status: "NORMAL" },
-                    { name: "Hematocrito", val: "44.0", unit: "%", ref: "40.0 - 54.0", status: "NORMAL" },
-                    { name: "Volumen Corpuscular Medio (VCM)", val: "86.3", unit: "fL", ref: "78.0 - 99.0", status: "NORMAL" },
-                    { name: "Hemoglobina Corpuscular Media (HCM)", val: "30.0", unit: "pg", ref: "27.0 - 31.0", status: "NORMAL" },
-                    { name: "Conc. Media de Hemoglobina Corp. (CMHC)", val: "34.8", unit: "g/dL", ref: "32.0 - 36.0", status: "NORMAL" },
-                    { name: "Ancho de Distribución Eritrocitaria (CV)", val: "14.4", unit: "%", ref: "11.5 - 17.0", status: "NORMAL" },
-                    { name: "Ancho de Distribución Eritrocitaria (SD)", val: "45.5", unit: "fL", ref: "39 - 57", status: "NORMAL" },
-                    { name: "Plaquetas", val: "193", unit: "miles/µL", ref: "150 - 500", status: "NORMAL" },
-                    { name: "Volumen Plaquetario Medio (VPM)", val: "12.5", unit: "fL", ref: "9.6 - 13.4", status: "NORMAL" },
-                    { name: "Leucocitos totales", val: "5.59", unit: "miles/µL", ref: "3.8 - 11.6", status: "NORMAL" },
-                    { name: "Neutrófilos (%)", val: "54.9", unit: "%", ref: "38.4 - 74.6", status: "NORMAL" },
-                    { name: "Linfocitos (%)", val: "33.8", unit: "%", ref: "16.5 - 49.6", status: "NORMAL" },
-                    { name: "Monocitos (%)", val: "7.5", unit: "%", ref: "4.6 - 12.7", status: "NORMAL" },
-                    { name: "Eosinófilos (%)", val: "2.0", unit: "%", ref: "1.0 - 4.0", status: "NORMAL" },
-                    { name: "Basófilos (%)", val: "1.1", unit: "%", ref: "0.0 - 1.0", status: "ELEVADO" },
-                    { name: "Neutrófilos (absolutos)", val: "3.07", unit: "miles/µL", ref: "1.69 - 7.16", status: "NORMAL" },
-                    { name: "Linfocitos (absolutos)", val: "1.89", unit: "miles/µL", ref: "1.05 - 3.53", status: "NORMAL" },
-                    { name: "Monocitos (absolutos)", val: "0.42", unit: "miles/µL", ref: "0.25 - 0.90", status: "NORMAL" },
-                    { name: "Eosinófilos (absolutos)", val: "0.11", unit: "miles/µL", ref: "0.02 - 0.50", status: "NORMAL" },
-                    { name: "Basófilos (absolutos)", val: "0.06", unit: "miles/µL", ref: "0.01 - 0.10", status: "NORMAL" }
-                ]
-            }
-        }
-    };
-    return normalizeExtractedLabMetrics(structuredLabs);
 }
 
 /**
