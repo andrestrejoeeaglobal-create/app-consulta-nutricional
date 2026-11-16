@@ -27,14 +27,20 @@ class BiomarkerScoringEngine {
             } else {
                 let totalWeeklyMin = 0;
                 let totalCalories = 0;
-                const isTelemetry = activity.source_type === "TELEMETRY_TCX" || 
-                                    (activity.log && activity.log.some(x => typeof x === 'object'));
+                const isTelemetry = activity.source_type === "TELEMETRY_TCX" && Boolean(activity.telemetry_metadata);
 
                 if (activity.log && activity.log.length > 0) {
                     activity.log.forEach(item => {
                         if (typeof item === 'object' && item !== null) {
-                            totalWeeklyMin += (item.duration || item.durationMinutes || item.weekly_minutes || 0);
-                            totalCalories += (item.calories_device || item.calories || 0);
+                            const itemDur = item.duration || item.durationMinutes || item.weekly_minutes || 0;
+                            if (!isTelemetry && item.frequency > 0 && !item.calories_device && !item.calories) {
+                                totalWeeklyMin += (item.frequency * itemDur);
+                            } else {
+                                totalWeeklyMin += itemDur;
+                            }
+                            if (isTelemetry) {
+                                totalCalories += (item.calories_device || item.calories || 0);
+                            }
                         } else if (typeof item === 'string') {
                             const daysMatch = item.match(/(\d+)\s*(?:días|dias|d\/sem|días\/sem)/i);
                             const minsMatch = item.match(/(\d+)\s*min/i);

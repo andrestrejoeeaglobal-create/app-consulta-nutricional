@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatText, toSentenceCase } from '../../utils/utils';
+import { getContextualSupplementExample, stripNegatedSentinels } from '../../utils/genderConcordance';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { Send } from 'lucide-react';
@@ -265,13 +266,15 @@ const Fase6_Farmacologia = ({
     // Estado Local Initialize
     const hasInitializedRef = useRef(false);
     const [step, setStep] = useState(() => {
-        const hasMeds = patientData.history?.medications && patientData.history.medications.length > 0;
-        const hasSupps = patientData.history?.supplements && patientData.history.supplements.length > 0;
-        if (hasMeds || hasSupps) {
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content?.includes("detalles farmacológicos y de suplementación"));
+        const hasMeds = stripNegatedSentinels(patientData.history?.medications || []).length > 0;
+        const hasSupps = stripNegatedSentinels(patientData.history?.supplements || []).length > 0;
+        if (patientData?.pharmacology_edit_mode || hasSummary || hasMeds || hasSupps) {
             return 'pharma_correct_menu';
         }
         return 'meds_gate';
     });
+    const [isSingleLineEdit, setIsSingleLineEdit] = useState(false);
     const [tempItem, setTempItem] = useState({ name: '', details: '', duration: '', type: '' });
 
     useEffect(() => {
@@ -279,18 +282,24 @@ const Fase6_Farmacologia = ({
             hasInitializedRef.current = true;
             if (step === 'pharma_correct_menu') {
                 if (typeof setMessages === 'function') {
-                    setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de farmacología y suplementación?",
-                        options: [
-                            { label: "➕ Registrar otro medicamento", value: "ADD_MED" },
-                            { label: "➕ Registrar otro suplemento", value: "ADD_SUPP" },
-                            { label: "✏️ Modificar registro existente", value: "MODIFY_SELECT" },
-                            { label: "🗑️ Eliminar registro de la lista", value: "DELETE_SELECT" },
-                            { label: "🔄 Limpiar lista completa (Reiniciar)", value: "CLEAR_ALL" },
-                            { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
-                        ]
-                    }]);
+                    setMessages(prev => {
+                        const lastAssistant = [...prev].reverse().find(m => m.role === 'assistant');
+                        if (lastAssistant?.content?.includes("¿Qué cambio o acción desea realizar en su historial de farmacología y suplementación?")) {
+                            return prev;
+                        }
+                        return [...prev, {
+                            role: 'assistant',
+                            content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de farmacología y suplementación?",
+                            options: [
+                                { label: "➕ Registrar otro medicamento", value: "ADD_MED" },
+                                { label: "➕ Registrar otro suplemento", value: "ADD_SUPP" },
+                                { label: "✏️ Modificar registro existente", value: "MODIFY_SELECT" },
+                                { label: "🗑️ Eliminar registro de la lista", value: "DELETE_SELECT" },
+                                { label: "🔄 Limpiar lista completa (Reiniciar)", value: "CLEAR_ALL" },
+                                { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                            ]
+                        }];
+                    });
                 }
                 return;
             }
@@ -484,6 +493,7 @@ const Fase6_Farmacologia = ({
         switch (step) {
             case 'pharma_correct_menu': {
                 if (input === "ADD_MED") {
+                    setIsSingleLineEdit(true);
                     setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: isMinor 
@@ -493,6 +503,7 @@ const Fase6_Farmacologia = ({
                     }]);
                     setStep('meds_select');
                 } else if (input === "ADD_SUPP") {
+                    setIsSingleLineEdit(true);
                     setStep('supp_name');
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -501,8 +512,8 @@ const Fase6_Farmacologia = ({
                             : "¿Qué vitaminas, proteínas, tés o suplementos consume usted? Por favor escriba el nombre comercial o principio activo:"
                     }]);
                 } else if (input === "MODIFY_SELECT") {
-                    const meds = patientData.history?.medications || [];
-                    const supps = patientData.history?.supplements || [];
+                    const meds = stripNegatedSentinels(patientData.history?.medications || []);
+                    const supps = stripNegatedSentinels(patientData.history?.supplements || []);
                     
                     if (meds.length > 0 || supps.length > 0) {
                         setStep('SELECT_MODIFY_ITEM');
@@ -523,16 +534,17 @@ const Fase6_Farmacologia = ({
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "No existen registros para modificar.",
+                            content: "No existen registros activos para modificar.",
                             options: [
                                 { label: "➕ Registrar otro medicamento", value: "ADD_MED" },
-                                { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                                { label: "➕ Registrar otro suplemento", value: "ADD_SUPP" },
+                                { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
                             ]
                         }]);
                     }
                 } else if (input === "DELETE_SELECT") {
-                    const meds = patientData.history?.medications || [];
-                    const supps = patientData.history?.supplements || [];
+                    const meds = stripNegatedSentinels(patientData.history?.medications || []);
+                    const supps = stripNegatedSentinels(patientData.history?.supplements || []);
                     
                     if (meds.length > 0 || supps.length > 0) {
                         setStep('SELECT_DELETE_ITEM');
@@ -553,39 +565,44 @@ const Fase6_Farmacologia = ({
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "No existen registros para eliminar.",
+                            content: "No existen registros activos para eliminar.",
                             options: [
                                 { label: "➕ Registrar otro medicamento", value: "ADD_MED" },
-                                { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                                { label: "➕ Registrar otro suplemento", value: "ADD_SUPP" },
+                                { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
                             ]
                         }]);
                     }
                 } else if (input === "CLEAR_ALL") {
+                    setIsSingleLineEdit(false);
                     setPatientData(prev => ({
                         ...prev,
+                        pharmacology_edit_mode: false,
                         history: {
                             ...(prev.history || {}),
                             medications: [],
-                            supplements: []
+                            supplements: [],
+                            medications_negated: true,
+                            supplements_negated: true
                         }
                     }));
                     setStep('meds_gate');
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: makeP1P2(
-                            "Sistemas clínicos de historial farmacológico y suplementación reiniciados.",
+                        content: `Sistemas clínicos de historial farmacológico y suplementación reiniciados.\n\n${
                             isMinor
                                 ? `¿Toma ${pName} actualmente algún medicamento recetado por un médico?`
                                 : "¿Toma usted actualmente algún medicamento recetado por un médico?"
-                        ),
+                        }`,
                         options: [
                             { label: "✅ Sí", value: "Sí" },
                             { label: "❌ No", value: "No" },
                         ]
                     }]);
                 } else if (input === "FINISH") {
-                    const meds = patientData.history?.medications || [];
-                    const supps = patientData.history?.supplements || [];
+                    setIsSingleLineEdit(false);
+                    const meds = stripNegatedSentinels(patientData.history?.medications || []);
+                    const supps = stripNegatedSentinels(patientData.history?.supplements || []);
                     if (onPhaseComplete) {
                         onPhaseComplete({ medications: meds, supplements: supps });
                     }
@@ -595,6 +612,7 @@ const Fase6_Farmacologia = ({
 
             case 'SELECT_MODIFY_ITEM': {
                 if (input === "BACK_TO_CORRECT") {
+                    setIsSingleLineEdit(false);
                     setStep('pharma_correct_menu');
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -608,12 +626,12 @@ const Fase6_Farmacologia = ({
                             { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
                         ]
                     }]);
-                    setIsAnalyzing(false);
+                    if (setIsGlobalTyping) setIsGlobalTyping(false);
                     return;
                 }
                 if (input.startsWith("MODIFY_MED_INDEX_")) {
                     const idx = parseInt(input.replace("MODIFY_MED_INDEX_", ""), 10);
-                    const meds = patientData.history?.medications || [];
+                    const meds = stripNegatedSentinels(patientData.history?.medications || []);
                     if (meds[idx]) {
                         const target = meds[idx];
                         const updated = meds.filter((_, i) => i !== idx);
@@ -626,22 +644,23 @@ const Fase6_Farmacologia = ({
                             }
                         }));
 
+                        setIsSingleLineEdit(true);
                         setTempItem({ name: target.name, details: '', duration: '', type: 'MED' });
                         setStep('meds_select');
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Modificando medicamento. Por favor vuelva a seleccionar el medicamento o confirme si es: **${target.name}**`,
+                            content: `Modificando medicamento. Por favor vuelva a seleccionar el medicamento o confirme si conserva: **${target.name}**`,
                             options: [
-                                { label: `✅ Sí, es ${target.name}`, value: target.name },
-                                { label: "❌ No, buscar otro", value: "MANUAL" }
+                                { label: `✅ Conservar nombre: ${target.name}`, value: target.name },
+                                { label: "✍️ Cambiar medicamento", value: "MANUAL" }
                             ]
                         }]);
                     }
                 }
                 else if (input.startsWith("MODIFY_SUPP_INDEX_")) {
                     const idx = parseInt(input.replace("MODIFY_SUPP_INDEX_", ""), 10);
-                    const supps = patientData.history?.supplements || [];
+                    const supps = stripNegatedSentinels(patientData.history?.supplements || []);
                     if (supps[idx]) {
                         const target = supps[idx];
                         const updated = supps.filter((_, i) => i !== idx);
@@ -654,12 +673,17 @@ const Fase6_Farmacologia = ({
                             }
                         }));
 
+                        setIsSingleLineEdit(true);
                         setTempItem({ name: target.name, details: '', duration: '', type: 'SUPP' });
                         setStep('supp_name');
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Modificando suplemento. Por favor escriba el nombre o confirme si es: **${target.name}**`
+                            content: `Modificando suplemento. Por favor confirme si conserva **${target.name}** o escriba un nuevo nombre:`,
+                            options: [
+                                { label: `✅ Conservar nombre: ${target.name}`, value: target.name },
+                                { label: "✍️ Escribir otro nombre", value: "__EDIT_SUPP_NAME__" }
+                            ]
                         }]);
                     }
                 }
@@ -668,6 +692,7 @@ const Fase6_Farmacologia = ({
 
             case 'SELECT_DELETE_ITEM': {
                 if (input === "BACK_TO_CORRECT") {
+                    setIsSingleLineEdit(false);
                     setStep('pharma_correct_menu');
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -681,20 +706,26 @@ const Fase6_Farmacologia = ({
                             { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
                         ]
                     }]);
-                    setIsAnalyzing(false);
+                    if (setIsGlobalTyping) setIsGlobalTyping(false);
                     return;
                 }
                 if (input.startsWith("DELETE_MED_INDEX_")) {
                     const idx = parseInt(input.replace("DELETE_MED_INDEX_", ""), 10);
-                    const meds = patientData.history?.medications || [];
+                    const meds = stripNegatedSentinels(patientData.history?.medications || []);
+                    const supps = stripNegatedSentinels(patientData.history?.supplements || []);
                     if (meds[idx]) {
                         const updated = meds.filter((_, i) => i !== idx);
+                        setIsSingleLineEdit(false);
 
                         setPatientData(prev => ({
                             ...prev,
+                            pharmacology_edit_mode: false,
                             history: {
                                 ...(prev.history || {}),
-                                medications: updated
+                                medications: updated,
+                                supplements: supps,
+                                medications_negated: updated.length === 0,
+                                supplements_negated: supps.length === 0
                             }
                         }));
 
@@ -705,22 +736,28 @@ const Fase6_Farmacologia = ({
 
                         setTimeout(() => {
                             if (onPhaseComplete) {
-                                onPhaseComplete({ medications: updated, supplements: patientData.history?.supplements || [] });
+                                onPhaseComplete({ medications: updated, supplements: supps });
                             }
                         }, 500);
                     }
                 }
                 else if (input.startsWith("DELETE_SUPP_INDEX_")) {
                     const idx = parseInt(input.replace("DELETE_SUPP_INDEX_", ""), 10);
-                    const supps = patientData.history?.supplements || [];
+                    const meds = stripNegatedSentinels(patientData.history?.medications || []);
+                    const supps = stripNegatedSentinels(patientData.history?.supplements || []);
                     if (supps[idx]) {
                         const updated = supps.filter((_, i) => i !== idx);
+                        setIsSingleLineEdit(false);
 
                         setPatientData(prev => ({
                             ...prev,
+                            pharmacology_edit_mode: false,
                             history: {
                                 ...(prev.history || {}),
-                                supplements: updated
+                                medications: meds,
+                                supplements: updated,
+                                medications_negated: meds.length === 0,
+                                supplements_negated: updated.length === 0
                             }
                         }));
 
@@ -731,7 +768,7 @@ const Fase6_Farmacologia = ({
 
                         setTimeout(() => {
                             if (onPhaseComplete) {
-                                onPhaseComplete({ medications: patientData.history?.medications || [], supplements: updated });
+                                onPhaseComplete({ medications: meds, supplements: updated });
                             }
                         }, 500);
                     }
@@ -890,12 +927,30 @@ const Fase6_Farmacologia = ({
                     status: 'ACTIVE'
                 };
 
+                const cleanExistingMeds = stripNegatedSentinels(patientData.history?.medications || []);
+                const cleanExistingSupps = stripNegatedSentinels(patientData.history?.supplements || []);
+                const updatedMeds = [...cleanExistingMeds, newMedication];
+
                 setPatientData(prev => ({
                     ...prev,
-                    history: { ...(prev.history || {}), medications: [...(prev.history?.medications || []), newMedication] }
+                    pharmacology_edit_mode: false,
+                    history: {
+                        ...(prev.history || {}),
+                        medications: updatedMeds,
+                        supplements: cleanExistingSupps,
+                        medications_negated: false
+                    }
                 }));
 
                 setTempItem({ name: '', details: '', duration: '', type: '' });
+
+                if (isSingleLineEdit) {
+                    setIsSingleLineEdit(false);
+                    if (onPhaseComplete) {
+                        onPhaseComplete({ medications: updatedMeds, supplements: cleanExistingSupps });
+                    }
+                    break;
+                }
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
@@ -948,11 +1003,20 @@ const Fase6_Farmacologia = ({
                 break;
             }
             case 'supp_name': {
+                if (input === "__EDIT_SUPP_NAME__") {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: "Por favor escriba el nombre comercial o principio activo del suplemento:"
+                    }]);
+                    setStep('supp_name');
+                    break;
+                }
                 const cleanName = toSentenceCase(input.trim());
+                const suppExample = getContextualSupplementExample(cleanName);
                 setTempItem(prev => ({ ...prev, name: cleanName, type: 'SUPP' }));
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: "¿Cuál es la dosis y frecuencia? (Ej. 1 scoop en la mañana)."
+                    content: `¿Cuál es la dosis y frecuencia? (Ej. ${suppExample}).`
                 }]);
                 setStep('supp_details');
                 break;
@@ -976,12 +1040,30 @@ const Fase6_Farmacologia = ({
                     type: 'OTHER'
                 };
 
+                const cleanExistingMeds = stripNegatedSentinels(patientData.history?.medications || []);
+                const cleanExistingSupps = stripNegatedSentinels(patientData.history?.supplements || []);
+                const updatedSupps = [...cleanExistingSupps, newSupplement];
+
                 setPatientData(prev => ({
                     ...prev,
-                    history: { ...(prev.history || {}), supplements: [...(prev.history?.supplements || []), newSupplement] }
+                    pharmacology_edit_mode: false,
+                    history: {
+                        ...(prev.history || {}),
+                        medications: cleanExistingMeds,
+                        supplements: updatedSupps,
+                        supplements_negated: false
+                    }
                 }));
 
                 setTempItem({ name: '', details: '', duration: '', type: '' });
+
+                if (isSingleLineEdit) {
+                    setIsSingleLineEdit(false);
+                    if (onPhaseComplete) {
+                        onPhaseComplete({ medications: cleanExistingMeds, supplements: updatedSupps });
+                    }
+                    break;
+                }
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
@@ -1032,15 +1114,23 @@ const Fase6_Farmacologia = ({
     };
 
     const handleFinish = () => {
-        onPhaseComplete(null);
+        setIsSingleLineEdit(false);
+        const cleanMeds = stripNegatedSentinels(patientData.history?.medications || []);
+        const cleanSupps = stripNegatedSentinels(patientData.history?.supplements || []);
+        onPhaseComplete({ medications: cleanMeds, supplements: cleanSupps });
     };
+
+    const handleSendRef = useRef(handleSend);
+    useEffect(() => {
+        handleSendRef.current = handleSend;
+    });
 
     // Register Handler
     useEffect(() => {
         if (registerInputHandler) {
-            registerInputHandler(() => (text, val) => handleSend(text, val));
+            registerInputHandler(() => (text, val) => handleSendRef.current(text, val));
         }
-    }, [registerInputHandler, step]);
+    }, [registerInputHandler]);
 
     useEffect(() => {
         if (setIsGlobalTyping) {

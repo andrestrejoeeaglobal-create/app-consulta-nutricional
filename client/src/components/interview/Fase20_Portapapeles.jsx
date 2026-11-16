@@ -1,270 +1,190 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useCallback } from 'react';
 import tiloImg from '../../assets/tilo.png';
+import {
+    copySSoTDocument,
+    safeCopyTextToClipboard
+} from '../../utils/formatPlanForClipboard';
+import { useClinicalToast } from '../../hooks/useClinicalToast';
 
-const mockSuggestions = [
-    {
-        id: 'sup_33plus',
-        cortex: '33Plus (Ignición Mitocondrial)',
-        name: '33 PLUS - Semilla de Uva, Cromo (200mcg) y L-Teanina (200mg)',
-        dosage: '1 toma al día (disuelto en agua temp. ambiente)',
-        timing: 'Por la mañana con el primer alimento',
-        rationale: 'Optimización de microcirculación, oxigenación tisular diurna y regulación de sensibilidad a la insulina.',
-        status: 'approved'
-    },
-    {
-        id: 'sup_34plus',
-        cortex: '34Plus (Ingeniería Tisular)',
-        name: '34 PLUS - Colágeno Hidrolizado, Vit C, L-Arginina e Inulina de Agave',
-        dosage: '1 toma al día (disuelto en MÍNIMO 500 ml de agua 💧)',
-        timing: 'Por la noche (60 min antes de dormir)',
-        rationale: 'Reparación de matriz extracelular durante el sueño. La hidratación en 500ml es obligatoria para prevenir retraso del vaciado gástrico y no interrumpir el sistema glinfático cerebral.',
-        status: 'approved'
+export { safeCopyTextToClipboard };
+
+export function buildSSoTExecutiveOptions(isCompleted = false) {
+    if (isCompleted) {
+        return [
+            { label: '📋 Copiar Guía Paciente', value: 'COPY_SSOT_PATIENT_GUIDE' },
+            { label: '🩺 Copiar Expediente NOM-004', value: 'COPY_SSOT_MEDICAL_DOSSIER' },
+            { label: '📅 Ver Calendario (Fase 21) ➔', value: 'GO_TO_PHASE_21' }
+        ];
     }
-];
-
-// Diccionario de traducción clínica de contingencia (Cero enums/variables en inglés en UI)
-const SOMATIC_TRANSLATE_MAP = {
-    'RETICULAR_ERYTHEMA': 'Eritema Reticular',
-    'PUNCTATE_MACULES': 'Máculas Puntiformes',
-    'MICROPAPULAR_ERUPTION': 'Erupción Micropapular',
-    'PERIFOLLICULAR_INVOLVEMENT': 'Compromiso Perifolicular',
-    'CUTANEOUS_EDEMA_SUPERFICIAL': 'Edema Cutáneo Superficial',
-    'SUPERFICIAL_CUTANEOUS_EDEMA': 'Edema Cutáneo Superficial',
-    'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED': 'Insuficiencia Venosa Crónica',
-    'CHRONIC_VENOUS_INSUFFICIENCY': 'Insuficiencia Venosa Crónica',
-    'VARICOSE_VEINS_HIGH_RISK': 'Riesgo Elevado de Várices',
-    'VENOUS_STASIS_DERMATITIS': 'Dermatitis por Estasis Venosa',
-    'EDEMA_PERIPHERAL_MODERATE': 'Edema Periférico Moderado',
-    'PERIPHERAL_EDEMA': 'Edema Periférico',
-    'HYPERPIGMENTATION': 'Hiperpigmentación Cutánea',
-    'HEMOSIDERIN_PIGMENTATION': 'Pigmentación por Hemosiderina',
-    'FOLLICULAR_HYPERKERATOSIS': 'Hiperqueratosis Folicular',
-    'XEROSIS_CUTIS': 'Xerosis Cutánea (Piel Seca)',
-    'TELANGIECTASIA': 'Telangiectasias Superficiales',
-    'VENOUS_ECTASIA': 'Ectasia Venosa'
-};
-
-function cleanClinicalRationale(text) {
-    if (!text) return '';
-    let str = String(text);
-    Object.entries(SOMATIC_TRANSLATE_MAP).forEach(([key, val]) => {
-        const regex = new RegExp('\\b' + key + '\\b', 'gi');
-        str = str.replace(regex, val);
-    });
-    return str;
+    return [
+        { label: '📋 Copiar Guía Paciente', value: 'COPY_SSOT_PATIENT_GUIDE' },
+        { label: '🩺 Copiar Expediente NOM-004', value: 'COPY_SSOT_MEDICAL_DOSSIER' },
+        { label: '📅 Continuar a Calendario (Fase 21) ➔', value: 'PROCEED_TO_PHASE_21' }
+    ];
 }
 
-const Fase15_SuplementacionAv = ({ patientData, onPhaseComplete, setPatientData, messages, setMessages, registerInputHandler }) => {
-    const [suggestions, setSuggestions] = useState(mockSuggestions);
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [internalStep, setInternalStep] = useState('INTRO'); // INTRO, REVIEWING, ADJUST_DOSAGE, ADJUST_TIMING, FINAL
+export function buildSSoTExecutiveSummaryContent(patientData) {
+    const dossier = patientData?.clinical_dossier || {};
+    const ortho = dossier?.orthomolecular_prescription || {};
+    const bio = dossier?.bioenergetics || ortho?.bioenergetics_summary || {};
+    const sem = ortho?.biosecurity_semaphore || dossier?.biosecurity_semaphore || {};
+    const sups = Array.isArray(ortho?.supplements) ? ortho.supplements : [];
 
-    // Cruce de Seguridad (Fase 20): Bloqueo de Energizantes y Cafeína (NOM-028 / NOM-004)
-    const hasStimulantsConflict = () => {
-        const habits = patientData?.habits || patientData?.clinical_context?.habits;
-        const hasCaffeineHistory = habits?.caffeine?.consumed === 'yes' || 
-                                   habits?.stimulants?.consumed === 'yes' ||
-                                   habits?.drugs?.stimulants === 'yes' ||
-                                   habits?.consumption?.stimulants === true;
-        
-        const medications = patientData?.history?.medications || [];
-        const hasConflictMeds = medications.some(m => {
-            const mName = (m.name || '').toLowerCase();
-            return mName.includes('estimulante') || 
-                   mName.includes('metilfenidato') || 
-                   mName.includes('anfetamina') || 
-                   mName.includes('antidepresivo') ||
-                   mName.includes('ansiolítico') ||
-                   mName.includes('ansiolitico') ||
-                   mName.includes('clonazepam') ||
-                   mName.includes('diazepam') ||
-                   mName.includes('fluoxetina') ||
-                   mName.includes('sertralina') ||
-                   mName.includes('acidosis') ||
-                   mName.includes('metformina');
-        });
+    const semLevel = String(sem?.level || (sem?.isPaused ? 'ROJO' : sem?.isMicroDose ? 'AMARILLO' : 'VERDE')).toUpperCase();
+    const semBadge = semLevel === 'ROJO'
+        ? '🔴 Semáforo ROJO — En Pausa Preventiva de Bioseguridad (0 sobres activos)'
+        : semLevel === 'AMARILLO'
+            ? '🟡 Semáforo AMARILLO — Protocolo de Micro-Dosis Gradual (Semana 1)'
+            : '🟢 Semáforo VERDE — Protocolo Circadiano Estándar';
 
-        return hasCaffeineHistory || hasConflictMeds;
-    };
+    const rawKcal = Number(bio?.targetKcal);
+    const formattedKcal = Number.isFinite(rawKcal) && rawKcal > 0
+        ? `${String(Math.round(rawKcal)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')} kcal/día`
+        : 'Meta personalizada SSoTT';
+    const hydrationStr = ortho?.hydrationTargetLiters
+        ? `${ortho.hydrationTargetLiters} L/día`
+        : 'Hidratación clínica calculada';
+
+    const sup33 = sups.find(s => s?.id === 'sup_33plus' || /33/.test(String(s?.name || ''))) || null;
+    const sup34 = sups.find(s => s?.id === 'sup_34plus' || /34/.test(String(s?.name || ''))) || null;
+
+    const line33 = sem?.isPaused || sup33?.status === 'paused_by_biosecurity'
+        ? '0 sobres activos (Diferido hasta valoración médica de estudios de control)'
+        : (sup33?.dosage || 'Prescripción diurna sincronizada al despertar');
+
+    const line34 = sem?.isPaused || sup34?.status === 'paused_by_biosecurity'
+        ? '0 sobres activos (Diferido hasta valoración médica de estudios de control)'
+        : (sup34?.dosage || 'Prescripción nocturna en mínimo 500 ml de agua simple 💧');
+
+    return (
+        `📋 **Compuerta Ejecutiva de Despacho y Portapapeles (SSoTT — Fase 20)**\n\n` +
+        `El expediente clínico y la prescripción ortomolecular han quedado consolidados y sellados bajo **NOM-004-SSA3-2012**:\n\n` +
+        `• **Bioseguridad:** ${semBadge}\n\n` +
+        `• **Meta Bioenergética e Hidratación:** ${formattedKcal} | ${hydrationStr}\n\n` +
+        `• **🔴 33Plus®:** ${line33}\n\n` +
+        `• **🟢 34Plus®:** ${line34}\n\n` +
+        `Seleccione el formato que desea copiar al portapapeles o continúe a la **Fase 21 (Calendario de 28 Días)**:`
+    );
+}
+
+const Fase20_Portapapeles = ({
+    patientData,
+    onPhaseComplete,
+    setMessages,
+    registerInputHandler,
+    setActiveTab
+}) => {
+    const isStudyCompleted = Boolean(patientData?.is_completed);
+    const hasEmittedGateRef = useRef(false);
+    const didAutoFocusDiagnosisRef = useRef(false);
+
+    const executiveContent = useMemo(
+        () => buildSSoTExecutiveSummaryContent(patientData),
+        [patientData]
+    );
 
     useEffect(() => {
-        const backendSupplements = patientData?.clinical_dossier?.orthomolecular_prescription?.supplements;
-        const baseList = Array.isArray(backendSupplements) && backendSupplements.length > 0
-            ? backendSupplements
-            : mockSuggestions;
-
-        const conflict = hasStimulantsConflict();
-        if (conflict) {
-            // Reemplazar energizantes o té verde por alternativas libres de cafeína (Maca/L-Teanina pura)
-            const filtered = baseList.map(s => {
-                const sName = (s.name || '').toLowerCase();
-                if (sName.includes('té verde') || sName.includes('guaraná') || sName.includes('cafeína') || sName.includes('taurina')) {
-                    return {
-                        ...s,
-                        name: 'L-Teanina Pura (Nootrópico Libre de Estimulantes)',
-                        rationale: '⚠️ BLOQUEO DE SEGURIDAD (NOM-028): Se suspendió el Extracto de Té Verde/Cafeína por cruce de riesgos con su historial de fármacos activos o estimulantes. Se receta L-Teanina pura para soporte cognitivo y control de estrés sin sobreestimular el SNC.',
-                        dosage: '150mg al día'
-                    };
-                }
-                return s;
-            });
-            setSuggestions(filtered);
-        } else {
-            setSuggestions(baseList);
+        if (isStudyCompleted) return;
+        if (!didAutoFocusDiagnosisRef.current && typeof setActiveTab === 'function') {
+            didAutoFocusDiagnosisRef.current = true;
+            setActiveTab('diagnosis');
         }
-    }, [patientData]);
+    }, [isStudyCompleted, setActiveTab]);
 
     useEffect(() => {
-        if (internalStep === 'INTRO' && setMessages) {
-            setMessages(prev => {
-                const targetText = "Suplementación Avanzada (33Plus / 34Plus)";
-                // Deduplicación atómica y purga de mensajes gemelos en historial
-                let seen = false;
-                const cleaned = prev.filter(msg => {
-                    if (msg.role === 'assistant' && typeof msg.content === 'string' && msg.content.includes(targetText)) {
-                        if (seen) return false;
-                        seen = true;
-                        return true;
-                    }
-                    return true;
-                });
+        if (isStudyCompleted) {
+            if (registerInputHandler) registerInputHandler(null);
+            return;
+        }
+        if (hasEmittedGateRef.current) return;
+        hasEmittedGateRef.current = true;
 
-                if (seen) {
-                    return cleaned.length !== prev.length ? cleaned : prev;
-                }
+        if (typeof setMessages === 'function') {
+            setMessages(prev => {
+                const safePrev = Array.isArray(prev) ? prev : [];
+                const alreadyExists = safePrev.some(
+                    m => m?.id === 'phase20_ssot_executive_gate' ||
+                        (typeof m?.content === 'string' && m.content.includes('Compuerta Ejecutiva de Despacho y Portapapeles (SSoTT — Fase 20)'))
+                );
+                if (alreadyExists) return safePrev;
 
                 return [
-                    ...cleaned,
+                    ...safePrev,
                     {
+                        id: 'phase20_ssot_executive_gate',
                         role: 'assistant',
-                        content: "🔬 **Cortex de Suplementación Avanzada (33Plus / 34Plus)**\n\n---\n\nHe formulado un protocolo de suplementación sugerido para el paciente. Recuerde que la IA actúa únicamente como soporte a la decisión clínica (CANDADO LEGAL COFEPRIS / NOM-004).\n\n¿Desea revisar las sugerencias una por una para aprobarlas, rechazarlas o ajustarlas?",
+                        content: executiveContent,
                         avatar: tiloImg,
-                        options: [
-                            { label: 'Iniciar Revisión', value: 'INICIAR' },
-                            { label: 'Omitir Suplementación', value: 'OMITIR' }
-                        ]
+                        options: buildSSoTExecutiveOptions(false)
                     }
                 ];
             });
         }
-    }, [internalStep, setMessages]);
+    }, [isStudyCompleted, executiveContent, setMessages, registerInputHandler]);
 
-    const handleSend = (userMsg) => {
-        const addBotMsg = (msg, options = null) => {
-            const newMsg = { role: "assistant", content: msg, avatar: tiloImg };
-            if (options) newMsg.options = options;
-            setMessages(prev => [...prev, newMsg]);
-        };
+    const handleSend = useCallback(async (userMsg) => {
+        const cmd = String(userMsg || '').trim();
 
-        if (internalStep === 'INTRO') {
-            if (userMsg === 'OMITIR') {
-                addBotMsg("Entendido. Omitiendo la suplementación avanzada.");
-                if (setPatientData) {
-                    setPatientData(prev => ({
-                        ...prev,
-                        advanced_supplementation: []
-                    }));
-                }
-                setInternalStep('FINAL');
-                setTimeout(() => onPhaseComplete('PHASE_16_DIETARY_PROTOCOL'), 1000);
+        if (cmd === 'PROCEED_TO_PHASE_21' || cmd === 'GO_TO_CALENDAR_SPRINT') {
+            if (registerInputHandler) registerInputHandler(null);
+            if (typeof onPhaseComplete === 'function') {
+                onPhaseComplete('PHASE_21_CALENDARIO');
+            }
+            return;
+        }
+
+        if (cmd === 'COPY_SSOT_PATIENT_GUIDE' || cmd === 'COPY_SSOT_MEDICAL_DOSSIER') {
+            const viewMode = cmd === 'COPY_SSOT_PATIENT_GUIDE' ? 'patient' : 'medical';
+            const result = await copySSoTDocument({
+                patientData,
+                citationId:
+                    patientData?.profile?.citationId ||
+                    patientData?.profile?.citaId ||
+                    patientData?.identificacion?.idCita ||
+                    patientData?.identificacion?.citaId ||
+                    null,
+                viewMode
+            });
+
+            const showToast = useClinicalToast.getState().showToast;
+            if (result.ok) {
+                showToast({
+                    dedupeKey: 'ssot-clipboard',
+                    type: 'success',
+                    icon: 'clipboard',
+                    title: viewMode === 'patient' ? 'Guía del Paciente Copiada' : 'Expediente NOM-004 Copiado',
+                    message: `${result.patientName} • Cita #${result.folio} sincronizada al 100% en portapapeles.`,
+                    duration: 3200
+                });
             } else {
-                setInternalStep('REVIEWING');
-                presentSuggestion(0);
+                const isFailClosed = result.reason === 'MISSING_CLINICAL_DOSSIER' || result.reason === 'INCOMPLETE_IDENTITY';
+                showToast({
+                    dedupeKey: 'ssot-clipboard',
+                    type: isFailClosed ? 'error' : 'warning',
+                    icon: 'clipboard',
+                    title: isFailClosed ? 'Copiado Bloqueado por Bioseguridad (NOM-004)' : 'Acceso al Portapapeles Restringido',
+                    message: isFailClosed
+                        ? 'El expediente clínico aún no cuenta con síntesis o identidad validada.'
+                        : 'Verifique los permisos del navegador e intente nuevamente.',
+                    duration: 4000
+                });
             }
-        } else if (internalStep === 'REVIEWING') {
-            const current = suggestions[currentIndex];
-            if (userMsg === 'APROBAR') {
-                const newSugs = [...suggestions];
-                newSugs[currentIndex].status = 'approved';
-                setSuggestions(newSugs);
-                addBotMsg(`✅ Aprobado: ${current.name}`);
-                goToNextSuggestion(newSugs);
-            } else if (userMsg === 'RECHAZAR') {
-                const newSugs = [...suggestions];
-                newSugs[currentIndex].status = 'rejected';
-                setSuggestions(newSugs);
-                addBotMsg(`❌ Rechazado: ${current.name}`);
-                goToNextSuggestion(newSugs);
-            } else if (userMsg === 'AJUSTAR') {
-                setInternalStep('ADJUST_DOSAGE');
-                addBotMsg(`¿Cuál es la nueva dosis para **${current.name}**? (Actual: ${current.dosage})`);
-            }
-        } else if (internalStep === 'ADJUST_DOSAGE') {
-            const newSugs = [...suggestions];
-            newSugs[currentIndex].dosage = userMsg;
-            setSuggestions(newSugs);
-            setInternalStep('ADJUST_TIMING');
-            addBotMsg(`¿Cuál es la nueva indicación/horario para **${newSugs[currentIndex].name}**? (Actual: ${newSugs[currentIndex].timing})`);
-        } else if (internalStep === 'ADJUST_TIMING') {
-            const newSugs = [...suggestions];
-            newSugs[currentIndex].timing = userMsg;
-            newSugs[currentIndex].status = 'approved';
-            setSuggestions(newSugs);
-            setInternalStep('REVIEWING');
-            addBotMsg(`✅ Ajuste Guardado: ${newSugs[currentIndex].name} - ${newSugs[currentIndex].dosage}, ${newSugs[currentIndex].timing}`);
-            goToNextSuggestion(newSugs);
         }
-    };
-
-    const presentSuggestion = (index) => {
-        const current = suggestions[index];
-        const addBotMsg = (msg, options = null) => {
-            const newMsg = { role: "assistant", content: msg, avatar: tiloImg };
-            if (options) newMsg.options = options;
-            setMessages(prev => [...prev, newMsg]);
-        };
-
-        const cleanRationale = cleanClinicalRationale(current.rationale);
-        const cleanName = cleanClinicalRationale(current.name);
-
-        addBotMsg(
-            `💊 **Sugerencia ${index + 1} de ${suggestions.length}**\n\n` +
-            `• **Motor:** ${current.cortex}\n\n` +
-            `• **Suplemento:** ${cleanName}\n\n` +
-            `• **Dosis:** ${current.dosage}\n\n` +
-            `• **Indicación:** ${current.timing}\n\n` +
-            `🧠 **Racional Clínico:**\n${cleanRationale}\n\n` +
-            `¿Qué acción desea tomar?`,
-            [
-                { label: 'Aprobar', value: 'APROBAR' },
-                { label: 'Rechazar', value: 'RECHAZAR' },
-                { label: 'Ajustar', value: 'AJUSTAR' }
-            ]
-        );
-    };
-
-    const goToNextSuggestion = (currentSuggestions) => {
-        const nextIndex = currentIndex + 1;
-        if (nextIndex < currentSuggestions.length) {
-            setCurrentIndex(nextIndex);
-            setTimeout(() => {
-                presentSuggestion(nextIndex);
-            }, 500);
-        } else {
-            setInternalStep('FINAL');
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: "✅ **Revisión Completada**\n\nEl protocolo de suplementación ha sido consolidado y será incluido en el plan de acción.",
-                avatar: tiloImg
-            }]);
-            
-            if (setPatientData) {
-                setPatientData(prev => ({
-                    ...prev,
-                    advanced_supplementation: currentSuggestions.filter(s => s.status === 'approved')
-                }));
-            }
-            setTimeout(() => onPhaseComplete('PHASE_16_DIETARY_PROTOCOL'), 2000);
-        }
-    };
+    }, [patientData, onPhaseComplete, registerInputHandler, setMessages]);
 
     useEffect(() => {
-        if (registerInputHandler) {
-            registerInputHandler(() => handleSend);
+        if (!registerInputHandler) return;
+        if (isStudyCompleted) {
+            registerInputHandler(null);
+            return;
         }
-    }, [registerInputHandler, internalStep, currentIndex, suggestions]);
+        registerInputHandler(() => handleSend);
+        return () => {
+            registerInputHandler(null);
+        };
+    }, [registerInputHandler, isStudyCompleted, handleSend]);
 
     return null;
 };
 
-export default Fase15_SuplementacionAv;
+export default Fase20_Portapapeles;

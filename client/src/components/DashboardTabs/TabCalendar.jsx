@@ -5,6 +5,9 @@ import {
     Navigation, Activity, MapPin, Briefcase, User, Smartphone, Shield,
     Layers, Dumbbell, Zap, RefreshCw, Lock
 } from 'lucide-react';
+import { resolvePatientSex } from '../../utils/genderConcordance';
+import { extractPatientAge } from '../../utils/patientGuideAdapter';
+import { useClinicalToast } from '../../hooks/useClinicalToast';
 
 export const TabCalendar = ({
     patientData,
@@ -15,8 +18,15 @@ export const TabCalendar = ({
     toggleSection,
     isPhase20EditMode
 }) => {
-    const has33Plus = patientData?.advanced_supplementation?.some(s => s.name?.includes('33') || s.cortex?.includes('33'));
-    const has34Plus = patientData?.advanced_supplementation?.some(s => s.name?.includes('34') || s.cortex?.includes('34'));
+    const orthoPrescription = patientData?.clinical_dossier?.orthomolecular_prescription || {};
+    const isBiosecurityPaused = Boolean(orthoPrescription?.biosecurity_semaphore?.isPaused);
+    const orthoSups = Array.isArray(orthoPrescription?.supplements) ? orthoPrescription.supplements : [];
+    const has33Plus = !isBiosecurityPaused && orthoSups.some(
+        s => s?.status !== 'paused_by_biosecurity' && (s?.id === 'sup_33plus' || s?.name?.includes('33') || s?.cortex?.includes('33'))
+    );
+    const has34Plus = !isBiosecurityPaused && orthoSups.some(
+        s => s?.status !== 'paused_by_biosecurity' && (s?.id === 'sup_34plus' || s?.name?.includes('34') || s?.cortex?.includes('34'))
+    );
 
     // Extraer datos logísticos o usar fallbacks seguros
     const environmentVenue = patientData?.logistics_profile?.environment?.venue || 'HOME';
@@ -38,9 +48,10 @@ export const TabCalendar = ({
 
     // 1. Evaluación de Triggers Clínicos y Tetra-Estratificación Etaria (Lactante < 2 | Juvenil 2-17 | Adulto 18-64 | Geriatría ≥ 65)
     const pInfo = patientData?.identityLock?.patientInfo;
-    const ageCandidate = parseFloat(pInfo?.age !== undefined ? pInfo.age : (patientData?.identificacion?.edad !== undefined ? patientData.identificacion.edad : (patientData?.edad ?? 30))) || 30;
-    const isLactante = (ageCandidate < 2) && Boolean(patientData?.isLactante || (pInfo?.dob_year && (new Date().getFullYear() - pInfo.dob_year < 2)));
-    const isJuvenilAdolescente = (!isLactante && ageCandidate < 18) && Boolean(patientData?.isPediatrico || (pInfo?.dob_year && (new Date().getFullYear() - pInfo.dob_year < 18)));
+    const resolvedChronoAge = extractPatientAge(patientData, null);
+    const ageCandidate = resolvedChronoAge !== null ? resolvedChronoAge : 30;
+    const isLactante = (ageCandidate < 2) && Boolean(resolvedChronoAge !== null || patientData?.isLactante || (pInfo?.dob_year && (new Date().getFullYear() - pInfo.dob_year < 2)));
+    const isJuvenilAdolescente = (!isLactante && ageCandidate < 18) && Boolean(resolvedChronoAge !== null || patientData?.isPediatrico || (pInfo?.dob_year && (new Date().getFullYear() - pInfo.dob_year < 18)));
     const isGeriatric = ageCandidate >= 65 || patientData?.isGeriatrico;
     const isLactanteOrPediatric = isLactante || isJuvenilAdolescente;
 
@@ -148,7 +159,7 @@ export const TabCalendar = ({
             nutrition: hasRenalIssue 
                 ? "Nutrición Geriátrica de Protección Renal (Proteína Fraccionada 0.8g/kg + Densidad de Micronutrientes)"
                 : "Nutrición Inmunointestinal Antiinflamatoria (Cero Gluten/Lácteos, Fácil Masticación y Digestibilidad)",
-            supplementation: "Mañana: Soporte Celular 33+ (Dosificación Geriátrica) | Noche: Soporte Tisular 34+ (Disuelto en 350-500 ml de agua 💧 según tolerancia cardíaca/renal)",
+            supplementation: "Mañana: Soporte Celular 33Plus® (Dosificación Geriátrica) | Noche: Soporte Tisular 34Plus® (Disuelto en 350-500 ml de agua 💧 según tolerancia cardíaca/renal)",
             movement: "Caminatas Ligeras Postprandiales de 10-15 min a paso cómodo + Respiración Diafragmática y Movilidad Articular Suave"
         },
         fase2: {
@@ -187,7 +198,7 @@ export const TabCalendar = ({
                 : hasThyroidIssue 
                     ? "Inmunointestinal (Cero Gluten/Lácteos) + Smart Carbs Cíclicos Tiroideos"
                     : "Inmunointestinal (Cero Gluten / Cero Lácteos / Cero Ultraprocesados)",
-            supplementation: "Mañana: Fórmula 33+ (Ignición Mitocondrial) | Noche: Fórmula 34+ (Ingeniería Tisular en MÍNIMO 500 ml de agua 💧)",
+            supplementation: "Mañana: Fórmula 33Plus® (Ignición Mitocondrial) | Noche: Fórmula 34Plus® (Ingeniería Tisular en MÍNIMO 500 ml de agua 💧)",
             movement: "Caminatas postprandiales de 20 min (estabilización insulínica) + Respiración diafragmática vagal"
         },
         fase2: {
@@ -235,37 +246,133 @@ export const TabCalendar = ({
     };
 
     // -------------------------------------------------------------------------
-    // ALGORITMO DETERMINISTA DE EDAD METABÓLICA REVERSIBLE (BIOENERGÉTICA T.I.L.O.)
+    // ALGORITMO DETERMINISTA DE EDAD METABÓLICA REVERSIBLE (SSoTT v2.8.4 — Cero Literales Fantasma)
     // -------------------------------------------------------------------------
-    const baseAge = parseFloat(ageCandidate) || 60;
+    const baseAge = resolvedChronoAge !== null ? resolvedChronoAge : ageCandidate;
 
-    // 1. Delta IMC (Sobrepeso fisiológico >= 25 kg/m2)
-    const bmiVal = parseFloat(patientData?.bioenergetics?.bmi || patientData?.vitals?.bmi || (patientData?.weight_kg && patientData?.height_cm ? (patientData.weight_kg / Math.pow(patientData.height_cm/100, 2)) : 26.8)) || 26.8;
-    const deltaIMC = bmiVal >= 30 ? 4.0 : bmiVal >= 25 ? 2.5 : 0.0;
+    // 1. Delta IMC Real (Cero fallback a 26.8; si falta IMC, aporta 0.0)
+    const realWeightKg = parseFloat(
+        patientData?.clinical_dossier?.bioenergetics?.weightKg ??
+        patientData?.vitals?.weight ??
+        patientData?.weight_kg
+    );
+    const realHeightCm = parseFloat(
+        patientData?.clinical_dossier?.bioenergetics?.heightCm ??
+        patientData?.vitals?.height ??
+        patientData?.height_cm
+    );
+    const bmiVal = parseFloat(
+        patientData?.clinical_dossier?.bioenergetics?.bmi ??
+        patientData?.bioenergetics?.bmi ??
+        patientData?.vitals?.bmi ??
+        (realWeightKg > 0 && realHeightCm > 0 ? realWeightKg / Math.pow(realHeightCm / 100, 2) : NaN)
+    );
+    const deltaIMC = !Number.isFinite(bmiVal) ? 0.0 : (bmiVal >= 30 ? 3.0 : bmiVal >= 25 ? 1.5 : 0.0);
 
-    // 2. Delta Vascular (Resistencia Vascular, Viscosidad, Bloqueo de Rama D)
-    const vascularRes = parseFloat(patientData?.scan_data?.electret_metrics?.cardiovascular?.resistencia_vascular?.value || 1.58);
-    const hasVascularRisk = vascularRes > 1.2 || diagStrings.some(s => s.includes('reactividad') || s.includes('hipertens') || s.includes('i10') || s.includes('vascular'));
-    const deltaVascular = hasVascularRisk ? 3.0 : 1.0;
+    // 2. Carga Alostática Ponderada y Acotada desde `clinical_dossier.ifm_nodes_matrix` Real
+    const rawIfmMatrix = Array.isArray(patientData?.clinical_dossier?.ifm_nodes_matrix)
+        ? patientData.clinical_dossier.ifm_nodes_matrix
+        : [];
+    const getNodeSeverityRank = (statusStr = '') => {
+        const st = String(statusStr || '').toUpperCase();
+        if (st.includes('CRÍTIC') || st.includes('CRITIC')) return 3;
+        if (st.includes('PRIORIDAD_ALTA') || st.includes('ALTA')) return 2;
+        if (/^(HOME[ÓO]STASIS|OPTIMO|ÓPTIMO|NORMAL|VALIDADO_NORMAL)$/i.test(st.trim())) return 0;
+        return st ? 1 : 0;
+    };
+    const activeIfmNodes = rawIfmMatrix.filter((node) => {
+        if (!node || typeof node !== 'object') return false;
+        const cie = String(node.cie10 || '').trim().toUpperCase();
+        if (cie === 'Z00.0' || cie === 'Z00.1') return false;
+        return getNodeSeverityRank(node.status) > 0;
+    });
 
-    // 3. Delta Lipídico (Cristal de Colesterol, Grasas Neutras)
-    const hasLipidRisk = diagStrings.some(s => s.includes('colesterol') || s.includes('e78') || s.includes('lipíd')) || (parseFloat(patientData?.scan_data?.electret_metrics?.blood_lipids?.grasas_neutras_mb?.value || 1.946) > 1.3);
-    const deltaLipidico = hasLipidRisk ? 2.0 : 0.5;
+    const rawIfmLoad = activeIfmNodes.reduce((acc, node) => {
+        const rank = getNodeSeverityRank(node.status);
+        if (rank === 3) return acc + 0.75;
+        if (rank === 2) return acc + 0.50;
+        return acc + 0.25;
+    }, 0.0);
 
-    // 4. Delta TMB / Eficiencia Bioenergética
-    const deltaTMB = -0.5;
+    // Respaldo honesto si el expediente aún no tiene nodos IFM pero presenta hallazgos reales en Electret (.itemsDict)
+    const realVascularRes = parseFloat(
+        patientData?.scan_data?.electret_metrics?.cardiovascular?.itemsDict?.resistencia_vascular?.value ??
+        patientData?.scan_data?.electret_metrics?.cardiovascular?.resistencia_vascular?.value
+    );
+    const realNeutralFats = parseFloat(
+        patientData?.scan_data?.electret_metrics?.blood_lipids?.itemsDict?.grasas_neutras_mb?.value ??
+        patientData?.scan_data?.electret_metrics?.blood_lipids?.grasas_neutras_mb?.value
+    );
+    const fallbackElectretLoad = activeIfmNodes.length === 0
+        ? ((Number.isFinite(realVascularRes) && realVascularRes > 1.2 ? 1.5 : 0.0) +
+           (Number.isFinite(realNeutralFats) && realNeutralFats > 1.3 ? 1.0 : 0.0))
+        : 0.0;
 
-    // Cálculo Determinista de Edad Metabólica
-    const edadMetabolica = Math.round(baseAge + deltaIMC + deltaVascular + deltaLipidico + deltaTMB); // 67 años
-    const deltaSobrecarga = Math.max(0, edadMetabolica - Math.round(baseAge)); // +7 años
-    const metaReversion = Math.max(Math.round(baseAge), edadMetabolica - 5); // 62 años
+    const cappedSystemicLoad = Math.min(6.0, rawIfmLoad > 0 ? rawIfmLoad : fallbackElectretLoad);
+    const totalAllostaticLoad = isLactanteOrPediatric ? 0.0 : Math.min(8.0, deltaIMC + cappedSystemicLoad);
 
-    // Datos de la Próxima Cita de Seguimiento
-    const scheduledAppt = patientData?.scheduledAppointment || {};
-    const apptDate = scheduledAppt.chosenDate || 'Lunes, 23 de noviembre de 2026';
-    const apptTime = scheduledAppt.chosenTime || '10:00 AM';
-    const apptFolio = scheduledAppt.folio ? `#SOL-${scheduledAppt.folio}` : '#SOL-62801';
-    const patientName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'Jesús Reyes Salgado';
+    const edadMetabolica = Math.round(baseAge + totalAllostaticLoad);
+    const deltaSobrecarga = Math.max(0, edadMetabolica - Math.round(baseAge));
+    const metaReversion = Math.max(Math.round(baseAge), edadMetabolica - Math.min(5, deltaSobrecarga));
+
+    // Construcción dinámica de los ejes dominantes reales a partir de `ifm_nodes_matrix`
+    const sortedDominantNodes = [...activeIfmNodes].sort((a, b) => {
+        const rankDiff = getNodeSeverityRank(b.status) - getNodeSeverityRank(a.status);
+        if (rankDiff !== 0) return rankDiff;
+        const countB = Array.isArray(b.key_biomarkers) ? b.key_biomarkers.length : 0;
+        const countA = Array.isArray(a.key_biomarkers) ? a.key_biomarkers.length : 0;
+        return countB - countA;
+    });
+    const topAxisNames = sortedDominantNodes
+        .slice(0, 3)
+        .map((n) => String(n.nodeName || '').replace(/^\d+\.\s*/, '').trim().toLowerCase())
+        .filter(Boolean);
+    const joinDynamicAxes = (axes) => {
+        if (axes.length === 0) return 'sus indicadores bioenergéticos evaluados';
+        if (axes.length === 1) return axes[0];
+        const head = axes.slice(0, -1).join('; ');
+        const last = axes[axes.length - 1];
+        const conj = /^(?:i|hi(?![aeouáéóú]))/iu.test(last) ? ' e ' : ' y ';
+        return `${head}${conj}${last}`;
+    };
+    const dominantAxesProse = joinDynamicAxes(topAxisNames);
+    const extraActiveNodesCount = Math.max(0, sortedDominantNodes.length - 3);
+    const metabolicCardSubLabel = deltaSobrecarga > 0
+        ? (sortedDominantNodes.length > 0
+            ? `${sortedDominantNodes.length} ${sortedDominantNodes.length === 1 ? 'Nodo IFM Activo' : 'Nodos IFM Activos'}`
+            : 'Sobrecarga Metabólica Reversible')
+        : 'Homeostasis Conservada';
+
+    const targetKcalVal =
+        patientData?.clinical_dossier?.bioenergetics?.targetKcal ||
+        orthoPrescription?.bioenergetics_summary?.targetKcal ||
+        patientData?.nutrition?.protocol?.target ||
+        2200;
+    const targetKcalFormatted = `${String(Math.round(Number(targetKcalVal) || 2200)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')} kcal`;
+
+    // Cálculo dinámico de ventana de seguimiento a 28 días (Ciclo 2 - Período de 28 Días)
+    const defaultFollowupDate = (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 28);
+        if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+        if (d.getDay() === 6) d.setDate(d.getDate() + 2);
+        const raw = d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    })();
+
+    const scheduledAppt = patientData?.scheduledAppointment || patientData?.proxima_cita || {};
+    const apptDate = scheduledAppt.chosenDate || scheduledAppt.fecha || defaultFollowupDate;
+    const apptTime = scheduledAppt.chosenTime || scheduledAppt.horario || '10:00 AM';
+    const citationFolio =
+        patientData?.profile?.citationId ||
+        patientData?.profile?.citaId ||
+        patientData?.identificacion?.idCita ||
+        patientData?.identificacion?.citaId ||
+        apiContext?.citaId ||
+        apiContext?.idCita ||
+        'S/F';
+    const apptFolio = scheduledAppt.folio ? `#SOL-${scheduledAppt.folio}` : `#SOL-${citationFolio}`;
+    const patientName = patientData?.profile?.name || patientData?.identificacion?.nombreCompleto || patientData?.identificacion?.nombre || 'Paciente';
 
     return (
         <div className="space-y-6 font-sans pb-12">
@@ -296,13 +403,20 @@ export const TabCalendar = ({
                                     </div>
                                     <div>
                                         <div className="text-sm font-bold text-tilo-text-main">Auditoría Bioenergética y Reología Tisular</div>
-                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">Metabolismo y Reactividad Vascular</div>
+                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">Matriz Funcional de 7 Nodos IFM (SSoTT)</div>
                                     </div>
                                 </div>
-                                <span className="bg-[#E30613]/10 text-[#E30613] border border-[#E30613]/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase flex items-center gap-1 w-fit">
-                                    <Activity className="w-3 h-3" />
-                                    Sobrecarga Reversible: +{deltaSobrecarga} Años
-                                </span>
+                                {deltaSobrecarga > 0 ? (
+                                    <span className="bg-[#E30613]/10 text-[#E30613] border border-[#E30613]/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase flex items-center gap-1 w-fit">
+                                        <Activity className="w-3 h-3" />
+                                        Sobrecarga Reversible: +{deltaSobrecarga} {deltaSobrecarga === 1 ? 'Año' : 'Años'}
+                                    </span>
+                                ) : (
+                                    <span className="bg-tilo-success/10 text-tilo-success border border-tilo-success/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase flex items-center gap-1 w-fit">
+                                        <Shield className="w-3 h-3" />
+                                        Homeostasis Metabólica Conservada
+                                    </span>
+                                )}
                             </div>
 
                             {/* Bento de Edades Comparativas */}
@@ -317,19 +431,19 @@ export const TabCalendar = ({
                                     <span className="text-[9px] text-tilo-text-muted mt-1 uppercase font-semibold">Registro de Nacimiento</span>
                                 </div>
 
-                                <div className="bg-[#E30613]/5 dark:bg-[#E30613]/10 p-4 rounded-xl border border-[#E30613]/20 flex flex-col items-center justify-center text-center transition-all duration-300">
-                                    <span className="text-[10px] uppercase font-bold text-[#E30613] tracking-wider mb-1">
+                                <div className={`${deltaSobrecarga > 0 ? 'bg-[#E30613]/5 dark:bg-[#E30613]/10 border-[#E30613]/20' : 'bg-tilo-success/5 dark:bg-tilo-success/10 border-tilo-success/20'} p-4 rounded-xl border flex flex-col items-center justify-center text-center transition-all duration-300`}>
+                                    <span className={`text-[10px] uppercase font-bold ${deltaSobrecarga > 0 ? 'text-[#E30613]' : 'text-tilo-success'} tracking-wider mb-1`}>
                                         Edad Metabólica Actual
                                     </span>
-                                    <span className="text-2xl font-black text-[#E30613] dashboard-data-text">
-                                        {edadMetabolica} <span className="text-xs font-semibold text-[#E30613]/80">años</span>
+                                    <span className={`text-2xl font-black ${deltaSobrecarga > 0 ? 'text-[#E30613]' : 'text-tilo-success'} dashboard-data-text`}>
+                                        {edadMetabolica} <span className={`text-xs font-semibold ${deltaSobrecarga > 0 ? 'text-[#E30613]/80' : 'text-tilo-success/80'}`}>años</span>
                                     </span>
-                                    <span className="text-[9px] text-[#E30613] mt-1 uppercase font-bold">Sobrecarga Vascular & Lipídica</span>
+                                    <span className={`text-[9px] ${deltaSobrecarga > 0 ? 'text-[#E30613]' : 'text-tilo-success'} mt-1 uppercase font-bold`}>{metabolicCardSubLabel}</span>
                                 </div>
 
                                 <div className="bg-tilo-success/5 dark:bg-tilo-success/10 p-4 rounded-xl border border-tilo-success/20 flex flex-col items-center justify-center text-center transition-all duration-300">
                                     <span className="text-[10px] uppercase font-bold text-tilo-success tracking-wider mb-1">
-                                        Meta Reversión (28 Días)
+                                        Meta Ciclo 1 (28 Días)
                                     </span>
                                     <span className="text-2xl font-black text-tilo-success dashboard-data-text">
                                         {metaReversion} <span className="text-xs font-semibold text-tilo-success/80">años</span>
@@ -338,16 +452,28 @@ export const TabCalendar = ({
                                 </div>
                             </div>
 
-                            {/* Párrafo de Poder Empático */}
+                            {/* Párrafo de Poder Empático Basado en `ifm_nodes_matrix` Real */}
                             <div className="bg-white/80 dark:bg-slate-800/80 p-4 rounded-xl border border-tilo-border text-xs text-tilo-text-main leading-relaxed space-y-2">
-                                <p>
-                                    Estimado/a <strong>{patientName}</strong>: su edad cronológica es de <strong>{Math.round(baseAge)} años</strong>, pero el análisis integral de sus biomarcadores de reactividad vascular, viscosidad sanguínea y cristal de colesterol revela que sus células y vasos sanguíneos operan actualmente con una <strong>Edad Metabólica de {edadMetabolica} años</strong>.
-                                </p>
-                                <p className="text-tilo-text-muted">
-                                    Esta diferencia de <strong>+{deltaSobrecarga} años</strong> refleja un esfuerzo adicional que sus tejidos realizan para mantener la homeostasis. La excelente noticia es que <strong>la edad metabólica es 100% reversible</strong>.
-                                </p>
+                                {deltaSobrecarga > 0 ? (
+                                    <>
+                                        <p>
+                                            {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica es de <strong>{Math.round(baseAge)} años</strong>, y el análisis integral de sus ejes de <strong>{dominantAxesProse}</strong>{extraActiveNodesCount > 0 ? ` (junto con ${extraActiveNodesCount} ${extraActiveNodesCount === 1 ? 'nodo funcional adicional' : 'nodos funcionales adicionales'} en vigilancia activa)` : ''} indica que sus células y tejidos operan actualmente con una <strong>Edad Metabólica de {edadMetabolica} años</strong>.
+                                        </p>
+                                        <p className="text-tilo-text-muted">
+                                            Esta diferencia de <strong>+{deltaSobrecarga} {deltaSobrecarga === 1 ? 'año' : 'años'}</strong> refleja un esfuerzo adaptativo adicional para sostener su homeostasis diaria. La excelente noticia es que <strong>esta sobrecarga metabólica es reversible</strong>.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p>
+                                        {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica de <strong>{Math.round(baseAge)} años</strong> guarda equilibrio directo con su <strong>Edad Metabólica actual ({edadMetabolica} años)</strong>, reflejando una reserva funcional conservada en sus sistemas evaluados.
+                                    </p>
+                                )}
                                 <p className="font-semibold text-tilo-text-main pt-1 border-t border-tilo-border/60">
-                                    Al apegarse a su prescripción nutricional de 1,994 kcal y activar la ignición celular con la fórmula <strong>33Plus®</strong> (mañana) y la reparación tisular con <strong>34Plus®</strong> (noche), nuestro objetivo en estos primeros 28 días es hacer retroceder su reloj biológico hacia los <strong>{metaReversion} años</strong>, restaurando la ligereza endotelial y su vitalidad.
+                                    {(has33Plus || has34Plus) ? (
+                                        <>Al apegarse a su prescripción nutricional de {targetKcalFormatted} y activar la modulación celular con <strong>33Plus®</strong> y la reparación tisular con <strong>34Plus®</strong> conforme a su pauta personalizada, nuestro objetivo en estos primeros 28 días es {deltaSobrecarga > 0 ? <>hacer retroceder su reloj biológico hacia los <strong>{metaReversion} años</strong></> : <>consolidar su vitalidad metabólica en <strong>{metaReversion} años</strong></>}, restaurando la ligereza endotelial y su energía diaria.</>
+                                    ) : (
+                                        <>Al apegarse a su prescripción nutricional antiinflamatoria de {targetKcalFormatted}, hidratación constante y estudios clínicos de control (manteniendo en pausa preventiva la suplementación concentrada), nuestro objetivo en estos primeros 28 días es {deltaSobrecarga > 0 ? <>hacer retroceder su reloj biológico hacia los <strong>{metaReversion} años</strong></> : <>proteger su equilibrio metabólico en <strong>{metaReversion} años</strong></>} con total bioseguridad.</>
+                                    )}
                                 </p>
                             </div>
                         </div>
@@ -409,17 +535,17 @@ export const TabCalendar = ({
                             </div>
 
                             <div className="p-3 rounded-xl bg-tilo-primary/5 border border-tilo-primary/20 flex items-start gap-2.5 text-xs text-tilo-text-muted leading-relaxed">
-                                <Shield className="w-4 h-4 text-tilo-primary shrink-0 mt-0.5" />
+                                <Shield className="w-4 h-4 text-tilo-primary shrink-0 mt-0.5" strokeWidth={2} />
                                 <p>
-                                    <strong className="text-tilo-text-main">Garantía de Continuidad:</strong> La cita queda sujeta a la confirmación de recepción. El paciente recibirá la notificación oficial de fecha y enlace a través de WhatsApp y en la App móvil VitalLoop®.
+                                    <strong className="text-tilo-text-main">Garantía de Continuidad:</strong> La cita queda sujeta a la confirmación de recepción. Usted recibirá la notificación oficial de fecha y enlace a través de WhatsApp y en la Plataforma Digital de Equipo en Acción®.
                                 </p>
                             </div>
                         </div>
                     </Accordion>
 
-                    {/* --- CHILD ACCORDION 3: SINCRONIZACIÓN DIGITAL (APP VITALLOOP®) --- */}
+                    {/* --- CHILD ACCORDION 3: SEGUIMIENTO DIGITAL EQUIPO EN ACCIÓN® --- */}
                     <Accordion
-                        title="Sincronización Digital y Monitoreo (App VitalLoop®)"
+                        title="Seguimiento Digital y Acompañamiento (Equipo en Acción®)"
                         id="accordion-execution-logistics"
                         isOpen={openSections.childExecutionLogistics !== undefined ? openSections.childExecutionLogistics : true}
                         onToggle={() => toggleSection('childExecutionLogistics')}
@@ -429,11 +555,11 @@ export const TabCalendar = ({
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-tilo-border">
                                 <div className="flex items-center gap-2.5">
                                     <div className="w-8 h-8 rounded-lg bg-tilo-primary/10 border border-tilo-primary/20 flex items-center justify-center text-tilo-primary">
-                                        <Smartphone className="w-4 h-4" />
+                                        <Smartphone className="w-4 h-4" strokeWidth={2} />
                                     </div>
                                     <div>
-                                        <div className="text-sm font-bold text-tilo-text-main">Ecosistema Digital y Telemetría</div>
-                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">Banda Biométrica Inteligente H7 BLE</div>
+                                        <div className="text-sm font-bold text-tilo-text-main">Plataforma Digital Equipo en Acción®</div>
+                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">Acompañamiento Diario de Hábitos y Bienestar</div>
                                     </div>
                                 </div>
                                 <span className="bg-tilo-primary/10 text-tilo-primary border border-tilo-primary/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase w-fit">
@@ -444,25 +570,30 @@ export const TabCalendar = ({
                             <div className="bg-white/60 dark:bg-slate-800/60 p-4 rounded-xl border border-tilo-border/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="space-y-1 max-w-xl">
                                     <div className="text-xs font-bold text-tilo-text-main">
-                                        Lleve su Plan Clínico y Telemetría en el Bolsillo
+                                        Consulte su Guía de Hábitos y Periodización de 28 Días
                                     </div>
-                                    <p className="text-xs text-tilo-text-muted leading-relaxed">
-                                        Descargue la aplicación móvil para consultar su menú de 1,994 kcal, registrar sus pasos diarios (NEAT 6,000–8,000), confirmar sus tomas de 33Plus® y 34Plus®, y enlazar su banda inteligente para el monitoreo de variabilidad cardíaca y calidad del sueño.
+                                    <p className="text-xs text-tilo-text-muted leading-relaxed tabular-nums">
+                                        {(has33Plus || has34Plus)
+                                            ? `Consulte desde su dispositivo su menú de ${targetKcalFormatted}, registre su caminata diaria (6\u00A0000 a 8\u00A0000 pasos/día), confirme sus tomas programadas de 33Plus® y 34Plus® y dé seguimiento a su descanso nocturno.`
+                                            : `Consulte desde su dispositivo su menú de ${targetKcalFormatted}, registre su caminata diaria e hidratación constante (mientras se validan sus estudios de control) y dé seguimiento a su descanso nocturno.`}
                                     </p>
                                 </div>
 
                                 <div className="shrink-0">
-                                    <a
-                                        href="#download-vitalloop"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            alert("Iniciando enlace con la App VitalLoop® y emparejamiento de Banda H7.");
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            useClinicalToast.getState().showToast({
+                                                title: "Acompañamiento Digital Equipo en Acción®",
+                                                message: "Su guía personalizada de 28 días se encuentra lista para consulta y envío a través de los canales oficiales de Equipo en Acción®.",
+                                                type: "info"
+                                            });
                                         }}
-                                        className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#1C75BC] hover:bg-[#165f9a] text-white text-xs font-bold uppercase tracking-wider transition-all duration-200 shadow-sm active:scale-95"
+                                        className="min-h-[44px] inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#1C75BC] hover:bg-[#155A92] text-white text-xs font-bold uppercase tracking-wider transition-all duration-200 shadow-sm active:scale-95 cursor-pointer"
                                     >
-                                        <Smartphone className="w-4 h-4" />
-                                        Descargar App VitalLoop®
-                                    </a>
+                                        <Smartphone className="w-4 h-4" strokeWidth={2} />
+                                        Sincronizar Guía Móvil
+                                    </button>
                                 </div>
                             </div>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { formatText, toSentenceCase } from '../../utils/utils';
+import { resolvePatientSex } from '../../utils/genderConcordance';
 import { motion as Motion } from 'framer-motion';
 
 import tiloImg from '../../assets/tilo.png';
@@ -62,7 +63,7 @@ const getInitialFlowState = (messages, patientData) => {
     if (content.includes("buscador predictivo clínico") || content.includes("seleccione la cirugía o procedimiento") || lastMsg.inputType === 'strict_select') {
         return 'quirurgicos_capture';
     }
-    if (content.includes("historial de intervenciones") || content.includes("sometido/a a alguna cirugía u operación")) {
+    if (content.includes("historial de intervenciones") || content.includes("sometido/a a alguna cirugía") || content.includes("sometido a alguna cirugía") || content.includes("sometida a alguna cirugía")) {
         return 'quirurgicos_start';
     }
     
@@ -105,14 +106,15 @@ const Fase5_PatologicosPersonales = ({
     const isMinor = ptCtx?.is_minor === true && age < 12;
     let pName = patientData?.profile?.first_name || patientData?.identificacion?.nombre || patientData?.identificacion?.nombres || patientData?.identityLock?.patientInfo?.firstName;
     pName = pName ? pName.split(' ')[0] : null;
-    const pNameFormatted = pName || (isMinor ? "el menor" : "el paciente");
 
-    const pSex = patientData?.identificacion?.sexo || patientData?.profile?.sex || 'Femenino';
-    const isFemale = pSex === 'Femenino' || pSex === 'FEMALE' || pSex === '2';
+    const { isFemale } = resolvePatientSex(patientData);
 
     const prnPatient = isMinor
         ? (isFemale ? 'la menor' : 'el menor')
         : (isFemale ? 'la paciente' : 'el paciente');
+
+    const pNameFormatted = pName || prnPatient;
+    const prnSometido = isFemale ? 'sometida' : 'sometido';
 
     const prnEvaluated = isFemale ? 'evaluada' : 'evaluado';
 
@@ -208,7 +210,7 @@ const Fase5_PatologicosPersonales = ({
                     role: 'assistant',
                     content: makeP1P2(
                         "El bloque de patologías ha sido sellado con éxito en su expediente digital.",
-                        `Pasemos ahora a su historial de intervenciones. Como ${isMinor ? 'tutor responsable de este expediente' : 'titular de este expediente'}, por favor declare: **¿Ha sido ${isMinor ? pNameFormatted : 'usted'} sometido/a a alguna cirugía u operación médica en el pasado?**`
+                        `Pasemos ahora a su historial de intervenciones. Como ${isMinor ? 'persona responsable de este expediente' : 'titular de este expediente'}, por favor declare: **¿Ha sido ${isMinor ? pNameFormatted : 'usted'} ${prnSometido} a alguna cirugía u operación médica en el pasado?**`
                     ),
                     options: [
                         { label: `❌ NINGUNA / DECLARAR SAN${isFemale ? 'A' : 'O'}`, value: "SURG_NONE" },
@@ -432,7 +434,7 @@ const Fase5_PatologicosPersonales = ({
                     role: 'assistant',
                     content: makeP1P2(
                         "Declaratoria de salud óptima registrada en el expediente base. Procedemos al cierre de validación bajo la firma del clínico.",
-                        `Pasemos ahora a su historial de intervenciones. Como ${isMinor ? 'tutor responsable de este expediente' : 'titular de este expediente'}, por favor declare: **¿Ha sido ${isMinor ? pNameFormatted : 'usted'} sometido/a a alguna cirugía u operación médica en el pasado?**`
+                        `Pasemos ahora a su historial de intervenciones. Como ${isMinor ? 'persona responsable de este expediente' : 'titular de este expediente'}, por favor declare: **¿Ha sido ${isMinor ? pNameFormatted : 'usted'} ${prnSometido} a alguna cirugía u operación médica en el pasado?**`
                     ),
                     options: [
                         { label: `❌ NINGUNA / DECLARAR SAN${isFemale ? 'A' : 'O'}`, value: "SURG_NONE" },
@@ -708,7 +710,7 @@ const Fase5_PatologicosPersonales = ({
                     role: 'assistant',
                     content: makeP1P2(
                         "El bloque de patologías ha sido sellado con éxito en su expediente digital.",
-                        `Pasemos ahora a su historial de intervenciones. Como ${isMinor ? 'tutor responsable de este expediente' : 'titular de este expediente'}, por favor declare: **¿Ha sido ${isMinor ? pNameFormatted : 'usted'} sometido/a a alguna cirugía u operación médica en el pasado?**`
+                        `Pasemos ahora a su historial de intervenciones. Como ${isMinor ? 'persona responsable de este expediente' : 'titular de este expediente'}, por favor declare: **¿Ha sido ${isMinor ? pNameFormatted : 'usted'} ${prnSometido} a alguna cirugía u operación médica en el pasado?**`
                     ),
                     options: [
                         { label: `❌ NINGUNA / DECLARAR SAN${isFemale ? 'A' : 'O'}`, value: "SURG_NONE" },
@@ -1011,7 +1013,7 @@ const Fase5_PatologicosPersonales = ({
                     role: 'assistant',
                     content: makeP1P2(
                         "Sistemas clínicos de antecedentes quirúrgicos reiniciados.",
-                        `Por favor declare nuevamente si ${isMinor ? `**${pNameFormatted}**` : 'usted'} ha sido sometido/a a alguna cirugía u operación en el pasado:`
+                        `Por favor declare nuevamente si ${isMinor ? `**${pNameFormatted}**` : 'usted'} ha sido ${prnSometido} a alguna cirugía u operación en el pasado:`
                     ),
                     options: [
                         { label: `❌ NINGUNA / DECLARAR SAN${isFemale ? 'A' : 'O'}`, value: "SURG_NONE" },

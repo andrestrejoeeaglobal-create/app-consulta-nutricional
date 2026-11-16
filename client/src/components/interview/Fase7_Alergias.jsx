@@ -2,14 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { toSentenceCase } from '../../utils/utils';
+import { resolvePatientSex, stripNegatedSentinels } from '../../utils/genderConcordance';
 
 export default function Fase7_Alergias({ messages, setMessages, patientData, setPatientData, onPhaseComplete, registerInputHandler, setIsGlobalTyping, onStateChange }) {
-    const { patientName: pName, patientAge, patientSex } = usePatientLinguistics(patientData);
+    const { patientName: pName, patientAge } = usePatientLinguistics(patientData);
     const ptCtx = patientData?.profile?.pediatric_profile;
     // Para efectos de diálogo, solo consideramos menor (3ra persona) si tiene menos de 12 años (pediátricos).
     // Para adolescentes (12-17) el protocolo exige tratamiento directo ("Usted").
     const isMinor = ptCtx?.is_minor === true && patientAge < 12;
-    const isFemale = patientSex?.toUpperCase().startsWith('F');
+    const { isFemale } = resolvePatientSex(patientData);
     const allergicSuf = isFemale ? 'a' : 'o';
 
     // Integración de Genoma Clínico y Alertas
@@ -63,22 +64,23 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
     };
 
     const [step, setStep] = useState(() => {
-        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("detalles inmuno-alérgicos"));
-        const hasFood = patientData.history?.allergies?.food && patientData.history.allergies.food.length > 0;
-        const hasDrug = patientData.history?.allergies?.drug && patientData.history.allergies.drug.length > 0;
-        if (hasSummary || hasFood || hasDrug) {
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content?.includes("detalles inmuno-alérgicos"));
+        const hasFood = stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']).length > 0;
+        const hasDrug = stripNegatedSentinels(patientData.history?.allergies?.drug || [], ['agent']).length > 0;
+        if (patientData?.allergies_edit_mode || hasSummary || hasFood || hasDrug) {
             return 'correct_menu';
         }
         return 'food_gate';
     });
+    const [isSingleLineEdit, setIsSingleLineEdit] = useState(false);
 
     const [tempAllergy, setTempAllergy] = useState({ agent: '', reaction: '', type: '' });
 
     useEffect(() => {
         if (step === 'correct_menu') {
             setMessages(prev => {
-                const alreadyGreeted = prev.some(msg => msg.role === 'assistant' && msg.content.includes("¿Qué cambio o acción desea realizar en su historial de alergias?"));
-                if (alreadyGreeted) return prev;
+                const lastAssistant = [...prev].reverse().find(m => m.role === 'assistant');
+                if (lastAssistant?.content?.includes("¿Qué cambio o acción desea realizar en su historial de alergias?")) return prev;
                 return [...prev, {
                     role: 'assistant',
                     content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de alergias?",
@@ -160,6 +162,7 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
         switch (step) {
             case 'correct_menu': {
                 if (input === "ADD_FOOD") {
+                    setIsSingleLineEdit(true);
                     setStep('food_agent');
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -168,6 +171,7 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                             : `He registrado la presencia de reacciones alérgicas alimentarias en su expediente.\n\nPara proteger su plan metabólico, por favor especifique: ¿A qué alimento en particular es alérgic${allergicSuf}?`
                     }]);
                 } else if (input === "ADD_DRUG") {
+                    setIsSingleLineEdit(true);
                     setStep('drug_agent');
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -176,8 +180,8 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                             : `He registrado la presencia de sensibilidades farmacológicas en su expediente.\n\nPara salvaguardar la integridad clínica, por favor especifique: ¿A qué fármaco o sustancia activa en particular es alérgic${allergicSuf}?`
                     }]);
                 } else if (input === "MODIFY_SELECT") {
-                    const food = patientData.history?.allergies?.food || [];
-                    const drug = patientData.history?.allergies?.drug || [];
+                    const food = stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']);
+                    const drug = stripNegatedSentinels(patientData.history?.allergies?.drug || [], ['agent']);
                     
                     if (food.length > 0 || drug.length > 0) {
                         setStep('SELECT_MODIFY_ITEM');
@@ -198,16 +202,17 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "No existen registros para modificar.",
+                            content: "No existen registros activos para modificar.",
                             options: [
                                 { label: "➕ Registrar alergia alimentaria", value: "ADD_FOOD" },
-                                { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                                { label: "➕ Registrar alergia farmacológica", value: "ADD_DRUG" },
+                                { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
                             ]
                         }]);
                     }
                 } else if (input === "DELETE_SELECT") {
-                    const food = patientData.history?.allergies?.food || [];
-                    const drug = patientData.history?.allergies?.drug || [];
+                    const food = stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']);
+                    const drug = stripNegatedSentinels(patientData.history?.allergies?.drug || [], ['agent']);
                     
                     if (food.length > 0 || drug.length > 0) {
                         setStep('SELECT_DELETE_ITEM');
@@ -228,19 +233,22 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                     } else {
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "No existen registros para eliminar.",
+                            content: "No existen registros activos para eliminar.",
                             options: [
                                 { label: "➕ Registrar alergia alimentaria", value: "ADD_FOOD" },
-                                { label: "❌ Cancelar (Volver)", value: "FINISH" }
+                                { label: "➕ Registrar alergia farmacológica", value: "ADD_DRUG" },
+                                { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
                             ]
                         }]);
                     }
                 } else if (input === "CLEAR_ALL") {
+                    setIsSingleLineEdit(false);
                     setPatientData(prev => ({
                         ...prev,
+                        allergies_edit_mode: false,
                         history: {
                             ...(prev.history || {}),
-                            allergies: { food: [], drug: [] }
+                            allergies: { food: [], drug: [], negated: true }
                         }
                     }));
                     syncClinicalGenomeAlerts({ food: [], drug: [] });
@@ -257,8 +265,11 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                         ]
                     }]);
                 } else if (input === "FINISH") {
+                    setIsSingleLineEdit(false);
+                    const cleanFood = stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']);
+                    const cleanDrug = stripNegatedSentinels(patientData.history?.allergies?.drug || [], ['agent']);
                     if (onPhaseComplete) {
-                        onPhaseComplete(patientData.history?.allergies || {}, messages);
+                        onPhaseComplete({ food: cleanFood, drug: cleanDrug, negated: cleanFood.length === 0 && cleanDrug.length === 0 }, messages);
                     }
                 }
                 break;
@@ -266,6 +277,7 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
 
             case 'SELECT_MODIFY_ITEM': {
                 if (input === "BACK_TO_CORRECT") {
+                    setIsSingleLineEdit(false);
                     setStep('correct_menu');
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -283,7 +295,7 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                 }
                 if (input.startsWith("MODIFY_FOOD_INDEX_")) {
                     const idx = parseInt(input.replace("MODIFY_FOOD_INDEX_", ""), 10);
-                    const food = patientData.history?.allergies?.food || [];
+                    const food = stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']);
                     if (food[idx]) {
                         const target = food[idx];
                         const updated = food.filter((_, i) => i !== idx);
@@ -299,18 +311,23 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                             }
                         }));
 
+                        setIsSingleLineEdit(true);
                         setTempAllergy({ agent: target.agent, reaction: '', type: 'FOOD' });
                         setStep('food_agent');
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Modificando alergia alimentaria. Por favor confirme el nombre del alimento o sustancia: **${target.agent}**`
+                            content: `Modificando alergia alimentaria. Por favor confirme si conserva **${target.agent}** o escriba el alimento:`,
+                            options: [
+                                { label: `✅ Conservar: ${target.agent}`, value: target.agent },
+                                { label: "✍️ Escribir otro alimento", value: "__EDIT_FOOD_AGENT__" }
+                            ]
                         }]);
                     }
                 }
                 else if (input.startsWith("MODIFY_DRUG_INDEX_")) {
                     const idx = parseInt(input.replace("MODIFY_DRUG_INDEX_", ""), 10);
-                    const drug = patientData.history?.allergies?.drug || [];
+                    const drug = stripNegatedSentinels(patientData.history?.allergies?.drug || [], ['agent']);
                     if (drug[idx]) {
                         const target = drug[idx];
                         const updated = drug.filter((_, i) => i !== idx);
@@ -326,12 +343,17 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                             }
                         }));
 
+                        setIsSingleLineEdit(true);
                         setTempAllergy({ agent: target.agent, reaction: '', type: 'DRUG' });
                         setStep('drug_agent');
 
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: `Modificando alergia farmacológica. Por favor confirme el nombre de la sustancia o medicamento: **${target.agent}**`
+                            content: `Modificando alergia farmacológica. Por favor confirme si conserva **${target.agent}** o escriba la sustancia:`,
+                            options: [
+                                { label: `✅ Conservar: ${target.agent}`, value: target.agent },
+                                { label: "✍️ Escribir otro fármaco", value: "__EDIT_DRUG_AGENT__" }
+                            ]
                         }]);
                     }
                 }
@@ -340,6 +362,7 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
 
             case 'SELECT_DELETE_ITEM': {
                 if (input === "BACK_TO_CORRECT") {
+                    setIsSingleLineEdit(false);
                     setStep('correct_menu');
                     setMessages(prev => [...prev, {
                         role: 'assistant',
@@ -357,17 +380,21 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                 }
                 if (input.startsWith("DELETE_FOOD_INDEX_")) {
                     const idx = parseInt(input.replace("DELETE_FOOD_INDEX_", ""), 10);
-                    const food = patientData.history?.allergies?.food || [];
+                    const food = stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']);
+                    const drug = stripNegatedSentinels(patientData.history?.allergies?.drug || [], ['agent']);
                     if (food[idx]) {
                         const updated = food.filter((_, i) => i !== idx);
+                        setIsSingleLineEdit(false);
 
                         const newAllergies = {
-                            ...(patientData.history?.allergies || {}),
-                            food: updated
+                            food: updated,
+                            drug: drug,
+                            negated: updated.length === 0 && drug.length === 0
                         };
 
                         setPatientData(prev => ({
                             ...prev,
+                            allergies_edit_mode: false,
                             history: {
                                 ...(prev.history || {}),
                                 allergies: newAllergies
@@ -389,17 +416,21 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                 }
                 else if (input.startsWith("DELETE_DRUG_INDEX_")) {
                     const idx = parseInt(input.replace("DELETE_DRUG_INDEX_", ""), 10);
-                    const drug = patientData.history?.allergies?.drug || [];
+                    const food = stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']);
+                    const drug = stripNegatedSentinels(patientData.history?.allergies?.drug || [], ['agent']);
                     if (drug[idx]) {
                         const updated = drug.filter((_, i) => i !== idx);
+                        setIsSingleLineEdit(false);
 
                         const newAllergies = {
-                            ...(patientData.history?.allergies || {}),
-                            drug: updated
+                            food: food,
+                            drug: updated,
+                            negated: food.length === 0 && updated.length === 0
                         };
 
                         setPatientData(prev => ({
                             ...prev,
+                            allergies_edit_mode: false,
                             history: {
                                 ...(prev.history || {}),
                                 allergies: newAllergies
@@ -460,6 +491,14 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                 break;
             }
             case 'food_agent': {
+                if (input === "__EDIT_FOOD_AGENT__") {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: "Por favor escriba el nombre del alimento al que presenta alergia:"
+                    }]);
+                    setStep('food_agent');
+                    break;
+                }
                 const cleanAgent = toSentenceCase(input.trim());
                 setTempAllergy(prev => ({ ...prev, agent: cleanAgent, type: 'FOOD' }));
                 setMessages(prev => [...prev, {
@@ -479,13 +518,17 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                     status: 'ACTIVE'
                 };
 
+                const cleanExistingFood = stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']);
+                const cleanExistingDrug = stripNegatedSentinels(patientData.history?.allergies?.drug || [], ['agent']);
                 const updatedAllergies = {
-                    ...(patientData.history?.allergies || {}),
-                    food: [...(patientData.history?.allergies?.food || []), newFoodAllergy]
+                    food: [...cleanExistingFood, newFoodAllergy],
+                    drug: cleanExistingDrug,
+                    negated: false
                 };
 
                 setPatientData(prev => ({
                     ...prev,
+                    allergies_edit_mode: false,
                     history: {
                         ...(prev.history || {}),
                         allergies: updatedAllergies
@@ -518,6 +561,15 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                 }
 
                 setTempAllergy({ agent: '', reaction: '', type: '' });
+                syncClinicalGenomeAlerts(updatedAllergies);
+
+                if (isSingleLineEdit) {
+                    setIsSingleLineEdit(false);
+                    if (onPhaseComplete) {
+                        onPhaseComplete(updatedAllergies, messages);
+                    }
+                    break;
+                }
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
@@ -570,23 +622,20 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                     setStep('drug_agent');
                 } else if (input === "No") {
                     const newAllergies = {
-                        ...(patientData.history?.allergies || {}),
-                        drug: []
+                        food: stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']),
+                        drug: [],
+                        negated: stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']).length === 0
                     };
-                    setPatientData(prev => {
-                        const updated = {
-                            ...prev,
-                            history: {
-                                ...(prev.history || {}),
-                                allergies: newAllergies
-                            }
-                        };
-                        // Ejecutar sync del genoma de forma síncrona
-                        syncClinicalGenomeAlerts(newAllergies);
-                        // Completar
-                        handleFinish(newUserMsg);
-                        return updated;
-                    });
+                    setPatientData(prev => ({
+                        ...prev,
+                        allergies_edit_mode: false,
+                        history: {
+                            ...(prev.history || {}),
+                            allergies: newAllergies
+                        }
+                    }));
+                    syncClinicalGenomeAlerts(newAllergies);
+                    handleFinish(newUserMsg, newAllergies);
                 } else {
                     setMessages(prev => [...prev, { 
                         role: 'assistant', 
@@ -601,6 +650,14 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                 break;
             }
             case 'drug_agent': {
+                if (input === "__EDIT_DRUG_AGENT__") {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: "Por favor escriba el nombre del fármaco o sustancia activa:"
+                    }]);
+                    setStep('drug_agent');
+                    break;
+                }
                 const cleanAgent = toSentenceCase(input.trim());
                 setTempAllergy(prev => ({ ...prev, agent: cleanAgent, type: 'DRUG' }));
                 setMessages(prev => [...prev, {
@@ -620,13 +677,17 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                     status: 'ACTIVE'
                 };
 
+                const cleanExistingFood = stripNegatedSentinels(patientData.history?.allergies?.food || [], ['agent']);
+                const cleanExistingDrug = stripNegatedSentinels(patientData.history?.allergies?.drug || [], ['agent']);
                 const updatedAllergies = {
-                    ...(patientData.history?.allergies || {}),
-                    drug: [...(patientData.history?.allergies?.drug || []), newDrugAllergy]
+                    food: cleanExistingFood,
+                    drug: [...cleanExistingDrug, newDrugAllergy],
+                    negated: false
                 };
 
                 setPatientData(prev => ({
                     ...prev,
+                    allergies_edit_mode: false,
                     history: {
                         ...(prev.history || {}),
                         allergies: updatedAllergies
@@ -652,6 +713,15 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
                 }
 
                 setTempAllergy({ agent: '', reaction: '', type: '' });
+                syncClinicalGenomeAlerts(updatedAllergies);
+
+                if (isSingleLineEdit) {
+                    setIsSingleLineEdit(false);
+                    if (onPhaseComplete) {
+                        onPhaseComplete(updatedAllergies, messages);
+                    }
+                    break;
+                }
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
@@ -714,9 +784,13 @@ export default function Fase7_Alergias({ messages, setMessages, patientData, set
         setStep('drug_gate');
     };
 
-    const handleFinish = (newUserMsg) => {
+    const handleFinish = (newUserMsg, explicitAllergies = null) => {
+        setIsSingleLineEdit(false);
         const finalMsgs = newUserMsg ? [...messages, newUserMsg] : messages;
-        onPhaseComplete(patientData.history?.allergies || {}, finalMsgs);
+        const source = explicitAllergies || patientData.history?.allergies || {};
+        const cleanFood = stripNegatedSentinels(source.food || [], ['agent']);
+        const cleanDrug = stripNegatedSentinels(source.drug || [], ['agent']);
+        onPhaseComplete({ food: cleanFood, drug: cleanDrug, negated: cleanFood.length === 0 && cleanDrug.length === 0 }, finalMsgs);
     };
 
     const handleSendRef = useRef(handleSend);

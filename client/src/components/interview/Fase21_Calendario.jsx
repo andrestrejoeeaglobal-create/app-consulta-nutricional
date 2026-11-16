@@ -134,12 +134,20 @@ function computeClientBioenergetics(patientData, ageYears, isLactante, isJuvenil
     };
 }
 
-const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, setMessages, registerInputHandler, patientData }) => {
+const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessages, registerInputHandler, patientData, setActiveTab }) => {
     const ageCandidate = Number(patientData?.identificacion?.edad ?? patientData?.identityLock?.patientInfo?.age ?? patientData?.edad ?? 30);
 
     const isLactante = ageCandidate < 2 || patientData?.isLactante;
     const isJuvenilAdolescente = !isLactante && (ageCandidate < 18 || patientData?.isPediatrico);
     const isGeriatric = ageCandidate >= 65 || patientData?.isGeriatrico;
+
+    const dossierStatus = String(patientData?.clinical_dossier?.status || '').toUpperCase();
+    const hasApprovedSSoTT = Boolean(
+        patientData?.diagnosis_approved ||
+        ['APPROVED', 'READY_FOR_PHASE_20', 'APPROVED_AND_SEALED'].includes(dossierStatus) ||
+        patientData?.clinical_dossier?.bioenergetics?.targetKcal
+    );
+    const isStudyCompleted = Boolean(patientData?.is_completed);
 
     const bio = useMemo(
         () => computeClientBioenergetics(patientData, ageCandidate, isLactante, isJuvenilAdolescente, isGeriatric),
@@ -150,6 +158,9 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
     const defaultTarget = String(bio.targetKcal || (isLactante ? '950' : isJuvenilAdolescente ? '1800' : isGeriatric ? '1600' : '2000'));
     const defaultMacros = bio.macros || { carbs: 40, protein: 30, fat: 30 };
 
+    const didAutoFocusScheduleRef = useRef(false);
+    const hasEmittedSSoTCalendarGateRef = useRef(false);
+    const hasSyncedSSoTNutritionRef = useRef(false);
     const hasGreetedRef = useRef(false);
     const [internalStep, setInternalStep] = useState(() => {
         if (!messages || !Array.isArray(messages)) return 'CALORIES';
@@ -175,11 +186,95 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
         fodmaps: false, shelfStable: false, noDairy: false, noGluten: false
     });
 
-    // Deduplicación reactiva y sanitización de opciones de mensajes preexistentes en historial
+    // 🛡️ SSoTT v2.8.2: Cortocircuito pasivo en estudios cerrados y auto-enfoque único en transición activa 20 -> 21
     useEffect(() => {
+        if (isStudyCompleted) {
+            if (registerInputHandler) registerInputHandler(null);
+            return;
+        }
+        if (hasApprovedSSoTT) {
+            if (!didAutoFocusScheduleRef.current && typeof setActiveTab === 'function') {
+                didAutoFocusScheduleRef.current = true;
+                setActiveTab('schedule');
+            }
+            if (!hasSyncedSSoTNutritionRef.current && typeof setPatientData === 'function') {
+                hasSyncedSSoTNutritionRef.current = true;
+                const ssotBio = patientData?.clinical_dossier?.bioenergetics || bio;
+                const targetNum = Number(ssotBio?.targetKcal || defaultTarget);
+                const tdeeNum = Number(ssotBio?.tdee || defaultTdee);
+                const ssotMacros = ssotBio?.macros || defaultMacros;
+                setPatientData(prev => {
+                    const existingTarget = Number(prev?.nutrition?.protocol?.target || 0);
+                    if (existingTarget === targetNum && prev?.nutrition?.protocol?.macros) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        nutrition: {
+                            ...(prev?.nutrition || {}),
+                            protocol: {
+                                ...(prev?.nutrition?.protocol || {}),
+                                equationUsed: ssotBio?.equationUsed || bio.equationUsed,
+                                bmr: ssotBio?.bmr || bio.bmr,
+                                weights: ssotBio?.weights || bio.weights,
+                                tdee: String(tdeeNum),
+                                target: String(targetNum),
+                                macros: ssotMacros
+                            }
+                        }
+                    };
+                });
+            }
+            if (!hasEmittedSSoTCalendarGateRef.current && typeof setMessages === 'function') {
+                hasEmittedSSoTCalendarGateRef.current = true;
+                const ssotBio = patientData?.clinical_dossier?.bioenergetics || bio;
+                const rawKcal = Number(ssotBio?.targetKcal || defaultTarget);
+                const formattedKcal = Number.isFinite(rawKcal) && rawKcal > 0
+                    ? `${String(Math.round(rawKcal)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')} kcal/día`
+                    : `${defaultTarget} kcal/día`;
+                const m = ssotBio?.macros || defaultMacros;
+                const eqName = ssotBio?.equationUsed || bio.equationUsed || 'Mifflin-St Jeor';
+
+                const gateContent =
+                    `📅 **Calendario y Periodización Celular de 28 Días (SSoTT — Fase 21)**\n\n` +
+                    `La arquitectura crononutricional se encuentra sincronizada en el panel derecho con los parámetros sellados del expediente:\n\n` +
+                    `• **Ecuación Bioenergética:** ${eqName}\n\n` +
+                    `• **Meta Calórica Prescrita:** **${formattedKcal}**\n\n` +
+                    `• **Distribución de Macronutrientes:** ${m.carbs}% Hidratos de Carbono | ${m.protein}% Proteínas | ${m.fat}% Lípidos\n\n` +
+                    `Seleccione la acción de cierre clínico para concluir el estudio bajo **NOM-004-SSA3-2012**:`;
+
+                setMessages(prev => {
+                    const safePrev = Array.isArray(prev) ? prev : [];
+                    const alreadyExists = safePrev.some(
+                        msg => msg?.id === 'phase21_ssot_calendar_gate' ||
+                            (typeof msg?.content === 'string' && msg.content.includes('Calendario y Periodización Celular de 28 Días (SSoTT — Fase 21)'))
+                    );
+                    if (alreadyExists) return safePrev;
+                    return [
+                        ...safePrev,
+                        {
+                            id: 'phase21_ssot_calendar_gate',
+                            role: 'assistant',
+                            content: gateContent,
+                            avatar: tiloImg,
+                            options: [
+                                { label: '📅 Agendar Cita de Seguimiento (4 Semanas) ➔', value: 'SCHEDULE_FOLLOWUP_APPOINTMENT' },
+                                { label: '📱 Sincronizar Plataforma Digital Equipo en Acción®', value: 'SYNC_VITALLOOP_APP' },
+                                { label: '🏁 Sellar y Cerrar Consulta NOM-004', value: 'FINAL_CONSULTATION_CLOSE' }
+                            ]
+                        }
+                    ];
+                });
+            }
+        }
+    }, [isStudyCompleted, hasApprovedSSoTT, setActiveTab, setPatientData, setMessages, registerInputHandler, patientData, bio, defaultTarget, defaultTdee, defaultMacros]);
+
+    // Deduplicación reactiva y sanitización de opciones de mensajes preexistentes en historial (solo ruta legacy sin SSoTT)
+    useEffect(() => {
+        if (isStudyCompleted || hasApprovedSSoTT) return;
         setMessages(prev => {
             // Eliminar mensaje de error espurio de valor numérico si quedó al final tras F5
-            if (prev.length > 0 && prev[prev.length - 1].content?.includes("Por favor, ingresa un valor numérico válido")) {
+            if (prev.length > 0 && (prev[prev.length - 1].content?.includes("Por favor, ingresa un valor numérico válido") || prev[prev.length - 1].content?.includes("Por favor, ingrese un valor numérico válido"))) {
                 prev = prev.slice(0, -1);
             }
             // Eliminar respuesta de usuario huérfana de 'Terminar y Consolidar Plan' si quedó bloqueada antes del error
@@ -222,9 +317,10 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
                 });
             return changed ? sanitized : prev;
         });
-    }, [setMessages]);
+    }, [setMessages, isStudyCompleted, hasApprovedSSoTT]);
 
     useEffect(() => {
+        if (isStudyCompleted || hasApprovedSSoTT) return;
         if (internalStep === 'CALORIES' || internalStep === 'TDEE' || internalStep === 'TARGET') {
             if (hasGreetedRef.current) return;
             const alreadyGreeted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("Protocolo Dietético"));
@@ -267,7 +363,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
                 ];
             });
         }
-    }, [internalStep, bio, defaultTdee, defaultTarget, messages, setMessages]);
+    }, [internalStep, bio, defaultTdee, defaultTarget, messages, setMessages, isStudyCompleted, hasApprovedSSoTT]);
 
     const handleSend = (userMsg) => {
         const addBotMsg = (msg, options = null) => {
@@ -363,7 +459,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
 
         if (internalStep === 'CALORIES' || internalStep === 'TDEE' || internalStep === 'TARGET') {
             if (isNaN(val) || val < minVal) {
-                addBotMsg(`Por favor, ingresa un valor numérico válido (Ej: ${defaultTarget}).`);
+                addBotMsg(`Por favor, ingrese un valor numérico válido (Ej: ${defaultTarget}).`);
                 return;
             }
             setTarget(val.toString());
@@ -380,7 +476,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
         }
         else if (internalStep === 'CARBS') {
             if (isNaN(val) || val < 0 || val > 100) {
-                addBotMsg("Porcentaje inválido. Ingresa un número del 0 al 100.");
+                addBotMsg("Porcentaje inválido. Ingrese un número del 0 al 100.");
                 return;
             }
             setMacros(prev => ({ ...prev, carbs: val }));
@@ -393,7 +489,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
         }
         else if (internalStep === 'PROTEIN') {
             if (isNaN(val) || val < 0 || val > 100) {
-                addBotMsg("Porcentaje inválido. Ingresa un número del 0 al 100.");
+                addBotMsg("Porcentaje inválido. Ingrese un número del 0 al 100.");
                 return;
             }
             setMacros(prev => ({ ...prev, protein: val }));
@@ -407,7 +503,7 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
         }
         else if (internalStep === 'FAT') {
             if (isNaN(val) || val < 0 || val > 100) {
-                addBotMsg("Porcentaje inválido. Ingresa un número del 0 al 100.");
+                addBotMsg("Porcentaje inválido. Ingrese un número del 0 al 100.");
                 return;
             }
 
@@ -442,16 +538,18 @@ const Fase16_ProtocoloDietetico = ({ onPhaseComplete, setPatientData, messages, 
     };
 
     useEffect(() => {
-        if (registerInputHandler) {
-            if (internalStep === 'FINAL') {
-                registerInputHandler(null);
-            } else {
-                registerInputHandler(() => handleSend);
-            }
+        if (!registerInputHandler) return;
+        if (isStudyCompleted || hasApprovedSSoTT || internalStep === 'FINAL') {
+            registerInputHandler(null);
+            return;
         }
-    }, [registerInputHandler, internalStep, tdee, target, macros, constraints]);
+        registerInputHandler(() => handleSend);
+        return () => {
+            registerInputHandler(null);
+        };
+    }, [registerInputHandler, isStudyCompleted, hasApprovedSSoTT, internalStep, tdee, target, macros, constraints]);
 
     return null;
 };
 
-export default Fase16_ProtocoloDietetico;
+export default Fase21_Calendario;

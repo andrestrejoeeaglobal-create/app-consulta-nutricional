@@ -1,4 +1,10 @@
-export const getPhase3SubRoutesConfig = (patientFirstName, diagLabel = 'sometido') => ({
+export const getPhase3SubRoutesConfig = (patientFirstName, diagLabelOrIsFemale = 'sometido') => {
+    const isFemale = typeof diagLabelOrIsFemale === 'boolean'
+        ? diagLabelOrIsFemale
+        : String(diagLabelOrIsFemale || '').toLowerCase() === 'sometida' || String(diagLabelOrIsFemale || '').toLowerCase() === 'f' || String(diagLabelOrIsFemale || '').toLowerCase().startsWith('fem');
+    const diagLabel = isFemale ? 'sometida' : 'sometido';
+    const protectedLabel = isFemale ? 'protegida' : 'protegido';
+    return ({
     'PHASE_3_SUB_ROUTE_WEIGHTLOSS': {
         questions: [
             `✅ Ruta metabólica de reducción registrada.\n\nPara calcular su punto de ajuste termogénico bajo mayor precisión clínica: **${patientFirstName}**, por favor **indique**, ¿cuál es el peso máximo que ha alcanzado en su vida (sin contar embarazos)?`,
@@ -137,7 +143,7 @@ export const getPhase3SubRoutesConfig = (patientFirstName, diagLabel = 'sometido
                         `He registrado su sensibilidad extrema a los **frutos secos** (nueces y cacahuates). Esta información queda anclada como restricción absoluta en el motor de ingredientes de su expediente clínico.\n\nDada la gravedad del episodio anterior, ¿cuenta Usted actualmente con un dispositivo de **epinefrina** autoinyectable para casos de emergencia?`,
                         `La posesión de epinefrina es un componente crítico de su red de seguridad institucional que el sistema debe validar para su soporte vital.\n\nPor favor, **especifique** Usted si ha tenido que utilizar este dispositivo en los últimos seis meses debido a una exposición accidental.`,
                         `El temor a la exposición por trazas es una barrera que mi sistema abordará mediante la generación de guías de etiquetado de advertencia y sustitución segura de insumos.\n\n¿Ha experimentado Usted alguna vez síntomas de alergia al entrar en contacto con productos cosméticos o aceites de cuidado personal?`,
-                        `Se ha descartado la reactividad por contacto tópico, centrando el control en la ingesta oral y el filtrado estricto de la cadena de suministro alimentaria.\n\nImagine que hoy logramos diseñar un plan donde Usted puede comer con absoluta libertad y seguridad total, sin miedo a las etiquetas: ¿cuál sería el primer alimento que le gustaría disfrutar sabiendo que está protegida por el sistema?`
+                        `Se ha descartado la reactividad por contacto tópico, centrando el control en la ingesta oral y el filtrado estricto de la cadena de suministro alimentaria.\n\nImagine que hoy logramos diseñar un plan donde Usted puede comer con absoluta libertad y seguridad total, sin miedo a las etiquetas: ¿cuál sería el primer alimento que le gustaría disfrutar sabiendo que está ${protectedLabel} por el sistema?`
         ],
         keys: [
             'allergy_primary_symptom', 'allergy_epinephrine_presence', 'allergy_epinephrine_usage', 'allergy_topical_reaction', 'emotional_anchor'
@@ -181,3 +187,4 @@ export const getPhase3SubRoutesConfig = (patientFirstName, diagLabel = 'sometido
         nextPhase: 'PHASE_3_DETECTIVE_PROBE'
     },
 });
+};

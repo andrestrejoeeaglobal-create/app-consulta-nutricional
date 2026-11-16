@@ -159,17 +159,17 @@ export const TabBiochemicals = ({
                                                     badgeClass = "bg-orange-50 text-orange-700 border-orange-200";
                                                     badgeLabel = status === 'warning_high' ? "Anormal Moderado ⬆" : "Anormal Moderado ⬇";
                                                 } else if (status === 'critical_low' || status === 'critical_high') {
-                                                    badgeClass = "bg-red-50 text-[#E30613] border-red-200 font-extrabold";
+                                                    badgeClass = "bg-red-50 text-[#B70E0C] border-red-200 font-extrabold";
                                                     badgeLabel = status === 'critical_high' ? "Anormal Severo ⬆" : "Anormal Severo ⬇";
                                                 }
                                                 return (
-                                                    <tr key={rIdx} className="hover:bg-red-50/10 transition-colors">
-                                                        <td className="px-6 py-3 font-medium text-slate-600 w-[40%]">{row.label}</td>
-                                                        <td className="px-6 py-3 font-bold text-slate-800 text-base">{row.value}</td>
+                                                    <tr key={rIdx} className="hover:bg-red-50/10 transition-colors tabular-nums">
+                                                        <td className="px-6 py-3 font-medium text-[#334155] w-[40%]">{row.label}</td>
+                                                        <td className="px-6 py-3 font-bold text-[#0F172A] text-base tabular-nums">{row.value}</td>
                                                         <td className="px-6 py-3 text-center">
                                                             <span className={`px-2.5 py-1 rounded text-[10px] font-bold border ${badgeClass}`}>{badgeLabel}</span>
                                                         </td>
-                                                        <td className="px-6 py-3 text-slate-400 text-xs text-right font-mono">{row.ref}</td>
+                                                        <td className="px-6 py-3 text-[#334155] text-xs text-right font-mono tabular-nums">{row.ref}</td>
                                                     </tr>
                                                 );
                                             })}
@@ -280,25 +280,28 @@ export const TabBiochemicals = ({
     const categoriesKeys = Object.keys(activeMetrics);
 
     // 🔄 Auto-Rescate de Reporte Consolidado Completo (37 Categorías):
-    // Solo si el expediente YA fue escaneado legítimamente en la sesión activa y se requiere completar categorías
-    const hasAutoUpgradedRef = React.useRef(false);
+    // Si Zustand se vació por HMR/F5 pero SQLite ya resguarda el estudio del paciente activo, rehidratarlo pasivamente (storedOnly=true)
+    const activeCitationId = String(patientData?.citaId || patientData?.idCita || patientData?.profile?.citaId || patientData?.identificacion?.idCita || '').trim();
+    const hasAutoUpgradedRef = React.useRef(null);
     React.useEffect(() => {
-        if (!activePatientFullName) return;
-        if (!isScanned) return; // 🛡️ NOM-004: Freno absoluto si el escaneo aún no se ha realizado
+        if (!activePatientFullName && !activeCitationId) return;
         if (categoriesKeys.length >= 20) return;
-        if (hasAutoUpgradedRef.current) return;
+        const lookupKey = `${activeCitationId}|${activePatientFullName}:${isScanned ? 'scanned' : 'stored'}:rev3`;
+        if (hasAutoUpgradedRef.current === lookupKey) return;
 
-        hasAutoUpgradedRef.current = true;
+        hasAutoUpgradedRef.current = lookupKey;
         const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
         const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+        const storedParam = isScanned ? '' : '&storedOnly=true';
+        const citaParam = activeCitationId ? `&citationId=${encodeURIComponent(activeCitationId)}` : '';
 
-        fetch(`${cleanBase}/api/bio/scan/electret/sync?patientName=${encodeURIComponent(activePatientFullName)}&_t=${Date.now()}`, {
+        fetch(`${cleanBase}/api/bio/scan/electret/sync?patientName=${encodeURIComponent(activePatientFullName)}${citaParam}${storedParam}&_t=${Date.now()}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Cache-Control': 'no-cache, no-store, must-revalidate'
             },
-            body: JSON.stringify({ patientName: activePatientFullName })
+            body: JSON.stringify({ patientName: activePatientFullName, citationId: activeCitationId, storedOnly: !isScanned })
         })
             .then(r => r.json())
             .then(data => {
@@ -306,6 +309,7 @@ export const TabBiochemicals = ({
                     useClinicalGenome.getState().setElectretTelemetry({
                         categories: data.electret_metrics,
                         patientName: data?.patientMetadata?.name || activePatientFullName,
+                        citationId: activeCitationId || null,
                         isScanned: true,
                         totalParameters: data.totalParameters || 253,
                         abnormalCount: data.abnormalCount || 0
@@ -313,7 +317,7 @@ export const TabBiochemicals = ({
                 }
             })
             .catch(err => console.warn("⚠️ Auto-upgrade Electret:", err.message));
-    }, [activePatientFullName, categoriesKeys.length]);
+    }, [`${activeCitationId}|${activePatientFullName}|${categoriesKeys.length}|${isScanned}|rev3`, activePatientFullName, categoriesKeys.length]);
 
     const activeCategory = selectedCategory || (categoriesKeys.length > 0 ? categoriesKeys[0] : null);
 
@@ -594,9 +598,10 @@ export const TabBiochemicals = ({
         if (marker?.description) return marker.description;
 
         const name = marker?.name || 'Parámetro biológico';
-        const s = String(marker?.status || 'NORMAL').toUpperCase();
+        const s = String(marker?.status || 'NORMAL').toUpperCase().trim();
+        const isStrictlyNormal = s === 'NORMAL' || s === 'NORMAL (-)' || s === '-' || s === 'EN RANGO';
 
-        if (s.includes('NORMAL') || s === '-') {
+        if (isStrictlyNormal) {
             return `${name} en equilibrio fisiológico compatible con homeostasis celular y adecuada respuesta metabólica.`;
         }
         if (spectrum?.isRenderable) {
@@ -1268,12 +1273,12 @@ export const TabBiochemicals = ({
                                                     <div className="flex items-baseline gap-2">
                                                         <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Reloj Ocular</span>
                                                         <span className="text-sm font-black text-slate-900 dark:text-white">
-                                                            {ocularAudit.pilares.edad_biologica_longevidad.edad_biologica_ocular || patientData?.demographics?.age || 60} años
+                                                            {ocularAudit.pilares.edad_biologica_longevidad.edad_biologica_ocular || patientData?.profile?.age || patientData?.demographics?.age || 34} años
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                                                            Cronológica: <strong className="text-slate-700 dark:text-slate-200">{patientData?.demographics?.age || 60}a</strong>
+                                                            Cronológica: <strong className="text-slate-700 dark:text-slate-200">{patientData?.profile?.age || patientData?.demographics?.age || 34}a</strong>
                                                         </span>
                                                         <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-md border ${
                                                             ocularAudit.pilares.edad_biologica_longevidad.retinal_age_gap?.includes('+')
@@ -1509,8 +1514,8 @@ export const TabBiochemicals = ({
                                                         </div>
                                                         <div className="text-xs space-y-1.5">
                                                             <p className="font-semibold text-slate-700 dark:text-slate-300">
-                                                                Edad Estimada Ocular: <span className="font-mono text-slate-900 dark:text-white font-extrabold">{ocularAudit.pilares.edad_biologica_longevidad.edad_biologica_ocular || patientData?.demographics?.age || 60} años</span>{' '}
-                                                                <span className="text-slate-400 text-[11px] font-normal">(Cronológica: {patientData?.demographics?.age || 60})</span>
+                                                                Edad Estimada Ocular: <span className="font-mono text-slate-900 dark:text-white font-extrabold">{ocularAudit.pilares.edad_biologica_longevidad.edad_biologica_ocular || patientData?.profile?.age || patientData?.demographics?.age || 34} años</span>{' '}
+                                                                <span className="text-slate-400 text-[11px] font-normal">(Cronológica: {patientData?.profile?.age || patientData?.demographics?.age || 34})</span>
                                                             </p>
                                                             <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-[11px]">
                                                                 {ocularAudit.pilares.edad_biologica_longevidad.hallazgos || ocularAudit.pilares.edad_biologica_longevidad.estado_senescencia || 'Envejecimiento microvascular acorde a patrón normativo.'}
@@ -1742,12 +1747,12 @@ export const TabBiochemicals = ({
                                                     <div className="flex items-baseline gap-2">
                                                         <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Edad Mucosal</span>
                                                         <span className="text-sm font-black text-slate-900 dark:text-white">
-                                                            {lingualAudit.pilares.edad_biologica_mucosal.edad_mucosal_estimada || patientData?.demographics?.age || 60} años
+                                                            {lingualAudit.pilares.edad_biologica_mucosal.edad_mucosal_estimada || patientData?.profile?.age || patientData?.demographics?.age || 34} años
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                                                            Cronológica: <strong className="text-slate-700 dark:text-slate-200">{patientData?.demographics?.age || 60}a</strong>
+                                                            Cronológica: <strong className="text-slate-700 dark:text-slate-200">{patientData?.profile?.age || patientData?.demographics?.age || 34}a</strong>
                                                         </span>
                                                         <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-md bg-emerald-50 text-[#3AAA35] border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
                                                             Resiliencia: {lingualAudit.pilares.edad_biologica_mucosal.resiliencia_epitelial || 'Preservada'}

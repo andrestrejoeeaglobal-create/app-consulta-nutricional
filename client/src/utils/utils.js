@@ -548,10 +548,11 @@ export const checkFreq = (msg, type) => {
 export const getGenderedTerm = (term, sex) => {
     if (!sex) return term; // Fallback
     const lowerSex = sex.toLowerCase();
-    const isFemale = lowerSex === 'femenino' || lowerSex === 'mujer' || lowerSex === 'f' || lowerSex === 'm'; // M for Mujer in some systems
+    const isFemale = lowerSex === 'femenino' || lowerSex === 'female' || lowerSex === 'mujer' || lowerSex === 'f' || lowerSex === '2';
 
     const dic = {
         'bienvenido': isFemale ? 'Bienvenida' : 'Bienvenido',
+        'estimado': isFemale ? 'Estimada' : 'Estimado',
         'listo': isFemale ? 'Lista' : 'Listo',
         'seguro': isFemale ? 'Segura' : 'Seguro',
         'registrado': isFemale ? 'Registrada' : 'Registrado',
@@ -559,6 +560,18 @@ export const getGenderedTerm = (term, sex) => {
         'experto': isFemale ? 'Experta' : 'Experto',
         'preparado': isFemale ? 'Preparada' : 'Preparado',
         'tranquilo': isFemale ? 'Tranquila' : 'Tranquilo',
+        'quieto': isFemale ? 'Quieta' : 'Quieto',
+        'sentado': isFemale ? 'Sentada' : 'Sentado',
+        'recostado': isFemale ? 'Recostada' : 'Recostado',
+        'erguido': isFemale ? 'Erguida' : 'Erguido',
+        'sometido': isFemale ? 'Sometida' : 'Sometido',
+        'operado': isFemale ? 'Operada' : 'Operado',
+        'sano': isFemale ? 'Sana' : 'Sano',
+        'solo': isFemale ? 'Sola' : 'Solo',
+        'protegido': isFemale ? 'Protegida' : 'Protegido',
+        'sedentario': isFemale ? 'Sedentaria' : 'Sedentario',
+        'jubilado': isFemale ? 'Jubilada' : 'Jubilado',
+        'pensionado': isFemale ? 'Pensionada' : 'Pensionado',
         'soltero': isFemale ? 'Soltera' : 'Soltero',
         'casado': isFemale ? 'Casada' : 'Casado',
         'divorciado': isFemale ? 'Divorciada' : 'Divorciado',
@@ -673,10 +686,12 @@ export const cleanBinaryGateMessage = (text) => {
     });
 
     // Formatear renglones pegados de Dosis e Indicación si aparecen en el texto
-    cleaned = cleaned.replace(/([^\n])\s*(Dosis:)/g, '$1\n\n• **$2**');
-    cleaned = cleaned.replace(/([^\n])\s*(Indicación:)/g, '$1\n\n• **$2**');
-    cleaned = cleaned.replace(/\*\*(Dosis:)\*\*/g, '**Dosis:**');
-    cleaned = cleaned.replace(/\*\*(Indicación:)\*\*/g, '**Indicación:**');
+    // 1. Solo partir cuando aparece a mitad de renglón tras texto real (jamás tras salto o viñeta)
+    cleaned = cleaned.replace(/([^\s•*-])\s+(?:\*\*)?(Dosis:|Indicación:)(?:\*\*)?/g, '$1\n\n• **$2**');
+    // 2. Normalizar negritas limpias a inicio de línea o tras viñeta sin duplicar ni partir asteriscos
+    cleaned = cleaned.replace(/(^|\n)(\s*(?:[•*-]\s+)?)\**(Dosis:|Indicación:)\**/g, '$1$2**$3**');
+
+
     
     return cleaned.trim();
 };

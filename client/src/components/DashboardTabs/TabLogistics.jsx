@@ -2,6 +2,7 @@
 import React from 'react';
 import { Activity, AlertCircle, AlertTriangle, Dumbbell, Moon, Brain, Briefcase } from 'lucide-react';
 import BiomarkerScoringEngine from '../../utils/BiomarkerScoringEngine';
+import { resolveActiveExerciseTelemetry } from '../../utils/genderConcordance';
 
 const capitalizeFirst = (str) => {
     if (!str) return '';
@@ -132,11 +133,16 @@ export const TabLogistics = ({
     const neatLevel = neatLevelRaw ? (neatMap[neatLevelRaw] || neatLevelRaw) : 'Sin evaluar';
     const neatDesc = neatLevelRaw ? (neatDescMap[neatLevelRaw] || '--') : 'Sin evaluar';
     
-    const exerciseLog = patientData.lifestyle_profile?.activity?.log || patientData.lifestyle?.activity?.log || [];
+    const canonicalSourceType =
+        patientData.lifestyle_profile?.activity?.source_type ||
+        patientData.clinical_context?.activity?.exercise?.source_type ||
+        patientData.lifestyle?.activity?.source_type ||
+        'MANUAL';
+    const exerciseLog = canonicalSourceType === 'MANUAL'
+        ? (patientData.lifestyle_profile?.activity?.log || [])
+        : (patientData.lifestyle_profile?.activity?.log || patientData.lifestyle?.activity?.log || []);
     const exerciseLogF10 = patientData.clinical_context?.activity?.exercise?.log || [];
-    const telemetryMetadata = patientData.lifestyle?.activity?.telemetry_metadata || 
-                             patientData.lifestyle_profile?.activity?.telemetry_metadata || 
-                             patientData.clinical_context?.activity?.exercise?.telemetry_metadata;
+    const telemetryMetadata = resolveActiveExerciseTelemetry(patientData);
 
     // 2. Sueño y Descanso
     const sleepHours = patientData.lifestyle_profile?.sleep?.hours_avg || 

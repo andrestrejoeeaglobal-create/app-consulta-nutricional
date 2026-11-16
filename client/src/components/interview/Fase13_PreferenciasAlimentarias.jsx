@@ -35,6 +35,7 @@ export default function Fase13_PreferenciasAlimentarias({
         aversiones: patientData?.evaluacionDietetica?.preferencias?.aversiones || "",
         favoritos: patientData?.evaluacionDietetica?.preferencias?.favoritos || ""
     });
+    const [isSingleLineEdit, setIsSingleLineEdit] = useState(false);
 
     // Inicialización - Mitigación absoluta de doble render en StrictMode
     useEffect(() => {
@@ -44,12 +45,12 @@ export default function Fase13_PreferenciasAlimentarias({
             hasGreeted.current = true;
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de preferencias y aversiones alimentarias?",
+                content: "De acuerdo. ¿Qué línea desea modificar en su historial de preferencias y aversiones alimentarias?",
                 options: [
-                    { label: "✏️ Modificar alimentos favoritos", value: "MODIFY_FAVORITES" },
                     { label: "✏️ Modificar aversiones / exclusiones", value: "MODIFY_AVERSIONS" },
+                    { label: "✏️ Modificar alimentos favoritos", value: "MODIFY_FAVORITES" },
                     { label: "🔄 Limpiar preferencias", value: "CLEAR_ALL" },
-                    { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                    { label: "❌ Volver al resumen", value: "FINISH" }
                 ]
             }]);
             return;
@@ -130,7 +131,7 @@ export default function Fase13_PreferenciasAlimentarias({
         if (input === "MODIFY_FAVORITES") userText = "✏️ Modificar alimentos favoritos";
         if (input === "MODIFY_AVERSIONS") userText = "✏️ Modificar aversiones / exclusiones";
         if (input === "CLEAR_ALL") userText = "🔄 Limpiar preferencias";
-        if (input === "FINISH") userText = "❌ Cancelar (Volver al resumen)";
+        if (input === "FINISH" || input === "RETURN_SUMMARY") userText = "❌ Volver al resumen";
 
         if (label !== 'button') {
             setMessages(prev => [...prev, { role: 'user', content: userText }]);
@@ -147,35 +148,52 @@ export default function Fase13_PreferenciasAlimentarias({
 
         if (internalStep === 'correct_menu') {
             if (input === "MODIFY_FAVORITES") {
+                setIsSingleLineEdit(true);
                 const favoritesMsg = isMinor 
-                    ? `¿Cuáles son los alimentos favoritos o preferidos de **${pName}**?` 
-                    : "¿Cuáles son sus alimentos favoritos o preferidos?";
+                    ? `¿Cuáles son los alimentos favoritos o preferidos de **${pName}**? (O indique 'Ninguno')` 
+                    : "¿Cuáles son sus alimentos favoritos o preferidos? (O indique 'Ninguno')";
                 addBotMsg(favoritesMsg);
                 setInternalStep('FAVORITES_GATE');
             } else if (input === "MODIFY_AVERSIONS") {
+                setIsSingleLineEdit(true);
                 const aversionsMsg = isMinor
-                    ? `¿Cuáles son los alimentos que **NO** le gustan a **${pName}** (aversiones)?`
-                    : "¿Cuáles son los alimentos que **NO** le gustan (aversiones)?";
+                    ? `¿Cuáles son los alimentos que **NO** le gustan a **${pName}** (aversiones)? (O indique 'Ninguno')`
+                    : "¿Cuáles son los alimentos que **NO** le gustan (aversiones)? (O indique 'Ninguno')";
                 addBotMsg(aversionsMsg);
                 setInternalStep('AVERSIONS_GATE');
             } else if (input === "CLEAR_ALL") {
+                setIsSingleLineEdit(false);
                 setPreferences({ aversiones: "", favoritos: "" });
                 const initialMsg = isMinor
                     ? `Preferencias reiniciadas.\n\n¿Cuáles son los alimentos que **NO** le gustan a **${pName}** (aversiones)? Si no tiene, por favor indique 'Ninguno'.`
                     : "Preferencias reiniciadas.\n\n¿Cuáles son los alimentos que **NO** le gustan (aversiones)? Si no tiene, por favor indique 'Ninguno'.";
                 addBotMsg(initialMsg);
                 setInternalStep('AVERSIONS_GATE');
+            } else if (input === "RETURN_SUMMARY") {
+                setIsSingleLineEdit(false);
+                showSummary(preferences);
+                setInternalStep('REVIEW_SUMMARY');
             } else if (input === "FINISH") {
+                setIsSingleLineEdit(false);
                 onPhaseComplete(preferences, messages);
             }
         } else if (internalStep === 'AVERSIONS_GATE') {
             const isBool = strictBooleanValidator(userMsg);
-            if (isBool === false) {
-                const favoritesMsg = isMinor 
-                    ? `Entendido, se ha registrado que **${pName}** no presenta aversiones alimentarias.\n\n¿Cuáles son los alimentos favoritos o preferidos de **${pName}**?` 
-                    : "Entendido, se ha registrado que no presenta aversiones alimentarias.\n\n¿Cuáles son sus alimentos favoritos o preferidos?";
-                addBotMsg(favoritesMsg);
-                setInternalStep('FAVORITES_GATE');
+            const isNeg = isBool === false || /^\s*(ninguno|ninguna|no tiene|niega|n\/a)\s*$/i.test(lower);
+            if (isNeg) {
+                const nextPrefs = { ...preferences, aversiones: "Ninguna" };
+                setPreferences(nextPrefs);
+                if (isSingleLineEdit) {
+                    setIsSingleLineEdit(false);
+                    showSummary(nextPrefs);
+                    setInternalStep('REVIEW_SUMMARY');
+                } else {
+                    const favoritesMsg = isMinor 
+                        ? `Entendido, se ha registrado que **${pName}** no presenta aversiones alimentarias.\n\n¿Cuáles son los alimentos favoritos o preferidos de **${pName}**?` 
+                        : "Entendido, se ha registrado que no presenta aversiones alimentarias.\n\n¿Cuáles son sus alimentos favoritos o preferidos?";
+                    addBotMsg(favoritesMsg);
+                    setInternalStep('FAVORITES_GATE');
+                }
             } else if (isBool === true) {
                 addBotMsg(isMinor ? `Entendido, tomamos nota de las aversiones.\n\n¿Cuáles alimentos evita **${pName}**?` : "Entendido, tomamos nota de las aversiones.\n\n¿Cuáles alimentos evita?");
             } else {
@@ -193,25 +211,35 @@ export default function Fase13_PreferenciasAlimentarias({
         } else if (internalStep === 'AVERSIONS_LOOP') {
             const isBool = strictBooleanValidator(userMsg);
             if (isBool === false || lower.includes("ningun") || lower === "no") {
-                const favoritesMsg = isMinor 
-                    ? `Se han guardado todas las aversiones en el perfil de **${pName}**.\n\n¿Cuáles son los alimentos favoritos o preferidos de **${pName}**?` 
-                    : "Se han guardado todas las aversiones en su perfil.\n\n¿Cuáles son sus alimentos favoritos o preferidos?";
-                addBotMsg(favoritesMsg);
-                setInternalStep('FAVORITES_GATE');
+                if (isSingleLineEdit) {
+                    setIsSingleLineEdit(false);
+                    showSummary(preferences);
+                    setInternalStep('REVIEW_SUMMARY');
+                } else {
+                    const favoritesMsg = isMinor 
+                        ? `Se han guardado todas las aversiones en el perfil de **${pName}**.\n\n¿Cuáles son los alimentos favoritos o preferidos de **${pName}**?` 
+                        : "Se han guardado todas las aversiones en su perfil.\n\n¿Cuáles son sus alimentos favoritos o preferidos?";
+                    addBotMsg(favoritesMsg);
+                    setInternalStep('FAVORITES_GATE');
+                }
             } else if (isBool === true) {
                 addBotMsg("Entendido.\n\n¿Cuál?");
             } else {
                 setPreferences(prev => ({
                     ...prev,
-                    aversiones: prev.aversiones ? prev.aversiones + ", " + formatText(userMsg) : formatText(userMsg)
+                    aversiones: (prev.aversiones && prev.aversiones !== "Ninguna") ? prev.aversiones + ", " + formatText(userMsg) : formatText(userMsg)
                 }));
                 const safeAversionText = (isTcaRoute && containsTrigger(userMsg)) ? "las restricciones indicadas" : formatText(userMsg);
                 addBotMsg(`Añadido **${safeAversionText}** a la lista de restricciones.\n\n¿Otro?`);
             }
         } else if (internalStep === 'FAVORITES_GATE') {
             const isBool = strictBooleanValidator(userMsg);
-            if (isBool === false) {
-                showSummary({ ...preferences });
+            const isNeg = isBool === false || /^\s*(ninguno|ninguna|no tiene|niega|n\/a)\s*$/i.test(lower);
+            if (isNeg) {
+                setIsSingleLineEdit(false);
+                const nextPrefs = { ...preferences, favoritos: "Ninguno" };
+                setPreferences(nextPrefs);
+                showSummary(nextPrefs);
                 setInternalStep('REVIEW_SUMMARY');
             } else if (isBool === true) {
                 addBotMsg(isMinor ? `Entendido.\n\n¿Cuáles son los favoritos de **${pName}**?` : "Entendido.\n\n¿Cuáles son sus favoritos?");
@@ -226,6 +254,7 @@ export default function Fase13_PreferenciasAlimentarias({
         } else if (internalStep === 'FAVORITES_LOOP') {
             const isBool = strictBooleanValidator(userMsg);
             if (isBool === false || lower.includes("ningun") || lower === "no") {
+                setIsSingleLineEdit(false);
                 showSummary({ ...preferences });
                 setInternalStep('REVIEW_SUMMARY');
             } else if (isBool === true) {
@@ -233,12 +262,13 @@ export default function Fase13_PreferenciasAlimentarias({
             } else {
                 setPreferences(prev => ({
                     ...prev,
-                    favoritos: prev.favoritos ? prev.favoritos + ", " + formatText(userMsg) : formatText(userMsg)
+                    favoritos: (prev.favoritos && prev.favoritos !== "Ninguno") ? prev.favoritos + ", " + formatText(userMsg) : formatText(userMsg)
                 }));
                 addBotMsg(`Añadido **${formatText(userMsg)}** a la lista de favoritos.\n\n¿Otro?`);
             }
         } else if (internalStep === 'REVIEW_SUMMARY') {
             if (userMsg === "CONFIRM_DATA") {
+                setIsSingleLineEdit(false);
                 // Persistir
                 const filterNoneValues = (item) => {
                     const clean = item.toLowerCase().trim();
@@ -280,12 +310,17 @@ export default function Fase13_PreferenciasAlimentarias({
                     onPhaseComplete('PHASE_14_R24H');
                 }, 1000);
             } else {
-                // Resetear para corregir
-                setPreferences({ aversiones: "", favoritos: "" });
-                addBotMsg(isMinor 
-                    ? `Reconfigurando perfil. ¿Cuáles alimentos **NO** le gustan a **${pName}**?` 
-                    : "Reconfigurando perfil. ¿Cuáles alimentos **NO** le gustan?");
-                setInternalStep('AVERSIONS_GATE');
+                setIsSingleLineEdit(false);
+                addBotMsg(
+                    "De acuerdo. ¿Qué línea desea modificar en su historial de preferencias y aversiones alimentarias?",
+                    [
+                        { label: "✏️ Modificar aversiones / exclusiones", value: "MODIFY_AVERSIONS" },
+                        { label: "✏️ Modificar alimentos favoritos", value: "MODIFY_FAVORITES" },
+                        { label: "🔄 Limpiar preferencias", value: "CLEAR_ALL" },
+                        { label: "❌ Volver al resumen", value: "RETURN_SUMMARY" }
+                    ]
+                );
+                setInternalStep('correct_menu');
             }
         }
 

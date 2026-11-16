@@ -17,6 +17,21 @@ const useCitationValidation = () => {
             const res = await fetch(authUrl);
             const json = await res.json();
 
+            // 🛡️ Consulta de persistencia local en SQLite (session_progress)
+            let sessionProgress = null;
+            try {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                const localRes = await fetch(`${apiUrl}/checkCitation?id=${encodeURIComponent(citationId)}`);
+                if (localRes.ok) {
+                    const localJson = await localRes.json();
+                    if (localJson && localJson.session_progress) {
+                        sessionProgress = localJson.session_progress;
+                    }
+                }
+            } catch (localErr) {
+                console.warn("Local persistence check skipped:", localErr.message);
+            }
+
             // 🛡️ SANITIZACIÓN ANTE EL SÍNDROME DEL ARREGLO VACÍO (NOM-004)
             const hasData = json && json.response?.code === 0 && Array.isArray(json.dataSet) && json.dataSet.length > 0;
 
@@ -39,20 +54,26 @@ const useCitationValidation = () => {
                     status: 'ESTUDIO_PENDIENTE',
                     message: 'OK',
                     patientData: rawRecord,
+                    session_progress: sessionProgress,
                     rawResponse: json
                 };
-            } else if (estatus === 'ESTUDIO_REALIZADO') {
+            } else if (estatus === 'ESTUDIO_REALIZADO' || estatus === 'ESTUDIO_COMPLETO') {
+                if (sessionProgress) {
+                    return {
+                        isValid: true,
+                        status: estatus,
+                        message: 'OK',
+                        patientData: rawRecord,
+                        session_progress: sessionProgress,
+                        rawResponse: json
+                    };
+                }
                 return {
                     isValid: false,
-                    status: 'ESTUDIO_REALIZADO',
-                    message: '⛔ **Cita No Disponible.**\n\n---\n\nLa cita ingresada ya no está disponible (Falta por realizar el estudio). Consulte en recepción.',
-                    patientData: null
-                };
-            } else if (estatus === 'ESTUDIO_COMPLETO') {
-                return {
-                    isValid: false,
-                    status: 'ESTUDIO_COMPLETO',
-                    message: '⛔ **Estudio Previamente Completado.**\n\n---\n\nLa cita ingresada ya ha sido procesada y el estudio clínico fue completado anteriormente.',
+                    status: estatus,
+                    message: estatus === 'ESTUDIO_COMPLETO'
+                        ? '⛔ **Estudio Previamente Completado.**\n\n---\n\nLa cita ingresada ya ha sido procesada y el estudio clínico fue completado anteriormente.'
+                        : '⛔ **Cita No Disponible.**\n\n---\n\nLa cita ingresada ya no está disponible (Falta por realizar el estudio). Consulte en recepción.',
                     patientData: null
                 };
             } else {

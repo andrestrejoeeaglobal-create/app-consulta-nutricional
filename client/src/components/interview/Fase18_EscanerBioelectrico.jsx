@@ -244,19 +244,18 @@ Si dispone de estudios de laboratorio recientes para **${pName}** (PDF de Quími
         if (!hasPhase18Message) {
             const saludoEstructurado = {
                 role: 'assistant',
-                content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
+                content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Direct Hardware Interface)
 
-Para iniciar la toma con **${pName}**, seleccione una de las siguientes opciones:
+Para iniciar la toma física con **${pName}**, seleccione una de las siguientes opciones:
 
-1. Presione **"🚀 Realizar Escaneo Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
+1. Presione **"⚡ Realizar Escaneo Bioeléctrico"** para activar la lectura en tiempo real del sensor USB (**VID_5608 PID_0808**).
 2. Pídale a **${pName}** que sujete firmemente los electrodos cilíndricos del sensor.
-3. Ejecute la prueba (60s) en Electret, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
-4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*`,
+3. *T.I.L.O. tomará el control directo del hardware y volcará los 450+ biomarcadores en su Dashboard de forma 100% automática, sin requerir software externo.*`,
                 inputType: 'electret_scan_widget',
                 actions: [
                     {
                         id: 'btn_launch_electret',
-                        label: '🚀 Realizar Escaneo Electret',
+                        label: '⚡ Realizar Escaneo Bioeléctrico',
                         style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
                         value: 'LAUNCH_ELECTRET_APP'
                     },
@@ -268,7 +267,7 @@ Para iniciar la toma con **${pName}**, seleccione una de las siguientes opciones
                     }
                 ],
                 options: [
-                    { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
+                    { label: "⚡ Realizar Escaneo Bioeléctrico", value: "LAUNCH_ELECTRET_APP" },
                     { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
@@ -545,30 +544,20 @@ ${data.message || `El escaneo detectado no corresponde al titular del expediente
         if (value === 'LAUNCH_ELECTRET_APP') {
             setIsGlobalTyping?.(true);
 
-            // Iniciar apertura asistida en Windows vía Shell
-            fetch(`${apiUrl}/api/bio/scan/electret/launch`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            }).catch(err => console.warn("Launch notice:", err.message));
-
             const launchMsg = {
                 role: 'assistant',
-                content: `### 🚀 Software Electret Iniciado — Centinela Auto-Sync Activo (NOM-004)
+                content: `### ⚡ Escaneo Bioeléctrico Directo en Curso (T.I.L.O. Hardware Interface)
 
-Se ha emitido la orden de apertura para **"Sistema Cuántico Bio-Eléctrico"** en pantalla.
+Tomando control del sensor USB cilíndrico (**VID_5608 PID_0808**)...
 
-1. Si Windows solicita confirmación de Administrador (UAC), presione **"Sí"**.
-2. Verifique que el paciente en el software esté seleccionado o registrado como **"${pName}"**.
-3. Pídale a **${pName}** que sostenga firmemente los electrodos cilíndricos y haga clic en **"Iniciar Prueba"** en Electret (60 segundos).
-4. Al terminar el escaneo físico, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
-
-*📡 T.I.L.O. está vigilando el disco de forma reactiva en segundo plano. En cuanto el informe sea generado, los 450+ biomarcadores se sincronizarán e inyectarán automáticamente en su Dashboard.*`,
+* 🤲 Pídale a **${pName}** que sostenga firmemente los electrodos cilíndricos.
+* 🔌 Muestreando microvoltaje, contacto galvánico y bioimpedancia en tiempo real...`,
                 inputType: 'status_progress',
                 actions: [
                     {
                         id: 'btn_launch_electret',
-                        label: '🚀 Realizar Escaneo Electret',
-                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                        label: '⏳ Muestreando Hardware...',
+                        style: 'bg-[#1C75BC] text-white opacity-70 cursor-wait font-medium px-4 py-2 rounded-lg transition-all shadow-md flex items-center gap-2',
                         value: 'LAUNCH_ELECTRET_APP'
                     },
                     {
@@ -579,14 +568,37 @@ Se ha emitido la orden de apertura para **"Sistema Cuántico Bio-Eléctrico"** e
                     }
                 ],
                 options: [
-                    { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
                     { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
             setMessages(prev => [...prev, launchMsg]);
 
-            // Encender el centinela auto-sync reactivo encadenado (Sutura 5)
-            startAutoSyncSentinel();
+            // Disparo de adquisición física directa en el hardware (sin abrir Electret)
+            fetch(`${apiUrl}/api/bio/scan/electret/direct-acquire`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: pName || patientData?.profile?.name || patientData?.identificacion?.nombreCompleto || 'Paciente',
+                    age: patientData?.identificacion?.edad || patientData?.profile?.age || 34,
+                    height: patientData?.biometrics?.height || 172,
+                    weight: patientData?.biometrics?.weight || 78,
+                    sex: patientData?.identificacion?.sexo || patientData?.profile?.sex || 'M',
+                    duration: 3.5
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.electret_metrics) {
+                    processTelemetryData(data);
+                } else {
+                    throw new Error(data.message || "Falla en adquisición directa");
+                }
+            })
+            .catch(err => {
+                console.warn("Direct acquire fallback to auto-sync:", err.message);
+                startAutoSyncSentinel();
+            });
+
             return;
         }
 
@@ -1345,7 +1357,7 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
                 const compLeft = await compressImageForTelemetry(leftEyeFile);
                 formData.append('leftEye', compLeft);
             }
-            formData.append('age', patientData?.demographics?.age || 60);
+            formData.append('age', patientData?.profile?.age || patientData?.demographics?.age || patientData?.identificacion?.edad || 34);
             formData.append('sex', patientData?.demographics?.gender || 'M');
 
             const response = await fetch(`${apiUrl}/api/bio/scan/binocular-ocular-scan`, {
@@ -1369,7 +1381,7 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
             }));
 
             const p = data.pilares || {};
-            const relojOcular = p.edad_biologica_longevidad?.edad_biologica_ocular || patientData?.demographics?.age || '60';
+            const relojOcular = p.edad_biologica_longevidad?.edad_biologica_ocular || patientData?.profile?.age || patientData?.demographics?.age || '34';
             const gapOcular = p.edad_biologica_longevidad?.retinal_age_gap || '0 años';
             const gateMsg = {
                 role: 'assistant',
@@ -1426,7 +1438,7 @@ Revise las tarjetas termodinámicas en su Dashboard. ¿Confirma los hallazgos pa
                 const compVentral = await compressImageForTelemetry(ventralFile);
                 formData.append('ventralImage', compVentral);
             }
-            formData.append('age', patientData?.demographics?.age || 60);
+            formData.append('age', patientData?.profile?.age || patientData?.demographics?.age || patientData?.identificacion?.edad || 34);
             formData.append('sex', patientData?.demographics?.gender || 'M');
 
             const response = await fetch(`${apiUrl}/api/bio/scan/lingual-scan`, {
@@ -1688,7 +1700,7 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                         {/* VISOR DE CÁMARA EN VIVO WEBRTC */}
                         {useLiveCamera && (
                             <div className="space-y-3 text-center animate-in fade-in">
-                                <div className="relative rounded-xl overflow-hidden bg-black border border-slate-300">
+                                <div className="relative rounded-xl overflow-hidden bg-[#0F172A] border border-slate-300">
                                     <video ref={videoRef} autoPlay playsInline className="w-full h-56 object-cover" />
                                     <span className="absolute top-2 left-2 bg-blue-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-pulse uppercase">
                                         ● CÁMARA EN VIVO

@@ -2,18 +2,26 @@ import { create } from 'zustand';
 
 export const useClinicalToast = create((set) => ({
     toasts: [],
-    showToast: ({ title, message, type = 'success', duration = 3500, icon = null }) => {
-        const id = Date.now() + Math.random().toString(36).substr(2, 5);
+    showToast: ({ title, message, type = 'success', duration, sticky, icon = null, dedupeKey = null }) => {
+        const id = Date.now() + Math.random().toString(36).slice(2, 7);
+        const isSticky = typeof sticky === 'boolean'
+            ? sticky
+            : (type === 'error' || type === 'warning');
+        const effectiveDuration = isSticky ? 0 : (typeof duration === 'number' ? duration : 3800);
+
         set((state) => ({
-            toasts: [...state.toasts, { id, title, message, type, duration, icon }]
+            toasts: [
+                ...(dedupeKey ? state.toasts.filter((t) => t.dedupeKey !== dedupeKey) : state.toasts),
+                { id, title, message, type, duration: effectiveDuration, sticky: isSticky, icon, dedupeKey }
+            ]
         }));
 
-        if (duration > 0) {
+        if (!isSticky && effectiveDuration > 0) {
             setTimeout(() => {
                 set((state) => ({
                     toasts: state.toasts.filter((t) => t.id !== id)
                 }));
-            }, duration);
+            }, effectiveDuration);
         }
     },
     removeToast: (id) => {

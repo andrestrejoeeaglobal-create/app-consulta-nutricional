@@ -69,13 +69,14 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
             hasGreeted.current = true;
             const greetingMsg = {
                 role: 'assistant',
-                content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de hábitos de consumo?",
+                content: "De acuerdo. ¿Qué línea desea modificar en su historial de hábitos de consumo?",
                 avatar: tiloImg,
                 options: [
                     { label: "✏️ Modificar consumo de tabaco", value: "MODIFY_SMOKING" },
                     { label: "✏️ Modificar consumo de alcohol", value: "MODIFY_ALCOHOL" },
+                    { label: "✏️ Modificar sustancias recreativas", value: "MODIFY_DRUGS" },
                     { label: "🔄 Limpiar historial de hábitos", value: "CLEAR_ALL" },
-                    { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                    { label: "❌ Volver al resumen", value: "FINISH" }
                 ]
             };
             setMessages(prev => [...prev, greetingMsg]);
@@ -181,6 +182,7 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
 
     // Variables temporales para la recolección
     const [tempItem, setTempItem] = useState({});
+    const [isSingleLineEdit, setIsSingleLineEdit] = useState(false);
 
     const messagesEndRef = useRef(null);
     const setMessagesEndRef = React.useCallback((node) => {
@@ -236,8 +238,9 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
         let userText = text;
         if (text === "MODIFY_SMOKING") userText = "✏️ Modificar consumo de tabaco";
         if (text === "MODIFY_ALCOHOL") userText = "✏️ Modificar consumo de alcohol";
+        if (text === "MODIFY_DRUGS") userText = "✏️ Modificar sustancias recreativas";
         if (text === "CLEAR_ALL") userText = "🔄 Limpiar historial de hábitos";
-        if (text === "FINISH") userText = "❌ Cancelar (Volver al resumen)";
+        if (text === "FINISH" || text === "RETURN_SUMMARY") userText = "❌ Volver al resumen";
 
         // Agregar mensaje del usuario a la pantalla
         if (label !== 'button') {
@@ -252,6 +255,7 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
             switch (currentStep) {
                 case 'correct_menu': {
                     if (text === "MODIFY_SMOKING") {
+                        setIsSingleLineEdit(true);
                         addMessage('assistant', isMinor 
                             ? `¿Fuma tabaco o utiliza vapeadores?` 
                             : '¿Fuma tabaco o utiliza vapeadores?', { 
@@ -263,6 +267,8 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                         });
                         setCurrentStep('SMOKE_GATE');
                     } else if (text === "MODIFY_ALCOHOL") {
+                        setIsSingleLineEdit(true);
+                        setCollectedDrinks([]);
                         addMessage('assistant', isMinor 
                             ? `¿${pName} consume bebidas alcohólicas?` 
                             : '¿Consume bebidas alcohólicas?', {
@@ -273,7 +279,20 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                             ]
                         });
                         setCurrentStep('ALCOHOL_GATE');
+                    } else if (text === "MODIFY_DRUGS") {
+                        setIsSingleLineEdit(true);
+                        addMessage('assistant', isMinor
+                            ? `¿${pName} consume alguna sustancia recreativa (drogas)?`
+                            : '¿Consume alguna sustancia recreativa (drogas)?', {
+                            avatar: tiloImg,
+                            options: [
+                                { label: '✅ Sí', value: 'Sí' },
+                                { label: '❌ No', value: 'No' }
+                            ]
+                        });
+                        setCurrentStep('DRUGS_GATE');
                     } else if (text === "CLEAR_ALL") {
+                        setIsSingleLineEdit(false);
                         setCollectedDrinks([]);
                         setHabitsData({
                             smoking: { is_smoker: null, type: null, quantity_text: "", risk_level: null },
@@ -293,7 +312,11 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                             ]
                         });
                         setCurrentStep('SMOKE_GATE');
+                    } else if (text === "RETURN_SUMMARY") {
+                        setIsSingleLineEdit(false);
+                        showReviewSummary(habitsData);
                     } else if (text === "FINISH") {
+                        setIsSingleLineEdit(false);
                         if (onPhaseComplete) {
                             onPhaseComplete(habitsData, messagesRef.current);
                         }
@@ -342,10 +365,14 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                         });
                         setCurrentStep('SMOKE_TYPE');
                     } else if (boolVal === false) {
-                        setHabitsData(prev => ({ 
-                            ...prev, 
-                            smoking: { is_smoker: false, type: null, quantity_text: "", risk_level: 'LOW' } 
-                        }));
+                        const nextSmoking = { is_smoker: false, type: null, quantity_text: "", risk_level: 'LOW' };
+                        const nextHabits = { ...habitsData, smoking: nextSmoking };
+                        setHabitsData(nextHabits);
+                        if (isSingleLineEdit) {
+                            setIsSingleLineEdit(false);
+                            showReviewSummary(nextHabits);
+                            break;
+                        }
                         addMessage('assistant', isMinor 
                             ? `Excelente, registrado. Ahora pasemos al alcohol...\n\n¿${pName} consume bebidas alcohólicas?` 
                             : 'Excelente, registrado. Ahora pasemos al alcohol...\n\n¿Consume bebidas alcohólicas?', {
@@ -401,10 +428,17 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                     const isHeavy = lText.includes('día') || lText.includes('dia') || lText.includes('diari') || /\d+/.test(cleanText);
                     const parsedRisk = isHeavy ? 'HIGH' : 'LOW';
 
-                    setHabitsData(prev => ({ 
-                        ...prev, 
-                        smoking: { ...prev.smoking, quantity_text: cleanText, risk_level: parsedRisk } 
-                    }));
+                    const nextHabits = {
+                        ...habitsData,
+                        smoking: { ...habitsData.smoking, quantity_text: cleanText, risk_level: parsedRisk }
+                    };
+                    setHabitsData(nextHabits);
+
+                    if (isSingleLineEdit) {
+                        setIsSingleLineEdit(false);
+                        showReviewSummary(nextHabits);
+                        break;
+                    }
 
                     addMessage('assistant', isMinor 
                         ? `Excelente, registrado. Ahora pasemos al alcohol...\n\n¿${pName} consume bebidas alcohólicas?` 
@@ -440,10 +474,15 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                         });
                         setCurrentStep('ALCOHOL_TYPE');
                     } else if (boolVal === false) {
-                        setHabitsData(prev => ({ 
-                            ...prev, 
-                            alcohol: { is_drinker: false, preferred_drink: null, frequency_days: 0, units_per_session: 0, calculated_weekly_calories: 0 } 
-                        }));
+                        setCollectedDrinks([]);
+                        const nextAlcohol = { is_drinker: false, preferred_drink: null, frequency_days: 0, units_per_session: 0, calculated_weekly_calories: 0, drinks: [] };
+                        const nextHabits = { ...habitsData, alcohol: nextAlcohol };
+                        setHabitsData(nextHabits);
+                        if (isSingleLineEdit) {
+                            setIsSingleLineEdit(false);
+                            showReviewSummary(nextHabits);
+                            break;
+                        }
                         addMessage('assistant', isMinor 
                             ? `Entendido.\n\n¿${pName} consume alguna sustancia recreativa (drogas)?` 
                             : 'Entendido.\n\n¿Consume alguna sustancia recreativa (drogas)?', {
@@ -605,6 +644,11 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                         });
                         setCurrentStep('ALCOHOL_TYPE');
                     } else if (boolVal === false) {
+                        if (isSingleLineEdit) {
+                            setIsSingleLineEdit(false);
+                            showReviewSummary(habitsData);
+                            break;
+                        }
                         addMessage('assistant', isMinor 
                             ? `Entendido.\n\n¿${pName} consume alguna sustancia recreativa (drogas)?` 
                             : 'Entendido.\n\n¿Consume alguna sustancia recreativa (drogas)?', {
@@ -630,6 +674,7 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                 // --- DROGAS ---
                 case 'DRUGS_GATE': {
                     if (boolVal === false) {
+                        setIsSingleLineEdit(false);
                         const finalDrugs = { has_usage: false, substance_name: "", frequency: "" };
                         setHabitsData(prev => ({ ...prev, drugs: finalDrugs }));
                         showReviewSummary({ ...habitsData, drugs: finalDrugs });
@@ -657,6 +702,7 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                 }
 
                 case 'DRUGS_FREQ': {
+                    setIsSingleLineEdit(false);
                     const finalDrugs = {
                         has_usage: true,
                         substance_name: tempItem.substance_name,
@@ -715,25 +761,18 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                             }, 1000);
                         }
                     } else if (text === "CORRECT_DATA") {
-                        setCollectedDrinks([]);
-                        setHabitsData({
-                            smoking: { is_smoker: null, type: null, quantity_text: "", risk_level: null },
-                            alcohol: { is_drinker: null, preferred_drink: null, frequency_days: null, units_per_session: null, calculated_weekly_calories: null, drinks: [] },
-                            drugs: { has_usage: null, substance_name: "", frequency: "" },
-                            sleep: { hours: null, quality: "" },
-                            stress: "",
-                            currentStep: 'SMOKE_GATE'
-                        });
-                        addMessage('assistant', isMinor 
-                            ? `De acuerdo, vamos a corregir. ¿${pName} fuma tabaco o utiliza vapeadores?` 
-                            : 'De acuerdo, vamos a corregir. ¿Fuma tabaco o utiliza vapeadores?', {
+                        setIsSingleLineEdit(false);
+                        addMessage('assistant', "De acuerdo. ¿Qué línea desea modificar en su historial de hábitos de consumo?", {
                             avatar: tiloImg,
                             options: [
-                                { label: '✅ Sí', value: 'Sí' },
-                                { label: '❌ No', value: 'No' }
+                                { label: "✏️ Modificar consumo de tabaco", value: "MODIFY_SMOKING" },
+                                { label: "✏️ Modificar consumo de alcohol", value: "MODIFY_ALCOHOL" },
+                                { label: "✏️ Modificar sustancias recreativas", value: "MODIFY_DRUGS" },
+                                { label: "🔄 Limpiar historial de hábitos", value: "CLEAR_ALL" },
+                                { label: "❌ Volver al resumen", value: "RETURN_SUMMARY" }
                             ]
                         });
-                        setCurrentStep('SMOKE_GATE');
+                        setCurrentStep('correct_menu');
                     }
                     break;
                 }

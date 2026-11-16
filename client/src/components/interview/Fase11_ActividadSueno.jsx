@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { formatText } from '../../utils/utils';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+import { resolvePatientSex, filterOrphanTelemetryAnnexes, resolveActiveExerciseTelemetry } from '../../utils/genderConcordance';
 
 const parseTcx = (xmlText) => {
     if (!xmlText || !xmlText.trim()) {
@@ -151,6 +152,8 @@ const Fase11_ActividadSueno = ({
 }) => {
     // Hook de lingüística para unificar nombres y contextos
     const { patientName: pName, patientSex, isMinor, isLactante, isPreescolar, isEscolar, isPediatrico, patientAge: age } = usePatientLinguistics(patientData);
+    const { isFemale: isFemalePatient } = resolvePatientSex(patientData);
+    const sedentaryAdultLabel = isFemalePatient ? 'Sedentaria (Todo el día sentada)' : 'Sedentario (Todo el día sentado)';
 
     console.log("🔍 Fase11_ActividadSueno Mount/Render. Props:", {
         hasMessages: !!messages,
@@ -205,6 +208,7 @@ const Fase11_ActividadSueno = ({
                 has_scheduled_exercise: lp.activity?.has_scheduled_exercise ?? cc.activity?.exercise?.has_scheduled_exercise ?? null, 
                 neat_level: lp.activity?.neat_level ?? cc.activity?.exercise?.neat_level ?? null, 
                 source_type: lp.activity?.source_type || cc.activity?.exercise?.source_type || "MANUAL",
+                telemetry_metadata: resolveActiveExerciseTelemetry(patientData),
                 log: lp.activity?.log || cc.activity?.exercise?.log || [], 
                 duration_history: lp.activity?.duration_history || cc.activity?.exercise?.duration_history || "" 
             }
@@ -213,6 +217,7 @@ const Fase11_ActividadSueno = ({
 
     const [tempItem, setTempItem] = useState({});
     const [tempTelemetry, setTempTelemetry] = useState(null);
+    const [isSingleLineEdit, setIsSingleLineEdit] = useState(false);
     const isProcessingInputRef = useRef(false);
     const [tempNeatTelemetry, setTempNeatTelemetry] = useState(null);
     const [currentStep, setCurrentStep] = useState(() => {
@@ -314,24 +319,24 @@ const Fase11_ActividadSueno = ({
         console.log("🔥 [Fase11] useEffect triggered. currentStep:", currentStep, "pName:", pName, "age:", age);
 
         if (currentStep === 'correct_menu') {
+            const hasActiveTcx = lifeStyle.activity?.source_type === 'TELEMETRY_TCX' && Boolean(lifeStyle.activity?.telemetry_metadata);
+            const menuOptions = [
+                { label: "✏️ Modificar ejercicio físico / .TCX", value: "MODIFY_EXERCISE" },
+                ...(hasActiveTcx ? [{ label: "🗑️ Eliminar archivo .TCX y pasar a manual", value: "DELETE_TCX_EXERCISE" }] : []),
+                { label: "✏️ Modificar actividad diaria (NEAT)", value: "MODIFY_NEAT" },
+                { label: "✏️ Modificar horas y calidad de sueño", value: "MODIFY_SLEEP" },
+                { label: "✏️ Modificar nivel de estrés", value: "MODIFY_STRESS" },
+                { label: "🔄 Reiniciar toda la fase", value: "CLEAR_ALL" },
+                { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+            ];
             const greetingMsg = {
                 role: 'assistant',
-                content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de actividad física y descanso?",
-                options: [
-                    { label: "✏️ Modificar nivel de actividad (NEAT)", value: "MODIFY_NEAT" },
-                    { label: "✏️ Modificar horas de descanso y sueño", value: "MODIFY_SLEEP" },
-                    { label: "🔄 Limpiar estilo de vida", value: "CLEAR_ALL" },
-                    { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
-                ]
+                content: "De acuerdo. ¿Qué línea específica desea modificar en su perfil de actividad física, descanso y estrés?",
+                options: menuOptions
             };
             setMessages(prev => {
-                const alreadyGreeted = prev.some(msg => 
-                    msg.role === 'assistant' && 
-                    msg.content && 
-                    msg.content.includes("historial de actividad física y descanso")
-                );
-                console.log("🔥 [Fase11] correct_menu check. alreadyGreeted:", alreadyGreeted, "prevMessagesCount:", prev.length);
-                if (alreadyGreeted) return prev;
+                const lastAssistant = [...prev].reverse().find(m => m.role === 'assistant');
+                if (lastAssistant?.content?.includes("¿Qué línea específica desea modificar en su perfil de actividad física")) return prev;
                 return [...prev, greetingMsg];
             });
             setHasGreeted(true);
@@ -345,7 +350,7 @@ const Fase11_ActividadSueno = ({
             const phaseSourceText = isPediatric ? "salud digestiva" : "hábitos de consumo";
             const baseConf = initialAltitude > 2000
                 ? `He registrado y sellado el perfil de ${phaseSourceText} de **${pName}** de manera exitosa. Al analizar su entorno geográfico en **${initialCity}** a **${initialAltitude} msnm**, identifico un factor de hipoxia ambiental moderada que incrementa la secreción basal de cortisol e influye en el gasto biológico diario.`
-                : `He registrado y sellado el perfil de ${phaseSourceText} de **${pName}** de manera exitosa. Con este bloque asegurado en el expediente clínico de **${pName}**, procedemos a evaluar la actividad física diaria y el descanso de ${patientSex === 'Femenino' ? 'la menor' : 'el menor'}.`;
+                : `He registrado y sellado el perfil de ${phaseSourceText} de **${pName}** de manera exitosa. Con este bloque asegurado en el expediente clínico de **${pName}**, procedemos a evaluar la actividad física diaria y el descanso de ${isFemalePatient ? 'la menor' : 'el menor'}.`;
             
             if (isLactante) {
                 greeting = `${baseConf}\n\nPara calibrar con precisión el gasto energético de **${pName}**, iniciemos con el juego y movement diario: **¿Realiza ${pName} actividades de estimulación temprana, juego activo o movimiento libre programado?**`;
@@ -409,14 +414,17 @@ const Fase11_ActividadSueno = ({
                     }
                 }
 
+                const isManualExercise = (lifeStyle.activity.source_type || "MANUAL") !== "TELEMETRY_TCX";
+                const activeTelemetryMetadata = isManualExercise ? null : (lifeStyle.activity.telemetry_metadata || null);
+
                 const nextLifestyleProfile = {
                     ...prev.lifestyle_profile,
                     activity: {
                         ...prev.lifestyle_profile?.activity,
                         has_scheduled_exercise: lifeStyle.activity.has_scheduled_exercise,
                         neat_level: lifeStyle.activity.neat_level,
-                        source_type: lifeStyle.activity.source_type || "MANUAL",
-                        telemetry_metadata: lifeStyle.activity.telemetry_metadata || null,
+                        source_type: isManualExercise ? "MANUAL" : "TELEMETRY_TCX",
+                        telemetry_metadata: activeTelemetryMetadata,
                         log: lifeStyle.activity.log.map(item => {
                             if (typeof item === 'object' && item !== null) {
                                 return item;
@@ -444,18 +452,34 @@ const Fase11_ActividadSueno = ({
                     }
                 };
 
-                console.log("   nextLifestyleProfile:", nextLifestyleProfile);
-                console.log("   prev.lifestyle_profile:", prev.lifestyle_profile);
+                const nextLegacyLifestyle = prev.lifestyle
+                    ? {
+                        ...prev.lifestyle,
+                        activity: {
+                            ...(prev.lifestyle.activity || {}),
+                            has_scheduled_exercise: lifeStyle.activity.has_scheduled_exercise,
+                            neat_level: lifeStyle.activity.neat_level,
+                            source_type: isManualExercise ? "MANUAL" : "TELEMETRY_TCX",
+                            telemetry_metadata: activeTelemetryMetadata,
+                            log: nextLifestyleProfile.activity.log
+                        }
+                    }
+                    : prev.lifestyle;
+
+                const nextAnnexes = isManualExercise
+                    ? filterOrphanTelemetryAnnexes(prev.clinical_context?.annexes || [], true)
+                    : (prev.clinical_context?.annexes || []);
 
                 // Comparar para evitar ciclos infinitos de renderizado
-                if (JSON.stringify(prev.lifestyle_profile) === JSON.stringify(nextLifestyleProfile)) {
-                    console.log("   No change detected. Returning prev state.");
+                const legacyTelemetryDirty = isManualExercise && Boolean(prev.lifestyle?.activity?.telemetry_metadata);
+                const annexesDirty = nextAnnexes.length !== (prev.clinical_context?.annexes || []).length;
+                if (JSON.stringify(prev.lifestyle_profile) === JSON.stringify(nextLifestyleProfile) && !legacyTelemetryDirty && !annexesDirty) {
                     return prev;
                 }
 
-                console.log("   State change detected! Returning updated patientData.");
                 return {
                     ...prev,
+                    ...(nextLegacyLifestyle ? { lifestyle: nextLegacyLifestyle } : {}),
                     lifestyle_profile: nextLifestyleProfile,
                     habits: {
                         ...prev.habits,
@@ -471,6 +495,7 @@ const Fase11_ActividadSueno = ({
                     },
                     clinical_context: {
                         ...prev.clinical_context,
+                        annexes: nextAnnexes,
                         ai_analysis: {
                             ...(prev.clinical_context?.ai_analysis || {}),
                             detected_tags: updatedTags
@@ -491,6 +516,8 @@ const Fase11_ActividadSueno = ({
                             ...prev.clinical_context?.activity,
                             exercise: {
                                 has_scheduled_exercise: lifeStyle.activity.has_scheduled_exercise,
+                                source_type: isManualExercise ? "MANUAL" : "TELEMETRY_TCX",
+                                telemetry_metadata: activeTelemetryMetadata,
                                 log: lifeStyle.activity.log,
                                 neat_level: lifeStyle.activity.neat_level,
                                 duration_history: lifeStyle.activity.duration_history || ""
@@ -532,8 +559,65 @@ const Fase11_ActividadSueno = ({
         return newState;
     };
 
+    // Purga quirúrgica exclusiva del dominio de telemetría de ejercicio (.TCX/.GPX)
+    // Preserva intactos sueño, estrés, NEAT y anexos clínicos reales (PDFs, fotos, Electret).
+    const purgeExerciseTelemetry = (baseLife = lifeStyle, extraActivityPatch = {}) => {
+        setTempTelemetry(null);
+        const cleanedLife = {
+            ...baseLife,
+            activity: {
+                ...baseLife.activity,
+                source_type: "MANUAL",
+                telemetry_metadata: null,
+                ...extraActivityPatch
+            }
+        };
+        setLifeStyle(cleanedLife);
+
+        if (setPatientData) {
+            setPatientData(prev => ({
+                ...prev,
+                ...(prev.lifestyle ? {
+                    lifestyle: {
+                        ...prev.lifestyle,
+                        activity: {
+                            ...(prev.lifestyle.activity || {}),
+                            source_type: "MANUAL",
+                            telemetry_metadata: null,
+                            ...extraActivityPatch
+                        }
+                    }
+                } : {}),
+                lifestyle_profile: {
+                    ...(prev.lifestyle_profile || {}),
+                    activity: {
+                        ...(prev.lifestyle_profile?.activity || {}),
+                        source_type: "MANUAL",
+                        telemetry_metadata: null,
+                        ...extraActivityPatch
+                    }
+                },
+                clinical_context: {
+                    ...(prev.clinical_context || {}),
+                    annexes: filterOrphanTelemetryAnnexes(prev.clinical_context?.annexes || [], true),
+                    activity: {
+                        ...(prev.clinical_context?.activity || {}),
+                        exercise: {
+                            ...(prev.clinical_context?.activity?.exercise || {}),
+                            source_type: "MANUAL",
+                            telemetry_metadata: null,
+                            ...extraActivityPatch
+                        }
+                    }
+                }
+            }));
+        }
+        return cleanedLife;
+    };
+
     // Helper para decidir si preguntar ciclo hormonal o mostrar síntesis
     const checkHormonalOrSummary = (state) => {
+        setIsSingleLineEdit(false);
         buildAndShowSummary(state);
     };
 
@@ -715,8 +799,6 @@ const Fase11_ActividadSueno = ({
                     return;
                 }
 
-                setTempTelemetry(consolidatedData);
-
                 const telemetryMetadata = {
                     device_name: "Wearable Device",
                     total_parsed_sessions: results.length,
@@ -735,38 +817,12 @@ const Fase11_ActividadSueno = ({
                     }))
                 };
 
-                const updatedLife = {
-                    ...lifeStyle,
-                    activity: {
-                        ...lifeStyle.activity,
-                        has_scheduled_exercise: true,
-                        source_type: "TELEMETRY_TCX",
-                        telemetry_metadata: telemetryMetadata,
-                        log: [{
-                            type: primarySport || 'Entrenamiento',
-                            frequency: results.length,
-                            duration: totalMinutes,
-                            intensity: 'Moderado',
-                            heart_rate_avg: finalAvgHr,
-                            heart_rate_max: maxHrAbsolute,
-                            distance_meters: totalDistance,
-                            calories_device: totalCalories
-                        }]
-                    }
-                };
-
-                setLifeStyle(updatedLife);
-                if (setPatientData) {
-                    setPatientData(prev => ({
-                        ...prev,
-                        lifestyle: updatedLife,
-                        lifestyle_profile: updatedLife
-                    }));
-                }
+                // Mantener en estado efímero hasta confirmación explícita (NOM-004)
+                setTempTelemetry({ ...consolidatedData, telemetryMetadata });
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: "He analizado los registros de su dispositivo y proyectado el resumen metabólico en su panel clínico lateral.\n\nPara dar cumplimiento a la NOM-004, ¿confirma que la información reflejada en pantalla describe fielmente su esfuerzo físico?",
+                    content: `He analizado los registros de su dispositivo:\n\n- 🏃 **Actividad principal:** ${primarySport || 'Entrenamiento'} (${results.length} ${results.length === 1 ? 'sesión' : 'sesiones'})\n- 🔥 **Gasto Calórico:** ${Math.round(totalCalories)} kcal\n- ⏱️ **Duración Total:** ${totalMinutes} min\n- ❤️ **FC Promedio:** ${finalAvgHr > 0 ? `${finalAvgHr} BPM` : 'N/A'}\n\nPara dar cumplimiento a la NOM-004, ¿confirma que esta información describe fielmente su esfuerzo físico?`,
                     options: [
                         { label: "Sí, es correcto", value: "CONFIRM_TELEMETRY" },
                         { label: "No, quiero corregir algo", value: "CORRECT_TELEMETRY" }
@@ -922,18 +978,58 @@ const Fase11_ActividadSueno = ({
             switch (currentStep) {
                 case 'correct_menu': {
                     const lowerText = textToProcess.toLowerCase();
-                    if (textToProcess === "MODIFY_NEAT" || lowerText.includes("neat") || lowerText.includes("actividad")) {
+                    if (textToProcess === "MODIFY_EXERCISE" || lowerText.includes("ejercicio")) {
+                        setIsSingleLineEdit(true);
+                        const exOptions = isMinor
+                            ? [
+                                { label: "✅ Sí, realiza", value: "Sí" },
+                                { label: "❌ No realiza", value: "No" }
+                            ]
+                            : [
+                                { label: "🏋️ Cargar Archivo Device (.TCX)", value: "TCX_LOAD" },
+                                { label: "📝 Declaración Manual", value: "Sí" },
+                                { label: "❌ No realizo", value: "No" }
+                            ];
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: isMinor
+                                ? `Actualicemos el registro de actividad física de **${pName}**. ¿Realiza ejercicio físico programado?`
+                                : "Actualicemos únicamente su actividad física. ¿Cómo desea registrarla?",
+                            options: exOptions
+                        }]);
+                        setCurrentStep('ACTIVITY_GATE');
+                    } else if (textToProcess === "DELETE_TCX_EXERCISE") {
+                        const cleaned = purgeExerciseTelemetry(lifeStyle, { has_scheduled_exercise: false, log: [] });
+                        setIsSingleLineEdit(true);
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "Archivo `.TCX` eliminado del expediente. ¿Desea declarar ejercicio físico de forma manual o registrar que no realiza ejercicio?",
+                            options: [
+                                { label: "📝 Declarar Actividad Manualmente", value: "Sí" },
+                                { label: "❌ No realizo ejercicio", value: "No" }
+                            ]
+                        }]);
+                        setCurrentStep('ACTIVITY_GATE');
+                        void cleaned;
+                    } else if (textToProcess === "MODIFY_NEAT" || lowerText.includes("neat") || lowerText.includes("actividad diaria")) {
+                        setIsSingleLineEdit(true);
                         askNeatQuestion();
                     } else if (textToProcess === "MODIFY_SLEEP" || lowerText.includes("sueño") || lowerText.includes("descanso")) {
+                        setIsSingleLineEdit(true);
                         triggerManualSleepQuestions(lifeStyle);
-                    } else if (textToProcess === "CLEAR_ALL" || lowerText.includes("limpiar")) {
-                        setLifeStyle({
+                    } else if (textToProcess === "MODIFY_STRESS" || lowerText.includes("estrés") || lowerText.includes("estres")) {
+                        setIsSingleLineEdit(true);
+                        askStressQuestion(lifeStyle);
+                    } else if (textToProcess === "CLEAR_ALL" || lowerText.includes("reiniciar")) {
+                        setIsSingleLineEdit(false);
+                        const resetLife = {
                             environment: { altitude: initialAltitude, hypoxiaRisk: initialAltitude > 2000, city: initialCity },
                             circadian: { sleepHours: 0, quality: "", issue_type: null },
                             hormonal: { cyclePhase: "N/A", lastPeriod: "" },
                             stress: { level: "", origin: null, cortisol_management_needed: false },
-                            activity: { has_scheduled_exercise: null, neat_level: null, log: [], duration_history: "" }
-                        });
+                            activity: { has_scheduled_exercise: null, neat_level: null, source_type: "MANUAL", telemetry_metadata: null, log: [], duration_history: "" }
+                        };
+                        purgeExerciseTelemetry(resetLife, { has_scheduled_exercise: null, neat_level: null, log: [], duration_history: "" });
                         
                         let resetGreeting = isLactante
                             ? `Historial de actividad física y descanso reiniciado. ¿Realiza **${pName}** actividades de estimulación temprana o juego activo programado?`
@@ -948,14 +1044,17 @@ const Fase11_ActividadSueno = ({
                                     { label: "❌ No realiza", value: "No" }
                                 ]
                                 : [
-                                    { label: "✅ Sí, realizo", value: "Sí" },
+                                    { label: "🏋️ Cargar Archivo Device (.TCX)", value: "TCX_LOAD" },
+                                    { label: "📝 Declaración Manual", value: "Sí" },
                                     { label: "❌ No realizo", value: "No" }
                                 ]
                         }]);
                         setCurrentStep('ACTIVITY_GATE');
+                    } else if (textToProcess === "RETURN_SUMMARY") {
+                        setIsSingleLineEdit(false);
+                        buildAndShowSummary(lifeStyle);
                     } else {
-                        // Ante cualquier otra entrada (FINISH, No aplica, Sin registro, Continuar), sellar y avanzar de fase
-                        console.log("✅ [Fase11 correct_menu] Finalizando fase con selección:", textToProcess);
+                        setIsSingleLineEdit(false);
                         syncLifeData(lifeStyle).then((finalState) => {
                             if (onPhaseComplete) onPhaseComplete(finalState, messagesRef.current);
                         });
@@ -975,8 +1074,11 @@ const Fase11_ActividadSueno = ({
                     }
 
                     const hasExercise = lower === 'sí' || lower === 'si';
-                    const updatedLife = { ...lifeStyle, activity: { ...lifeStyle.activity, has_scheduled_exercise: hasExercise, source_type: "MANUAL", log: [] } };
-                    setLifeStyle(updatedLife);
+                    const updatedLife = purgeExerciseTelemetry(lifeStyle, {
+                        has_scheduled_exercise: hasExercise,
+                        log: [],
+                        ...(hasExercise ? {} : { duration_history: "" })
+                    });
 
                     if (hasExercise) {
                         const actMsg = isLactante
@@ -986,6 +1088,9 @@ const Fase11_ActividadSueno = ({
                                 : `Excelente. ¿Qué actividad, deporte o disciplina física practica? (Ej. Correr, Natación, Gimnasio)`);
                         setMessages(prev => [...prev, { role: 'assistant', content: actMsg }]);
                         setCurrentStep('ACTIVITY_TYPE');
+                    } else if (isSingleLineEdit && updatedLife.activity.neat_level) {
+                        setIsSingleLineEdit(false);
+                        buildAndShowSummary(updatedLife);
                     } else {
                         askNeatQuestion();
                     }
@@ -1001,11 +1106,17 @@ const Fase11_ActividadSueno = ({
                         break;
                     }
                     const hasExercise = lower === 'sí' || lower === 'si';
-                    const updatedLife = { ...lifeStyle, activity: { ...lifeStyle.activity, has_scheduled_exercise: hasExercise, source_type: "MANUAL", log: [] } };
-                    setLifeStyle(updatedLife);
+                    const updatedLife = purgeExerciseTelemetry(lifeStyle, {
+                        has_scheduled_exercise: hasExercise,
+                        log: [],
+                        ...(hasExercise ? {} : { duration_history: "" })
+                    });
                     if (hasExercise) {
                         setMessages(prev => [...prev, { role: 'assistant', content: `Excelente. ¿Qué actividad practica? (Ej. Correr, Natación, Gimnasio)` }]);
                         setCurrentStep('ACTIVITY_TYPE');
+                    } else if (isSingleLineEdit && updatedLife.activity.neat_level) {
+                        setIsSingleLineEdit(false);
+                        buildAndShowSummary(updatedLife);
                     } else {
                         askNeatQuestion();
                     }
@@ -1026,16 +1137,23 @@ const Fase11_ActividadSueno = ({
                             calories_device: tempTelemetry.calories
                         };
 
+                        const confirmedMetadata = tempTelemetry.telemetryMetadata || {
+                            device_name: "Wearable Device",
+                            total_parsed_sessions: tempTelemetry.activitiesCount,
+                            total_calories: tempTelemetry.calories,
+                            total_minutes: tempTelemetry.durationMinutes,
+                            total_distance: tempTelemetry.distanceMeters,
+                            average_hr: tempTelemetry.averageHeartRate,
+                            max_hr: tempTelemetry.maximumHeartRate
+                        };
+
                         const updatedLife = {
                             ...lifeStyle,
                             activity: {
                                 ...lifeStyle.activity,
                                 has_scheduled_exercise: true,
                                 source_type: "TELEMETRY_TCX",
-                                telemetry_metadata: {
-                                    device_name: "Wearable Device",
-                                    total_parsed_sessions: tempTelemetry.activitiesCount
-                                },
+                                telemetry_metadata: confirmedMetadata,
                                 log: [newLogItem]
                             }
                         };
@@ -1043,16 +1161,24 @@ const Fase11_ActividadSueno = ({
                         
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Métricas telemétricas integradas exitosamente a su expediente clínico. Procedamos con el resto de su rutina diaria."
+                            content: "Métricas telemétricas integradas exitosamente a su expediente clínico."
                         }]);
-                        
-                        setTimeout(() => {
-                            askNeatQuestion(updatedLife);
-                        }, 500);
+
+                        if (isSingleLineEdit && updatedLife.activity.neat_level) {
+                            setIsSingleLineEdit(false);
+                            setTimeout(() => {
+                                buildAndShowSummary(updatedLife);
+                            }, 400);
+                        } else {
+                            setTimeout(() => {
+                                askNeatQuestion(updatedLife);
+                            }, 500);
+                        }
                     } else if (textToProcess === "CORRECT_TELEMETRY") {
+                        purgeExerciseTelemetry(lifeStyle, { has_scheduled_exercise: null, log: [] });
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Entendido. Vamos a ajustar sus datos de actividad. ¿Cómo desea proceder?",
+                            content: "Entendido. Se ha descartado el archivo telemétrico. ¿Cómo desea proceder con su actividad física?",
                             options: [
                                 { label: "📝 Declarar Actividad Manualmente", value: "Sí" },
                                 { label: "🏋️ Reintentar Cargar Archivo .TCX", value: "TCX_LOAD" },
@@ -1173,7 +1299,12 @@ const Fase11_ActividadSueno = ({
                         }
                     };
                     setLifeStyle(updatedLife);
-                    askNeatQuestion();
+                    if (isSingleLineEdit && updatedLife.activity.neat_level) {
+                        setIsSingleLineEdit(false);
+                        buildAndShowSummary(updatedLife);
+                    } else {
+                        askNeatQuestion();
+                    }
                     break;
                 }
 
@@ -1188,7 +1319,7 @@ const Fase11_ActividadSueno = ({
                     } else {
                         const neatMsg = `Independientemente del ejercicio programado, ¿cómo describiría su actividad diaria habitual (trabajo, oficina o casa)?`;
                         const neatOptions = [
-                            { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
+                            { label: sedentaryAdultLabel, value: 'SEDENTARY' },
                             { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
                             { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
                             { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
@@ -1212,7 +1343,7 @@ const Fase11_ActividadSueno = ({
                     } else if (textToProcess === "NEAT_MANUAL" || lower.includes("manual")) {
                         const neatMsg = `Independientemente del ejercicio programado, ¿cómo describiría su actividad diaria habitual (trabajo, oficina o casa)?`;
                         const neatOptions = [
-                            { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
+                            { label: sedentaryAdultLabel, value: 'SEDENTARY' },
                             { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
                             { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
                             { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
@@ -1239,13 +1370,20 @@ const Fase11_ActividadSueno = ({
                             role: 'assistant',
                             content: "Métricas de movimiento diario integradas exitosamente a su expediente clínico."
                         }]);
-                        setTimeout(() => {
-                            askSleepQuestion(updatedLife);
-                        }, 500);
+                        if (isSingleLineEdit && updatedLife.circadian.sleepHours > 0) {
+                            setIsSingleLineEdit(false);
+                            setTimeout(() => {
+                                buildAndShowSummary(updatedLife);
+                            }, 400);
+                        } else {
+                            setTimeout(() => {
+                                askSleepQuestion(updatedLife);
+                            }, 500);
+                        }
                     } else if (textToProcess === "CORRECT_NEAT_TELEMETRY") {
                         const neatMsg = `Entendido. Vamos a registrar su nivel de actividad de forma manual: ¿cómo describiría su actividad diaria habitual?`;
                         const neatOptions = [
-                            { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
+                            { label: sedentaryAdultLabel, value: 'SEDENTARY' },
                             { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
                             { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
                             { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
@@ -1282,7 +1420,7 @@ const Fase11_ActividadSueno = ({
                                         { label: 'Intenso / Muy Activo (Juego dinámico constante / Corre y salta todo el día)', value: 'HEAVY' }
                                     ]
                                     : [
-                                        { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
+                                        { label: sedentaryAdultLabel, value: 'SEDENTARY' },
                                         { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
                                         { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
                                         { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
@@ -1296,7 +1434,12 @@ const Fase11_ActividadSueno = ({
                         activity: { ...lifeStyle.activity, neat_level: cleanText } 
                     };
                     setLifeStyle(updatedLife);
-                    askSleepQuestion(updatedLife);
+                    if (isSingleLineEdit && updatedLife.circadian.sleepHours > 0) {
+                        setIsSingleLineEdit(false);
+                        buildAndShowSummary(updatedLife);
+                    } else {
+                        askSleepQuestion(updatedLife);
+                    }
                     break;
                 }
 
@@ -1332,9 +1475,16 @@ const Fase11_ActividadSueno = ({
                             role: 'assistant',
                             content: "Métricas de descanso integradas exitosamente a su expediente clínico."
                         }]);
-                        setTimeout(() => {
-                            askStressQuestion(lifeStyle);
-                        }, 500);
+                        if (isSingleLineEdit && lifeStyle.stress.level) {
+                            setIsSingleLineEdit(false);
+                            setTimeout(() => {
+                                buildAndShowSummary(lifeStyle);
+                            }, 400);
+                        } else {
+                            setTimeout(() => {
+                                askStressQuestion(lifeStyle);
+                            }, 500);
+                        }
                     } else if (textToProcess === "CORRECT_SLEEP_TELEMETRY") {
                         triggerManualSleepQuestions(lifeStyle);
                     }
@@ -1369,7 +1519,7 @@ const Fase11_ActividadSueno = ({
                     if (lower.includes('buena')) quality = 'GOOD';
                     if (lower.includes('mala')) quality = 'POOR';
 
-                    const updatedLife = { ...lifeStyle, circadian: { ...lifeStyle.circadian, quality } };
+                    const updatedLife = { ...lifeStyle, circadian: { ...lifeStyle.circadian, quality, ...(quality === 'GOOD' ? { issue_type: null } : {}) } };
                     setLifeStyle(updatedLife);
 
                     if (quality === 'FAIR' || quality === 'POOR') {
@@ -1387,13 +1537,16 @@ const Fase11_ActividadSueno = ({
                                     { label: "Cólicos o reflujo nocturno", value: "SHIFT_WORK" }
                                 ]
                                 : [
-                                    { label: "Me cuesta quedarme dormido (Insomnio inicial)", value: "INSOMNIA" },
+                                    { label: isFemalePatient ? "Me cuesta quedarme dormida (Insomnio inicial)" : "Me cuesta quedarme dormido (Insomnio inicial)", value: "INSOMNIA" },
                                     { label: "Me despierto varias veces en la noche (Fragmentado)", value: "FRAGMENTED" },
                                     { label: "Ronco o siento que me falta el aire (Apnea)", value: "APNEA" },
                                     { label: "Trabajo en turnos nocturnos (Disrupción Circadiana)", value: "SHIFT_WORK" }
                                 ]
                         }]);
                         setCurrentStep('SLEEP_ISSUE');
+                    } else if (isSingleLineEdit && updatedLife.stress.level) {
+                        setIsSingleLineEdit(false);
+                        buildAndShowSummary(updatedLife);
                     } else {
                         const stressMsg = isMinor
                             ? `Sincronizado. Para estructurar su perfil de estrés y cortisol, ¿cuál es el nivel de estrés diario en promedio de **${pName}**?`
@@ -1420,9 +1573,15 @@ const Fase11_ActividadSueno = ({
                     };
                     setLifeStyle(updatedLife);
 
+                    if (isSingleLineEdit && updatedLife.stress.level) {
+                        setIsSingleLineEdit(false);
+                        buildAndShowSummary(updatedLife);
+                        break;
+                    }
+
                     const stressMsg = isMinor
                         ? `Anotado. ¿Cuál es el nivel de estrés diario en promedio de **${pName}**?`
-                        : `Anotado. **¿cómo percibe su nivel actual de estrés?**`;
+                        : `Anotado. **¿Cómo percibe su nivel actual de estrés?**`;
                     setMessages(prev => [...prev, {
                         role: 'assistant', 
                         content: stressMsg, 
@@ -1518,42 +1677,28 @@ const Fase11_ActividadSueno = ({
                                           lower.includes("no, quiero");
 
                     if (isConfirm) {
+                        setIsSingleLineEdit(false);
                         // Guardar datos y completar
                         syncLifeData(lifeStyle).then((finalState) => {
                             onPhaseComplete?.(finalState, messagesRef.current);
                         });
                     } else if (isCorrectData) {
-                        // Reiniciar al paso innegociable de ejercicio
-                        setLifeStyle({
-                            environment: { altitude: initialAltitude, hypoxiaRisk: initialAltitude > 2000, city: initialCity },
-                            circadian: { sleepHours: 0, quality: "", issue_type: null },
-                            hormonal: { cyclePhase: "N/A", lastPeriod: "" },
-                            stress: { level: "", origin: null, cortisol_management_needed: false },
-                            activity: { has_scheduled_exercise: null, neat_level: null, log: [], duration_history: "" }
-                        });
-                        
-                        const resetGreeting = isLactante
-                            ? `De acuerdo, iniciemos de nuevo la evaluación. Para calibrar con precisión el gasto energético de **${pName}**, ¿realiza **${pName}** actividades de estimulación temprana o juego activo programado?`
-                            : (isMinor
-                                ? `De acuerdo, iniciemos de nuevo la evaluación. Para calibrar con precisión el gasto energético de **${pName}**, ¿realiza **${pName}** ejercicio físico programado?`
-                                : `De acuerdo, iniciemos de nuevo la evaluación. Para calcular con precisión cuántas calorías quema su cuerpo, ¿realiza usted ejercicio físico programado?`);
-                        
-                        const resetOptions = isMinor
-                            ? [
-                                { label: "✅ Sí, realiza", value: "Sí" },
-                                { label: "❌ No realiza", value: "No" }
-                            ]
-                            : [
-                                { label: "✅ Sí, realizo", value: "Sí" },
-                                { label: "❌ No realizo", value: "No" }
-                            ];
-                        
+                        const hasActiveTcx = lifeStyle.activity?.source_type === 'TELEMETRY_TCX' && Boolean(lifeStyle.activity?.telemetry_metadata);
+                        const menuOptions = [
+                            { label: "✏️ Modificar ejercicio físico / .TCX", value: "MODIFY_EXERCISE" },
+                            ...(hasActiveTcx ? [{ label: "🗑️ Eliminar archivo .TCX y pasar a manual", value: "DELETE_TCX_EXERCISE" }] : []),
+                            { label: "✏️ Modificar actividad diaria (NEAT)", value: "MODIFY_NEAT" },
+                            { label: "✏️ Modificar horas y calidad de sueño", value: "MODIFY_SLEEP" },
+                            { label: "✏️ Modificar nivel de estrés", value: "MODIFY_STRESS" },
+                            { label: "🔄 Reiniciar toda la fase", value: "CLEAR_ALL" },
+                            { label: "❌ Volver al resumen", value: "RETURN_SUMMARY" }
+                        ];
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: resetGreeting,
-                            options: resetOptions
+                            content: "De acuerdo. ¿Qué línea específica desea modificar en su síntesis de estilo de vida?",
+                            options: menuOptions
                         }]);
-                        setCurrentStep('ACTIVITY_GATE');
+                        setCurrentStep('correct_menu');
                     }
                     break;
                 }
@@ -1586,7 +1731,7 @@ const Fase11_ActividadSueno = ({
                         { label: 'Intenso / Muy Activo (Juego dinámico constante / Corre y salta todo el día)', value: 'HEAVY' }
                     ]
                     : [
-                        { label: 'Sedentario (Todo el día sentado)', value: 'SEDENTARY' },
+                        { label: sedentaryAdultLabel, value: 'SEDENTARY' },
                         { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
                         { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
                         { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
@@ -1796,7 +1941,7 @@ const Fase11_ActividadSueno = ({
         // 2. Actividad Diaria (NEAT)
         const neatMap = isLactante
             ? { SEDENTARY: 'Tranquilo / Acostado', LIGHT: 'Gateo inicial / Juego sentado', MODERATE: 'Gateo activo / Camina', HEAVY: 'Explora / Corre / Salta' }
-            : { SEDENTARY: 'Sedentario', LIGHT: 'Ligero', MODERATE: 'Moderado', HEAVY: 'Pesado' };
+            : { SEDENTARY: isFemalePatient ? 'Sedentaria' : 'Sedentario', LIGHT: 'Ligero', MODERATE: 'Moderado', HEAVY: 'Pesado' };
         summaryText += isLactante
             ? `- 👶 **Actividad Diaria / Movimiento:** ${neatMap[state.activity.neat_level] || state.activity.neat_level}\n`
             : `- 💼 **Actividad Diaria (NEAT):** ${neatMap[state.activity.neat_level] || state.activity.neat_level}\n`;
@@ -1841,15 +1986,14 @@ const Fase11_ActividadSueno = ({
 
         // 5. Sincronía Hormonal (opcional)
         const isAppropriateAgeForCycle = age >= 10;
-        const isFemale = patientData?.profile?.sex === 'Femenino';
-        if (isFemale && isAppropriateAgeForCycle) {
+        if (isFemalePatient && isAppropriateAgeForCycle) {
             const hormonalData = patientData.physio?.last_menstruation_period || patientData.physio?.menstrual_status || 'No refiere';
             summaryText += `- 🌸 **Sincronía Hormonal:** ${hormonalData}\n`;
         }
 
         // 6. Resumen de Carga Física / Metabólica Dinámica
         let metabolicSummary = "";
-        if (state.activity.source_type === "TELEMETRY_TCX" || (state.activity.log && state.activity.log.some(x => typeof x === 'object'))) {
+        if (state.activity.source_type === "TELEMETRY_TCX" && state.activity.telemetry_metadata) {
             let totalCal = 0;
             let totalMin = 0;
             let maxHr = 0;
@@ -1871,7 +2015,11 @@ const Fase11_ActividadSueno = ({
         } else if (state.activity.has_scheduled_exercise) {
             let totalWeeklyMin = 0;
             state.activity.log.forEach(item => {
-                if (typeof item === 'string') {
+                if (typeof item === 'object' && item !== null) {
+                    const dur = item.duration || item.durationMinutes || 0;
+                    const freq = item.frequency || 1;
+                    totalWeeklyMin += (freq * dur);
+                } else if (typeof item === 'string') {
                     const daysMatch = item.match(/(\d+)\s*(?:días|dias|d\/sem|días\/sem)/i);
                     const minsMatch = item.match(/(\d+)\s*min/i);
                     if (daysMatch && minsMatch) {

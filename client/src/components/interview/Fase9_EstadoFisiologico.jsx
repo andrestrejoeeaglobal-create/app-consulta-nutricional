@@ -5,14 +5,15 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
     const { patientName: pName, isMinor, isLactante, isPediatrico } = usePatientLinguistics(patientData);
 
     const [step, setStep] = useState(() => {
-        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("detalles biológicos"));
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content?.includes("detalles biológicos"));
         const p = patientData.physio;
         const hasPhysio = p && (p.is_completed === true || p.user_declared === true || p.menstrual_status || p.is_pregnant === true || p.is_lactating === true || p.gestation_weeks > 0);
-        if (hasSummary || hasPhysio) {
+        if (patientData?.physio_edit_mode || hasSummary || hasPhysio) {
             return 'correct_menu';
         }
         return 'preg_gate';
     });
+    const [isSingleLineEdit, setIsSingleLineEdit] = useState(false);
     const hasGreeted = useRef(false);
 
     useEffect(() => {
@@ -20,20 +21,24 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
 
         if (step === 'correct_menu') {
             hasGreeted.current = true;
-            setMessages(prev => [
-                ...prev,
-                {
-                    role: 'assistant',
-                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de estado fisiológico y reproductivo?",
-                    options: [
-                        { label: "✏️ Modificar estado de embarazo", value: "MODIFY_PREGNANCY" },
-                        { label: "✏️ Modificar estado de lactancia", value: "MODIFY_LACTATION" },
-                        { label: "✏️ Modificar ciclo menstrual", value: "MODIFY_MENSTRUAL" },
-                        { label: "🔄 Limpiar estado fisiológico", value: "CLEAR_ALL" },
-                        { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
-                    ]
-                }
-            ]);
+            setMessages(prev => {
+                const lastAssistant = [...prev].reverse().find(m => m.role === 'assistant');
+                if (lastAssistant?.content?.includes("¿Qué cambio o acción desea realizar en su historial de estado fisiológico y reproductivo?")) return prev;
+                return [
+                    ...prev,
+                    {
+                        role: 'assistant',
+                        content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de estado fisiológico y reproductivo?",
+                        options: [
+                            { label: "✏️ Modificar estado de embarazo", value: "MODIFY_PREGNANCY" },
+                            { label: "✏️ Modificar estado de lactancia", value: "MODIFY_LACTATION" },
+                            { label: "✏️ Modificar ciclo menstrual", value: "MODIFY_MENSTRUAL" },
+                            { label: "🔄 Limpiar estado fisiológico", value: "CLEAR_ALL" },
+                            { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                        ]
+                    }
+                ];
+            });
             return;
         }
 
@@ -180,15 +185,20 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
         }
     }, [messages, isMinor, pName, setMessages, patientData, setPatientData, step]);
 
+    const processStepRef = useRef(null);
+    useEffect(() => {
+        processStepRef.current = processStep;
+    });
+
     // Middleware de enrutamiento: callback constructor para corregir la ejecución prematura en App.jsx
     useEffect(() => {
         if (registerInputHandler) {
-            registerInputHandler(() => processStep);
+            registerInputHandler(() => (input, label) => processStepRef.current(input, label));
         }
         return () => {
             if (registerInputHandler) registerInputHandler(null);
         };
-    }, [step, registerInputHandler]);
+    }, [registerInputHandler]);
 
     async function processStep(input, label = null) {
         let userText = (label && label !== 'text' && label !== 'select' && label !== 'number' && label !== 'tel' && label !== 'button') ? label : input;
@@ -243,6 +253,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
             }
             case 'correct_menu': {
                 if (input === "MODIFY_PREGNANCY") {
+                    setIsSingleLineEdit(true);
                     setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: isMinor
@@ -255,6 +266,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                     }]);
                     setStep('preg_gate');
                 } else if (input === "MODIFY_LACTATION") {
+                    setIsSingleLineEdit(true);
                     setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: isMinor
@@ -267,10 +279,13 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                     }]);
                     setStep('lact_gate');
                 } else if (input === "MODIFY_MENSTRUAL") {
+                    setIsSingleLineEdit(true);
                     askMenstrualCycle();
                 } else if (input === "CLEAR_ALL") {
+                    setIsSingleLineEdit(false);
                     setPatientData(prev => ({
                         ...prev,
+                        physio_edit_mode: false,
                         physio: { ignorePhase3PreFill: true }
                     }));
                     setStep('preg_gate');
@@ -285,6 +300,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                         ]
                     }]);
                 } else if (input === "FINISH") {
+                    setIsSingleLineEdit(false);
                     finishPhase(patientData);
                 }
                 break;
@@ -304,10 +320,17 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                     }]);
                     setStep('preg_weeks');
                 } else if (input === "No") {
-                    setPatientData(prev => ({
-                        ...prev,
-                        physio: { ...(prev.physio || {}), is_pregnant: false }
-                    }));
+                    const updated = {
+                        ...patientData,
+                        physio_edit_mode: false,
+                        physio: { ...(patientData.physio || {}), is_pregnant: false, preg_weeks: null }
+                    };
+                    setPatientData(updated);
+                    if (isSingleLineEdit && (updated.physio?.menstrual_status || updated.physio?.is_lactating !== undefined)) {
+                        setIsSingleLineEdit(false);
+                        finishPhase(updated);
+                        break;
+                    }
                     setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: isMinor 
@@ -385,10 +408,17 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                         inputType: 'number'
                     }]);
                 } else {
-                    setPatientData(prev => ({
-                        ...prev,
-                        physio: { ...(prev.physio || {}), preg_weeks: weeks }
-                    }));
+                    const updated = {
+                        ...patientData,
+                        physio_edit_mode: false,
+                        physio: { ...(patientData.physio || {}), is_pregnant: true, preg_weeks: weeks }
+                    };
+                    setPatientData(updated);
+                    if (isSingleLineEdit) {
+                        setIsSingleLineEdit(false);
+                        finishPhase(updated);
+                        break;
+                    }
                     setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: isMinor 
@@ -423,9 +453,15 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                 } else if (input === "No") {
                     const updated = {
                         ...patientData,
-                        physio: { ...(patientData.physio || {}), is_lactating: false }
+                        physio_edit_mode: false,
+                        physio: { ...(patientData.physio || {}), is_lactating: false, lactation_type: null, baby_age_months: null }
                     };
                     setPatientData(updated);
+                    if (isSingleLineEdit && (updated.physio?.is_pregnant === true || updated.physio?.menstrual_status)) {
+                        setIsSingleLineEdit(false);
+                        finishPhase(updated);
+                        break;
+                    }
                     const isPregnant = updated.physio?.is_pregnant === true;
                     if (isPregnant) {
                         finishPhase(updated);
@@ -482,9 +518,15 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                 } else {
                     const updated = {
                         ...patientData,
-                        physio: { ...(patientData.physio || {}), baby_age_months: months }
+                        physio_edit_mode: false,
+                        physio: { ...(patientData.physio || {}), is_lactating: true, baby_age_months: months }
                     };
                     setPatientData(updated);
+                    if (isSingleLineEdit) {
+                        setIsSingleLineEdit(false);
+                        finishPhase(updated);
+                        break;
+                    }
                     const isPregnant = updated.physio?.is_pregnant === true;
                     if (isPregnant) {
                         finishPhase(updated);
@@ -630,6 +672,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
     };
 
     const finishPhase = (customData = null) => {
+        setIsSingleLineEdit(false);
         if (onPhaseComplete) {
             const dataToPass = customData 
                 ? (customData.physio || customData) 

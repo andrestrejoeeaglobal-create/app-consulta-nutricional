@@ -15,11 +15,13 @@ import Footer from "./components/Footer";
 import { FooterLoader } from "./components/FooterLoader"; // V15.6 Footer Aislado
 import { generateSecurityConstraints } from "./ClinicalRules"; // <--- Motor de Seguridad Cultural
 import { cleanServerInfo, formatText, strictBooleanValidator, formatDateLong, cleanBinaryGateMessage } from "./utils/utils"; // <--- SAFE-ID Utils
-import { formatPlanForClipboard } from "./utils/formatPlanForClipboard";
+import { resolvePatientSex, getContextualSupplementExample, stripNegatedSentinels } from "./utils/genderConcordance";
+import { formatPlanForClipboard, copySSoTDocument } from "./utils/formatPlanForClipboard";
 import { fetchZipData } from "./utils/geoServices";
 import useCitationValidation from "./hooks/useCitationValidation"; // <--- SAFE-ID Hook
-import AntigravityCanvas from "./components/AntigravityCanvas"; // <--- Antigravity Physics Engine (Old)
 import { AntigravityBlobs } from "./components/AntigravityBlobs"; // V15.6 Glow Blobs
+import ThemeToggleButton from "./components/ui/ThemeToggleButton";
+import { enqueueCitationProgressPatch } from "./utils/syncOutboxQueue";
 import VisualIdentityCard from "./components/VisualIdentityCard"; // <--- V8.0 Visual Identity Card
 import VisualBodyMap from "./components/VisualBodyMap"; // <--- V9.6 Visual Body Map
 import useCortex from "./hooks/useCortex"; // <--- T.I.L.O Logical Engine
@@ -42,7 +44,11 @@ import Fase16_BiometriaGeneral from "./components/interview/Fase16_BiometriaGene
 import Fase17_SignosVitales from "./components/interview/Fase17_SignosVitales";
 import Fase18_EscanerBioelectrico from "./components/interview/Fase18_EscanerBioelectrico";
 import Fase19_DiagnosticoIntegral from "./components/interview/Fase19_DiagnosticoIntegral";
-import Fase20_Portapapeles from "./components/interview/Fase20_Portapapeles";
+import Fase20_Portapapeles, {
+  safeCopyTextToClipboard,
+  buildSSoTExecutiveOptions,
+  buildSSoTExecutiveSummaryContent
+} from "./components/interview/Fase20_Portapapeles";
 import Fase21_Calendario from "./components/interview/Fase21_Calendario";
 import ClinicalToastContainer from "./components/ui/ClinicalToast";
 import { useClinicalToast } from "./hooks/useClinicalToast";
@@ -282,12 +288,12 @@ const renderClinicalCards = (text) => {
 // V10.5 HELPER: GENDER AGREEMENT ENGINE
 // Returns the correct term based on biological sex
 const getGenderedTerm = (term, sex) => {
-  if (!sex) return term; // Fallback
-  const lowerSex = sex.toLowerCase();
-  const isFemale = lowerSex === 'femenino' || lowerSex === 'mujer' || lowerSex === 'f' || lowerSex === 'm'; // M for Mujer in some systems
+  if (!sex || !term) return term;
+  const { isFemale } = resolvePatientSex(sex);
 
   const dic = {
     'bienvenido': isFemale ? 'Bienvenida' : 'Bienvenido',
+    'estimado': isFemale ? 'Estimada' : 'Estimado',
     'listo': isFemale ? 'Lista' : 'Listo',
     'seguro': isFemale ? 'Segura' : 'Seguro',
     'registrado': isFemale ? 'Registrada' : 'Registrado',
@@ -298,10 +304,8 @@ const getGenderedTerm = (term, sex) => {
   };
 
   const lowerTerm = term.toLowerCase();
-  // Return matched term with preserved casing if possible (simple capitalization)
   if (dic[lowerTerm]) {
     const val = dic[lowerTerm];
-    // Check if original was capitalized
     if (term[0] === term[0].toUpperCase()) return val;
     return val.toLowerCase();
   }
@@ -780,7 +784,7 @@ function App() {
 
   // 1. Estado para controlar el flujo de la conversación (Legacy, to be replaced by currentPhase)
   const [interviewStep, setInterviewStep] = useState("appointment");
-  const citationId = apiContext?.citaId || apiContext?.idCita || patientData?.citaId || sessionMetadata?.citation || '15000';
+  const citationId = apiContext?.citaId || apiContext?.idCita || patientData?.profile?.citaId || patientData?.identificacion?.citaId || patientData?.identificacion?.idCita || patientData?.citaId || sessionMetadata?.citation || '';
 
   // 🛡️ ENMIENDA V8: Bandera booleana memoizada (Exclusividad Telemétrica de Fase 18 - Cero Churn & Cero TDZ)
   const isPhase18Active = React.useMemo(() => {
@@ -862,7 +866,7 @@ function App() {
   // const [openSection, setOpenSection] = useState('identificacion'); // REMOVED: Managed by MedicalDashboard
   const [editMode, setEditMode] = useState(false); // V4.5 Edit Mode Flag
   const [isPhase20EditMode, setIsPhase20EditMode] = useState(false); // <--- Flag para Edición Fina de Fase 20
-  const [showVitalLoopModal, setShowVitalLoopModal] = useState(false); // <--- Modal para descargar/sincronizar App VitalLoop (Banda H7)
+  const [showVitalLoopModal, setShowVitalLoopModal] = useState(false); // <--- Modal de Sincronización con Plataforma Digital Equipo en Acción®
 
   const hasVerticalMenuOpen = React.useMemo(() => {
     if (!isIdentityConfirmed || messagesList.length === 0) return false;
@@ -891,8 +895,8 @@ function App() {
         if (currentPhase.startsWith('PHASE_18') || currentPhase === 'PHASE_18_ELECTRET') {
           setInterviewStep('phase_18');
           setSessionMetadata(prev => ({
-            userId: prev.userId || patientData?.identificacion?.usuarioId || '67197',
-            citation: prev.citation || patientData?.identificacion?.citaId || '21006',
+            userId: prev.userId || patientData?.identificacion?.usuarioId || null,
+            citation: prev.citation || patientData?.identificacion?.citaId || null,
             serverName: prev.serverName || 'EA_PROD'
           }));
         }
@@ -909,7 +913,8 @@ function App() {
         'PHASE_6_PHARMACOLOGY', 'PHASE_7_ALLERGIES', 'PHASE_7_HABITS', 'PHASE_10_HABITS',
         'PHASE_8_DIGESTIVE', 'PHASE_9_PHYSIO', 'PHASE_5_LIFESTYLE', 'PHASE_11_ACTIVITY',
         'PHASE_11_LIFESTYLE', 'PHASE_12_LOGISTICS', 'PHASE_13_PREFERENCES', 'PHASE_14_R24H',
-        'PHASE_15_FFQ', 'PHASE_16_BIOMETRICS', 'PHASE_17_VITALS', 'PHASE_18_ELECTRET', 'PHASE_19_DIAGNOSIS'
+        'PHASE_15_FFQ', 'PHASE_16_BIOMETRICS', 'PHASE_17_VITALS', 'PHASE_18_ELECTRET',
+        'PHASE_19_DIAGNOSIS', 'PHASE_20_PORTAPAPELES', 'PHASE_21_CALENDARIO'
       ].some(p => currentPhase.startsWith(p) || currentPhase === p);
 
       const isCortexPhase = currentPhase.startsWith('PHASE_');
@@ -923,27 +928,59 @@ function App() {
   // Auto-remediación para saneamiento de chat obsoleto tras recarga en fase de consolidación
   useEffect(() => {
     if (messages && messages.length > 0) {
-      // 1. Sanitizar cualquier mensaje con opciones antiguas (NEW_CONSULTATION -> SCHEDULE_FOLLOWUP_APPOINTMENT o horarios obsoletos)
+      // 1. Sanitizar cualquier mensaje con opciones antiguas, spam previo de portapapeles o RESTART_FROM_PHASE_0 en consultas cerradas NOM-004
       let needsSanitization = false;
-      const sanitizedMessages = messages.map(msg => {
+      const isClosedConsultation = Boolean(patientData?.is_completed);
+      const isClipboardSpamBubble = (m) =>
+        m?.role === 'assistant' &&
+        typeof m.content === 'string' &&
+        (m.content.startsWith('✅ **Portapapeles Actualizado:**') || m.content.startsWith('⚠️ **Aviso de Portapapeles:**'));
+
+      const filteredMessages = messages.length > 1
+        ? messages.filter((m, idx) => {
+            if (isClipboardSpamBubble(m)) {
+              needsSanitization = true;
+              return false;
+            }
+            const nextMsg = messages[idx + 1];
+            if (
+              m?.role === 'user' &&
+              isClipboardSpamBubble(nextMsg) &&
+              /Copiar\s+(Gu[íi]a\s+Paciente|Expediente\s+NOM-004)/i.test(String(m.content || ''))
+            ) {
+              needsSanitization = true;
+              return false;
+            }
+            return true;
+          })
+        : messages;
+
+      const sanitizedMessages = (filteredMessages.length > 0 ? filteredMessages : messages).map(msg => {
         if (msg.options && msg.options.length > 0) {
-          const hasOldBtn = msg.options.some(o => o.value === 'NEW_CONSULTATION' || o.value?.includes('01:30 PM') || o.value?.includes('04:30 PM'));
+          const hasOldBtn = msg.options.some(o =>
+            o.value === 'NEW_CONSULTATION' ||
+            o.value?.includes('01:30 PM') ||
+            o.value?.includes('04:30 PM') ||
+            (isClosedConsultation && o.value === 'RESTART_FROM_PHASE_0')
+          );
           if (hasOldBtn) {
             needsSanitization = true;
             return {
               ...msg,
-              options: msg.options.map(o => {
-                if (o.value === 'NEW_CONSULTATION') {
-                  return { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" };
-                }
-                if (o.value?.includes('01:30 PM')) {
-                  return { ...o, label: "☀️ Tarde: 02:00 PM", value: o.value.replace('01:30 PM', '02:00 PM') };
-                }
-                if (o.value?.includes('04:30 PM')) {
-                  return { ...o, label: "🌇 Tarde: 04:00 PM", value: o.value.replace('04:30 PM', '04:00 PM') };
-                }
-                return o;
-              })
+              options: msg.options
+                .filter(o => !(isClosedConsultation && o.value === 'RESTART_FROM_PHASE_0'))
+                .map(o => {
+                  if (o.value === 'NEW_CONSULTATION') {
+                    return { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" };
+                  }
+                  if (o.value?.includes('01:30 PM')) {
+                    return { ...o, label: "☀️ Tarde: 02:00 PM", value: o.value.replace('01:30 PM', '02:00 PM') };
+                  }
+                  if (o.value?.includes('04:30 PM')) {
+                    return { ...o, label: "🌇 Tarde: 04:00 PM", value: o.value.replace('04:30 PM', '04:00 PM') };
+                  }
+                  return o;
+                })
             };
           }
         }
@@ -985,10 +1022,10 @@ function App() {
           ...prev,
           {
             role: 'assistant',
-            content: `🏥 **Resumen Clínico y Expediente NOM-004 Activo**\n\nSe ha desplegado el expediente de **${patientName}** en el panel principal. Puedes revisar las constantes biológicas, el plan metabólico y las recomendaciones en las pestañas superiores.\n\n¿Deseas vincular la App VitalLoop® o agendar la cita de seguimiento a 4 semanas?`,
+            content: `🏥 **Resumen Clínico y Expediente NOM-004 Activo**\n\nSe ha desplegado el expediente de **${patientName}** en el panel principal. Usted puede revisar las constantes biológicas, el plan metabólico y las recomendaciones en las pestañas superiores.\n\n¿Desea sincronizar la Plataforma Digital Equipo en Acción® o agendar la cita de seguimiento a 4 semanas?`,
             avatar: tiloImg,
             options: [
-              { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
+              { label: "📱 Sincronizar Plataforma Digital Equipo en Acción®", value: "SYNC_VITALLOOP_APP" },
               { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
             ]
           }
@@ -996,13 +1033,13 @@ function App() {
         return;
       }
 
-      // Caso C: El último mensaje es del usuario eligiendo "Sincronizar y Descargar App VitalLoop®" pero Tilo no ha respondido
-      if (lastMsg && lastMsg.role === 'user' && lastMsg.content?.includes('Sincronizar y Descargar App VitalLoop')) {
+      // Caso C: El último mensaje es del usuario eligiendo sincronizar plataforma digital pero Tilo no ha respondido
+      if (lastMsg && lastMsg.role === 'user' && lastMsg.content?.includes('Sincronizar Plataforma Digital')) {
         setMessages(prev => [
           ...prev,
           {
             role: 'assistant',
-            content: "📱 **Sincronización VitalLoop® Iniciada**\n\nSe ha abierto la ventana interactiva para descargar la App y vincular la Banda H7 para biotelemetría en tiempo real.",
+            content: "📱 **Sincronización con Plataforma Digital Equipo en Acción®**\n\nSe ha abierto la ventana de vinculación para consultar la guía móvil y el seguimiento diario de hábitos.",
             avatar: tiloImg,
             options: [
               { label: "📋 Ver Resumen Clínico Completo", value: "VIEW_DOSSIER" },
@@ -1018,7 +1055,7 @@ function App() {
       if (hasInfantilizedMsg) {
         const addr = getPatientAddressing();
         const properPrompt = addr.isPediatric
-          ? `Por favor, seleccione la **fecha de preferencia** para la evaluación de seguimiento a 28 días del menor **${addr.fullName}** (a coordinar con su tutor/a):`
+          ? `Por favor, seleccione la **fecha de preferencia** para la evaluación de seguimiento a 28 días ${addr.isFemale ? 'de la menor' : 'del menor'} **${addr.fullName}** (a coordinar con su representante o tutor legal):`
           : `Por favor, **seleccione su fecha de preferencia** para su evaluación clínica y metabólica de 28 días:`;
 
         setMessages(prev => prev.map(m => {
@@ -1033,7 +1070,7 @@ function App() {
       }
 
       // Caso D: Si el último mensaje es de consolidación, asegurar que solo quede Agendar Cita y purgar la descarga como opción a escoger
-      if (lastMsg && lastMsg.role === 'assistant' && (lastMsg.content?.includes('Consulta Médica y Plan Metabólico Consolidados') || lastMsg.content?.includes('Sincronización VitalLoop') || lastMsg.content?.includes('Resumen Clínico y Expediente'))) {
+      if (lastMsg && lastMsg.role === 'assistant' && (lastMsg.content?.includes('Consulta Médica y Plan Metabólico Consolidados') || lastMsg.content?.includes('Sincronización con Plataforma Digital') || lastMsg.content?.includes('Resumen Clínico y Expediente'))) {
         const hasSyncOpt = lastMsg.options?.some(o => o.value === 'SYNC_VITALLOOP_APP');
         const hasScheduleOpt = lastMsg.options?.some(o => o.value === 'SCHEDULE_FOLLOWUP_APPOINTMENT');
         if (hasSyncOpt || !hasScheduleOpt) {
@@ -1085,11 +1122,11 @@ function App() {
   // Calibración Dinámica de Autoridad y Respeto según Edad y Sexo (NOM-004 & TILO Protocol)
   const getPatientAddressing = () => {
     const ageCandidate = Number(patientData?.identificacion?.edad ?? patientData?.identityLock?.patientInfo?.age ?? patientData?.edad ?? 30);
-    const genderStr = String(patientData?.sex || patientData?.genero || patientData?.profile?.gender || patientData?.identificacion?.genero || 'Masculino').toLowerCase();
-    const isMale = genderStr.startsWith('masc') || genderStr === 'hombre' || genderStr === 'm';
+    const { isFemale } = resolvePatientSex(patientData);
+    const isMale = !isFemale;
     const isPediatric = ageCandidate < 18;
     const isSenior = ageCandidate >= 60;
-    const fullName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || 'del Paciente';
+    const fullName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || patientData?.profile?.name || 'del Paciente';
     const firstName = fullName.split(' ')[0] || fullName;
     const honorific = isSenior 
       ? (isMale ? ("Don " + firstName) : ("Doña " + firstName)) 
@@ -1102,9 +1139,146 @@ function App() {
       fullName,
       firstName,
       honorific,
-      isMale
+      isMale,
+      isFemale
     };
   };
+
+  // 🛡️ SSoTT v2.8.2: Despachador Global Post-Síntesis (Inmune a isSessionClosed e inputHandler)
+  const executeGlobalPostSynthesisCommand = useCallback(async (rawCmd, userBubbleLabel = null) => {
+    const cmd = String(rawCmd || '').trim();
+    const GLOBAL_SSOT_COMMANDS = [
+      'GO_TO_PHASE_20',
+      'GO_TO_PHASE_21',
+      'PROCEED_TO_PHASE_21',
+      'GO_TO_CALENDAR_SPRINT',
+      'COPY_SSOT_PATIENT_GUIDE',
+      'COPY_SSOT_MEDICAL_DOSSIER',
+      'RESTART_FROM_PHASE_0'
+    ];
+    if (!GLOBAL_SSOT_COMMANDS.includes(cmd)) return false;
+
+    const latest = latestSessionStateRef.current;
+    const currentPData = latest?.patientData || patientData || {};
+    const isCompletedStudy = Boolean(currentPData?.is_completed);
+
+    if (cmd === 'RESTART_FROM_PHASE_0') {
+      if (isCompletedStudy) {
+        showToast({
+          dedupeKey: 'nom004-sealed-lock',
+          type: 'warning',
+          title: 'Expediente Sellado NOM-004',
+          message: 'Las consultas concluidas son inmutables y no pueden reiniciarse desde Fase 0.',
+          duration: 3500
+        });
+        return true;
+      }
+      setInputHandler(null);
+      setInterviewStep('appointment');
+      await clearSession(null, { resetInDb: true });
+      return true;
+    }
+
+    if (cmd === 'GO_TO_PHASE_20') {
+      setActiveTab('diagnosis');
+      if (isCompletedStudy) {
+        setInputHandler(null);
+        const execSummary = buildSSoTExecutiveSummaryContent(currentPData);
+        setMessages(prev => [
+          ...(Array.isArray(prev) ? prev : []),
+          ...(userBubbleLabel ? [{ role: 'user', content: userBubbleLabel }] : []),
+          {
+            role: 'assistant',
+            content: execSummary,
+            avatar: tiloImg,
+            options: buildSSoTExecutiveOptions(true)
+          }
+        ]);
+      } else {
+        if (userBubbleLabel) {
+          setMessages(prev => [...(Array.isArray(prev) ? prev : []), { role: 'user', content: userBubbleLabel }]);
+        }
+        setCurrentPhase('PHASE_20_PORTAPAPELES');
+      }
+      return true;
+    }
+
+    if (cmd === 'GO_TO_PHASE_21' || cmd === 'PROCEED_TO_PHASE_21' || cmd === 'GO_TO_CALENDAR_SPRINT') {
+      setInputHandler(null);
+      setActiveTab('schedule');
+      setCurrentPhase('PHASE_21_CALENDARIO');
+
+      if (isCompletedStudy) {
+        const bio = currentPData?.clinical_dossier?.bioenergetics || {};
+        const rawKcal = Number(bio?.targetKcal || currentPData?.nutrition?.protocol?.target || 0);
+        const formattedKcal = Number.isFinite(rawKcal) && rawKcal > 0
+          ? `${String(Math.round(rawKcal)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')} kcal/día`
+          : 'Meta personalizada SSoTT';
+        const m = bio?.macros || currentPData?.nutrition?.protocol?.macros || { carbs: 35, protein: 35, fat: 30 };
+
+        setMessages(prev => [
+          ...(Array.isArray(prev) ? prev : []),
+          ...(userBubbleLabel ? [{ role: 'user', content: userBubbleLabel }] : []),
+          {
+            role: 'assistant',
+            content:
+              `📅 **Calendario y Periodización Celular de 28 Días (Fase 21 — Estudio Completado)**\n\n` +
+              `Se ha desplegado en el panel derecho la arquitectura crononutricional sellada bajo **NOM-004-SSA3-2012**:\n\n` +
+              `• **Meta Calórica Prescrita:** **${formattedKcal}**\n\n` +
+              `• **Distribución de Macronutrientes:** ${m.carbs}% Hidratos de Carbono | ${m.protein}% Proteínas | ${m.fat}% Lípidos\n\n` +
+              `Puede alternar a la pestaña de **Diagnóstico y Portapapeles** o copiar directamente los documentos SSoTT:`,
+            avatar: tiloImg,
+            options: [
+              { label: '📋 Revisar Diagnóstico y Portapapeles (Fase 20)', value: 'GO_TO_PHASE_20' },
+              { label: '📋 Copiar Guía Paciente', value: 'COPY_SSOT_PATIENT_GUIDE' },
+              { label: '🩺 Copiar Expediente NOM-004', value: 'COPY_SSOT_MEDICAL_DOSSIER' }
+            ]
+          }
+        ]);
+      } else if (userBubbleLabel) {
+        setMessages(prev => [...(Array.isArray(prev) ? prev : []), { role: 'user', content: userBubbleLabel }]);
+      }
+      return true;
+    }
+
+    if (cmd === 'COPY_SSOT_PATIENT_GUIDE' || cmd === 'COPY_SSOT_MEDICAL_DOSSIER') {
+      const viewMode = cmd === 'COPY_SSOT_PATIENT_GUIDE' ? 'patient' : 'medical';
+      const activeCita = resolveValidCitationId(currentPData, latest?.apiContext, latest?.sessionMetadata);
+      setPlanViewMode(viewMode);
+
+      const result = await copySSoTDocument({
+        patientData: currentPData,
+        citationId: activeCita,
+        viewMode
+      });
+
+      if (result.ok) {
+        showToast({
+          dedupeKey: 'ssot-clipboard',
+          type: 'success',
+          icon: 'clipboard',
+          title: viewMode === 'patient' ? 'Guía del Paciente Copiada' : 'Expediente NOM-004 Copiado',
+          message: `${result.patientName} • Cita #${result.folio} sincronizada al 100% en portapapeles.`,
+          duration: 3200
+        });
+      } else {
+        const isFailClosed = result.reason === 'MISSING_CLINICAL_DOSSIER' || result.reason === 'INCOMPLETE_IDENTITY';
+        showToast({
+          dedupeKey: 'ssot-clipboard',
+          type: isFailClosed ? 'error' : 'warning',
+          icon: 'clipboard',
+          title: isFailClosed ? 'Copiado Bloqueado por Bioseguridad (NOM-004)' : 'Acceso al Portapapeles Restringido',
+          message: isFailClosed
+            ? 'El expediente clínico aún no cuenta con síntesis o identidad validada.'
+            : 'Verifique los permisos del navegador e intente nuevamente.',
+          duration: 4000
+        });
+      }
+      return true;
+    }
+
+    return false;
+  }, [patientData, clearSession, setActiveTab, setCurrentPhase, setMessages, showToast, setPlanViewMode]);
 
   // V8.0 Shared Option Selection Dispatch
   const handleOptionSelect = (msg, val) => {
@@ -1113,6 +1287,20 @@ function App() {
     if (!opt) {
       if (val === 'LOW_FODMAP') opt = msg?.options?.find(o => o.value === 'FODMAPS' || o.label?.includes('FODMAP'));
       if (val === 'SHELF_STABLE') opt = msg?.options?.find(o => o.value === 'SHELF' || o.label?.includes('Shelf Stable'));
+    }
+
+    const globalCmdCandidate = opt?.value || val;
+    if ([
+      'GO_TO_PHASE_20',
+      'GO_TO_PHASE_21',
+      'PROCEED_TO_PHASE_21',
+      'GO_TO_CALENDAR_SPRINT',
+      'COPY_SSOT_PATIENT_GUIDE',
+      'COPY_SSOT_MEDICAL_DOSSIER',
+      'RESTART_FROM_PHASE_0'
+    ].includes(globalCmdCandidate)) {
+      executeGlobalPostSynthesisCommand(globalCmdCandidate, opt?.label || null);
+      return;
     }
     if (!opt) {
       if (val) {
@@ -1138,7 +1326,7 @@ function App() {
         { role: 'user', content: opt.label },
         {
           role: 'assistant',
-          content: "📱 **Sincronización VitalLoop® Iniciada**\n\nSe ha abierto la ventana interactiva para descargar la App y vincular la Banda H7 para biotelemetría en tiempo real.",
+          content: "📱 **Sincronización con Plataforma Digital Equipo en Acción®**\n\nSe ha abierto la ventana de vinculación para consultar la guía móvil y el seguimiento diario de hábitos.",
           avatar: tiloImg,
           options: [
             { label: "📋 Ver Resumen Clínico Completo", value: "VIEW_DOSSIER" },
@@ -1162,10 +1350,10 @@ function App() {
         { role: 'user', content: opt.label },
         {
           role: 'assistant',
-          content: `🏥 **Resumen Clínico y Expediente NOM-004 Activo**\n\nSe ha desplegado el expediente de **${patientName}** en el panel principal. Puedes revisar las constantes biológicas, el plan metabólico y las recomendaciones en las pestañas superiores.\n\n¿Deseas vincular la App VitalLoop® o agendar la cita de seguimiento a 4 semanas?`,
+          content: `🏥 **Resumen Clínico y Expediente NOM-004 Activo**\n\nSe ha desplegado el expediente de **${patientName}** en el panel principal. Usted puede revisar las constantes biológicas, el plan metabólico y las recomendaciones en las pestañas superiores.\n\n¿Desea sincronizar la Plataforma Digital Equipo en Acción® o agendar la cita de seguimiento a 4 semanas?`,
           avatar: tiloImg,
           options: [
-            { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
+            { label: "📱 Sincronizar Plataforma Digital Equipo en Acción®", value: "SYNC_VITALLOOP_APP" },
             { label: "📅 Agendar Cita de Seguimiento (4 Semanas) ➔", value: "SCHEDULE_FOLLOWUP_APPOINTMENT" }
           ]
         }
@@ -1206,7 +1394,7 @@ function App() {
 
       const dateOpts = getWeekdayOptions();
       const promptIntro = addr.isPediatric
-        ? `Por favor, seleccione la **fecha de preferencia** para la evaluación de seguimiento a 28 días del menor **${addr.fullName}** (a coordinar con su tutor/a):`
+        ? `Por favor, seleccione la **fecha de preferencia** para la evaluación de seguimiento a 28 días ${addr.isFemale ? 'de la menor' : 'del menor'} **${addr.fullName}** (a coordinar con su representante o tutor legal):`
         : `Por favor, **seleccione su fecha de preferencia** para su evaluación clínica y metabólica de 28 días:`;
 
       setMessages(prev => [
@@ -1258,8 +1446,17 @@ function App() {
       const addr = getPatientAddressing();
       const folio = Math.floor(10000 + Math.random() * 90000);
 
+      setPatientData(prev => ({
+        ...prev,
+        scheduledAppointment: {
+          chosenDate,
+          chosenTime,
+          folio: String(folio)
+        }
+      }));
+
       const confirmIntro = addr.isPediatric
-        ? `Se ha enviado la petición de cita para el menor **${addr.fullName}** con la información acordada:`
+        ? `Se ha enviado la petición de cita para ${addr.isFemale ? 'la menor' : 'el menor'} **${addr.fullName}** con la información acordada:`
         : `Se ha enviado su solicitud de cita de seguimiento con la información acordada:`;
 
       setMessages(prev => [
@@ -1267,7 +1464,7 @@ function App() {
         { role: 'user', content: opt.label },
         {
           role: 'assistant',
-          content: `📩 **Solicitud de Cita Registrada (Sujeta a Confirmación)**\n\n${confirmIntro}\n\n• **Paciente Titular:** ${addr.fullName}\n• **Fecha Solicitada:** ${chosenDate}\n• **Horario Preferente:** ${chosenTime}\n• **Ventana de Atención:** Lunes a Viernes (9:00 AM - 6:00 PM)\n• **Estado:** ⏳ Pendiente de Confirmación por Recepción T.I.L.O.\n• **Folio Solicitud:** #SOL-${folio}\n\n📲 **Recomendación para el Paciente:**\nDescargue la App móvil **VitalLoop®** para consultar su periodización de 28 días, vincular su Banda H7 BLE y recibir la confirmación de su cita.\n\n*La cita queda sujeta a la confirmación de recepción. Se notificará la fecha oficial vía WhatsApp y a través de la App.*`,
+          content: `📩 **Solicitud de Cita Registrada (Sujeta a Confirmación)**\n\n${confirmIntro}\n\n• **Paciente Titular:** ${addr.fullName}\n• **Fecha Solicitada:** ${chosenDate}\n• **Horario Preferente:** ${chosenTime}\n• **Ventana de Atención:** Lunes a Viernes (9:00 AM - 6:00 PM)\n• **Estado:** ⏳ Pendiente de Confirmación por Recepción T.I.L.O.\n• **Folio Solicitud:** #SOL-${folio}\n\n📲 **Recomendación para el Paciente:**\nConsulte en la **Plataforma Digital Equipo en Acción®** su periodización de 28 días, el seguimiento de sus hábitos diarios y la confirmación de su cita.\n\n*La cita queda sujeta a la confirmación de recepción. Se notificará la fecha oficial vía WhatsApp y canales institucionales.*`,
           avatar: tiloImg,
           options: [
             { label: "🏁 Finalizar Consulta Médica", value: "FINAL_CONSULTATION_CLOSE" }
@@ -1283,19 +1480,34 @@ function App() {
         ? `Se ha completado satisfactoriamente la atención pediátrica de **${addr.fullName}**.`
         : `Se ha completado satisfactoriamente su atención clínica y diseño biológico.`;
 
+      const sealedPatientData = {
+        ...patientData,
+        is_completed: true,
+        diagnosis_approved: true,
+        ...(patientData?.clinical_dossier ? {
+          clinical_dossier: {
+            ...patientData.clinical_dossier,
+            status: 'approved',
+            ssot_contract_version: '2.8.2'
+          }
+        } : {})
+      };
+      setPatientData(sealedPatientData);
+
       setMessages(prev => [
         ...prev,
         { role: 'user', content: opt.label },
         {
           role: 'assistant',
-          content: `🏁 **Consulta Médica Concluida y Cincelada en Expediente (NOM-004)**\n\n${finalMsg}\n\n• Todos sus datos biométricos, diagnóstico CORTEX v2.0 y solicitud de cita de seguimiento han sido guardados de forma inmutable.\n• Su expediente completo queda disponible en el panel principal.\n\n¡Gracias por confiar en el Ecosistema T.I.L.O. & Sinergix!`,
-          avatar: tiloImg
+          content: `🏁 **Consulta Médica Concluida y Cincelada en Expediente (NOM-004)**\n\n${finalMsg}\n\n• Todos sus datos biométricos, diagnóstico CORTEX SSoTT y solicitud de cita de seguimiento han sido guardados de forma inmutable.\n• Su expediente completo queda disponible en el panel principal.\n\n¡Gracias por confiar en Equipo en Acción® y el Ecosistema T.I.L.O.!`,
+          avatar: tiloImg,
+          options: buildSSoTExecutiveOptions(true)
         }
       ]);
       setInterviewStep('finished');
       setInputHandler(null);
       if (typeof saveSessionProgress === 'function') {
-        saveSessionProgress(21, 'finished', true);
+        saveSessionProgress(21, 'finished', true, sealedPatientData);
       }
       return;
     }
@@ -1321,21 +1533,106 @@ function App() {
     }
   };
 
-  // --- PERSISTENCE PROTOCOL HELPER (V15.5) ---
-  const saveSessionProgress = useCallback(async (phase, block, isCompleted = false) => {
-    // Only save if we have a valid citation ID (session active)
-    const activeCitation = apiContext?.citaId || sessionMetadata.citation;
+  // --- PERSISTENCE PROTOCOL HELPER (V15.7 - NOM-004 STRICT CITATION & PROGRESSIVE PHASE SYNC) ---
+  const latestSessionStateRef = useRef({
+    patientData,
+    apiContext,
+    sessionMetadata,
+    currentPhase,
+    activeTab,
+    messages,
+    fase3State
+  });
+  latestSessionStateRef.current = {
+    patientData,
+    apiContext,
+    sessionMetadata,
+    currentPhase,
+    activeTab,
+    messages,
+    fase3State
+  };
+
+  const resolveValidCitationId = useCallback((pData, apiCtx, sessMeta) => {
+    const candidates = [
+      apiCtx?.citaId,
+      apiCtx?.idCita,
+      sessMeta?.citation,
+      pData?.identificacion?.idCita,
+      pData?.identificacion?.citaId,
+      pData?.profile?.citaId,
+      pData?.profile?.citationId,
+      pData?.citaId,
+      pData?.idCita
+    ];
+    for (const raw of candidates) {
+      if (raw === null || raw === undefined) continue;
+      const str = String(raw).trim();
+      if (str && str !== '0' && str.toLowerCase() !== 'null' && str.toLowerCase() !== 'undefined') {
+        return str;
+      }
+    }
+    return null;
+  }, []);
+
+  const resolveValidUserId = useCallback((pData, apiCtx, sessMeta) => {
+    const candidates = [
+      apiCtx?.userId,
+      pData?.identificacion?.usuarioId,
+      pData?.profile?.usuarioId,
+      pData?.profile?.userId,
+      sessMeta?.userId
+    ];
+    for (const raw of candidates) {
+      if (raw === null || raw === undefined) continue;
+      const str = String(raw).trim();
+      if (str && str !== '0' && str.toLowerCase() !== 'null' && str.toLowerCase() !== 'undefined') {
+        return str;
+      }
+    }
+    return null;
+  }, []);
+
+  const saveSessionProgress = useCallback(async (phase, block, isCompleted = false, overridePatientData = null) => {
+    const latest = latestSessionStateRef.current;
+    const baseData = overridePatientData || latest.patientData || {};
+    const activeCitation = resolveValidCitationId(baseData, latest.apiContext, latest.sessionMetadata);
     if (!activeCitation) return;
 
-    let updatedPatientData = patientData;
+    const validUserId = resolveValidUserId(baseData, latest.apiContext, latest.sessionMetadata);
+
+    let updatedPatientData = {
+      ...baseData,
+      citaId: activeCitation,
+      idCita: activeCitation,
+      profile: {
+        ...(baseData.profile || {}),
+        citaId: activeCitation,
+        citationId: activeCitation,
+        ...(validUserId ? { usuarioId: validUserId, userId: validUserId } : {})
+      },
+      identificacion: {
+        ...(baseData.identificacion || {}),
+        idCita: activeCitation,
+        citaId: activeCitation,
+        ...(validUserId ? { usuarioId: validUserId } : {})
+      },
+      _session_meta: {
+        currentPhase: block || latest.currentPhase,
+        activeTab: latest.activeTab,
+        messages: Array.isArray(latest.messages) ? latest.messages.slice(-35) : [],
+        fase3State: latest.fase3State
+      }
+    };
+
     try {
-      const scores = BiomarkerScoringEngine.calculate(patientData);
+      const scores = BiomarkerScoringEngine.calculate(updatedPatientData);
       if (scores) {
         updatedPatientData = {
-          ...patientData,
+          ...updatedPatientData,
           lifestyle_scores: scores,
           clinical_context: {
-            ...(patientData.clinical_context || {}),
+            ...(updatedPatientData.clinical_context || {}),
             lifestyle_scores: scores
           }
         };
@@ -1344,34 +1641,72 @@ function App() {
       console.warn("⚠️ Client-side Scoring Error:", scoreErr.message);
     }
 
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const patchUrl = `${apiUrl}/api/citations/${activeCitation}/progress`;
+    const patchPayload = {
+      phase,
+      block,
+      userId: validUserId,
+      patientData: updatedPatientData,
+      is_completed: isCompleted
+    };
+
     try {
-      console.log(`💾 Auto-Save Triggered: Phase ${phase} | Block ${block}`);
+      console.log(`💾 Auto-Save Triggered: Cita #${activeCitation} | userId=${validUserId || 'NULL'} | Phase ${phase} | Block ${block}`);
       const isCloudStandalone = typeof window !== 'undefined' && 
         (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
         !import.meta.env.VITE_API_URL;
 
       if (!isCloudStandalone) {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        const response = await axios.patch(`${apiUrl}/api/citations/${activeCitation}/progress`, {
-          phase,
-          block,
-          patientData: updatedPatientData,
-          is_completed: isCompleted
-        });
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          enqueueCitationProgressPatch(patchUrl, patchPayload);
+          return;
+        }
+        const response = await axios.patch(patchUrl, patchPayload);
         
         if (response.data && response.data.patientData) {
           const serverScores = response.data.patientData.lifestyle_scores;
-          const localScores = patientData.lifestyle_scores;
+          const localScores = baseData.lifestyle_scores;
           if (JSON.stringify(serverScores) !== JSON.stringify(localScores)) {
-            setPatientData(response.data.patientData);
+            setPatientData(prev => ({
+              ...prev,
+              lifestyle_scores: serverScores,
+              clinical_context: {
+                ...(prev.clinical_context || {}),
+                lifestyle_scores: serverScores
+              }
+            }));
           }
         }
       }
     } catch (err) {
-      console.warn("⚠️ Persistence Sync Error:", err.message);
-      // Non-blocking error
+      console.warn("⚠️ Persistence Sync Error (Encolando en Outbox FIFO):", err.message);
+      enqueueCitationProgressPatch(patchUrl, patchPayload);
     }
-  }, [sessionMetadata.citation, apiContext, patientData]);
+  }, [resolveValidCitationId, resolveValidUserId, setPatientData]);
+
+  // 🔒 GUARDADO PROGRESIVO POR FASE (FASES 1 A 18 -> SQLite CIFRADO AES-256-GCM)
+  const lastPersistedPhaseKeyRef = useRef(null);
+  useEffect(() => {
+    if (!currentPhase) return;
+    const match = /^PHASE_(\d+)_/i.exec(String(currentPhase));
+    if (!match) return;
+    const phaseNum = parseInt(match[1], 10);
+    if (isNaN(phaseNum) || phaseNum < 1 || phaseNum > 18) return;
+
+    const activeCitation = resolveValidCitationId(patientData, apiContext, sessionMetadata);
+    if (!activeCitation) return;
+
+    const persistKey = `${activeCitation}:${currentPhase}`;
+    if (lastPersistedPhaseKeyRef.current === persistKey) return;
+
+    const timer = setTimeout(() => {
+      lastPersistedPhaseKeyRef.current = persistKey;
+      saveSessionProgress(phaseNum, currentPhase, false);
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [currentPhase, patientData, apiContext, sessionMetadata, resolveValidCitationId, saveSessionProgress]);
 
   // V15.5 RECOVERY HANDLER
   const handleResumeSession = () => {
@@ -1448,7 +1783,8 @@ function App() {
         history_data: JSON.stringify(patientData.history) // Explicit Stringify
       };
 
-      await fetch('http://localhost:3000/api/patients/data', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      await fetch(`${apiUrl}/api/patients/data`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1474,10 +1810,12 @@ function App() {
       if (interviewStep !== 'finished') {
         console.log("🔒 [CORTEX FINALIZATION PROTECTION] Sincronizando interfaz a estado Finalizado.");
         setInterviewStep('finished');
-        setActiveTab('diagnosis');
+        if (activeTab !== 'schedule') {
+          setActiveTab('diagnosis');
+        }
       }
     }
-  }, [patientData?.is_completed, messagesList, interviewStep, setActiveTab]);
+  }, [patientData?.is_completed, messagesList, interviewStep, activeTab, setActiveTab]);
 
   // Add Phase 4-6 State handling
   const [fase3Step, setFase3Step] = useState(null);
@@ -1766,14 +2104,30 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
       return;
     }
 
+    // CORRECCIÓN: Evaluamos comandos globales SSoTT ANTES de isSessionClosed e inputHandler
+    const rawMsg = effectiveInput !== null ? effectiveInput : input;
+    const userMsg = typeof rawMsg === 'string' ? rawMsg : "";
+    const trimmedCmd = userMsg.trim();
+
+    if ([
+      'GO_TO_PHASE_20',
+      'GO_TO_PHASE_21',
+      'PROCEED_TO_PHASE_21',
+      'GO_TO_CALENDAR_SPRINT',
+      'COPY_SSOT_PATIENT_GUIDE',
+      'COPY_SSOT_MEDICAL_DOSSIER',
+      'RESTART_FROM_PHASE_0'
+    ].includes(trimmedCmd)) {
+      setInput("");
+      await executeGlobalPostSynthesisCommand(trimmedCmd, null);
+      return;
+    }
+
     const isSessionClosed = patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA';
     if (isSessionClosed) {
       console.warn("🔒 [handleSend] Consulta finalizada y cerrada. Entrada bloqueada.");
       return;
     }
-    // CORRECCIÓN: Usamos lógica híbrida (input manual o botón)
-    const rawMsg = effectiveInput !== null ? effectiveInput : input;
-    const userMsg = typeof rawMsg === 'string' ? rawMsg : "";
     console.log("➡️ [handleSend] userMsg:", userMsg, "effectiveInput:", effectiveInput);
 
     if (!userMsg.trim()) {
@@ -3472,9 +3826,11 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
             options: [
               { label: "Madre", value: "FAM_MOTHER" },
               { label: "Padre", value: "FAM_FATHER" },
-              { label: "Abuelo/a", value: "FAM_GRANDPARENT" },
-              { label: "Hermano/a", value: "FAM_SIBLING" },
-              { label: "Otro", value: "FAM_OTHER" }
+              { label: "Abuela", value: "FAM_GRANDMOTHER" },
+              { label: "Abuelo", value: "FAM_GRANDFATHER" },
+              { label: "Hermana", value: "FAM_SISTER" },
+              { label: "Hermano", value: "FAM_BROTHER" },
+              { label: "Otro familiar", value: "FAM_OTHER" }
             ]
           }]);
           setInterviewStep("ph3_family_relative_select");
@@ -3550,7 +3906,7 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
             if (mentionedRelative) {
               const relName = mentionedRelative === 'FATHER' ? 'su padre' :
                 mentionedRelative === 'MOTHER' ? 'su madre' :
-                  mentionedRelative === 'GRANDFATHER' ? 'su abuelo/a' : 'su familiar';
+                  mentionedRelative === 'GRANDFATHER' ? 'su abuelo o abuela' : 'su familiar';
 
               setMessages(prev => [...prev, { role: "assistant", content: `Entendido, ${relName}. ¿Qué condición padece?` }]);
               // Stay in same step (or we could use a specialized step, but re-using parser is fine if user replies "Diabetes")
@@ -3604,14 +3960,16 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
         // Simple mapping
         if (val === 'FAM_MOTHER' || val.toLowerCase().includes('mam') || val.toLowerCase().includes('madre')) relative = 'MOTHER';
         else if (val === 'FAM_FATHER' || val.toLowerCase().includes('pap') || val.toLowerCase().includes('padre')) relative = 'FATHER';
-        else if (val === 'FAM_GRANDPARENT' || val.toLowerCase().includes('abuel')) relative = 'GRANDPARENT';
-        else if (val === 'FAM_SIBLING' || val.toLowerCase().includes('herman')) relative = 'SIBLING';
+        else if (val === 'FAM_GRANDMOTHER' || val.toLowerCase().includes('abuela')) relative = 'GRANDMOTHER';
+        else if (val === 'FAM_GRANDFATHER' || val === 'FAM_GRANDPARENT' || val.toLowerCase().includes('abuel')) relative = 'GRANDFATHER';
+        else if (val === 'FAM_SISTER' || val.toLowerCase().includes('hermana')) relative = 'SISTER';
+        else if (val === 'FAM_BROTHER' || val === 'FAM_SIBLING' || val.toLowerCase().includes('herman')) relative = 'BROTHER';
         else relative = 'OTHER';
 
         // Save context in tempItem
         setTempItem({ relative: relative });
 
-        const relLabel = relative === 'MOTHER' ? 'Madre' : relative === 'FATHER' ? 'Padre' : relative === 'GRANDPARENT' ? 'Abuelo/a' : relative === 'SIBLING' ? 'Hermano/a' : 'Familiar';
+        const relLabel = relative === 'MOTHER' ? 'Madre' : relative === 'FATHER' ? 'Padre' : relative === 'GRANDMOTHER' ? 'Abuela' : relative === 'GRANDFATHER' ? 'Abuelo' : relative === 'SISTER' ? 'Hermana' : relative === 'BROTHER' ? 'Hermano' : 'Familiar directo';
         setMessages(prev => [...prev, { role: "assistant", content: `Entendido (${relLabel}). ¿Qué enfermedad padece?` }]);
         setInterviewStep("ph3_family_condition_input");
       }, 600);
@@ -3934,7 +4292,8 @@ Para cumplir estrictamente con los lineamientos de la **NOM-004** y dar validez 
       setTimeout(() => {
         const name = formatText(userMsg);
         setTempItem({ name, type: 'SUPP' });
-        setMessages(prev => [...prev, { role: "assistant", content: `¿Cuál es la dosis y frecuencia? (Ej. 1 scoop en la mañana).` }]);
+        const suppExample = getContextualSupplementExample(name);
+        setMessages(prev => [...prev, { role: "assistant", content: `¿Cuál es la dosis y frecuencia? (Ej. ${suppExample}).` }]);
         setInterviewStep("supp_details");
       }, 600);
     }
@@ -5771,7 +6130,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
       }
     } catch (err) {
       console.error("Error al autenticar:", err);
-      setError("Error de conexión con el servidor central de Equipo en Acción.");
+      setError("Error de conexión con el servidor central de Equipo en Acción®.");
     } finally {
       setIsLoading(false); // Liberar botón
     }
@@ -5782,55 +6141,53 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
   // ==============================================================================
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-[#151515] flex items-center justify-center p-4">
-        {/* TARJETA PRINCIPAL */}
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden font-sans border border-slate-100">
-          {/* 1. ENCABEZADO BENTO CLÍNICO */}
-          <div className="bg-[#FAFAFA] p-6 flex justify-between items-center border-b border-slate-200/60 relative">
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] flex items-center justify-center p-4 relative transition-colors">
+        <div className="fixed top-4 right-4 z-20">
+          <ThemeToggleButton />
+        </div>
+
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl shadow-xl w-full max-w-md overflow-hidden font-sans border border-slate-200 dark:border-slate-700">
+          <div className="bg-[#F8FAFC] dark:bg-[#0F172A] p-6 flex justify-between items-center border-b border-slate-200 dark:border-slate-700 relative">
             <div>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
-                Ecosistema de
+              <span className="text-[10px] text-[#334155] dark:text-[#CBD5E1] font-bold uppercase tracking-wider block mb-1">
+                Equipo en Acción® — Ecosistema de
               </span>
-              <h1 className="text-slate-800 font-extrabold text-base tracking-tight leading-tight">
+              <h1 className="text-[#0F172A] dark:text-[#F8FAFC] font-extrabold text-base tracking-tight leading-tight">
                 Transformación Inteligente<br />
-                <span className="text-slate-500 font-normal">y</span> Logro Optimizado
+                <span className="text-[#334155] dark:text-[#CBD5E1] font-normal">y</span> Logro Optimizado
               </h1>
             </div>
 
-            {/* LOGOTIPO EN CONTENEDOR AZUL CORPORATIVO */}
             <div className="bg-[#1C75BC] p-2.5 rounded-xl shadow-sm flex items-center justify-center">
               <img
                 src={LogoEABlanco}
-                alt="Logo"
+                alt="Equipo en Acción®"
                 className="h-8 w-auto object-contain"
               />
             </div>
           </div>
 
-          {/* CUERPO DE LA TARJETA */}
           <div className="p-8">
             {error && (
-              <div className="mb-6 bg-red-50 text-red-600 p-3 rounded text-sm text-center border border-red-100 font-medium flex items-center justify-center gap-2">
-                <AlertCircle size={16} /> {error}
+              <div className="mb-6 bg-red-50 dark:bg-red-950/60 text-[#B70E0C] dark:text-[#FCA5A5] p-3.5 rounded-xl text-sm text-center border border-[#B70E0C]/40 font-semibold flex items-center justify-center gap-2">
+                <AlertCircle size={18} strokeWidth={2} /> {error}
               </div>
             )}
 
             <form onSubmit={handleLogin} className="space-y-6">
-              {/* --- CAMPOS DE ENTRADA --- */}
               <div className="space-y-5">
-                {/* Usuario */}
                 <div>
-                  <label className="block text-slate-700 font-semibold text-sm mb-2">
+                  <label className="block text-[#0F172A] dark:text-[#F8FAFC] font-semibold text-sm mb-2">
                     Usuario
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User className="h-5 w-5 text-slate-400" />
+                      <User className="h-5 w-5 text-[#334155] dark:text-[#CBD5E1]" strokeWidth={2} />
                     </div>
                     <input
                       type="text"
-                      className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
-                      placeholder="Ingresa tu usuario"
+                      className="w-full min-h-[48px] pl-10 pr-4 py-3 border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#0F172A] rounded-xl text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-500 dark:placeholder-slate-400 focus:ring-2 focus:ring-[#1C75BC] focus:border-transparent outline-none transition-all"
+                      placeholder="Ingrese su usuario"
                       value={username}
                       onChange={(e) => {
                         setUsername(e.target.value);
@@ -5840,18 +6197,17 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                   </div>
                 </div>
 
-                {/* Contraseña */}
                 <div>
-                  <label className="block text-slate-700 font-semibold text-sm mb-2">
+                  <label className="block text-[#0F172A] dark:text-[#F8FAFC] font-semibold text-sm mb-2">
                     Contraseña
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Lock className="h-5 w-5 text-slate-400" />
+                      <Lock className="h-5 w-5 text-[#334155] dark:text-[#CBD5E1]" strokeWidth={2} />
                     </div>
                     <input
                       type={showPassword ? "text" : "password"}
-                      className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
+                      className="w-full min-h-[48px] pl-10 pr-12 py-3 border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#0F172A] rounded-xl text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-500 dark:placeholder-slate-400 focus:ring-2 focus:ring-[#1C75BC] focus:border-transparent outline-none transition-all"
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => {
@@ -5862,40 +6218,38 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                      aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      className="min-w-[44px] min-h-[44px] absolute inset-y-0 right-0 pr-3 flex items-center justify-center text-[#334155] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-white focus:outline-none cursor-pointer"
                     >
-                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      {showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
                     </button>
                   </div>
                   <div className="flex justify-end mt-2">
                     <a
                       href="#"
-                      className="text-sm text-blue-500 hover:text-blue-700 font-medium hover:underline"
+                      className="text-sm text-[#1C75BC] dark:text-[#3894E0] hover:underline font-semibold"
                     >
-                      ¿Olvidaste tu contraseña?
+                      ¿Olvidó su contraseña?
                     </a>
                   </div>
                 </div>
               </div>
 
-              {/* --- TEXTO BIO-CUÁNTICA (Ahora sanitizado a Modelos Avanzados) --- */}
-              <p className="text-slate-600 text-sm leading-relaxed text-justify px-1">
+              <p className="text-[#334155] dark:text-[#CBD5E1] text-sm leading-relaxed text-justify px-1">
                 Este sistema procesa datos sensibles de salud mediante{" "}
-                <span className="font-bold text-slate-700">
+                <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC]">
                   Modelos Avanzados de Visión Artificial y Análisis Clínico Metabólico
                 </span>
-                . Al ingresar, confirmas que tienes autorización para gestionar
+                . Al ingresar, usted confirma que cuenta con autorización para gestionar
                 estos expedientes.
               </p>
 
-              {/* --- BOTÓN DE ACCIÓN (Ahora está al FINAL del formulario y estilizado plano) --- */}
               <button
                 type="submit"
                 disabled={isLoading}
-                className={`w-full ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#1C75BC] hover:bg-[#155A92] shadow-md'} text-white py-4 rounded-lg transition-all font-bold text-lg flex items-center justify-center gap-2 group`}
+                className={`min-h-[48px] w-full ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#1C75BC] hover:bg-[#155A92] shadow-md cursor-pointer'} text-white py-4 rounded-xl transition-all font-bold text-lg flex items-center justify-center gap-2 group`}
               >
                 {isLoading ? 'Verificando y Autenticando...' : 'Iniciar Sesión'}
-                {/* Flecha animada al hacer hover */}
                 {!isLoading && (
                   <span className="group-hover:translate-x-1 transition-transform">
                     ➜
@@ -5904,10 +6258,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
               </button>
             </form>
 
-            {/* --- NOTA LEGAL (Footer Gris con Alto Contraste) --- */}
-            <div className="mt-8 pt-4 border-t border-slate-100">
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <p className="text-[10px] text-slate-600 leading-tight text-center uppercase tracking-wide font-bold">
+            <div className="mt-8 pt-4 border-t border-slate-200 dark:border-slate-700">
+              <div className="bg-[#F8FAFC] dark:bg-[#0F172A] p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                <p className="text-[10px] text-[#334155] dark:text-[#CBD5E1] leading-tight text-center uppercase tracking-wide font-bold">
                   La información mostrada es para uso exclusivo de profesionales
                   de la salud. Protocolos de cifrado de grado médico activos.
                 </p>
@@ -5938,28 +6291,28 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
   const systemState = (isCortexPhaseZero || isLegacyPhaseZero) ? 'basal' : 'processing';
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-white">
+    <div className="relative w-full min-h-screen lg:h-screen lg:overflow-hidden bg-[#F8FAFC] dark:bg-[#0F172A] transition-colors">
       {/* CAPA -2: El Sistema Nervioso Visual (Motor Físico V15.6) */}
       <AntigravityBlobs systemState={systemState} />
 
       {/* CAPA -1: El Escudo Óptico (Glassmorphism para legibilidad) */}
-      <div className="absolute inset-0 z-[-1] bg-white/40 backdrop-blur-sm pointer-events-none" />
+      <div className="absolute inset-0 z-[-1] bg-white/40 dark:bg-[#0F172A]/60 backdrop-blur-sm pointer-events-none" />
 
       {/* CAPA 10+: EL CUERPO SAGRADO (INTERFAZ) */}
-      <div className="relative z-10 flex flex-col font-sans text-slate-600 selection:bg-blue-100 h-full w-full">
+      <div className="relative z-10 flex flex-col font-sans text-[#0F172A] dark:text-[#F8FAFC] selection:bg-blue-100 dark:selection:bg-blue-900 min-h-screen lg:h-full w-full">
 
         {isLoggedIn && !showPrivacyPolicy && (
           <Header
             user={user}
             sessionInfo={{
-              citation: apiContext?.citaId || apiContext?.idCita || sessionMetadata.citation,
-              userId: apiContext?.userId || sessionMetadata.userId || '---',
-              patientName: apiContext?.rawName || sessionMetadata.patientName || sessionMetadata.serverName || '---'
+              citation: apiContext?.citaId || apiContext?.idCita || patientData?.profile?.citaId || patientData?.identificacion?.citaId || patientData?.identificacion?.idCita || sessionMetadata.citation || '---',
+              userId: apiContext?.userId || patientData?.profile?.usuarioId || patientData?.identificacion?.usuarioId || patientData?.usuarioId || sessionMetadata.userId || '---',
+              patientName: apiContext?.rawName || patientData?.profile?.name || patientData?.identificacion?.nombre || sessionMetadata.patientName || sessionMetadata.serverName || '---'
             }}
-            showSessionInfo={true} // <--- AHORA SIEMPRE SE MUESTRA SI HAY DATOS
+            showSessionInfo={true}
             clearSession={clearSession}
-            activeTab={activeTab} // UI/UX #4: Navegación Global (Desactivada en Fase 0)
-            onTabChange={setActiveTab}    // UI/UX #4: Navegación Global
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
             isIdentityConfirmed={isIdentityConfirmed}
             currentPhase={currentPhase}
             interviewStep={interviewStep}
@@ -5967,11 +6320,11 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
           />
         )}
 
-        {/* CONTENEDOR PRINCIPAL (2 COLUMNAS) */}
-        <div className="flex flex-1 w-full overflow-hidden">
+        {/* CONTENEDOR PRINCIPAL (SPLIT-SCREEN 50/50 >= 1024px | COLAPSO LINEAL < 1024px) */}
+        <div className="flex flex-col lg:flex-row flex-1 w-full lg:overflow-hidden">
 
-          {/* --- COLUMNA IZQUIERDA: CHAT --- */}
-          <div className="w-1/2 flex flex-col border-r border-slate-200 bg-white shadow-xl z-10 relative overflow-hidden">
+          {/* --- COLUMNA IZQUIERDA: CHAT (50% en Desktop) --- */}
+          <div className="w-full lg:w-1/2 min-h-[65vh] lg:min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1E293B] shadow-xl z-10 relative overflow-hidden">
             <AnimatePresence mode="wait">
                 <motion.div
                   key="chat-shell"
@@ -6085,8 +6438,34 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       registerInputHandler={setInputHandler}
                       setIsGlobalTyping={() => {}}
                       onPhaseComplete={(pharmaData) => {
-                        setPatientData(prev => ({ ...prev, pharmacology: pharmaData }));
-                        triggerPhase6Summary({ ...patientData, pharmacology: pharmaData });
+                        const cleanMeds = stripNegatedSentinels(pharmaData?.medications ?? patientData?.history?.medications ?? []);
+                        const cleanSupps = stripNegatedSentinels(pharmaData?.supplements ?? patientData?.history?.supplements ?? []);
+                        const normalizedPharma = {
+                          ...(pharmaData || {}),
+                          medications: cleanMeds,
+                          supplements: cleanSupps
+                        };
+                        const updatedPatient = {
+                          ...patientData,
+                          pharmacology_edit_mode: false,
+                          pharmacology: normalizedPharma,
+                          history: {
+                            ...(patientData?.history || {}),
+                            medications: cleanMeds,
+                            supplements: cleanSupps
+                          }
+                        };
+                        setPatientData(prev => ({
+                          ...prev,
+                          pharmacology_edit_mode: false,
+                          pharmacology: normalizedPharma,
+                          history: {
+                            ...(prev?.history || {}),
+                            medications: cleanMeds,
+                            supplements: cleanSupps
+                          }
+                        }));
+                        triggerPhase6Summary(updatedPatient);
                         setInputHandler(null);
                         setCurrentPhase('PHASE_6_SUMMARY_CONFIRM');
                       }}
@@ -6103,11 +6482,17 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setIsGlobalTyping={() => {}}
                       onStateChange={setFase7State}
                       onPhaseComplete={(allergiesData, localMessages) => {
+                        const normalizedAllergies = {
+                          ...(allergiesData || {}),
+                          food: stripNegatedSentinels(allergiesData?.food || []),
+                          drug: stripNegatedSentinels(allergiesData?.drug || [])
+                        };
                         setPatientData(prev => ({
                           ...prev,
+                          allergies_edit_mode: false,
                           history: {
                             ...(prev.history || {}),
-                            allergies: allergiesData,
+                            allergies: normalizedAllergies,
                             allergies_verified: true
                           }
                         }));
@@ -6117,9 +6502,10 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                         setInputHandler(null);
                         triggerPhase7Summary({
                           ...patientData,
+                          allergies_edit_mode: false,
                           history: {
                             ...(patientData.history || {}),
-                            allergies: allergiesData,
+                            allergies: normalizedAllergies,
                             allergies_verified: true
                           }
                         });
@@ -6131,7 +6517,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                   {(currentPhase === 'PHASE_7_HABITS' || currentPhase === 'PHASE_10_HABITS') && (
                     <Fase7_Habitos
                       user={user}
-                      appId={apiContext?.citaId}
+                      appId={citationId}
                       patientData={patientData}
                       setPatientData={setPatientData}
                       patientProfile={patientData}
@@ -6162,15 +6548,15 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       onStateChange={setFase8State}
                       onPhaseComplete={(digestiveData, localMessages) => {
                         const rawHistory = digestiveData?.history || {};
-                        const symptoms = rawHistory.digestive_symptoms || digestiveData?.digestive_symptoms || digestiveData?.symptoms || [];
-                        const frequency = rawHistory.digestive_frequency || digestiveData?.digestive_frequency || digestiveData?.frequency || "Ninguna";
+                        const symptoms = stripNegatedSentinels(rawHistory.digestive_symptoms || digestiveData?.digestive_symptoms || digestiveData?.symptoms || []);
+                        const frequency = symptoms.length > 0 ? (rawHistory.digestive_frequency || digestiveData?.digestive_frequency || digestiveData?.frequency || "Ocasional") : "Ninguna";
                         
                         let profile = digestiveData?.digestive_profile || digestiveData?.profile;
-                        if (!profile) {
+                        if (!profile || symptoms.length === 0) {
                           if (symptoms.length > 0) {
-                            const phen = symptoms.some(s => s.toLowerCase().includes('estreñ')) ? 'CONSTIPATION' :
-                                         symptoms.some(s => s.toLowerCase().includes('diarr')) ? 'DIARRHEA' :
-                                         symptoms.some(s => s.toLowerCase().includes('inflam') || s.toLowerCase().includes('colit')) ? 'BLOATING' : 'MIXED';
+                            const phen = symptoms.some(s => String(s).toLowerCase().includes('estreñ')) ? 'CONSTIPATION' :
+                                         symptoms.some(s => String(s).toLowerCase().includes('diarr')) ? 'DIARRHEA' :
+                                         symptoms.some(s => String(s).toLowerCase().includes('inflam') || String(s).toLowerCase().includes('colit')) ? 'BLOATING' : 'MIXED';
                             profile = {
                               has_issues: true,
                               phenotype: phen,
@@ -6186,6 +6572,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
 
                         const updatedPatient = {
                           ...patientData,
+                          digestive_edit_mode: false,
                           history: {
                             ...(patientData.history || {}),
                             digestive_symptoms: symptoms,
@@ -6227,6 +6614,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                         const finalPhysio = physioData?.physio ? physioData.physio : physioData;
                         const updatedPatient = {
                           ...patientData,
+                          physio_edit_mode: false,
                           physio: finalPhysio
                         };
                         setPatientData(updatedPatient);
@@ -6244,7 +6632,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     <ErrorBoundary>
                       <Fase5_EstiloVida
                         user={user}
-                        appId={apiContext?.citaId}
+                        appId={citationId}
                         patientData={patientData}
                         setPatientData={setPatientData}
                         patientProfile={patientData}
@@ -6405,6 +6793,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
 
                   {currentPhase === 'PHASE_19_DIAGNOSIS' && (
                     <Fase19_DiagnosticoIntegral
+                      apiContext={apiContext}
                       patientData={patientData}
                       setPatientData={setPatientData}
                       messages={messagesList}
@@ -6413,22 +6802,8 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setActiveTab={setActiveTab}
                       onPhaseComplete={() => {
                         setInputHandler(null);
+                        setActiveTab('diagnosis');
                         setCurrentPhase('PHASE_20_PORTAPAPELES');
-                        setMessages(prev => {
-                          const hasAlready = prev.some(m => m.options?.some(o => o.value === 'SYNC_VITALLOOP_APP'));
-                          if (hasAlready) return prev;
-                          return [
-                            ...prev,
-                            {
-                              role: 'assistant',
-                              content: "✨ **Expediente Clínico Consolidado y Sellado**\n\nEl dictamen médico del motor CORTEX v2.4 ha sido generado en el panel principal. ¿Qué deseas hacer a continuación?",
-                              options: [
-                                { label: "📱 Sincronizar y Descargar App VitalLoop® (Banda H7)", value: "SYNC_VITALLOOP_APP" },
-                                { label: "🚀 Sellar y Continuar a Calendario & Sprint ➔", value: "GO_TO_CALENDAR_SPRINT" }
-                              ]
-                            }
-                          ];
-                        });
                       }}
                     />
                   )}
@@ -6440,8 +6815,10 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       messages={messagesList}
                       setMessages={setMessages}
                       registerInputHandler={setInputHandler}
+                      setActiveTab={setActiveTab}
                       onPhaseComplete={() => {
                         setInputHandler(null);
+                        setActiveTab('schedule');
                         setCurrentPhase('PHASE_21_CALENDARIO');
                       }}
                     />
@@ -6454,10 +6831,24 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       messages={messagesList}
                       setMessages={setMessages}
                       registerInputHandler={setInputHandler}
+                      setActiveTab={setActiveTab}
                       onPhaseComplete={() => {
                         setInputHandler(null);
                         setInterviewStep('finished');
                         setActiveTab('diagnosis');
+                        const sealedPatientData = {
+                          ...patientData,
+                          is_completed: true,
+                          diagnosis_approved: true,
+                          ...(patientData?.clinical_dossier ? {
+                            clinical_dossier: {
+                              ...patientData.clinical_dossier,
+                              status: 'approved',
+                              ssot_contract_version: '2.8.2'
+                            }
+                          } : {})
+                        };
+                        setPatientData(sealedPatientData);
                         setMessages(prev => [
                           ...prev,
                           {
@@ -6469,7 +6860,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                             ]
                           }
                         ]);
-                        saveSessionProgress(21, 'finished', true);
+                        saveSessionProgress(21, 'finished', true, sealedPatientData);
                       }}
                     />
                   )}
@@ -6594,7 +6985,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                           {msg.options && (
                             (msg.options.length > 3) ? null : (
                               <div className="mt-4 flex flex-wrap gap-2">
-                                {msg.options.map((opt, i) => {
+                                {msg.options
+                                  .filter(opt => !(Boolean(patientData?.is_completed) && opt?.value === 'RESTART_FROM_PHASE_0'))
+                                  .map((opt, i) => {
                                   const isLastMessage = index === messagesList.length - 1;
                                   const isElectretStart = opt.value === 'START_ELECTRET_SCAN';
                                   const isElectretDisabled = isElectretStart && !hardwareStatus?.handContactDetected;
@@ -6997,9 +7390,10 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                   handleSend();
                                 }
                               }}
-                              className={`w-10 h-10 flex items-center justify-center rounded-full transition-transform active:scale-95 shadow-md flex-shrink-0 ${(patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-50" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                              aria-label="Enviar mensaje"
+                              className={`w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full transition-transform active:scale-95 shadow-md flex-shrink-0 ${(patientData?.is_completed || interviewStep === 'finished' || currentPhase === 'PHASE_17_DESPEDIDA') ? "bg-slate-300 text-slate-500 cursor-not-allowed opacity-50" : "bg-[#1C75BC] text-white hover:bg-[#155A92] cursor-pointer"}`}
                             >
-                              <Send className="w-5 h-5" />
+                              <Send className="w-5 h-5" strokeWidth={2} />
                             </button>
                           ) : null}
                         </div>
@@ -7011,8 +7405,8 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
         </AnimatePresence>
       </div>
 
-          {/* PANEL DERECHO (50%) - DASHBOARD RESTAURADO (ACORDEONES) */}
-          <div className="w-1/2 h-full flex flex-col bg-gray-50 border-l border-gray-200 relative overflow-hidden">
+          {/* PANEL DERECHO (50% en Desktop) - ESPEJO CLÍNICO NOM-004 */}
+          <div className="w-full lg:w-1/2 min-h-[65vh] lg:h-full flex flex-col bg-[#F8FAFC] dark:bg-[#0F172A] lg:border-l border-slate-200 dark:border-slate-700 relative overflow-hidden">
             {/* COMPUERTA NOM-004: BLOQUEO DE FASE 0 */}
             {!isIdentityConfirmed ? (
                 // Fase 0 Activa: Muro de Contención
@@ -7066,21 +7460,23 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
         </div >
 
 
-        {/* FOOTER INSTITUCIONAL V15.6 */}
+        {/* FOOTER INSTITUCIONAL OFICIAL v2.0.2 */}
         {
           isLoggedIn && !showPrivacyPolicy && (
-            <div className="w-full h-16 bg-white border-t border-gray-200 flex items-center justify-between px-6 z-20 shrink-0 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] relative">
-              <span className="text-gray-400 text-[11px] font-mono cursor-help select-none" title="Build: v2.0.4-stable | Cortex Engine v15.6 | NOM-004 Compliant">
+            <footer className="w-full min-h-[64px] bg-white dark:bg-[#1E293B] border-t border-slate-200 dark:border-slate-700 flex items-center justify-between px-6 z-20 shrink-0 shadow-[0_-2px_10px_rgba(15,23,42,0.04)] relative">
+              <span className="text-[#334155] dark:text-[#CBD5E1] text-[11px] font-mono tabular-nums cursor-help select-none font-bold" title="Build: v2.8.4-SSoTT | Constitución v2.0.2 | NOM-004 Compliant">
                 [TILO-CORE]
               </span>
 
-              {/* Componente Aislado del Loader */}
+              {/* Firma Empírica de 5 Hexágonos Local */}
               <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-64 h-full flex justify-center items-center">
                 <FooterLoader />
               </div>
 
-              <span className="text-gray-400 text-sm font-sansation">© DERECHOS RESERVADOS 2026</span>
-            </div>
+              <span className="text-[#334155] dark:text-[#CBD5E1] text-xs font-semibold tracking-wide">
+                © Equipo en Acción®. Todos los derechos reservados.
+              </span>
+            </footer>
           )
         }
         {/* MODAL DE PRIVACIDAD ELIMINADO: Ahora se renderiza en el Panel Derecho bajo protocolo NOM-004 */}
@@ -7100,34 +7496,38 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
           )}
         </AnimatePresence>
 
-        {/* MODAL VITALLOOP® APP SYNC & DOWNLOAD */}
+        {/* MODAL PLATAFORMA DIGITAL EQUIPO EN ACCIÓN® (Cero Fallbacks Hardcodeados NOM-004) */}
         {showVitalLoopModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-            <div className="bg-[#0A0E14] border border-[#263040] text-slate-100 rounded-3xl p-6 max-w-lg w-full shadow-2xl relative">
-              <button 
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0F172A] border border-slate-700 text-[#F8FAFC] rounded-3xl p-6 max-w-lg w-full shadow-2xl relative">
+              <button
+                type="button"
                 onClick={() => setShowVitalLoopModal(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white text-sm font-bold w-8 h-8 flex items-center justify-center rounded-full bg-slate-800/50 cursor-pointer"
+                aria-label="Cerrar ventana de sincronización"
+                className="min-w-[44px] min-h-[44px] absolute top-3 right-3 text-[#CBD5E1] hover:text-white text-sm font-bold flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 cursor-pointer"
               >
                 ✕
               </button>
 
-              <div className="flex items-center gap-3 border-b border-[#263040] pb-4 mb-5">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#00E5A0] to-[#00B4D8] flex items-center justify-center text-slate-950 font-black text-xl">
-                  V
+              <div className="flex items-center gap-3 border-b border-slate-700 pb-4 mb-5 pr-12">
+                <div className="w-11 h-11 rounded-2xl bg-[#1C75BC] flex items-center justify-center p-2 shrink-0">
+                  <img src={LogoEABlanco} alt="Equipo en Acción®" className="h-full w-auto object-contain" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-                    Vital<span className="text-[#00E5A0]">Loop</span>®
-                    <span className="text-[10px] bg-[#00E5A0]/10 text-[#00E5A0] border border-[#00E5A0]/30 px-2 py-0.5 rounded-full font-bold">App PWA / Android</span>
+                  <h3 className="text-lg font-extrabold tracking-tight text-[#F8FAFC] flex items-center gap-2 flex-wrap">
+                    Equipo en Acción®
+                    <span className="text-[10px] bg-[#3AAA35]/20 text-[#86EFAC] border border-[#3AAA35]/40 px-2 py-0.5 rounded-full font-bold">
+                      Plataforma Digital
+                    </span>
                   </h3>
-                  <p className="text-xs text-slate-400">Plataforma Conversacional de Biotelemetría H7</p>
+                  <p className="text-xs text-[#CBD5E1]">Acompañamiento Diario de Hábitos y Periodización 28 Días</p>
                 </div>
               </div>
 
               <div className="space-y-4 text-xs">
-                <div className="bg-[#12171F] p-4 rounded-2xl border border-[#263040] flex items-center gap-4">
+                <div className="bg-[#1E293B] p-4 rounded-2xl border border-slate-700 flex items-center gap-4">
                   <div className="w-24 h-24 bg-white p-2 rounded-xl flex items-center justify-center shrink-0 shadow-inner">
-                    <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900 fill-current">
+                    <svg viewBox="0 0 100 100" className="w-full h-full text-[#0F172A] fill-current" aria-hidden="true">
                       <rect x="0" y="0" width="30" height="30" />
                       <rect x="5" y="5" width="20" height="20" fill="white" />
                       <rect x="10" y="10" width="10" height="10" />
@@ -7145,54 +7545,75 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     </svg>
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-[#00E5A0] uppercase tracking-wider block mb-1">Escanea para Vincular la App</span>
-                    <p className="text-slate-300 font-medium leading-relaxed mb-2">
-                      Sincroniza el expediente del paciente directamente en la app móvil <strong className="text-white">VitalLoop®</strong> con vinculación biométrica de Banda H7 BLE 5.3.
+                    <span className="text-[10px] font-bold text-[#86EFAC] uppercase tracking-wider block mb-1">
+                      Vinculación de Guía Personalizada
+                    </span>
+                    <p className="text-[#CBD5E1] font-medium leading-relaxed mb-2">
+                      Sincronice la guía ciudadana del paciente con la plataforma móvil de <strong className="text-white">Equipo en Acción®</strong> para consulta diaria de hidratación, alimentación y descanso.
                     </p>
-                    <span className="text-[9.5px] text-slate-400 block font-mono">Cita: #{citationId || '15000'} | Token: VitalLoop-Sync</span>
+                    <span className="text-[10px] text-[#CBD5E1] block font-mono tabular-nums">
+                      Cita: {citationId ? `#${citationId}` : 'Sin folio activo'}
+                    </span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="bg-[#1A202C] p-3 rounded-xl border border-[#263040]">
-                    <strong className="text-[#00E5A0] block mb-0.5">⌚ Banda H7 BLE 5.3</strong>
-                    <span className="text-slate-400">ECG, HRV, SpO2, Temp, Presión Arterial 24/7</span>
+                  <div className="bg-[#1E293B] p-3 rounded-xl border border-slate-700">
+                    <strong className="text-[#86EFAC] block mb-0.5">🌿 Bienestar Diario</strong>
+                    <span className="text-[#CBD5E1]">Seguimiento de hidratación, descanso nocturno y energía cotidiana</span>
                   </div>
-                  <div className="bg-[#1A202C] p-3 rounded-xl border border-[#263040]">
-                    <strong className="text-[#00B4D8] block mb-0.5">💬 IA Conversacional</strong>
-                    <span className="text-slate-400">Chat inteligente de adherencia diaria</span>
+                  <div className="bg-[#1E293B] p-3 rounded-xl border border-slate-700">
+                    <strong className="text-[#93C5FD] block mb-0.5">💬 Companion T.I.L.O.</strong>
+                    <span className="text-[#CBD5E1]">Acompañamiento conversacional de adherencia con trato respetuoso</span>
                   </div>
-                  <div className="bg-[#1A202C] p-3 rounded-xl border border-[#263040]">
-                    <strong className="text-[#7C5CFC] block mb-0.5">📸 Visión + Comidas</strong>
-                    <span className="text-slate-400">Foto de platos y gym con estimación de macros</span>
+                  <div className="bg-[#1E293B] p-3 rounded-xl border border-slate-700">
+                    <strong className="text-[#F29FC5] block mb-0.5">🍽️ Guía Nutricional</strong>
+                    <span className="text-[#CBD5E1]">Consulta rápida de porciones, horarios y recomendaciones</span>
                   </div>
-                  <div className="bg-[#1A202C] p-3 rounded-xl border border-[#263040]">
-                    <strong className="text-amber-400 block mb-0.5">🎮 Gamificación 28d</strong>
-                    <span className="text-slate-400">Scores de Sueño, Recuperación y Esfuerzo</span>
+                  <div className="bg-[#1E293B] p-3 rounded-xl border border-slate-700">
+                    <strong className="text-[#FFCC00] block mb-0.5">📅 Ciclo de 28 Días</strong>
+                    <span className="text-[#CBD5E1]">Recordatorios de constancia para su evaluación de seguimiento</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-2 mt-5 pt-4 border-t border-[#263040]">
+              <div className="flex gap-3 mt-5 pt-4 border-t border-slate-700">
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(`https://vitalloop.app/download?curp=${patientData?.identificacion?.curp || '123'}&citation=${citationId || '15000'}`);
-                    showToast({ title: "Enlace Copiado", message: "Enlace de descarga de VitalLoop App copiado al portapapeles.", type: "success" });
+                    const validCita = resolveValidCitationId(patientData, apiContext, sessionMetadata);
+                    if (!validCita) {
+                      showToast({
+                        title: "Folio Requerido",
+                        message: "No se detectó una cita autenticada activa para generar el enlace del paciente.",
+                        type: "warning"
+                      });
+                      return;
+                    }
+                    navigator.clipboard.writeText(`https://equipoenaccion.app/seguimiento?cita=${encodeURIComponent(validCita)}`);
+                    showToast({
+                      title: "Enlace Copiado",
+                      message: `Enlace de seguimiento de la Cita #${validCita} copiado al portapapeles.`,
+                      type: "success"
+                    });
                   }}
-                  className="flex-1 py-3 px-4 bg-[#1E2633] hover:bg-[#263040] text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer text-center"
+                  className="min-h-[44px] flex-1 py-3 px-4 bg-[#1E293B] hover:bg-[#334155] border border-slate-600 text-[#F8FAFC] text-xs font-bold rounded-xl transition-all cursor-pointer text-center"
                 >
                   🔗 Copiar Enlace Paciente
                 </button>
                 <button
                   type="button"
                   onClick={() => {
-                    showToast({ title: "Sincronización Exitosa", message: "Expediente enviado a la App VitalLoop® del paciente.", type: "success" });
+                    showToast({
+                      title: "Sincronización Registrada",
+                      message: "La guía personalizada quedó vinculada para seguimiento digital en Equipo en Acción®.",
+                      type: "success"
+                    });
                     setShowVitalLoopModal(false);
                   }}
-                  className="flex-1 py-3 px-4 bg-gradient-to-r from-[#00E5A0] to-[#00B4D8] text-slate-950 text-xs font-black rounded-xl transition-all cursor-pointer text-center"
+                  className="min-h-[44px] flex-1 py-3 px-4 bg-[#1C75BC] hover:bg-[#155A92] text-white text-xs font-extrabold rounded-xl transition-all cursor-pointer text-center"
                 >
-                  🚀 Sincronizar Ahora
+                  ✅ Confirmar Sincronización
                 </button>
               </div>
             </div>

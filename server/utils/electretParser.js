@@ -4,6 +4,7 @@
  */
 
 const cheerio = require('cheerio');
+const { sanitizeClinicalSpanish } = require('./clinicalTextSanitizer');
 
 /**
  * Normaliza cualquier cadena eliminando acentos, caracteres invisibles (&nbsp;), 
@@ -291,6 +292,7 @@ function parseElectretHTML(htmlContent) {
 
             const paramObj = {
                 name,
+                displayName: sanitizeClinicalSpanish(name),
                 key: paramKey,
                 value: String(val),
                 val: String(val),
@@ -370,6 +372,7 @@ function parseElectretJSON(rawJson) {
                 const normItemKey = normalizeKey(name);
                 const itemObj = {
                     name,
+                    displayName: itemVal.displayName || sanitizeClinicalSpanish(name),
                     key: normItemKey,
                     value: String(val),
                     val: String(val),

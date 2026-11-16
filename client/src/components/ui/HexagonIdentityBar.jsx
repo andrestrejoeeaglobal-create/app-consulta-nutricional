@@ -12,15 +12,12 @@ const HEXAGON_CONFIG = [
 
 export const HexagonIdentityBar = () => {
   return (
-    <div className="flex justify-center items-center gap-2">
+    <div className="flex justify-center items-center gap-2" aria-hidden="true">
       {HEXAGON_CONFIG.map((hex) => (
         <span
           key={hex.id}
-          className="animate-bounce inline-block"
-          style={{
-            animationDelay: hex.delay,
-            animationDuration: '2s',
-          }}
+          className="ea-hex-wave"
+          style={{ animationDelay: hex.delay }}
         >
           <svg
             width="30"
@@ -32,6 +29,7 @@ export const HexagonIdentityBar = () => {
               transformOrigin: 'center',
               transformBox: 'fill-box',
             }}
+            focusable="false"
             aria-hidden="true"
           >
             <path fill={hex.color} d={HEX_PATH} />

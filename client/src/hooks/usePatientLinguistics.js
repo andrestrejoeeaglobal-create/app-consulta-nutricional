@@ -1,4 +1,5 @@
 import { useClinicalGenome } from '../store/useClinicalGenome';
+import { resolvePatientSex } from '../utils/genderConcordance';
 
 export const usePatientLinguistics = (patientData) => {
     const identityLock = useClinicalGenome(state => state.identityLock);
@@ -23,7 +24,11 @@ export const usePatientLinguistics = (patientData) => {
         }
     }
 
-    let patientSex = 'M';
+    const resolvedSex = resolvePatientSex(patientData, identityLock);
+    const isFemale = resolvedSex.isFemale;
+    const genderCode = resolvedSex.code;
+
+    let patientSex = resolvedSex.code;
     if (identityLock?.patientInfo?.gender) {
         patientSex = identityLock.patientInfo.gender;
     } else if (patientData) {
@@ -32,7 +37,8 @@ export const usePatientLinguistics = (patientData) => {
         else if (patientData.identificacion?.sexo) patientSex = patientData.identificacion.sexo;
     }
 
-    let patientName = "el paciente";
+    const defaultPatientLabel = isFemale ? "la paciente" : "el paciente";
+    let patientName = defaultPatientLabel;
     if (identityLock?.patientInfo?.name) {
         patientName = identityLock.patientInfo.name;
     } else if (patientData) {
@@ -40,7 +46,9 @@ export const usePatientLinguistics = (patientData) => {
         else if (patientData.identificacion?.nombre) patientName = patientData.identificacion.nombre;
     }
 
-    const cleanName = patientName !== "NOM" ? patientName.split(' ')[0] : "el paciente";
+    const cleanName = (patientName && patientName !== "NOM" && patientName !== "el paciente" && patientName !== "la paciente")
+        ? patientName.split(' ')[0]
+        : defaultPatientLabel;
 
     const isLactante = patientAge < 2;
     const isPreescolar = patientAge >= 2 && patientAge < 6;
@@ -50,18 +58,20 @@ export const usePatientLinguistics = (patientData) => {
     const isAdolescente = patientAge >= 12 && patientAge < 18;
     const isGeriatric = patientAge >= 65;
 
-    let babyTerm = "el paciente";
+    let babyTerm = defaultPatientLabel;
     if (isLactante) babyTerm = "su bebé";
-    else if (isMinor) babyTerm = "su hijo/a";
+    else if (isMinor) babyTerm = isFemale ? "su hija" : "su hijo";
 
     let placeholder = isLactante 
-        ? `Escriba el motivo principal para el bebé ${cleanName}...`
+        ? `Escriba el motivo principal para ${isFemale ? 'la bebé' : 'el bebé'} ${cleanName}...`
         : (isMinor ? `Escriba el motivo principal para ${cleanName}...` : "Describa brevemente su motivo...");
 
     return { 
         patientAge, 
         patientSex, 
-        patientGender: patientSex, 
+        patientGender: patientSex,
+        isFemale,
+        genderCode,
         patientName: cleanName, 
         placeholder, 
         isMinor, 

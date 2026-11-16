@@ -164,18 +164,16 @@ const TAG_CONFIG = {
     }
 };
 
-// --- GUARDS DE INTEGRIDAD DE EXPEDIENTE NOM-004 ---
+// --- GUARDS DE INTEGRIDAD DE EXPEDIENTE NOM-004 (LLAVE PRIMARIA: userId) ---
 const PatientIdentityGuard = ({ children, apiContext, patientData, citationId }) => {
-    // Resolver identificador oficial de la sesión activa
-    const activeCitationId = citationId || apiContext?.citaId || apiContext?.idCita;
-    const activePatientName = apiContext?.rawName || patientData?.profile?.name || patientData?.identificacion?.nombre;
+    // 1. LLAVE PRIMARIA MAESTRA: userId
+    const activeUserId = apiContext?.userId || apiContext?.user_id || patientData?.profile?.usuarioId || patientData?.identificacion?.usuarioId || patientData?.usuarioId;
+    const storedUserId = patientData?.profile?.usuarioId || patientData?.identificacion?.usuarioId || patientData?.usuarioId;
 
-    // 1. Verificación por ID de Cita
-    const storedCitationId = patientData?.identificacion?.idCita || patientData?.identificacion?.citaId || patientData?.profile?.citationId;
-    const isIdMismatch = Boolean(
-        activeCitationId && 
-        storedCitationId && 
-        String(activeCitationId).trim() !== String(storedCitationId).trim()
+    const isUserMismatch = Boolean(
+        activeUserId && 
+        storedUserId && 
+        String(activeUserId).trim() !== String(storedUserId).trim()
     );
 
     // 2. Verificación por Nombre de Titular Activo (NOM-004)
@@ -188,7 +186,7 @@ const PatientIdentityGuard = ({ children, apiContext, patientData, citationId })
         activeFirst !== storedFirst
     );
 
-    if (isIdMismatch || isNameMismatch) {
+    if (isUserMismatch || isNameMismatch) {
         return (
             <div className="p-6 rounded-2xl bg-tilo-bg-panel border border-tilo-primary/30 shadow-md text-center space-y-3 animate-in fade-in duration-300">
                 <div className="flex justify-center text-tilo-primary">
@@ -199,8 +197,8 @@ const PatientIdentityGuard = ({ children, apiContext, patientData, citationId })
                 </h4>
                 <p className="text-xs text-tilo-text-muted max-w-md mx-auto">
                     Sincronizando telemetría biométrica aislada para{' '}
-                    <span className="font-bold text-tilo-text-main">{activePatientName || 'Paciente Activo'}</span>
-                    {activeCitationId ? ` (Cita #${activeCitationId})` : ''}...
+                    <span className="font-bold text-tilo-text-main">{apiContext?.rawName || storedName || 'Paciente Activo'}</span>
+                    {activeUserId ? ` (Usuario ID #${activeUserId})` : ''}...
                 </p>
                 <div className="text-[10px] text-tilo-text-muted/65 italic">
                     Aislamiento activo en tiempo real. Se ha blanqueado la vista para prevenir contaminación entre folios.
@@ -591,7 +589,8 @@ export const MedicalDashboard = ({
             const formData = new FormData();
             formData.append('file', file);
             try {
-                const response = await fetch('http://localhost:3000/api/upload', { method: 'POST', body: formData });
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                const response = await fetch(`${apiUrl}/api/upload`, { method: 'POST', body: formData });
                 if (response.ok) {
                     const data = await response.json();
                     setProcessedDocs(prev => ({ ...prev, [file.name]: data }));
@@ -817,7 +816,12 @@ export const MedicalDashboard = ({
                                 </div>
                             </div>
                         </div>
-                        <button onClick={() => setSelectedFileToView(null)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-xl">✕</button>
+                        <button
+                            type="button"
+                            onClick={() => setSelectedFileToView(null)}
+                            aria-label="Cerrar reporte"
+                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-xl cursor-pointer"
+                        >✕</button>
                     </div>
                     <div className="flex-1 overflow-y-auto p-8 bg-slate-50 space-y-6">
                         {!hasAnyAlert && (
@@ -844,15 +848,15 @@ export const MedicalDashboard = ({
                                                 const status = analyzeStatus(row.value, row.ref);
                                                 return (
                                                     <tr key={rIdx} className="hover:bg-red-50/10 transition-colors">
-                                                        <td className="px-6 py-3 font-medium text-slate-600 w-[40%]">{row.label}</td>
-                                                        <td className="px-6 py-3 font-bold text-slate-800 text-base">{row.value}</td>
+                                                        <td className="px-6 py-3 font-medium text-[#334155] w-[40%]">{row.label}</td>
+                                                        <td className="px-6 py-3 font-bold text-[#0F172A] text-base tabular-nums">{row.value}</td>
                                                         <td className="px-6 py-3 text-center">
                                                             {status.includes('critical') ?
-                                                                <span className="bg-red-600 text-white px-2 py-1 rounded text-[10px] font-bold shadow-sm">CRÍTICO</span> :
-                                                                <span className={`px-2 py-1 rounded text-[10px] font-bold border ${status === 'high' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>{status === 'high' ? 'ALTO ⬆' : 'BAJO ⬇'}</span>
+                                                                <span className="bg-[#B70E0C] text-white px-2 py-1 rounded text-[10px] font-bold shadow-sm">CRÍTICO</span> :
+                                                                <span className={`px-2 py-1 rounded text-[10px] font-bold border ${status === 'high' ? 'bg-red-50 text-[#B70E0C] border-red-200' : 'bg-blue-50 text-[#1C75BC] border-blue-200'}`}>{status === 'high' ? 'ALTO ⬆' : 'BAJO ⬇'}</span>
                                                             }
                                                         </td>
-                                                        <td className="px-6 py-3 text-slate-400 text-xs text-right font-mono">{row.ref}</td>
+                                                        <td className="px-6 py-3 text-[#334155] text-xs text-right font-mono tabular-nums">{row.ref}</td>
                                                     </tr>
                                                 );
                                             })}

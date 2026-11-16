@@ -1,0 +1,2011 @@
+{
+  "cardiovascular": {
+    "title": "Cardiovasculares y Cerebrovasculares",
+    "key": "cardiovascular",
+    "items": [
+      {
+        "name": "Viscosidad de la Sangre",
+        "key": "viscosidad_de_la_sangre",
+        "reference": "48,264 - 65,371",
+        "baselineValue": "61.396",
+        "unit": ""
+      },
+      {
+        "name": "Cristal de Colesterol",
+        "key": "cristal_de_colesterol",
+        "reference": "56,749 - 67,522",
+        "baselineValue": "69.425",
+        "unit": ""
+      },
+      {
+        "name": "Grasa en Sangre",
+        "key": "grasa_en_sangre",
+        "reference": "0,481 - 1,043",
+        "baselineValue": "1.002",
+        "unit": ""
+      },
+      {
+        "name": "Resistencia Vascular",
+        "key": "resistencia_vascular",
+        "reference": "0,327 - 0,937",
+        "baselineValue": "0.963",
+        "unit": ""
+      },
+      {
+        "name": "Elasticidad Vascular",
+        "key": "elasticidad_vascular",
+        "reference": "1,672 - 1,978",
+        "baselineValue": "1.806",
+        "unit": ""
+      },
+      {
+        "name": "Demanda de Sangre Miocardial",
+        "key": "demanda_de_sangre_miocardial",
+        "reference": "0,192 - 0,412",
+        "baselineValue": "0.492",
+        "unit": "",
+        "displayName": "Demanda de Sangre Miocárdica"
+      },
+      {
+        "name": "Volumen de Perfusión Sanguínea Miocardial",
+        "key": "volumen_de_perfusion_sanguinea_miocardial",
+        "reference": "4,832 - 5,147",
+        "baselineValue": "4.159",
+        "unit": "",
+        "displayName": "Volumen de Perfusión Sanguínea Miocárdica"
+      },
+      {
+        "name": "Consumo de Oxígeno Miocardial",
+        "key": "consumo_de_oxigeno_miocardial",
+        "reference": "3,321 - 4,244",
+        "baselineValue": "5.287",
+        "unit": "",
+        "displayName": "Consumo de Oxígeno Miocárdico"
+      },
+      {
+        "name": "Volumen de Latido",
+        "key": "volumen_de_latido",
+        "reference": "1,338 - 1,672",
+        "baselineValue": "0.841",
+        "unit": ""
+      },
+      {
+        "name": "Impedancia Ventricular Izquierda de Expulsión",
+        "key": "impedancia_ventricular_izquierda_de_expulsion",
+        "reference": "0,669 - 1,544",
+        "baselineValue": "1.073",
+        "unit": ""
+      },
+      {
+        "name": "Fuerza de Bombeo Efectiva Ventricular Izquierda",
+        "key": "fuerza_de_bombeo_efectiva_ventricular_izquierda",
+        "reference": "1,554 - 1,988",
+        "baselineValue": "0.888",
+        "unit": ""
+      },
+      {
+        "name": "Elasticidad de Arteria Coronaria",
+        "key": "elasticidad_de_arteria_coronaria",
+        "reference": "1,553 - 2,187",
+        "baselineValue": "1.523",
+        "unit": ""
+      },
+      {
+        "name": "Presión de Perfusión Coronaria",
+        "key": "presion_de_perfusion_coronaria",
+        "reference": "11,719 - 18,418",
+        "baselineValue": "12.667",
+        "unit": ""
+      },
+      {
+        "name": "Elasticidad de Vaso Sanguíneo Cerebral",
+        "key": "elasticidad_de_vaso_sanguineo_cerebral",
+        "reference": "0,708 - 1,942",
+        "baselineValue": "0.63",
+        "unit": ""
+      },
+      {
+        "name": "Estado de Suministro Sanguíneo de Tejido Cerebral",
+        "key": "estado_de_suministro_sanguineo_de_tejido_cerebral",
+        "reference": "6,138 - 21,396",
+        "baselineValue": "11.77",
+        "unit": ""
+      }
+    ]
+  },
+  "gastrointestinal": {
+    "title": "Función Gastrointestinal",
+    "key": "gastrointestinal",
+    "items": [
+      {
+        "name": "Coeficiente de Secreción de Pepsina",
+        "key": "coeficiente_de_secrecion_de_pepsina",
+        "reference": "59,847 - 65,234",
+        "baselineValue": "56.968",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Función de Peristalsis Gástrica",
+        "key": "coeficiente_de_funcion_de_peristalsis_gastrica",
+        "reference": "58,425 - 61,213",
+        "baselineValue": "55.827",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Función de Absorción Gástrica",
+        "key": "coeficiente_de_funcion_de_absorcion_gastrica",
+        "reference": "34,367 - 35,642",
+        "baselineValue": "30.147",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Función de Peristalsis del Intestino Delgado",
+        "key": "coeficiente_de_funcion_de_peristalsis_del_intestino_delgado",
+        "reference": "133,437 - 140,476",
+        "baselineValue": "124.624",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Función de Absorción del Intestino Delgado",
+        "key": "coeficiente_de_funcion_de_absorcion_del_intestino_delgado",
+        "reference": "3,572 - 6,483",
+        "baselineValue": "4.321",
+        "unit": ""
+      }
+    ]
+  },
+  "colon": {
+    "title": "Función del Intestino Grueso",
+    "key": "colon",
+    "items": [
+      {
+        "name": "Coeficiente de la Función de Peristalsis del Intestino Grueso (colon)",
+        "key": "coeficiente_de_la_funcion_de_peristalsis_del_intestino_grueso_colon",
+        "reference": "4,572 - 6,483",
+        "baselineValue": "6.204",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de absorción colónica",
+        "key": "coeficiente_de_absorcion_colonica",
+        "reference": "2,946 - 3,815",
+        "baselineValue": "2.098",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente intestinal bacteriano",
+        "key": "coeficiente_intestinal_bacteriano",
+        "reference": "1,734 - 2,621",
+        "baselineValue": "2.209",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de presión intraluminal",
+        "key": "coeficiente_de_presion_intraluminal",
+        "reference": "1,173 - 2,297",
+        "baselineValue": "2.706",
+        "unit": ""
+      }
+    ]
+  },
+  "liver": {
+    "title": "Función Hepática",
+    "key": "liver",
+    "items": [
+      {
+        "name": "Metabolismo de las proteínas",
+        "key": "metabolismo_de_las_proteinas",
+        "reference": "116,34 - 220,621",
+        "baselineValue": "207.52",
+        "unit": ""
+      },
+      {
+        "name": "Función de producción de energía",
+        "key": "funcion_de_produccion_de_energia",
+        "reference": "0,713 - 0,992",
+        "baselineValue": "0.96",
+        "unit": ""
+      },
+      {
+        "name": "Función de Desintoxicación",
+        "key": "funcion_de_desintoxicacion",
+        "reference": "0,202 - 0,991",
+        "baselineValue": "0.3",
+        "unit": ""
+      },
+      {
+        "name": "Función de Secreción de Bilis",
+        "key": "funcion_de_secrecion_de_bilis",
+        "reference": "0,432 - 0,826",
+        "baselineValue": "0.607",
+        "unit": ""
+      },
+      {
+        "name": "Contenido de Grasa en el Hígado",
+        "key": "contenido_de_grasa_en_el_higado",
+        "reference": "0,097 - 0,419",
+        "baselineValue": "0.707",
+        "unit": ""
+      }
+    ]
+  },
+  "gallbladder": {
+    "title": "Función de la Vesícula Biliar",
+    "key": "gallbladder",
+    "items": [
+      {
+        "name": "Seroglobulina (A/G)",
+        "key": "seroglobulina_ag",
+        "reference": "126 - 159",
+        "baselineValue": "138.342",
+        "unit": ""
+      },
+      {
+        "name": "Bilirrubina Total (TBIL)",
+        "key": "bilirrubina_total_tbil",
+        "reference": "0,232 - 0,686",
+        "baselineValue": "0.537",
+        "unit": ""
+      },
+      {
+        "name": "Fosfatasa Alcalina (ALP)",
+        "key": "fosfatasa_alcalina_alp",
+        "reference": "0,082 - 0,342",
+        "baselineValue": "0.296",
+        "unit": ""
+      },
+      {
+        "name": "Ácidos Biliares Totales Séricos (TBA)",
+        "key": "acidos_biliares_totales_sericos_tba",
+        "reference": "0,317 - 0,695",
+        "baselineValue": "0.364",
+        "unit": ""
+      },
+      {
+        "name": "Bilirrubina (DBIL)",
+        "key": "bilirrubina_dbil",
+        "reference": "0,218 - 0,549",
+        "baselineValue": "0.289",
+        "unit": ""
+      }
+    ]
+  },
+  "pancreas": {
+    "title": "Función Pancreática",
+    "key": "pancreas",
+    "items": [
+      {
+        "name": "Insulina",
+        "key": "insulina",
+        "reference": "2,845 - 4,017",
+        "baselineValue": "3.45",
+        "unit": ""
+      },
+      {
+        "name": "Polipéptido Pancreático (PP)",
+        "key": "polipeptido_pancreatico_pp",
+        "reference": "3,210 - 6,854",
+        "baselineValue": "4.156",
+        "unit": ""
+      },
+      {
+        "name": "Glucagón",
+        "key": "glucagon",
+        "reference": "2,412 - 2,974",
+        "baselineValue": "2.889",
+        "unit": ""
+      }
+    ]
+  },
+  "renal": {
+    "title": "Función Renal",
+    "key": "renal",
+    "items": [
+      {
+        "name": "Índice de Urobilinógeno",
+        "key": "indice_de_urobilinogeno",
+        "reference": "2,762 - 5,424",
+        "baselineValue": "5.764",
+        "unit": ""
+      },
+      {
+        "name": "Ïndice de Ácido Úrico",
+        "key": "indice_de_acido_urico",
+        "reference": "1,435 - 1,987",
+        "baselineValue": "2.109",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Nitrógeno Ureico en la Sangre (BUN)",
+        "key": "indice_de_nitrogeno_ureico_en_la_sangre_bun",
+        "reference": "4,725 - 8,631",
+        "baselineValue": "8.55",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Proteinuria",
+        "key": "indice_de_proteinuria",
+        "reference": "1,571 - 4,079",
+        "baselineValue": "4.921",
+        "unit": ""
+      }
+    ]
+  },
+  "pulmonary": {
+    "title": "Función Pulmonar",
+    "key": "pulmonary",
+    "items": [
+      {
+        "name": "Capacidad Vital VC",
+        "key": "capacidad_vital_vc",
+        "reference": "3348 - 3529",
+        "baselineValue": "3368.744",
+        "unit": ""
+      },
+      {
+        "name": "Capacidad Pulmonar Total TLC",
+        "key": "capacidad_pulmonar_total_tlc",
+        "reference": "4301 - 4782",
+        "baselineValue": "4594.432",
+        "unit": ""
+      },
+      {
+        "name": "Resistencia de las Vías Aéreas RAM",
+        "key": "resistencia_de_las_vias_aereas_ram",
+        "reference": "1,374 - 1,709",
+        "baselineValue": "1.588",
+        "unit": ""
+      },
+      {
+        "name": "Contenido de Oxígeno Arterial PaCO2",
+        "key": "contenido_de_oxigeno_arterial_paco2",
+        "reference": "17,903 - 21,012",
+        "baselineValue": "22.823",
+        "unit": ""
+      }
+    ]
+  },
+  "brain": {
+    "title": "Nervio Cerebral",
+    "key": "brain",
+    "items": [
+      {
+        "name": "Estado del Suministro Sanguíneo al Tejido Cerebral",
+        "key": "estado_del_suministro_sanguineo_al_tejido_cerebral",
+        "reference": "143,37 - 210,81",
+        "baselineValue": "195.056",
+        "unit": ""
+      },
+      {
+        "name": "Arterioesclerosis Cerebral",
+        "key": "arterioesclerosis_cerebral",
+        "reference": "0,103 - 0,642",
+        "baselineValue": "0.656",
+        "unit": ""
+      },
+      {
+        "name": "Estado Funcional de Nervio Craneal",
+        "key": "estado_funcional_de_nervio_craneal",
+        "reference": "0,253 - 0,659",
+        "baselineValue": "0.303",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Emoción",
+        "key": "indice_de_emocion",
+        "reference": "0,109 - 0,351",
+        "baselineValue": "0.382",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Memoria (ZS)",
+        "key": "indice_de_memoria_zs",
+        "reference": "0,442 - 0,817",
+        "baselineValue": "0.296",
+        "unit": ""
+      }
+    ]
+  },
+  "bone_disease": {
+    "title": "Padecimientos Óseos",
+    "key": "bone_disease",
+    "items": [
+      {
+        "name": "Dimensión del Prolapso de la Fibra Lumbar",
+        "key": "dimension_del_prolapso_de_la_fibra_lumbar",
+        "reference": "Sin Dirección",
+        "baselineValue": "Sin Dirección",
+        "unit": ""
+      },
+      {
+        "name": "Grado de Adhesión del Músculo del Hombro",
+        "key": "grado_de_adhesion_del_musculo_del_hombro",
+        "reference": "< u 0,2",
+        "baselineValue": "u 0.13",
+        "unit": ""
+      },
+      {
+        "name": "Límite de Circulación de Extremidades",
+        "key": "limite_de_circulacion_de_extremidades",
+        "reference": "+",
+        "baselineValue": "+",
+        "unit": ""
+      },
+      {
+        "name": "Envejecimiento del Ligamento",
+        "key": "envejecimiento_del_ligamento",
+        "reference": "10%-40%",
+        "baselineValue": "29%",
+        "unit": ""
+      }
+    ]
+  },
+  "bone_density": {
+    "title": "Densidad Mineral Ósea",
+    "key": "bone_density",
+    "items": [
+      {
+        "name": "Coeficiente de Osteoclasto",
+        "key": "coeficiente_de_osteoclasto",
+        "reference": "86,73 - 180,97",
+        "baselineValue": "100.343",
+        "unit": ""
+      },
+      {
+        "name": "Cantidad de Pérdida de Calcio",
+        "key": "cantidad_de_perdida_de_calcio",
+        "reference": "0,209 - 0,751",
+        "baselineValue": "0.382",
+        "unit": ""
+      },
+      {
+        "name": "Grado de Hiperplasia Ósea",
+        "key": "grado_de_hiperplasia_osea",
+        "reference": "0,046 - 0,167",
+        "baselineValue": "0.402",
+        "unit": ""
+      },
+      {
+        "name": "Grado de Osteoporosis",
+        "key": "grado_de_osteoporosis",
+        "reference": "0,124 - 0,453",
+        "baselineValue": "0.413",
+        "unit": ""
+      },
+      {
+        "name": "Densidad Mineral Ósea",
+        "key": "densidad_mineral_osea",
+        "reference": "0,796 - 0,433",
+        "baselineValue": "0.665",
+        "unit": ""
+      }
+    ]
+  },
+  "rheumatoid": {
+    "title": "Enfermedad de Hueso Reumatoide",
+    "key": "rheumatoid",
+    "items": [
+      {
+        "name": "Grado de Calcificación Cervical",
+        "key": "grado_de_calcificacion_cervical",
+        "reference": "421 - 490",
+        "baselineValue": "498.908",
+        "unit": ""
+      },
+      {
+        "name": "Grado de Calcificación Lumbar",
+        "key": "grado_de_calcificacion_lumbar",
+        "reference": "4,326 - 7,531",
+        "baselineValue": "5.605",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Hiperplasia Ósea",
+        "key": "coeficiente_de_hiperplasia_osea",
+        "reference": "2,954 - 5,543",
+        "baselineValue": "6.108",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Osteoporosis",
+        "key": "coeficiente_de_osteoporosis",
+        "reference": "2,019 - 4,721",
+        "baselineValue": "4.602",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Reumatismo",
+        "key": "coeficiente_de_reumatismo",
+        "reference": "4,023 - 11,627",
+        "baselineValue": "18.093",
+        "unit": ""
+      }
+    ]
+  },
+  "bone_growth": {
+    "title": "Índice de crecimiento óseo",
+    "key": "bone_growth",
+    "items": [
+      {
+        "name": "Fosfatasa alcalina ósea",
+        "key": "fosfatasa_alcalina_osea",
+        "reference": "0,433 - 0,796",
+        "baselineValue": "0.428",
+        "unit": ""
+      },
+      {
+        "name": "Osteocalcina(BGP)",
+        "key": "osteocalcinabgp",
+        "reference": "0,525 - 0,817",
+        "baselineValue": "0.385",
+        "unit": ""
+      },
+      {
+        "name": "Estado de recuperación de huesos largos",
+        "key": "estado_de_recuperacion_de_huesos_largos",
+        "reference": "0,713 - 0,992",
+        "baselineValue": "0.507",
+        "unit": ""
+      },
+      {
+        "name": "Estado de recuperación de cartílagos en huesos cortos",
+        "key": "estado_de_recuperacion_de_cartilagos_en_huesos_cortos",
+        "reference": "0,202 - 0,991",
+        "baselineValue": "0.11",
+        "unit": ""
+      },
+      {
+        "name": "Línea epifisaria",
+        "key": "linea_epifisaria",
+        "reference": "0,432 - 0,826",
+        "baselineValue": "0.636",
+        "unit": ""
+      }
+    ]
+  },
+  "blood_sugar": {
+    "title": "Glucosa en la sangre",
+    "key": "blood_sugar",
+    "items": [
+      {
+        "name": "Coeficiente de Secreción de Insulina",
+        "key": "coeficiente_de_secrecion_de_insulina",
+        "reference": "2,967 - 3,528",
+        "baselineValue": "2.985",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Glucosa en Sangre",
+        "key": "coeficiente_de_glucosa_en_sangre",
+        "reference": "2,163 - 7,321",
+        "baselineValue": "5.904",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Glucosa en Orina",
+        "key": "coeficiente_de_glucosa_en_orina",
+        "reference": "2,204 - 2,819",
+        "baselineValue": "2.312",
+        "unit": ""
+      }
+    ]
+  },
+  "trace_elements": {
+    "title": "Oligoelementos",
+    "key": "trace_elements",
+    "items": [
+      {
+        "name": "Calcio",
+        "key": "calcio",
+        "reference": "1,219 - 3,021",
+        "baselineValue": "1.728",
+        "unit": ""
+      },
+      {
+        "name": "Hierro",
+        "key": "hierro",
+        "reference": "1,151 - 1,847",
+        "baselineValue": "1.3",
+        "unit": ""
+      },
+      {
+        "name": "Zinc",
+        "key": "zinc",
+        "reference": "1,143 - 1,989",
+        "baselineValue": "0.883",
+        "unit": ""
+      },
+      {
+        "name": "Selenio",
+        "key": "selenio",
+        "reference": "0,847 - 2,045",
+        "baselineValue": "1.213",
+        "unit": ""
+      },
+      {
+        "name": "Fósforo",
+        "key": "fosforo",
+        "reference": "1,195 - 2,134",
+        "baselineValue": "2.098",
+        "unit": ""
+      },
+      {
+        "name": "Potasio",
+        "key": "potasio",
+        "reference": "0,689 - 0,987",
+        "baselineValue": "0.853",
+        "unit": ""
+      },
+      {
+        "name": "Magnesio",
+        "key": "magnesio",
+        "reference": "0,568 - 0,992",
+        "baselineValue": "0.895",
+        "unit": ""
+      },
+      {
+        "name": "Cobre",
+        "key": "cobre",
+        "reference": "0,474 - 0,749",
+        "baselineValue": "0.351",
+        "unit": ""
+      },
+      {
+        "name": "Cobalto",
+        "key": "cobalto",
+        "reference": "2,326 - 5,531",
+        "baselineValue": "5.241",
+        "unit": ""
+      },
+      {
+        "name": "Manganeso",
+        "key": "manganeso",
+        "reference": "0,497 - 0,879",
+        "baselineValue": "0.519",
+        "unit": ""
+      },
+      {
+        "name": "Yodo",
+        "key": "yodo",
+        "reference": "1,421 - 5,490",
+        "baselineValue": "1.343",
+        "unit": ""
+      },
+      {
+        "name": "Níquel",
+        "key": "niquel",
+        "reference": "2,462 - 5,753",
+        "baselineValue": "2.76",
+        "unit": ""
+      },
+      {
+        "name": "Flúor",
+        "key": "fluor",
+        "reference": "1,954 - 4,543",
+        "baselineValue": "4.286",
+        "unit": ""
+      },
+      {
+        "name": "Molibdeno",
+        "key": "molibdeno",
+        "reference": "0,938 - 1,712",
+        "baselineValue": "1.369",
+        "unit": ""
+      },
+      {
+        "name": "Vanadio",
+        "key": "vanadio",
+        "reference": "1,019 - 3,721",
+        "baselineValue": "1.611",
+        "unit": ""
+      },
+      {
+        "name": "Estaño",
+        "key": "estano",
+        "reference": "1,023 - 7,627",
+        "baselineValue": "2.067",
+        "unit": ""
+      },
+      {
+        "name": "Silicio",
+        "key": "silicio",
+        "reference": "1,425 - 5,872",
+        "baselineValue": "1.251",
+        "unit": ""
+      },
+      {
+        "name": "Estroncio",
+        "key": "estroncio",
+        "reference": "1,142 - 5,862",
+        "baselineValue": "1.974",
+        "unit": ""
+      },
+      {
+        "name": "Boro",
+        "key": "boro",
+        "reference": "1,124 - 3,453",
+        "baselineValue": "3.209",
+        "unit": ""
+      }
+    ]
+  },
+  "vitamins": {
+    "title": "Vitamina",
+    "key": "vitamins",
+    "items": [
+      {
+        "name": "Vitamina A",
+        "key": "vitamina_a",
+        "reference": "0,346 - 0,401",
+        "baselineValue": "0.343",
+        "unit": ""
+      },
+      {
+        "name": "Vitamina B1",
+        "key": "vitamina_b1",
+        "reference": "2,124 - 4,192",
+        "baselineValue": "1.745",
+        "unit": ""
+      },
+      {
+        "name": "Vitamina B2",
+        "key": "vitamina_b2",
+        "reference": "1,549 - 2,213",
+        "baselineValue": "1.172",
+        "unit": ""
+      },
+      {
+        "name": "Vitamina B3",
+        "key": "vitamina_b3",
+        "reference": "14,477 - 21,348",
+        "baselineValue": "13.543",
+        "unit": ""
+      },
+      {
+        "name": "Vitamina B6",
+        "key": "vitamina_b6",
+        "reference": "0,824 - 1,942",
+        "baselineValue": "1.001",
+        "unit": ""
+      },
+      {
+        "name": "Vitamina B12",
+        "key": "vitamina_b12",
+        "reference": "6,428 - 21,396",
+        "baselineValue": "7.671",
+        "unit": ""
+      },
+      {
+        "name": "Vitamina C",
+        "key": "vitamina_c",
+        "reference": "4,543 - 5,023",
+        "baselineValue": "3.428",
+        "unit": ""
+      },
+      {
+        "name": "Vitamina D3",
+        "key": "vitamina_d3",
+        "reference": "5,327 - 7,109",
+        "baselineValue": "4.725",
+        "unit": ""
+      },
+      {
+        "name": "Vitamina E",
+        "key": "vitamina_e",
+        "reference": "4,826 - 6,013",
+        "baselineValue": "5.877",
+        "unit": ""
+      },
+      {
+        "name": "Vitamina K",
+        "key": "vitamina_k",
+        "reference": "0,717 - 1,486",
+        "baselineValue": "1.168",
+        "unit": ""
+      }
+    ]
+  },
+  "amino_acids": {
+    "title": "Aminoácidos",
+    "key": "amino_acids",
+    "items": [
+      {
+        "name": "Lisina",
+        "key": "lisina",
+        "reference": "0,253 - 0,659",
+        "baselineValue": "0.936",
+        "unit": ""
+      },
+      {
+        "name": "Triptófano",
+        "key": "triptofano",
+        "reference": "2,374 - 3,709",
+        "baselineValue": "2.664",
+        "unit": ""
+      },
+      {
+        "name": "Fenilalanina",
+        "key": "fenilalanina",
+        "reference": "0,731 - 1,307",
+        "baselineValue": "0.86",
+        "unit": ""
+      },
+      {
+        "name": "Metionina",
+        "key": "metionina",
+        "reference": "0,432 - 0,826",
+        "baselineValue": "0.492",
+        "unit": ""
+      },
+      {
+        "name": "Treonina",
+        "key": "treonina",
+        "reference": "0,422 - 0,817",
+        "baselineValue": "0.871",
+        "unit": ""
+      },
+      {
+        "name": "Isoleucina",
+        "key": "isoleucina",
+        "reference": "1,831 - 3,248",
+        "baselineValue": "1.86",
+        "unit": ""
+      },
+      {
+        "name": "Leucina",
+        "key": "leucina",
+        "reference": "2,073 - 4,579",
+        "baselineValue": "3.813",
+        "unit": ""
+      },
+      {
+        "name": "Valina",
+        "key": "valina",
+        "reference": "2,012 - 4,892",
+        "baselineValue": "5.33",
+        "unit": ""
+      },
+      {
+        "name": "Histidina",
+        "key": "histidina",
+        "reference": "2,903 - 4,012",
+        "baselineValue": "5.038",
+        "unit": ""
+      },
+      {
+        "name": "Arginina",
+        "key": "arginina",
+        "reference": "0,710 - 1,209",
+        "baselineValue": "0.861",
+        "unit": ""
+      }
+    ]
+  },
+  "coenzymes": {
+    "title": "Coenzima",
+    "key": "coenzymes",
+    "items": [
+      {
+        "name": "Nicotinamida",
+        "key": "nicotinamida",
+        "reference": "2,074 - 3,309",
+        "baselineValue": "1.479",
+        "unit": ""
+      },
+      {
+        "name": "Biotina",
+        "key": "biotina",
+        "reference": "1,833 - 2,979",
+        "baselineValue": "1.926",
+        "unit": ""
+      },
+      {
+        "name": "Ácido pantoténico",
+        "key": "acido_pantotenico",
+        "reference": "1,116 - 2,101",
+        "baselineValue": "1.324",
+        "unit": ""
+      },
+      {
+        "name": "Ácido fólico",
+        "key": "acido_folico",
+        "reference": "1,449 - 2,246",
+        "baselineValue": "1.618",
+        "unit": ""
+      },
+      {
+        "name": "Coenzima Q10",
+        "key": "coenzima_q10",
+        "reference": "0,831 - 1,588",
+        "baselineValue": "0.705",
+        "unit": ""
+      },
+      {
+        "name": "Glutatión",
+        "key": "glutation",
+        "reference": "0,726 - 1,281",
+        "baselineValue": "0.955",
+        "unit": ""
+      }
+    ]
+  },
+  "fatty_acids": {
+    "title": "Ácido graso",
+    "key": "fatty_acids",
+    "items": [
+      {
+        "name": "Ácido linoleico",
+        "key": "acido_linoleico",
+        "reference": "0,642 - 0,985",
+        "baselineValue": "0.605",
+        "unit": ""
+      },
+      {
+        "name": "α-Ácido linolénico",
+        "key": "-acido_linolenico",
+        "reference": "0,814 - 1,202",
+        "baselineValue": "0.931",
+        "unit": ""
+      },
+      {
+        "name": "Ácido araquidónico",
+        "key": "acido_araquidonico",
+        "reference": "0,661 - 0,808",
+        "baselineValue": "0.524",
+        "unit": ""
+      }
+    ]
+  },
+  "endocrine": {
+    "title": "Sistema Endocrino",
+    "key": "endocrine",
+    "items": [
+      {
+        "name": "Índice de Secreción de la Glándula Tiroides",
+        "key": "indice_de_secrecion_de_la_glandula_tiroides",
+        "reference": "2,954 - 5,543",
+        "baselineValue": "4.937",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Secreción de las Glándulas Paratiroides",
+        "key": "indice_de_secrecion_de_las_glandulas_paratiroides",
+        "reference": "2,845 - 4,017",
+        "baselineValue": "3.428",
+        "unit": ""
+      },
+      {
+        "name": "Índice de las Glándulas Suprarrenales",
+        "key": "indice_de_las_glandulas_suprarrenales",
+        "reference": "2,412 - 2,974",
+        "baselineValue": "2.381",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Secreción de la Glándula Pituitaria",
+        "key": "indice_de_secrecion_de_la_glandula_pituitaria",
+        "reference": "2,163 - 7,34",
+        "baselineValue": "2.898",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Secreción de la Glándula Pineal",
+        "key": "indice_de_secrecion_de_la_glandula_pineal",
+        "reference": "3,210 - 6,854",
+        "baselineValue": "4.877",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Secreción del Timo",
+        "key": "indice_de_secrecion_del_timo",
+        "reference": "2,967 - 3,528",
+        "baselineValue": "3.182",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Secreción Glandular",
+        "key": "indice_de_secrecion_glandular",
+        "reference": "2,204 - 2,819",
+        "baselineValue": "2.14",
+        "unit": ""
+      }
+    ]
+  },
+  "immune": {
+    "title": "Sistema Inmunológico",
+    "key": "immune",
+    "items": [
+      {
+        "name": "Índice de Ganglios linfáticos",
+        "key": "indice_de_ganglios_linfaticos",
+        "reference": "133,437 - 140,47",
+        "baselineValue": "142.96",
+        "unit": ""
+      },
+      {
+        "name": "Índice Inmunológico de Amígdalas",
+        "key": "indice_inmunologico_de_amigdalas",
+        "reference": "0,124 - 0,453",
+        "baselineValue": "0.221",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Médula Ósea",
+        "key": "indice_de_medula_osea",
+        "reference": "0,146 - 3,218",
+        "baselineValue": "1.078",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Bazo",
+        "key": "indice_de_bazo",
+        "reference": "34,367 - 35,642",
+        "baselineValue": "35.503",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Timo",
+        "key": "indice_de_timo",
+        "reference": "58,425 - 61,213",
+        "baselineValue": "61.005",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Inmunoglobulina",
+        "key": "indice_de_inmunoglobulina",
+        "reference": "3,712 - 6,981",
+        "baselineValue": "2.671",
+        "unit": ""
+      },
+      {
+        "name": "Índice Inmuno Respiratorio",
+        "key": "indice_inmuno_respiratorio",
+        "reference": "3,241 - 9,814",
+        "baselineValue": "8.855",
+        "unit": ""
+      },
+      {
+        "name": "Índice Inmunológico Gastrointestinal",
+        "key": "indice_inmunologico_gastrointestinal",
+        "reference": "0,638 - 1,712",
+        "baselineValue": "1.592",
+        "unit": ""
+      },
+      {
+        "name": "Índice Inmunológico de Mucosa",
+        "key": "indice_inmunologico_de_mucosa",
+        "reference": "4,111 - 18,741",
+        "baselineValue": "8.496",
+        "unit": ""
+      }
+    ]
+  },
+  "thyroid": {
+    "title": "Tiroides",
+    "key": "thyroid",
+    "items": [
+      {
+        "name": "Tiroxina libre (FT4)",
+        "key": "tiroxina_libre_ft4",
+        "reference": "0,103 - 0,316",
+        "baselineValue": "0.289",
+        "unit": ""
+      },
+      {
+        "name": "La tiroglobulina",
+        "key": "la_tiroglobulina",
+        "reference": "0,114 - 0,202",
+        "baselineValue": "0.436",
+        "unit": ""
+      },
+      {
+        "name": "Los anticuerpos anti-tiroglobulina",
+        "key": "los_anticuerpos_anti-tiroglobulina",
+        "reference": "0,421 - 0,734",
+        "baselineValue": "0.711",
+        "unit": ""
+      },
+      {
+        "name": "Tres triyodotironina (T3)",
+        "key": "tres_triyodotironina_t3",
+        "reference": "0,161 - 0,308",
+        "baselineValue": "0.24",
+        "unit": ""
+      }
+    ]
+  },
+  "toxins": {
+    "title": "Toxina Humana",
+    "key": "toxins",
+    "items": [
+      {
+        "name": "Bebidas Carbonatadas",
+        "key": "bebidas_carbonatadas",
+        "reference": "0,209 - 0,751",
+        "baselineValue": "0.744",
+        "unit": ""
+      },
+      {
+        "name": "Radiación Electromagnética",
+        "key": "radiacion_electromagnetica",
+        "reference": "0,046 - 0,167",
+        "baselineValue": "0.26",
+        "unit": ""
+      },
+      {
+        "name": "Tabaco / Nicotina",
+        "key": "tabaco_nicotina",
+        "reference": "0,124 - 0,453",
+        "baselineValue": "0.375",
+        "unit": ""
+      },
+      {
+        "name": "Residuos de Pesticidas Tóxicos",
+        "key": "residuos_de_pesticidas_toxicos",
+        "reference": "0,013 - 0,313",
+        "baselineValue": "0.435",
+        "unit": ""
+      }
+    ]
+  },
+  "heavy_metals": {
+    "title": "Metales Pesados",
+    "key": "heavy_metals",
+    "items": [
+      {
+        "name": "Plomo",
+        "key": "plomo",
+        "reference": "0,052 - 0,643",
+        "baselineValue": "0.847",
+        "unit": ""
+      },
+      {
+        "name": "Mercurio",
+        "key": "mercurio",
+        "reference": "0,013 - 0,336",
+        "baselineValue": "0.76",
+        "unit": ""
+      },
+      {
+        "name": "Cadmio",
+        "key": "cadmio",
+        "reference": "0,527 - 1,523",
+        "baselineValue": "1.645",
+        "unit": ""
+      },
+      {
+        "name": "Cromo",
+        "key": "cromo",
+        "reference": "0,176 - 1,183",
+        "baselineValue": "1.043",
+        "unit": ""
+      },
+      {
+        "name": "Arsénico",
+        "key": "arsenico",
+        "reference": "0,153 - 0,621",
+        "baselineValue": "1.141",
+        "unit": ""
+      },
+      {
+        "name": "Antimonio",
+        "key": "antimonio",
+        "reference": "0,162 - 0,412",
+        "baselineValue": "0.382",
+        "unit": ""
+      },
+      {
+        "name": "Talio",
+        "key": "talio",
+        "reference": "0,182 - 0,542",
+        "baselineValue": "0.442",
+        "unit": ""
+      },
+      {
+        "name": "Aluminio",
+        "key": "aluminio",
+        "reference": "0,192 - 0,412",
+        "baselineValue": "0.403",
+        "unit": ""
+      }
+    ]
+  },
+  "basic_physical": {
+    "title": "Condición Física Básica",
+    "key": "basic_physical",
+    "items": [
+      {
+        "name": "Capacidad de Respuesta",
+        "key": "capacidad_de_respuesta",
+        "reference": "59,786 - 65,424",
+        "baselineValue": "59.486",
+        "unit": ""
+      },
+      {
+        "name": "Capacidad Mental",
+        "key": "capacidad_mental",
+        "reference": "58,715 - 63,213",
+        "baselineValue": "57.601",
+        "unit": ""
+      },
+      {
+        "name": "Falta de Agua",
+        "key": "falta_de_agua",
+        "reference": "33,967 - 37,642",
+        "baselineValue": "33.494",
+        "unit": ""
+      },
+      {
+        "name": "Hipoxia",
+        "key": "hipoxia",
+        "reference": "133,642 - 141,476",
+        "baselineValue": "135.533",
+        "unit": ""
+      },
+      {
+        "name": "PH",
+        "key": "ph",
+        "reference": "3,156 - 3,694",
+        "baselineValue": "3.084",
+        "unit": ""
+      }
+    ]
+  },
+  "allergies": {
+    "title": "Alergias",
+    "key": "allergies",
+    "items": [
+      {
+        "name": "Índice de alergia a fármacos",
+        "key": "indice_de_alergia_a_farmacos",
+        "reference": "0,431 - 1,329",
+        "baselineValue": "1.421",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia al alcohol",
+        "key": "indice_de_alergia_al_alcohol",
+        "reference": "0,432 - 1,246",
+        "baselineValue": "0.938",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia al polen",
+        "key": "indice_de_alergia_al_polen",
+        "reference": "0,143 - 1,989",
+        "baselineValue": "1.302",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia a inyección",
+        "key": "indice_de_alergia_a_inyeccion",
+        "reference": "0,847 - 1,045",
+        "baselineValue": "1.215",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia a productos químicos",
+        "key": "indice_de_alergia_a_productos_quimicos",
+        "reference": "0,842 - 1,643",
+        "baselineValue": "1.364",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia a la pintura",
+        "key": "indice_de_alergia_a_la_pintura",
+        "reference": "0,346 - 1,401",
+        "baselineValue": "1.359",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia al polvo",
+        "key": "indice_de_alergia_al_polvo",
+        "reference": "0,543 - 1,023",
+        "baselineValue": "0.811",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia al humo",
+        "key": "indice_de_alergia_al_humo",
+        "reference": "0,826 - 1,013",
+        "baselineValue": "1.009",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia a tintes de cabello",
+        "key": "indice_de_alergia_a_tintes_de_cabello",
+        "reference": "0,717 - 1,486",
+        "baselineValue": "1.389",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia a la piel animal",
+        "key": "indice_de_alergia_a_la_piel_animal",
+        "reference": "0,124 - 1,192",
+        "baselineValue": "0.248",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia a la joyería de metal",
+        "key": "indice_de_alergia_a_la_joyeria_de_metal",
+        "reference": "0,549 - 1,213",
+        "baselineValue": "1.41",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia a los mariscos",
+        "key": "indice_de_alergia_a_los_mariscos",
+        "reference": "0,449 - 1,246",
+        "baselineValue": "0.899",
+        "unit": ""
+      },
+      {
+        "name": "Índice de alergia a la leche",
+        "key": "indice_de_alergia_a_la_leche",
+        "reference": "0,477 - 1,348",
+        "baselineValue": "1.903",
+        "unit": ""
+      }
+    ]
+  },
+  "obesity": {
+    "title": "Obesidad",
+    "key": "obesity",
+    "items": [
+      {
+        "name": "Coeficiente Anormal de Metabolismo Lipídico",
+        "key": "coeficiente_anormal_de_metabolismo_lipidico",
+        "reference": "1,992 - 3,713",
+        "baselineValue": "0.677",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de anormalidad de tejido adiposo marrón",
+        "key": "coeficiente_de_anormalidad_de_tejido_adiposo_marron",
+        "reference": "2,791 - 4,202",
+        "baselineValue": "1.754",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente de Hiperinsulinemia",
+        "key": "coeficiente_de_hiperinsulinemia",
+        "reference": "0,097 - 0,215",
+        "baselineValue": "0.397",
+        "unit": ""
+      },
+      {
+        "name": "Coeficiente Anormal del Núcleo Hipotalmico",
+        "key": "coeficiente_anormal_del_nucleo_hipotalmico",
+        "reference": "0,332 - 0,626",
+        "baselineValue": "0.492",
+        "unit": "",
+        "displayName": "Coeficiente Anormal del Núcleo Hipotalámico"
+      },
+      {
+        "name": "Coeficiente anormal de contenido de triglicéridos",
+        "key": "coeficiente_anormal_de_contenido_de_trigliceridos",
+        "reference": "1,341 - 1,991",
+        "baselineValue": "3.876",
+        "unit": ""
+      }
+    ]
+  },
+  "skin": {
+    "title": "Piel",
+    "key": "skin",
+    "items": [
+      {
+        "name": "Índice de Radicales Libres Cutáneos",
+        "key": "indice_de_radicales_libres_cutaneos",
+        "reference": "0,124 - 3,453",
+        "baselineValue": "4.997",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Colágeno",
+        "key": "indice_de_colageno",
+        "reference": "4,471 - 6,079",
+        "baselineValue": "1.938",
+        "unit": ""
+      },
+      {
+        "name": "Índice Grasa Cutánea",
+        "key": "indice_grasa_cutanea",
+        "reference": "14,477 - 21,348",
+        "baselineValue": "18.027",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Inmunidad Cutánea",
+        "key": "indice_de_inmunidad_cutanea",
+        "reference": "1,035 - 3,230",
+        "baselineValue": "4.895",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Humectación Cutánea",
+        "key": "indice_de_humectacion_cutanea",
+        "reference": "0,218 - 0,953",
+        "baselineValue": "0.964",
+        "unit": ""
+      },
+      {
+        "name": "Perdida de Humectación Cutánea",
+        "key": "perdida_de_humectacion_cutanea",
+        "reference": "2,214 - 4,158",
+        "baselineValue": "3.903",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Dilatación Cutánea",
+        "key": "indice_de_dilatacion_cutanea",
+        "reference": "0,824 - 1,942",
+        "baselineValue": "3.106",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Elasticidad Cutánea",
+        "key": "indice_de_elasticidad_cutanea",
+        "reference": "2,717 - 3,512",
+        "baselineValue": "1.401",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Melanina Cutánea",
+        "key": "indice_de_melanina_cutanea",
+        "reference": "0,346 - 0,501",
+        "baselineValue": "0.655",
+        "unit": ""
+      },
+      {
+        "name": "Índice de Endurecimiento Cutáneo",
+        "key": "indice_de_endurecimiento_cutaneo",
+        "reference": "0,842 - 1,858",
+        "baselineValue": "2.846",
+        "unit": ""
+      }
+    ]
+  },
+  "eye": {
+    "title": "Ojo",
+    "key": "eye",
+    "items": [
+      {
+        "name": "Bolsas en los ojos",
+        "key": "bolsas_en_los_ojos",
+        "reference": "0,510 - 3,109",
+        "baselineValue": "2.464",
+        "unit": ""
+      },
+      {
+        "name": "Arrugas de colágeno",
+        "key": "arrugas_de_colageno",
+        "reference": "2,031 - 3,107",
+        "baselineValue": "1.544",
+        "unit": ""
+      },
+      {
+        "name": "Círculos oscuros",
+        "key": "circulos_oscuros",
+        "reference": "0,831 - 3,188",
+        "baselineValue": "4.985",
+        "unit": ""
+      },
+      {
+        "name": "Obstrucción linfática",
+        "key": "obstruccion_linfatica",
+        "reference": "1,116 - 4,101",
+        "baselineValue": "1.838",
+        "unit": ""
+      },
+      {
+        "name": "Flacidez",
+        "key": "flacidez",
+        "reference": "0,233 - 0,559",
+        "baselineValue": "0.238",
+        "unit": ""
+      },
+      {
+        "name": "Edema",
+        "key": "edema",
+        "reference": "0,332 - 0,726",
+        "baselineValue": "0.751",
+        "unit": ""
+      },
+      {
+        "name": "Actividad celular del ojo",
+        "key": "actividad_celular_del_ojo",
+        "reference": "0,118 - 0,892",
+        "baselineValue": "0.983",
+        "unit": ""
+      },
+      {
+        "name": "Fatiga visual",
+        "key": "fatiga_visual",
+        "reference": "2,017 - 5,157",
+        "baselineValue": "3.976",
+        "unit": ""
+      }
+    ]
+  },
+  "collagen": {
+    "title": "Colágeno",
+    "key": "collagen",
+    "items": [
+      {
+        "name": "Ojos",
+        "key": "ojos",
+        "reference": "6,352 - 8,325",
+        "baselineValue": "4.571",
+        "unit": ""
+      },
+      {
+        "name": "Dientes",
+        "key": "dientes",
+        "reference": "7,245 - 8,562",
+        "baselineValue": "4.721",
+        "unit": ""
+      },
+      {
+        "name": "Cabello y Piel",
+        "key": "cabello_y_piel",
+        "reference": "4,533 - 6,179",
+        "baselineValue": "3.332",
+        "unit": ""
+      },
+      {
+        "name": "Sistema Endocrino",
+        "key": "sistema_endocrino",
+        "reference": "6,178 - 8,651",
+        "baselineValue": "3.958",
+        "unit": ""
+      },
+      {
+        "name": "Sistema Circulatorio",
+        "key": "sistema_circulatorio",
+        "reference": "3,586 - 4,337",
+        "baselineValue": "1.979",
+        "unit": ""
+      },
+      {
+        "name": "Sistema Digestivo",
+        "key": "sistema_digestivo",
+        "reference": "3,492 - 4,723",
+        "baselineValue": "2.635",
+        "unit": ""
+      },
+      {
+        "name": "Sistema Inmunológico",
+        "key": "sistema_inmunologico",
+        "reference": "3,376 - 4,582",
+        "baselineValue": "4.297",
+        "unit": ""
+      },
+      {
+        "name": "Sistema Motor",
+        "key": "sistema_motor",
+        "reference": "6,458 - 8,133",
+        "baselineValue": "7.054",
+        "unit": ""
+      },
+      {
+        "name": "Tejido Muscular",
+        "key": "tejido_muscular",
+        "reference": "6,552 - 8,268",
+        "baselineValue": "8.176",
+        "unit": ""
+      },
+      {
+        "name": "Metabolismo de las Grasas",
+        "key": "metabolismo_de_las_grasas",
+        "reference": "6,338 - 8,368",
+        "baselineValue": "2.898",
+        "unit": ""
+      },
+      {
+        "name": "Desintoxicación y Metabolismo",
+        "key": "desintoxicacion_y_metabolismo",
+        "reference": "6,187 - 8,466",
+        "baselineValue": "3.926",
+        "unit": ""
+      },
+      {
+        "name": "Sistema Reproductivo",
+        "key": "sistema_reproductivo",
+        "reference": "3,778 - 4,985",
+        "baselineValue": "2.588",
+        "unit": ""
+      },
+      {
+        "name": "Sistema Nervioso",
+        "key": "sistema_nervioso",
+        "reference": "3,357 - 4,239",
+        "baselineValue": "3.08",
+        "unit": ""
+      },
+      {
+        "name": "Sistema Respiratorio",
+        "key": "sistema_respiratorio",
+        "reference": "6,256 - 8,682",
+        "baselineValue": "6.033",
+        "unit": ""
+      }
+    ]
+  },
+  "meridians": {
+    "title": "Meridianos o Canales de Acupuntura",
+    "key": "meridians",
+    "items": [
+      {
+        "name": "Meridiano de Mano Tai Yin Pulmon",
+        "key": "meridiano_de_mano_tai_yin_pulmon",
+        "reference": "48,264 - 65,371",
+        "baselineValue": "56.379",
+        "unit": ""
+      },
+      {
+        "name": "Meridiano Mano Yang min Intestino Grueso",
+        "key": "meridiano_mano_yang_min_intestino_grueso",
+        "reference": "56,749 - 67,522",
+        "baselineValue": "65.152",
+        "unit": ""
+      },
+      {
+        "name": "Meridiano del Pie Yangmin Estomago",
+        "key": "meridiano_del_pie_yangmin_estomago",
+        "reference": "0,481 - 1,043",
+        "baselineValue": "0.37",
+        "unit": "",
+        "displayName": "Meridiano del Pie Yangmin Estómago"
+      },
+      {
+        "name": "Meridiano del Pie Tai Yin Bazo Pancreas",
+        "key": "meridiano_del_pie_tai_yin_bazo_pancreas",
+        "reference": "0,327 - 0,937",
+        "baselineValue": "0.524",
+        "unit": ""
+      },
+      {
+        "name": "Mano Shao Yin Corazon Sutra",
+        "key": "mano_shao_yin_corazon_sutra",
+        "reference": "1,672 - 1,978",
+        "baselineValue": "1.344",
+        "unit": ""
+      },
+      {
+        "name": "Mano intestino delgado por el Sol",
+        "key": "mano_intestino_delgado_por_el_sol",
+        "reference": "0,192 - 0,412",
+        "baselineValue": "0.427",
+        "unit": ""
+      },
+      {
+        "name": "Vejiga plexo solar",
+        "key": "vejiga_plexo_solar",
+        "reference": "4,832 - 5,147",
+        "baselineValue": "4.302",
+        "unit": ""
+      },
+      {
+        "name": "Mano Shao Yin Riñon",
+        "key": "mano_shao_yin_rinon",
+        "reference": "3,321 - 4,244",
+        "baselineValue": "3.049",
+        "unit": ""
+      },
+      {
+        "name": "Circulacion y Sexualidad",
+        "key": "circulacion_y_sexualidad",
+        "reference": "1,338 - 1,672",
+        "baselineValue": "0.858",
+        "unit": "",
+        "displayName": "Circulación y Sexualidad"
+      },
+      {
+        "name": "Mano Shao Yang Triple Calefactor",
+        "key": "mano_shao_yang_triple_calefactor",
+        "reference": "0,669 - 1,544",
+        "baselineValue": "1.298",
+        "unit": ""
+      },
+      {
+        "name": "Pie Vesicula Biliar",
+        "key": "pie_vesicula_biliar",
+        "reference": "1,554 - 1,988",
+        "baselineValue": "1.9",
+        "unit": "",
+        "displayName": "Pie Vesícula Biliar"
+      },
+      {
+        "name": "Pie Jue Yin Higado",
+        "key": "pie_jue_yin_higado",
+        "reference": "1,553 - 2,187",
+        "baselineValue": "2.035",
+        "unit": ""
+      },
+      {
+        "name": "Jen Mai",
+        "key": "jen_mai",
+        "reference": "11,719 - 18,418",
+        "baselineValue": "11.646",
+        "unit": ""
+      },
+      {
+        "name": "Meridiano Governador",
+        "key": "meridiano_governador",
+        "reference": "0,708 - 1,942",
+        "baselineValue": "1.682",
+        "unit": ""
+      },
+      {
+        "name": "Meridiano Vital",
+        "key": "meridiano_vital",
+        "reference": "6,138 - 21,396",
+        "baselineValue": "4.924",
+        "unit": ""
+      },
+      {
+        "name": "Tai Mai",
+        "key": "tai_mai",
+        "reference": "5,733 - 7,109",
+        "baselineValue": "7.095",
+        "unit": ""
+      }
+    ]
+  },
+  "pulso_cerebro_y_corazon": {
+    "title": "Pulso Cerebro y Corazon",
+    "key": "pulso_cerebro_y_corazon",
+    "items": [
+      {
+        "name": "Indice de Stroke",
+        "key": "indice_de_stroke",
+        "reference": "60,735 - 65,396",
+        "baselineValue": "67.6",
+        "unit": "",
+        "displayName": "Índice de Stroke"
+      },
+      {
+        "name": "Volumen Sistolico",
+        "key": "volumen_sistolico",
+        "reference": "63,012 - 67,892",
+        "baselineValue": "59.031",
+        "unit": "",
+        "displayName": "Volumen Sistólico"
+      },
+      {
+        "name": "Resistencia Periferica Total (TPR)",
+        "key": "resistencia_periferica_total_tpr",
+        "reference": "0,983 - 1,265",
+        "baselineValue": "1.224",
+        "unit": "",
+        "displayName": "Resistencia Periférica Total (TPR)"
+      },
+      {
+        "name": "Coeficiente de la onda del Pulso K",
+        "key": "coeficiente_de_la_onda_del_pulso_k",
+        "reference": "0,316 - 0,401",
+        "baselineValue": "0.259",
+        "unit": ""
+      },
+      {
+        "name": "Saturacion de Oxigeno en la sangre cerebrovascular (Sa)",
+        "key": "saturacion_de_oxigeno_en_la_sangre_cerebrovascular_sa",
+        "reference": "0,710 - 1,109",
+        "baselineValue": "1.104",
+        "unit": "",
+        "displayName": "Saturación de Oxígeno en la sangre cerebrovascular (Sa)"
+      },
+      {
+        "name": "Volumen de Oxigeno en la sangre cerebrovascular (CaCO2)",
+        "key": "volumen_de_oxigeno_en_la_sangre_cerebrovascular_caco2",
+        "reference": "7,880 - 10,090",
+        "baselineValue": "6.337",
+        "unit": "",
+        "displayName": "Volumen de Oxígeno en la sangre cerebrovascular (CaCO2)"
+      },
+      {
+        "name": "Presion de Oxigeno en la sangre cerebrovascular (PaO2)",
+        "key": "presion_de_oxigeno_en_la_sangre_cerebrovascular_pao2",
+        "reference": "5,017 - 5,597",
+        "baselineValue": "5.461",
+        "unit": "",
+        "displayName": "Presión de Oxígeno en la sangre cerebrovascular (PaO2)"
+      }
+    ]
+  },
+  "blood_lipids": {
+    "title": "Lipidos Sanguineos",
+    "key": "blood_lipids",
+    "items": [
+      {
+        "name": "Viscosidad de la Sangre",
+        "key": "viscosidad_de_la_sangre",
+        "reference": "4,131 - 4,562",
+        "baselineValue": "5.06",
+        "unit": ""
+      },
+      {
+        "name": "Colesterol Total (TC)",
+        "key": "colesterol_total_tc",
+        "reference": "1,833 - 2,979",
+        "baselineValue": "3.177",
+        "unit": ""
+      },
+      {
+        "name": "Trigliceridos (TG)",
+        "key": "trigliceridos_tg",
+        "reference": "1,116 - 2,101",
+        "baselineValue": "1.13",
+        "unit": ""
+      },
+      {
+        "name": "Lipo Proteinas de Alta dencidad (HDL-C)",
+        "key": "lipo_proteinas_de_alta_dencidad_hdl-c",
+        "reference": "1,449 - 2,246",
+        "baselineValue": "3.433",
+        "unit": "",
+        "displayName": "Lipoproteínas de Alta densidad (HDL-C)"
+      },
+      {
+        "name": "La lipoproteína de baja densidad (LDL-C)",
+        "key": "la_lipoproteina_de_baja_densidad_ldl-c",
+        "reference": "0,831 - 1,588",
+        "baselineValue": "0.944",
+        "unit": ""
+      },
+      {
+        "name": "Grasas Neutras (MB)",
+        "key": "grasas_neutras_mb",
+        "reference": "0,726 - 1,281",
+        "baselineValue": "0.754",
+        "unit": ""
+      },
+      {
+        "name": "Complejos Inmunes Circulantes (CIC)",
+        "key": "complejos_inmunes_circulantes_cic",
+        "reference": "13,012 - 17,291",
+        "baselineValue": "14.566",
+        "unit": ""
+      }
+    ]
+  },
+  "prostate": {
+    "title": "Próstata",
+    "key": "prostate",
+    "items": [
+      {
+        "name": "Grado de Hiperplasia Prostática",
+        "key": "grado_de_hiperplasia_prostatica",
+        "reference": "1,023 - 3,230",
+        "baselineValue": "3.587",
+        "unit": ""
+      },
+      {
+        "name": "Grado de Calcificación Prostática",
+        "key": "grado_de_calcificacion_prostatica",
+        "reference": "1,471 - 6,079",
+        "baselineValue": "3.104",
+        "unit": ""
+      },
+      {
+        "name": "Síndrome de Prostatitis",
+        "key": "sindrome_de_prostatitis",
+        "reference": "2,213 - 2,717",
+        "baselineValue": "2.89",
+        "unit": ""
+      }
+    ]
+  },
+  "male_sexual": {
+    "title": "Función Sexual Masculina",
+    "key": "male_sexual",
+    "items": [
+      {
+        "name": "Testosterona",
+        "key": "testosterona",
+        "reference": "3,342 - 9,461",
+        "baselineValue": "5.181",
+        "unit": ""
+      },
+      {
+        "name": "Gonadotropina",
+        "key": "gonadotropina",
+        "reference": "4,111 - 18,741",
+        "baselineValue": "8.562",
+        "unit": ""
+      },
+      {
+        "name": "Transmisor de la Erección",
+        "key": "transmisor_de_la_ereccion",
+        "reference": "3,241 - 9,814",
+        "baselineValue": "6.455",
+        "unit": ""
+      }
+    ]
+  },
+  "sperm_semen": {
+    "title": "Esperma y Semen",
+    "key": "sperm_semen",
+    "items": [
+      {
+        "name": "Volumen del Semen",
+        "key": "volumen_del_semen",
+        "reference": "1,502 - 6,028",
+        "baselineValue": "6.009",
+        "unit": ""
+      },
+      {
+        "name": "Tiempo de Licuefaccion",
+        "key": "tiempo_de_licuefaccion",
+        "reference": "10,283 - 30,282",
+        "baselineValue": "9.449",
+        "unit": "",
+        "displayName": "Tiempo de Licuefacción"
+      },
+      {
+        "name": "Numero de Espermas",
+        "key": "numero_de_espermas",
+        "reference": "2,483 - 3,932",
+        "baselineValue": "3.086",
+        "unit": "",
+        "displayName": "Número de Espermas"
+      },
+      {
+        "name": "Tasa de Movilidad de Espermas",
+        "key": "tasa_de_movilidad_de_espermas",
+        "reference": "0,637 - 0,877",
+        "baselineValue": "0.586",
+        "unit": ""
+      }
+    ]
+  },
+  "body_composition": {
+    "title": "Elementos humanos",
+    "key": "body_composition",
+    "items": [
+      {
+        "name": "Clasificación Componencial",
+        "key": "clasificacion_componencial",
+        "reference": "Mediciones",
+        "baselineValue": "Humedad del cuerpo",
+        "unit": ""
+      },
+      {
+        "name": "(1)líquido intracelular (L)",
+        "key": "1liquido_intracelular_l",
+        "reference": "21.5",
+        "baselineValue": "",
+        "unit": ""
+      },
+      {
+        "name": "(2)líquido extracelular(L)",
+        "key": "2liquido_extracelularl",
+        "reference": "11",
+        "baselineValue": "(6)la humedad del cuerpo=(1)+(2)=32.5",
+        "unit": ""
+      },
+      {
+        "name": "(3)Proteínas (Kg)",
+        "key": "3proteinas_kg",
+        "reference": "8.53",
+        "baselineValue": "",
+        "unit": ""
+      },
+      {
+        "name": "(4)sustancias inorgánicas(Kg)",
+        "key": "4sustancias_inorganicaskg",
+        "reference": "26.39",
+        "baselineValue": "",
+        "unit": ""
+      },
+      {
+        "name": "(5)grasa corporal(Kg)",
+        "key": "5grasa_corporalkg",
+        "reference": "23.5",
+        "baselineValue": "(9)Peso=(8)+(5)=91",
+        "unit": ""
+      }
+    ]
+  }
+}

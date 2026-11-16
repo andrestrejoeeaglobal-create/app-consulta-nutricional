@@ -133,7 +133,7 @@ const getFase4StateObj = (currentTree) => {
             stateObj.grandparentsMaternal[key] = true;
         } else if (rel === 'Abuela Paterna' || rel === 'Abuelo Paterno') {
             stateObj.grandparentsPaternal[key] = true;
-        } else if (rel === 'Hermano/a') {
+        } else if (rel === 'Hermano/a' || rel === 'Hermano' || rel === 'Hermana') {
             stateObj.siblings[key] = true;
         }
     });
@@ -303,12 +303,21 @@ const Fase4_AntecedentesFamiliares = ({ patientData, setPatientData, onPhaseComp
             { label: "Abuelo Materno", value: "Abuelo Materno" },
             { label: "Abuela Paterna", value: "Abuela Paterna" },
             { label: "Abuelo Paterno", value: "Abuelo Paterno" },
-            { label: "Hermano(a)", value: "Hermano/a" },
-            { label: "Tío(a) Materno(a)", value: "Tio/a Materno/a" },
-            { label: "Tío(a) Paterno(a)", value: "Tio/a Paterno/a" }
+            { label: "Hermana", value: "Hermana" },
+            { label: "Hermano", value: "Hermano" },
+            { label: "Tía Materna", value: "Tía Materna" },
+            { label: "Tío Materno", value: "Tío Materno" },
+            { label: "Tía Paterna", value: "Tía Paterna" },
+            { label: "Tío Paterno", value: "Tío Paterno" }
         ];
-        if (age >= 18) base.push({ label: "Hijo(a)", value: "Hijo/a" });
-        if (age >= 45) base.push({ label: "Nieto(a)", value: "Nieto/a" });
+        if (age >= 18) {
+            base.push({ label: "Hija", value: "Hija" });
+            base.push({ label: "Hijo", value: "Hijo" });
+        }
+        if (age >= 45) {
+            base.push({ label: "Nieta", value: "Nieta" });
+            base.push({ label: "Nieto", value: "Nieto" });
+        }
         return base;
     };
 

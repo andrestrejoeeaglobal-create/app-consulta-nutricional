@@ -1,13 +1,15 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --color-background: #FAFAFA;
+  --color-background: #F8FAFC;
   --color-accent: #1C75BC;
-  --font-sans: "Inter", "Roboto", sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   --font-prototype: "Prototype", "Inter", sans-serif;
+  --font-sansation: "Sansation", "Inter", sans-serif;
 
-  /* --- TILO DESIGN SYSTEM THEME EXTENSION (v1.0) --- */
+  /* --- EQUIPO EN ACCIÓN® DESIGN SYSTEM TOKENS (v2.0.2 — Capa 3 NOM-004) --- */
   --color-tilo-bg-base: var(--tilo-bg-main);
   --color-tilo-bg-panel: var(--tilo-bg-card);
   --color-tilo-bg-chat-sys: var(--tilo-clinical-gray-50);
@@ -22,100 +24,84 @@
   --color-tilo-success-text: var(--tilo-success-text);
 }
 
-/* Fonts are missing from project, falling back to Inter/Roboto 
-@font-face {
-  font-family: 'Prototype';
-  src: url('/fonts/Prototype.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Sansation';
-  src: url('/fonts/Sansation.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
-*/
-
 :root {
   color-scheme: light;
-  /* --- TILO DESIGN TOKENS (v1.0) --- */
-  /* Brand Colors (Calibrados según el manual de marca oficial) */
-  --tilo-brand-blue: #1C75BC;    /* Azul Corporativo - Estabilizador */
-  --tilo-brand-dark: #0f172a;    /* Slate-900 */
-  --tilo-brand-success: #3AAA35; /* Verde Vida / Ingeniería Tisular */
-  --tilo-brand-warning: #FFCC00; /* Amarillo Creatividad */
-  --tilo-brand-danger: #E30613;  /* Rojo Pasión / Ignición Mitocondrial */
+  /* --- TOKENS OFICIALES v2.0.2 (Modo Claro — Predeterminado en Sucursal) --- */
+  --tilo-brand-blue: #1C75BC;    /* Azul Corporativo */
+  --tilo-brand-dark: #0F172A;    /* Slate-900 */
+  --tilo-brand-success: #3AAA35; /* Verde Ingeniería Tisular (34Plus®) */
+  --tilo-brand-warning: #FFCC00; /* Amarillo Atención AAA (siempre con texto #0F172A) */
+  --tilo-brand-danger: #B70E0C;  /* Rojo Institucional UI / 33Plus® (#E30613 reservado a empaque) */
+  --tilo-brand-empathy: #F29FC5; /* Rosa Empatía Companion */
 
-  /* Text Colors */
-  --tilo-text-primary: #334155;   /* Slate-700 */
-  --tilo-text-secondary: #64748b; /* Slate-500 */
-  --tilo-text-on-dark: #f8fafc;   /* Slate-50 */
+  /* Text Colors — WCAG 2.2 AAA (>= 7.0:1) */
+  --tilo-text-primary: #0F172A;   /* Slate-900 */
+  --tilo-text-secondary: #334155; /* Slate-700 (>= 7.0:1 sobre #FFFFFF / #F8FAFC) */
+  --tilo-text-on-dark: #F8FAFC;   /* Slate-50 */
 
-  /* Surface Colors (Regla 60-30-10) */
-  --tilo-bg-main: #FAFAFA;        /* 60% Blanco Quirúrgico - Estéril */
-  --tilo-bg-card: #ffffff;        /* Fondo Panel */
-  --tilo-bg-hover: #f1f5f9;       /* Slate-100 */
-  --tilo-bg-secondary: #F1F5F9;   /* 30% Estructural */
+  /* Surface Colors (70%-85% Neutros Slate) */
+  --tilo-bg-main: #F8FAFC;        /* Slate-50 Lienzo Clínico */
+  --tilo-bg-card: #FFFFFF;        /* Blanco Panel */
+  --tilo-bg-hover: #F1F5F9;       /* Slate-100 */
+  --tilo-bg-secondary: #F1F5F9;   /* Slate-100 */
 
-  /* Borders & Shadows */
-  --tilo-border-light: #e2e8f0;   /* Slate-200 */
-  --tilo-shadow-soft: 0 4px 20px -2px rgb(0 0 0 / 0.03), 0 2px 4px -2px rgb(0 0 0 / 0.02);
-  --tilo-shadow-hover: 0 10px 25px -4px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  /* Borders & Sombras Tintadas con #0F172A (Cero rgb(0 0 0) puro) */
+  --tilo-border-light: #E2E8F0;   /* Slate-200 */
+  --tilo-shadow-soft: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+  --tilo-shadow-hover: 0 10px 25px -4px rgba(15, 23, 42, 0.09), 0 4px 6px -4px rgba(15, 23, 42, 0.05);
 
-  /* Glassmorphism / Neumorphism */
-  --tilo-glass-bg: rgba(255, 255, 255, 0.65);
-  --tilo-glass-border: rgba(255, 255, 255, 0.7);
+  /* Glassmorphism */
+  --tilo-glass-bg: rgba(255, 255, 255, 0.72);
+  --tilo-glass-border: rgba(226, 232, 240, 0.85);
   --tilo-glass-blur: 16px;
 
-  /* Terminal A - Clinical Look Strict Overrides */
-  --tilo-clinical-white: #ffffff;
-  --tilo-clinical-gray-50: #f8fafc;
-  --tilo-clinical-gray-100: #f1f5f9;
+  /* Clinical Surfaces */
+  --tilo-clinical-white: #FFFFFF;
+  --tilo-clinical-gray-50: #F8FAFC;
+  --tilo-clinical-gray-100: #F1F5F9;
 
-  /* Text Contrast Override Colors (WCAG 2.1 AA) */
-  --tilo-warning-text: #B45309;  /* Ámbar Oscuro */
-  --tilo-success-text: #1E6B1A;  /* Verde Oscuro */
+  /* Text Contrast Override Colors (WCAG 2.2 AAA) */
+  --tilo-warning-text: #0F172A;  /* Texto oscuro obligatorio sobre Amarillo #FFCC00 */
+  --tilo-success-text: #166534;  /* Verde Alto Contraste */
 }
 
-/* --- MODO OSCURO ERGONÓMICO (Previene la halación visual y fatiga) --- */
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    
-    /* Superficies Carbón No Emisoras (60% Dominante) */
-    --tilo-bg-main: #121212;
-    --tilo-bg-card: #1E1E1E;        /* Tarjeta Nivel 1 */
-    --tilo-bg-secondary: #252525;   /* Tarjeta Nivel 2 / Elevación */
-    --tilo-bg-hover: #2d2d2d;
-    
-    /* Textos con Opacidad Controlada */
-    --tilo-text-primary: rgba(255, 255, 255, 0.87);   /* 87% Opacidad */
-    --tilo-text-secondary: rgba(255, 255, 255, 0.60); /* 60% Opacidad */
-    --tilo-text-on-dark: rgba(255, 255, 255, 0.87);
-    
-    /* Bordes Suaves en Modo Oscuro */
-    --tilo-border-light: #2c2c2c;
-    
-    /* Colores Desaturados (Evitan la vibración retiniana) */
-    --tilo-brand-blue: #5C9CD8;       /* Azul Suave */
-    --tilo-brand-success: #76D773;    /* Verde Menta */
-    --tilo-brand-danger: #F85A5A;     /* Rojo Coral */
-    --tilo-brand-warning: #FFE169;    /* Amarillo Pastel */
-    
-    /* Glassmorphic overrides para Modo Oscuro */
-    --tilo-glass-bg: rgba(30, 30, 30, 0.65);
-    --tilo-glass-border: rgba(255, 255, 255, 0.1);
-    
-    --tilo-clinical-white: #1e1e1e;
-    --tilo-clinical-gray-50: #121212;
-    --tilo-clinical-gray-100: #1e1e1e;
+/* --- MODO OSCURO GOBERNADO POR CLASE EXPLÍCITA (.dark — Anti-FOUC) --- */
+:root.dark,
+.dark {
+  color-scheme: dark;
 
-    /* Text Contrast Override Colors (WCAG 2.1 AA) */
-    --tilo-warning-text: #FFE169;  /* Amarillo Pastel */
-    --tilo-success-text: #76D773;  /* Verde Menta */
-  }
+  /* Superficies Slate No Emisoras (70%-85% Neutros) */
+  --tilo-bg-main: #0F172A;       /* Slate-900 Lienzo */
+  --tilo-bg-card: #1E293B;       /* Slate-800 Tarjeta Nivel 1 */
+  --tilo-bg-secondary: #334155;  /* Slate-700 Elevación Nivel 2 */
+  --tilo-bg-hover: #334155;
+
+  /* Textos WCAG 2.2 AAA en Modo Oscuro */
+  --tilo-text-primary: #F8FAFC;   /* Slate-50 */
+  --tilo-text-secondary: #CBD5E1; /* Slate-300 (>= 7.0:1 sobre #0F172A) */
+  --tilo-text-on-dark: #F8FAFC;
+
+  /* Bordes y Sombras */
+  --tilo-border-light: #334155;   /* Slate-700 */
+  --tilo-shadow-soft: 0 4px 20px -2px rgba(15, 23, 42, 0.45), 0 2px 4px -2px rgba(15, 23, 42, 0.30);
+  --tilo-shadow-hover: 0 10px 25px -4px rgba(15, 23, 42, 0.60), 0 4px 6px -4px rgba(15, 23, 42, 0.40);
+
+  /* Acentos Institucionales */
+  --tilo-brand-blue: #3894E0;
+  --tilo-brand-success: #3AAA35;
+  --tilo-brand-danger: #E0312E;
+  --tilo-brand-warning: #FFCC00;
+
+  /* Glassmorphism Oscuro */
+  --tilo-glass-bg: rgba(30, 41, 59, 0.78);
+  --tilo-glass-border: rgba(51, 65, 85, 0.85);
+
+  --tilo-clinical-white: #1E293B;
+  --tilo-clinical-gray-50: #0F172A;
+  --tilo-clinical-gray-100: #1E293B;
+
+  --tilo-warning-text: #0F172A;
+  --tilo-success-text: #86EFAC;
 }
 
 body {
@@ -123,19 +109,46 @@ body {
   background-color: var(--tilo-bg-main);
   color: var(--tilo-text-primary);
   font-family: var(--font-sans);
-  overflow: hidden;
-  /* App-like feel */
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- BRAND TYPOGRAPHY CLASSES --- */
+@media (min-width: 1024px) {
+  body {
+    overflow: hidden;
+  }
+}
+
+/* --- TIPOGRAFÍA INSTITUCIONAL Y ALINEACIÓN TABULAR 100% --- */
 .font-prototype {
   font-family: var(--font-prototype);
 }
 
 .font-sansation {
-  font-family: var(--font-sans);
+  font-family: var(--font-sansation);
+}
+
+.tabular-nums,
+.dashboard-data-text,
+.session-data {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- FIRMA EMPÍRICA DE 5 HEXÁGONOS (2.0s: 1.0s Ola + 1.0s Reposo) --- */
+@keyframes eaHexWave {
+  0%, 50%, 100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-6px);
+  }
+}
+
+.ea-hex-wave {
+  display: inline-flex;
+  animation: eaHexWave 2s ease-in-out infinite;
+  will-change: transform;
 }
 
 /* --- TERMINAL A: AMBIENT BLOBS & ANIMATIONS --- */
@@ -143,15 +156,12 @@ body {
   0% {
     transform: translate(0px, 0px) scale(1);
   }
-
   33% {
     transform: translate(30px, -50px) scale(1.1);
   }
-
   66% {
     transform: translate(-20px, 20px) scale(0.9);
   }
-
   100% {
     transform: translate(0px, 0px) scale(1);
   }
@@ -169,11 +179,20 @@ body {
   animation-delay: 4s;
 }
 
+/* --- RESPETO ESTRICTO A REDUCCIÓN DE MOVIMIENTO (WCAG 2.2 AAA) --- */
+@media (prefers-reduced-motion: reduce) {
+  .ea-hex-wave,
+  .animate-blob,
+  .animate-blue-glow {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
 /* --- MEDICAL ALERTS & SURFACES --- */
 .medical-alert {
-  /* Subtle alert border as requested */
-  /* Replaces full red background */
-  box-shadow: 0 0 10px rgba(244, 63, 94, 0.2) !important;
+  box-shadow: 0 0 10px rgba(183, 14, 12, 0.22) !important;
 }
 
 /* --- BLUE GLOW EFFECT (Data Sync) --- */
@@ -181,17 +200,14 @@ body {
   0% {
     box-shadow: 0 0 0px transparent;
   }
-
   20% {
     box-shadow: 0 0 15px #1C75BC;
     border-color: #1C75BC;
   }
-
   80% {
     box-shadow: 0 0 15px #1C75BC;
     border-color: #1C75BC;
   }
-
   100% {
     box-shadow: 0 0 0px transparent;
   }
@@ -201,48 +217,35 @@ body {
   animation: syncGlow 1.5s ease-out forwards;
 }
 
-/* Custom scrollbar for a cleaner tech look */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 99px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Global scrollbar defaults */
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar,
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
+.custom-scrollbar::-webkit-scrollbar-track,
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
+.custom-scrollbar::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  /* slate-300 */
+  background: #CBD5E1;
   border-radius: 99px;
 }
 
+.dark .custom-scrollbar::-webkit-scrollbar-thumb,
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-  /* slate-400 */
+  background: #94A3B8;
 }
 
 /* --- UTILITY CLASSES --- */
-
 .glass-morphism {
   background: var(--tilo-glass-bg);
   -webkit-backdrop-filter: blur(var(--tilo-glass-blur));
@@ -254,7 +257,6 @@ body {
 .tilo-card {
   background-color: var(--tilo-bg-card);
   border-radius: 1rem;
-  /* 16px */
   border: 1px solid var(--tilo-border-light);
   box-shadow: var(--tilo-shadow-soft);
   transition: all 0.3s ease;
@@ -265,7 +267,7 @@ body {
   transform: translateY(-2px);
 }
 
-/* --- TILO SMART SELECT (DESIGN SYSTEM V1.0) --- */
+/* --- TILO SMART SELECT --- */
 .tilo-select-container {
   position: relative;
   width: 100%;
@@ -283,26 +285,22 @@ body {
   background-color: var(--tilo-bg-card);
   border: 1px solid var(--tilo-border-light);
   border-radius: 0.5rem;
-  /* 8px */
   padding: 0.6rem 1rem;
   padding-right: 2.5rem;
-  /* Space for icon */
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
 }
 
 .tilo-select:hover {
-  border-color: #cbd5e1;
-  /* slate-300 */
+  border-color: #CBD5E1;
   background-color: var(--tilo-bg-hover);
 }
 
 .tilo-select:focus {
   outline: none;
   border-color: var(--tilo-brand-blue);
-  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
-  /* Brand Glow */
+  box-shadow: 0 0 0 3px rgba(28, 117, 188, 0.18);
 }
 
 .tilo-select:invalid {
@@ -323,32 +321,30 @@ body {
 /* --- TENSEGRITY DIVIDER (NOM-004) --- */
 .prose hr, hr {
   border: 0 !important;
-  border-top: 1px solid #e2e8f0 !important; /* slate-200 */
+  border-top: 1px solid var(--tilo-border-light) !important;
   margin: 1.5rem 0 !important;
   opacity: 1 !important;
   height: 1px !important;
   display: block !important;
 }
 
-/* --- STRONG ACCENTUATION (Bolding Bug Fix) --- */
 strong, b, .prose strong {
   font-weight: 700 !important;
 }
 
-/* --- PRINT RULES (FASE 20 RECALIBRATION) --- */
+/* --- PRINT RULES (NOM-004) --- */
 @media print {
-  /* 1. Ocultar chat, navegación, encabezados y botones */
   #chat-panel,
   .chat-panel-container,
   nav,
   header,
+  footer,
   .action-hub-container,
   .no-print,
   button {
     display: none !important;
   }
 
-  /* 2. Expandir el Dashboard al 100% de la página */
   #dashboard-panel,
   .dashboard-panel-container {
     width: 100% !important;
@@ -357,21 +353,19 @@ strong, b, .prose strong {
     padding: 0 !important;
     box-shadow: none !important;
     border: none !important;
-    background: #ffffff !important;
-    color: #000000 !important;
+    background: #FFFFFF !important;
+    color: #0F172A !important;
   }
 
-  /* 3. Estilos limpios para el Bento Grid sin sombras ni desbordamientos */
   .bento-card {
-    background: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
+    background: #FFFFFF !important;
+    border: 1px solid #CBD5E1 !important;
     box-shadow: none !important;
     break-inside: avoid;
   }
 
-  /* 4. Configuración de página */
   @page {
     size: letter portrait;
     margin: 1.5cm;
   }
-}
+}

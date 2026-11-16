@@ -6,6 +6,7 @@ const { spawn } = require('child_process');
 const multer = require('multer');
 const sharp = require('sharp');
 const { db } = require('../db');
+const cryptoVault = require('../utils/cryptoVault');
 const { GoogleGenAI } = require('@google/genai');
 const { parseElectretHTML, parseElectretJSON, normalizeClinicalName, parseLocalDate } = require('../utils/electretParser');
 const { samplePhysicalSensor, synthesizePatientStudy } = require('../services/directElectretEngine');
@@ -542,7 +543,8 @@ const handleElectretSync = async (req, res) => {
     });
 
     const targetPatientName = (req.body?.patientName || req.body?.name || req.query?.patientName || req.query?.name || '').trim();
-    console.log(`🔄 [ODBC SYNC v5.0] Petición de sincronización y control de hardware para: "${targetPatientName}"`);
+    const targetCitationId = String(req.body?.citationId || req.query?.citationId || '').trim();
+    console.log(`🔄 [ODBC SYNC v5.0] Petición de sincronización y control de hardware para: "${targetPatientName || `Cita #${targetCitationId}`}"`);
 
     // 1. Detección de hardware USB conectado
     let hwStatus = { sensorConnected: true, dongleConnected: true, hardwareReady: true, status: "ONLINE" };
@@ -553,8 +555,14 @@ const handleElectretSync = async (req, res) => {
     }
     console.log(`🔌 [HARDWARE] Sensor: ${hwStatus.sensorConnected ? 'ACTIVO' : 'NO DETECTADO'}, Llave USB: ${hwStatus.dongleConnected ? 'ACTIVA' : 'NO DETECTADA'}`);
 
-    // 1b. Si existe un estudio directo reciente en memoria para este paciente, devolverlo de inmediato
-    if (lastDirectScanResult && checkPatientMatch(targetPatientName, lastDirectScanResult.patientMetadata?.name)) {
+    const forceFresh = req.query.forceFresh === 'true' || req.body?.forceFresh === true;
+    const storedOnly = req.query.storedOnly === 'true' || req.body?.storedOnly === true;
+    if (forceFresh) {
+        lastDirectScanResult = null;
+    }
+
+    // 1b. Si existe un estudio directo reciente en memoria para este paciente, devolverlo de inmediato (a menos que se fuerce refresco)
+    if (!forceFresh && lastDirectScanResult && checkPatientMatch(targetPatientName, lastDirectScanResult.patientMetadata?.name)) {
         console.log(`🧬 [DIRECT HARDWARE SYNC] Inyectando estudio directo en memoria para "${lastDirectScanResult.patientMetadata?.name}"`);
         return res.json({
             success: true,
@@ -565,6 +573,51 @@ const handleElectretSync = async (req, res) => {
             abnormalCount: lastDirectScanResult.abnormalCount,
             electret_scanned: true,
             source: "DIRECT_HARDWARE_INTERFACE"
+        });
+    }
+
+    // 1c. Recuperación desde bóveda SQLite (session_persistence cifrada AES-256-GCM) si el expediente activo ya tenía escaneo registrado
+    if (!forceFresh && (targetCitationId || targetPatientName)) {
+        try {
+            const persistedRows = targetCitationId
+                ? db.prepare('SELECT citation_id, user_id, patient_data_snapshot FROM session_persistence WHERE citation_id = ? AND patient_data_snapshot IS NOT NULL').all(targetCitationId)
+                : db.prepare('SELECT citation_id, user_id, patient_data_snapshot FROM session_persistence WHERE patient_data_snapshot IS NOT NULL ORDER BY last_updated DESC').all();
+            for (const row of persistedRows) {
+                const decStr = cryptoVault.decryptClinicalData(row.patient_data_snapshot);
+                if (!decStr) continue;
+                const snap = typeof decStr === 'string' ? JSON.parse(decStr) : decStr;
+                const snapName = (snap?.profile?.name || snap?.identificacion?.nombre || snap?.scan_data?.electret_patient_name || '').trim();
+                const storedMetrics = snap?.scan_data?.electret_metrics || snap?.electretTelemetry?.categories;
+                const matchesIdentity = targetCitationId
+                    ? String(row.citation_id) === targetCitationId
+                    : (snapName && checkPatientMatch(targetPatientName, snapName));
+                if (storedMetrics && Object.keys(storedMetrics).length > 0 && matchesIdentity) {
+                    console.log(`🧬 [SQLITE TELEMETRY RECOVERY] Restaurando telemetría cifrada para "${snapName || `Cita #${row.citation_id}`}" (Cita #${row.citation_id})`);
+                    return res.json({
+                        success: true,
+                        hardware: hwStatus,
+                        patientMetadata: {
+                            name: snapName,
+                            scanDate: snap?.electretTelemetry?.scannedAt || new Date().toLocaleString('es-MX', { hour12: false })
+                        },
+                        electret_metrics: storedMetrics,
+                        totalParameters: snap?.electretTelemetry?.totalParameters || 253,
+                        abnormalCount: snap?.electretTelemetry?.abnormalCount || 0,
+                        electret_scanned: true,
+                        source: "SQLITE_SESSION_PERSISTENCE"
+                    });
+                }
+            }
+        } catch (sqliteSyncErr) {
+            console.warn("⚠️ [SQLITE TELEMETRY RECOVERY] Aviso:", sqliteSyncErr.message);
+        }
+    }
+
+    if (storedOnly) {
+        return res.json({
+            success: false,
+            status: "NO_STORED_STUDY",
+            electret_scanned: false
         });
     }
 
@@ -684,6 +737,39 @@ router.post('/electret/direct-acquire', async (req, res) => {
         }
 
         lastDirectScanResult = study;
+
+        // Persistir de inmediato en session_persistence (SQLite cifrado) si existe sesión activa del paciente
+        try {
+            const persistedRows = db.prepare('SELECT citation_id, patient_data_snapshot FROM session_persistence WHERE patient_data_snapshot IS NOT NULL ORDER BY last_updated DESC').all();
+            for (const row of persistedRows) {
+                const decStr = cryptoVault.decryptClinicalData(row.patient_data_snapshot);
+                if (!decStr) continue;
+                const snap = typeof decStr === 'string' ? JSON.parse(decStr) : decStr;
+                const snapName = (snap?.profile?.name || snap?.identificacion?.nombre || '').trim();
+                if (snapName && checkPatientMatch(name, snapName)) {
+                    snap.scan_data = {
+                        ...(snap.scan_data || {}),
+                        electret_metrics: study.categories,
+                        electret_scanned: true,
+                        electret_patient_name: snapName
+                    };
+                    snap.electretTelemetry = {
+                        isScanned: true,
+                        scannedAt: new Date().toISOString(),
+                        citationId: row.citation_id,
+                        patientName: snapName,
+                        categories: study.categories,
+                        totalParameters: study.totalParameters,
+                        abnormalCount: study.abnormalCount
+                    };
+                    const encSnap = cryptoVault.encryptClinicalData(snap);
+                    db.prepare('UPDATE session_persistence SET patient_data_snapshot = ?, last_updated = CURRENT_TIMESTAMP WHERE citation_id = ?').run(encSnap, row.citation_id);
+                    break;
+                }
+            }
+        } catch (persistErr) {
+            console.warn("⚠️ [DIRECT HARDWARE SCAN] No se pudo respaldar en session_persistence:", persistErr.message);
+        }
 
         console.log(`✅ [DIRECT HARDWARE SCAN] Telemetría inyectada con éxito: ${study.totalParameters} parámetros, ${study.abnormalCount} anomalías.`);
 
@@ -1935,8 +2021,9 @@ router.post('/sync-cortex', (req, res) => {
         let phase = 18;
         let block = "PHASE_18_SUMMARY_CONFIRM";
 
-        if (persisted) {
-            patientDataObj = JSON.parse(persisted.patient_data_snapshot || '{}');
+        if (persisted && persisted.patient_data_snapshot) {
+            const decSnap = cryptoVault.decryptClinicalData(persisted.patient_data_snapshot) || '{}';
+            patientDataObj = typeof decSnap === 'string' ? JSON.parse(decSnap) : decSnap;
             phase = persisted.last_active_phase || 18;
             block = persisted.last_active_block || "PHASE_18_SUMMARY_CONFIRM";
         }
@@ -2162,7 +2249,7 @@ router.post('/sync-cortex', (req, res) => {
 
         patientDataObj.clinical_flags = [...clinicalFlags];
 
-        // 4. Guardar de nuevo en SQLite
+        // 4. Guardar de nuevo en SQLite (cifrado AES-256-GCM y conservando user_id)
         const stmtSave = db.prepare(`
             INSERT INTO session_persistence (citation_id, last_active_phase, last_active_block, patient_data_snapshot, is_completed, last_updated)
             VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
@@ -2171,7 +2258,7 @@ router.post('/sync-cortex', (req, res) => {
                 last_updated = CURRENT_TIMESTAMP
         `);
 
-        stmtSave.run(citationId.toString(), phase, block, JSON.stringify(patientDataObj));
+        stmtSave.run(citationId.toString(), phase, block, cryptoVault.encryptClinicalData(patientDataObj));
 
         console.log(`💾 [CORTEX SYNC] Métricas completas (con Estudios Externos) guardadas silenciosamente en SQLite para Cita #${citationId}`);
         res.json({ success: true, message: "Sincronización completa de la triada y estudios externos con CORTEX exitosa." });

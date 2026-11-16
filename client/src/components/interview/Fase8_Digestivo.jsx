@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+import { stripNegatedSentinels } from '../../utils/genderConcordance';
 
 const symptomOptions = [
     { label: "Colitis / Inflamación", value: "Colitis / Inflamación" },
@@ -13,14 +14,15 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
     const { patientName: pName, isMinor, isLactante, isPediatrico, isGeriatric, patientGender } = usePatientLinguistics(patientData);
 
     const [step, setStep] = useState(() => {
-        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("salud digestiva en nuestro núcleo de datos"));
-        const hasSymptoms = patientData.history?.digestive_symptoms && patientData.history.digestive_symptoms.length > 0;
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content?.includes("salud digestiva en nuestro núcleo de datos"));
+        const hasSymptoms = stripNegatedSentinels(patientData.history?.digestive_symptoms || []).length > 0;
         const hasFrequency = patientData.history?.digestive_frequency && patientData.history.digestive_frequency !== "Ninguna";
-        if (hasSummary || hasSymptoms || hasFrequency) {
+        if (patientData?.digestive_edit_mode || hasSummary || hasSymptoms || hasFrequency) {
             return 'correct_menu';
         }
         return 'digestive_gate';
     });
+    const [isSingleLineEdit, setIsSingleLineEdit] = useState(false);
     const hasGreeted = useRef(false);
 
     useEffect(() => {
@@ -28,19 +30,24 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
 
         if (step === 'correct_menu') {
             hasGreeted.current = true;
-            setMessages(prev => [
-                ...prev,
-                {
-                    role: 'assistant',
-                    content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de salud digestiva?",
-                    options: [
-                        { label: "✏️ Modificar síntomas digestivos", value: "MODIFY_SYMPTOMS" },
-                        { label: "✏️ Cambiar frecuencia de molestias", value: "MODIFY_FREQUENCY" },
-                        { label: "🔄 Limpiar historial digestivo", value: "CLEAR_ALL" },
-                        { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
-                    ]
-                }
-            ]);
+            setMessages(prev => {
+                const lastAssistant = [...prev].reverse().find(m => m.role === 'assistant');
+                if (lastAssistant?.content?.includes("¿Qué cambio o acción desea realizar en su historial de salud digestiva?")) return prev;
+                return [
+                    ...prev,
+                    {
+                        role: 'assistant',
+                        content: "De acuerdo. ¿Qué cambio o acción desea realizar en su historial de salud digestiva?",
+                        options: [
+                            { label: "✏️ Modificar síntomas digestivos", value: "MODIFY_SYMPTOMS" },
+                            { label: "✏️ Cambiar frecuencia de molestias", value: "MODIFY_FREQUENCY" },
+                            { label: "🟢 Declarar sin molestias (Salud digestiva óptima)", value: "SET_EUBIOSIS" },
+                            { label: "🔄 Limpiar historial digestivo (Reiniciar)", value: "CLEAR_ALL" },
+                            { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
+                        ]
+                    }
+                ];
+            });
             return;
         }
 
@@ -77,22 +84,28 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
         }
     }, [messages, isMinor, isLactante, pName, setMessages, step]);
 
+    const processStepRef = useRef(null);
+    useEffect(() => {
+        processStepRef.current = processStep;
+    });
+
     // Middleware de enrutamiento: Registro del callback constructor para evitar la ejecución prematura en App.jsx
     useEffect(() => {
         if (registerInputHandler) {
-            registerInputHandler(() => processStep);
+            registerInputHandler(() => (input, label) => processStepRef.current(input, label));
         }
         return () => {
             if (registerInputHandler) registerInputHandler(null);
         };
-    }, [step, registerInputHandler]);
+    }, [registerInputHandler]);
 
     const processStep = async (input, label = null) => {
         let userText = (label && label !== 'text' && label !== 'select' && label !== 'number' && label !== 'tel' && label !== 'button') ? label : input;
         
         if (input === "MODIFY_SYMPTOMS") userText = "✏️ Modificar síntomas digestivos";
         if (input === "MODIFY_FREQUENCY") userText = "✏️ Cambiar frecuencia de molestias";
-        if (input === "CLEAR_ALL") userText = "🔄 Limpiar historial digestivo";
+        if (input === "SET_EUBIOSIS") userText = "🟢 Declarar sin molestias (Salud digestiva óptima)";
+        if (input === "CLEAR_ALL") userText = "🔄 Limpiar historial digestivo (Reiniciar)";
         if (input === "FINISH") userText = "❌ Cancelar (Volver al resumen)";
 
         if (label !== 'button') {
@@ -105,6 +118,7 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
         switch (step) {
             case 'correct_menu': {
                 if (input === "MODIFY_SYMPTOMS") {
+                    setIsSingleLineEdit(true);
                     const contentMsg = isMinor
                         ? `He habilitado el panel de evaluación de la salud gástrica e intestinal de **${pName}**.\n\nPara determinar el grado de inflamación, ¿cuáles de los siguientes síntomas presenta con mayor frecuencia? (Puede elegir varios).`
                         : "He habilitado el panel de evaluación de su salud gástrica e intestinal.\n\nPara determinar el grado de inflamación, ¿cuáles de los siguientes síntomas presenta con mayor frecuencia? (Puede elegir varios).";
@@ -117,6 +131,7 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
                     }]);
                     setStep('digestive_symptoms');
                 } else if (input === "MODIFY_FREQUENCY") {
+                    setIsSingleLineEdit(true);
                     setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: "Para evaluar la cronicidad del cuadro, ¿con qué frecuencia presenta estas molestias?",
@@ -127,9 +142,24 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
                         ]
                     }]);
                     setStep('digestive_freq');
-                } else if (input === "CLEAR_ALL") {
+                } else if (input === "SET_EUBIOSIS") {
+                    setIsSingleLineEdit(false);
                     const updatedData = {
                         ...patientData,
+                        digestive_edit_mode: false,
+                        history: {
+                            ...(patientData.history || {}),
+                            digestive_symptoms: [],
+                            digestive_frequency: "Ninguna"
+                        }
+                    };
+                    setPatientData(updatedData);
+                    finishPhase(updatedData);
+                } else if (input === "CLEAR_ALL") {
+                    setIsSingleLineEdit(false);
+                    const updatedData = {
+                        ...patientData,
+                        digestive_edit_mode: false,
                         history: {
                             ...(patientData.history || {}),
                             digestive_symptoms: [],
@@ -149,6 +179,7 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
                         ]
                     }]);
                 } else if (input === "FINISH") {
+                    setIsSingleLineEdit(false);
                     finishPhase(patientData);
                 }
                 break;
@@ -222,17 +253,44 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
                 break;
             }
             case 'digestive_symptoms': {
-                const symptomsArray = input.split(',').map(s => s.trim()).filter(s => s);
+                const rawArray = input.split(',').map(s => s.trim()).filter(s => s);
+                const symptomsArray = stripNegatedSentinels(rawArray);
+
+                if (symptomsArray.length === 0) {
+                    setIsSingleLineEdit(false);
+                    const updatedData = {
+                        ...patientData,
+                        digestive_edit_mode: false,
+                        history: {
+                            ...(patientData.history || {}),
+                            digestive_symptoms: [],
+                            digestive_frequency: "Ninguna"
+                        }
+                    };
+                    setPatientData(updatedData);
+                    finishPhase(updatedData);
+                    break;
+                }
+
                 const symptomsText = symptomsArray.join(', ');
+                const existingFreq = patientData.history?.digestive_frequency;
+                const hasExistingValidFreq = existingFreq && existingFreq !== "Ninguna";
 
                 const updatedData = {
                     ...patientData,
+                    digestive_edit_mode: false,
                     history: {
                         ...(patientData.history || {}),
                         digestive_symptoms: symptomsArray
                     }
                 };
                 setPatientData(updatedData);
+
+                if (isSingleLineEdit && hasExistingValidFreq) {
+                    setIsSingleLineEdit(false);
+                    finishPhase(updatedData);
+                    break;
+                }
 
                 const contentMsg = isMinor
                     ? `Entendido. He registrado la presencia de **${symptomsText}** en la evaluación de **${pName}**.\n\nPara evaluar la cronicidad del cuadro, ¿con qué frecuencia presenta estas molestias?`
@@ -251,8 +309,10 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
                 break;
             }
             case 'digestive_freq': {
+                setIsSingleLineEdit(false);
                 const updatedData = {
                     ...patientData,
+                    digestive_edit_mode: false,
                     history: {
                         ...(patientData.history || {}),
                         digestive_frequency: input
@@ -263,6 +323,7 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
                 break;
             }
             case 'REVIEW_SUMMARY': {
+                setIsSingleLineEdit(false);
                 finishPhase(patientData);
                 break;
             }
@@ -273,32 +334,34 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
     };
 
     const finishPhase = (updatedData) => {
-        const symptoms = updatedData?.history?.digestive_symptoms || [];
-        const freq = updatedData?.history?.digestive_frequency || "Ninguna";
-        let profile = updatedData?.digestive_profile;
+        setIsSingleLineEdit(false);
+        const symptoms = stripNegatedSentinels(updatedData?.history?.digestive_symptoms || []);
+        const freq = symptoms.length > 0 ? (updatedData?.history?.digestive_frequency || "Ocasional") : "Ninguna";
+        let profile;
 
-        if (!profile) {
-            if (symptoms.length > 0) {
-                const phen = symptoms.some(s => s.toLowerCase().includes('estreñ')) ? 'CONSTIPATION' :
-                             symptoms.some(s => s.toLowerCase().includes('diarr')) ? 'DIARRHEA' :
-                             symptoms.some(s => s.toLowerCase().includes('inflam') || s.toLowerCase().includes('colit')) ? 'BLOATING' : 'MIXED';
-                profile = {
-                    has_issues: true,
-                    phenotype: phen,
-                    details: { symptoms: symptoms.join(', '), frequency: freq }
-                };
-            } else {
-                profile = {
-                    has_issues: false,
-                    phenotype: 'EUBIOSIS'
-                };
-            }
+        if (symptoms.length > 0) {
+            const phen = symptoms.some(s => s.toLowerCase().includes('estreñ')) ? 'CONSTIPATION' :
+                         symptoms.some(s => s.toLowerCase().includes('diarr')) ? 'DIARRHEA' :
+                         symptoms.some(s => s.toLowerCase().includes('inflam') || s.toLowerCase().includes('colit')) ? 'BLOATING' : 'MIXED';
+            profile = {
+                has_issues: true,
+                phenotype: phen,
+                details: { symptoms: symptoms.join(', '), frequency: freq }
+            };
+        } else {
+            profile = {
+                has_issues: false,
+                phenotype: 'EUBIOSIS'
+            };
         }
 
         const dataWithProfile = {
             ...updatedData,
+            digestive_edit_mode: false,
             history: {
                 ...(updatedData?.history || {}),
+                digestive_symptoms: symptoms,
+                digestive_frequency: freq,
                 digestive_verified: true
             },
             digestive_profile: profile

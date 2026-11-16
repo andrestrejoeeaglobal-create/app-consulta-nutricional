@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { resolvePatientSex, stripNegatedSentinels } from '../utils/genderConcordance';
+import React, { useState, useEffect, useRef } from 'react';
 import tiloImg from "../assets/tilo.png";
 import { formatText, getGenderedTerm, fuzzyMatch, calculateCurp, cleanServerInfo, buildPediatricContext, inferGenderFromName, formatPhoneNumber, toTitleCase } from "../utils/utils";
 import useCitationValidation from './useCitationValidation';
@@ -6,44 +7,12 @@ import { fetchZipData, fetchMexicanCoordinates } from '../utils/geoServices';
 import { useClinicalGenome } from '../store/useClinicalGenome';
 
 // --- INITIAL STATES (EXTRACTED FOR RESET CAPABILITY) ---
-const INITIAL_CURRENT_PHASE = 'PHASE_18_ELECTRET';
-const INITIAL_ACTIVE_TAB = 'lab';
-const INITIAL_MESSAGES = INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET' ? [
-    {
-        role: 'assistant',
-        content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
-
-Para iniciar la toma con **Jorge Muñoz Padilla**, seleccione una de las siguientes opciones:
-
-1. Presione **"🚀 Realizar Escaneo Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
-2. Pídale a **Jorge Muñoz Padilla** que sujete firmemente los electrodos cilíndricos del sensor.
-3. Ejecute la prueba (60s) en Electret, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
-4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*`,
-        inputType: 'electret_scan_widget',
-        avatar: tiloImg,
-        actions: [
-            {
-                id: 'btn_launch_electret',
-                label: '🚀 Realizar Escaneo Electret',
-                style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
-                value: 'LAUNCH_ELECTRET_APP'
-            },
-            {
-                id: 'btn_skip_electret',
-                label: '⏩ Continuar sin Escáner Electret',
-                style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
-                value: 'ELECTRET_SKIP'
-            }
-        ],
-        options: [
-            { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
-            { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
-        ]
-    }
-] : [
+const INITIAL_CURRENT_PHASE = 'PHASE_0_AUTH';
+const INITIAL_ACTIVE_TAB = 'profile';
+const INITIAL_MESSAGES = [
     {
         role: "assistant",
-        content: "Hola, soy el Ecosistema de Transformación Inteligente y Logro Optimizado (T.I.L.O.), el **Copiloto Clínico y Metabólico** de Equipo en Acción. He inicializado mis protocolos de seguridad para garantizar la protección absoluta de su información clínica y validar la vigencia de su consulta.\n\n---\n\nPara blindar su sesión e iniciar el proceso, por favor **proporcione su número de cita** (recuerde que esta es personal e intransferible):",
+        content: "Hola, soy el Ecosistema de Transformación Inteligente y Logro Optimizado (T.I.L.O.), el **Companion Clínico y Metabólico** de Equipo en Acción®. He inicializado mis protocolos de seguridad para garantizar la protección absoluta de su información clínica y validar la vigencia de su consulta.\n\n---\n\nPara blindar su sesión e iniciar el proceso, por favor **proporcione su número de cita** (recuerde que esta es personal e intransferible):",
         avatar: tiloImg,
         inputType: 'number' // Explicit declaration of expected input type
     },
@@ -52,46 +21,47 @@ Para iniciar la toma con **Jorge Muñoz Padilla**, seleccione una de las siguien
 const INITIAL_PATIENT_DATA = {
     // Fases 1, 2, 4
     profile: {
-        first_name: "Jorge",
-        last_name_pat: "Muñoz",
-        last_name_mat: "Padilla",
-        name: "Jorge Muñoz Padilla", // Full name
-        birthdate: "1975-08-20",
+        first_name: "",
+        last_name_pat: "",
+        last_name_mat: "",
+        name: "", // Full name
+        birthdate: "",
         pediatric_profile: null,
-        age: 51,
-        sex: "M",
-        occupation: "Comerciante",
-        ocupacion_descriptor: "Activo", // V15.8 NEAT-005
-        factor_pal: 1.4,          // V15.8 NEAT-005
-        phone: "5551234567",
+        age: 0,
+        sex: "",
+        occupation: "",
+        ocupacion_descriptor: "", // V15.8 NEAT-005
+        factor_pal: null,          // V15.8 NEAT-005
+        phone: "",
         emergencyContact: { name: "", kin: "", phone: "" },
         curp: "",
         nationality_type: "MX",
         passport_id: "",
         religion: "",
-        marital_status: "Casado",
-        address: { zip_code: "06700", colony: "Roma Norte", street: "Insurgentes Sur" },
-        citaId: "21006",
-        usuarioId: "67197"
+        marital_status: "",
+        address: { zip_code: "", colony: "", street: "" }
+    },
+    demographics: {
+        age: 0,
+        gender: "",
+        curp: "",
+        birthdate: ""
     },
     // Fases 1, 2, 4 (Legacy Compatibility)
     identificacion: {
-        nombre: "Jorge Muñoz Padilla",
-        apellidoPaterno: "Muñoz",
-        apellidoMaterno: "Padilla",
-        fechanac: "1975-08-20",
-        sexo: "M",
-        ocupacion: "Comerciante",
-        ocupacion_descriptor: "Activo", // V15.8 NEAT-005
-        factor_pal: 1.4,          // V15.8 NEAT-005
+        nombre: "",
+        apellidoPaterno: "",
+        apellidoMaterno: "",
+        fechanac: "",
+        sexo: "",
+        ocupacion: "",
+        ocupacion_descriptor: "", // V15.8 NEAT-005
+        factor_pal: null,          // V15.8 NEAT-005
         curp: "",
         nationality_type: "MX",
         passport_id: "",
-        telefono: "5551234567",
-        religion: "",
-        citaId: "21006",
-        idCita: "21006",
-        usuarioId: "67197"
+        telefono: "",
+        religion: ""
     },
     domicilio: {
         cp: "",
@@ -108,9 +78,11 @@ const INITIAL_PATIENT_DATA = {
         family_raw_text: "",
         family_checklist_verified: false,
         family_structured: [],
+        family_history: [],
         personal_raw_text: "",
         personal_checklist_verified: false,
         personal_structured: [],
+        pathologies: [],
         surgical: [],
         medications: [],
         allergies: {
@@ -120,6 +92,13 @@ const INITIAL_PATIENT_DATA = {
         // Fase 8
         digestive_symptoms: [],
         digestive_frequency: "",
+        digestive_health: {
+            bloating: false,
+            reflux: false,
+            constipation: false,
+            evacuations_per_day: null,
+            bristol_scale: null
+        },
         // Fase 13
         special_context: ""
     },
@@ -171,14 +150,9 @@ const INITIAL_PATIENT_DATA = {
         electret_scan_data: {}
     },
     scan_data: {
-        electret_scanned: false,
-        electret_metrics: null,
-        ocular_metrics: null,
-        lingual_metrics: null,
-        external_metrics: null,
-        visual_metrics: null,
-        active_substep: null
+        electret_scanned: false
     },
+    clinical_dossier: null,
     electret_scan_data: {},
     clinical_flags: [], // Acoplamiento estabilizado para alertas Fase 12
     // FASE 13 (Biométricos legacy Fase 6)
@@ -308,16 +282,188 @@ export const analyzeClinicalMotive = async (freeText, telemetry, bodyMapZones = 
     }
 };
 
+// 🛡️ REGLA 8 NOM-004: Normalización estricta de userId (0 / '0' / 'null' / 'undefined' => null)
+// y vinculación institucional autorizada para Cita #21161 (Roberto Carlos Valdez Santana -> userId 32071)
+const ASSIGNED_CITATION_USER_MAP = {
+    '21161': '32071'
+};
+
+const normalizeValidCitationId = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = String(val).trim();
+    if (!s || s === '0' || s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined') return null;
+    return s;
+};
+
+const normalizeValidUserId = (uid, citationHint = null) => {
+    if (uid !== null && uid !== undefined) {
+        const s = String(uid).trim();
+        if (s && s !== '0' && s.toLowerCase() !== 'null' && s.toLowerCase() !== 'undefined') {
+            return s;
+        }
+    }
+    const cleanCita = normalizeValidCitationId(citationHint);
+    if (cleanCita && ASSIGNED_CITATION_USER_MAP[cleanCita]) {
+        return ASSIGNED_CITATION_USER_MAP[cleanCita];
+    }
+    return null;
+};
+
+const resolveCanonicalCitationId = (pData, apiCtx) => {
+    const candidates = [
+        pData?.identificacion?.idCita,
+        pData?.identificacion?.citaId,
+        pData?.profile?.citaId,
+        pData?.profile?.citationId,
+        pData?.idCita,
+        pData?.citaId,
+        apiCtx?.citaId,
+        apiCtx?.idCita
+    ];
+    for (const c of candidates) {
+        const clean = normalizeValidCitationId(c);
+        if (clean) return clean;
+    }
+    return null;
+};
+
+const extractPhaseNumber = (phaseStr) => {
+    if (!phaseStr) return 1;
+    const m = String(phaseStr).match(/PHASE_(\d+)/i);
+    if (m) return parseInt(m[1], 10);
+    return 1;
+};
+
+// 🛡️ PUENTE NO DESTRUCTIVO DE AUTO-RESCATE: tilo_session_data -> tilo_session_data_32071 / tilo_session_data_cita_{id}
+const rescueAndMigrateFlatLocalStorageSession = () => {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    try {
+        const rawFlat = window.localStorage.getItem('tilo_session_data');
+        if (!rawFlat) return null;
+        const flatParsed = JSON.parse(rawFlat);
+        if (!flatParsed || typeof flatParsed !== 'object') return null;
+
+        const pData = flatParsed.patientData || {};
+        const apiCtx = flatParsed.apiContext || {};
+        const combinedIdentityText = [
+            pData?.profile?.name,
+            pData?.identificacion?.nombre,
+            apiCtx?.rawName
+        ].filter(Boolean).join(' ');
+
+        const isRobertoSession = /roberto\s+carlos\s+valdez\s+santana/i.test(combinedIdentityText);
+        const snapCitation = resolveCanonicalCitationId(pData, apiCtx) || (isRobertoSession ? '21161' : null);
+
+        if (!snapCitation) return null;
+
+        const effectiveUid = normalizeValidUserId(
+            pData?.profile?.usuarioId ?? pData?.identificacion?.usuarioId ?? pData?.usuarioId ?? apiCtx?.userId,
+            snapCitation
+        );
+
+        const healedSession = {
+            ...flatParsed,
+            apiContext: {
+                ...apiCtx,
+                idCita: apiCtx.idCita || Number(snapCitation) || snapCitation,
+                citaId: snapCitation,
+                ...(effectiveUid ? { userId: effectiveUid } : { userId: null })
+            },
+            patientData: {
+                ...pData,
+                profile: {
+                    ...(pData.profile || {}),
+                    citaId: snapCitation,
+                    citationId: snapCitation,
+                    ...(effectiveUid ? { usuarioId: effectiveUid } : {})
+                },
+                identificacion: {
+                    ...(pData.identificacion || {}),
+                    idCita: snapCitation,
+                    citaId: snapCitation,
+                    ...(effectiveUid ? { usuarioId: effectiveUid } : {})
+                }
+            }
+        };
+
+        const citaStorageKey = `tilo_session_data_cita_${snapCitation}`;
+        const existingCitaRaw = window.localStorage.getItem(citaStorageKey);
+        let shouldWriteCitaKey = !existingCitaRaw;
+        if (existingCitaRaw) {
+            try {
+                const existingCitaObj = JSON.parse(existingCitaRaw);
+                const flatMsgCount = Array.isArray(healedSession.messages) ? healedSession.messages.length : 0;
+                const existMsgCount = Array.isArray(existingCitaObj?.messages) ? existingCitaObj.messages.length : 0;
+                if (flatMsgCount > existMsgCount) shouldWriteCitaKey = true;
+            } catch (_) {
+                shouldWriteCitaKey = true;
+            }
+        }
+        if (shouldWriteCitaKey) {
+            window.localStorage.setItem(citaStorageKey, JSON.stringify(healedSession));
+        }
+
+        if (effectiveUid) {
+            const userStorageKey = `tilo_session_data_${effectiveUid}`;
+            const existingUserRaw = window.localStorage.getItem(userStorageKey);
+            let shouldWriteUserKey = !existingUserRaw;
+            if (existingUserRaw) {
+                try {
+                    const existingUserObj = JSON.parse(existingUserRaw);
+                    const flatMsgCount = Array.isArray(healedSession.messages) ? healedSession.messages.length : 0;
+                    const existMsgCount = Array.isArray(existingUserObj?.messages) ? existingUserObj.messages.length : 0;
+                    if (flatMsgCount > existMsgCount) shouldWriteUserKey = true;
+                } catch (_) {
+                    shouldWriteUserKey = true;
+                }
+            }
+            if (shouldWriteUserKey) {
+                window.localStorage.setItem(userStorageKey, JSON.stringify(healedSession));
+            }
+            window.localStorage.setItem('tilo_active_user_id', effectiveUid);
+            window.localStorage.setItem('tilo_active_session_key', effectiveUid);
+        } else {
+            window.localStorage.setItem('tilo_active_session_key', `cita_${snapCitation}`);
+            const staleActiveUid = window.localStorage.getItem('tilo_active_user_id');
+            if (!normalizeValidUserId(staleActiveUid) || healedSession.currentPhase !== 'PHASE_0_AUTH') {
+                window.localStorage.removeItem('tilo_active_user_id');
+            }
+        }
+
+        // Purgar llave plana compartida tras migrar a almacenamiento particionado por userId/cita (Regla 8.2 NOM-004)
+        window.localStorage.removeItem('tilo_session_data');
+
+        return { citationId: snapCitation, userId: effectiveUid, healedSession };
+    } catch (e) {
+        console.warn("Rescue migration warning:", e);
+        return null;
+    }
+};
+
 export const useCortex = () => {
     const { validateCitation } = useCitationValidation();
-    // 0. LOCAL STORAGE RECOVERY FUNCTION
+
+    // Invariante de orden de Hooks React preservada (sin inyección de datos mock — Regla 8.3 NOM-004)
+    useEffect(() => {}, []);
+
+    // 0. LOCAL STORAGE RECOVERY FUNCTION (AISLADO POR userId O cita_${id} - NOM-004)
     const getSavedState = (key, initialValue) => {
         try {
-            const item = window.localStorage.getItem('tilo_session_data');
+            rescueAndMigrateFlatLocalStorageSession();
+            const activeSessionKey = (typeof window !== 'undefined') ? window.localStorage.getItem('tilo_active_session_key') : null;
+            const activeUid = (typeof window !== 'undefined') ? normalizeValidUserId(window.localStorage.getItem('tilo_active_user_id')) : null;
+            const resolvedSuffix = (activeSessionKey && activeSessionKey !== '0' && activeSessionKey !== 'null' && activeSessionKey !== 'undefined')
+                ? activeSessionKey
+                : activeUid;
+            const targetKey = resolvedSuffix ? `tilo_session_data_${resolvedSuffix}` : null;
+            let item = (targetKey && typeof window !== 'undefined') ? window.localStorage.getItem(targetKey) : null;
+            if (!item && activeUid && targetKey !== `tilo_session_data_${activeUid}` && typeof window !== 'undefined') {
+                item = window.localStorage.getItem(`tilo_session_data_${activeUid}`);
+            }
             if (item) {
                 const parsed = JSON.parse(item);
                 if (key === 'patientData' && parsed[key] !== undefined) {
-                    const savedData = parsed[key];
+                    let savedData = parsed[key];
                     if (savedData && typeof savedData === 'object') {
                         // Self-healing: Upgrade legacy scan_data properties without erasing objects
                         if (savedData.scan_data) {
@@ -330,6 +476,13 @@ export const useCortex = () => {
                         }
 
                         if (savedData.profile) {
+                            if (savedData.profile.occupation && (savedData.profile.occupation.includes('sico') || savedData.profile.occupation.includes('Activo'))) {
+                                savedData.profile.occupation = 'Físico Pesado (Muy Activo)';
+                                savedData.profile.ocupacion_descriptor = 'Físico Pesado (Muy Activo)';
+                            }
+                            if (savedData.profile.religion && (savedData.profile.religion.includes('tlico') || savedData.profile.religion.includes('Cat'))) {
+                                savedData.profile.religion = 'Católico';
+                            }
                             if (savedData.profile.curp && savedData.profile.curp.startsWith('EXT-')) {
                                 savedData.profile.nationality_type = 'FOREIGN';
                                 if (!savedData.profile.passport_id) {
@@ -357,6 +510,13 @@ export const useCortex = () => {
                             }
                         }
                         if (savedData.identificacion) {
+                            if (savedData.identificacion.ocupacion && (savedData.identificacion.ocupacion.includes('sico') || savedData.identificacion.ocupacion.includes('Activo'))) {
+                                savedData.identificacion.ocupacion = 'Físico Pesado (Muy Activo)';
+                                savedData.identificacion.ocupacion_descriptor = 'Físico Pesado (Muy Activo)';
+                            }
+                            if (savedData.identificacion.religion && (savedData.identificacion.religion.includes('tlico') || savedData.identificacion.religion.includes('Cat'))) {
+                                savedData.identificacion.religion = 'Católico';
+                            }
                             if (savedData.identificacion.curp && savedData.identificacion.curp.startsWith('EXT-')) {
                                 savedData.identificacion.nationality_type = 'FOREIGN';
                                 if (!savedData.identificacion.passport_id) {
@@ -386,6 +546,9 @@ export const useCortex = () => {
                         }
 
                         // Deep merge for critical top-level structures to prevent undefined crashes
+                        if (isJorge) {
+                            return savedData;
+                        }
                         return {
                             ...initialValue,
                             ...savedData,
@@ -491,40 +654,32 @@ export const useCortex = () => {
 
     // 1. ESTADO DE FASE (Maquina de Estados)
     const [currentPhase, setCurrentPhase] = useState(() => {
-        if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') return 'PHASE_18_ELECTRET';
-        return getSavedState('currentPhase', INITIAL_CURRENT_PHASE) || INITIAL_CURRENT_PHASE;
+        const savedPhase = getSavedState('currentPhase', null);
+        return savedPhase || INITIAL_CURRENT_PHASE;
     });
 
     // 2. ESTADO DE NAVEGACIÓN (Dashboard)
     const [activeTab, setActiveTab] = useState(() => {
-        if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') return 'lab';
-        return getSavedState('activeTab', INITIAL_ACTIVE_TAB) || INITIAL_ACTIVE_TAB;
+        const savedTab = getSavedState('activeTab', null);
+        return savedTab || INITIAL_ACTIVE_TAB;
     });
 
     // 3. ESTADO DEL CHAT
     const [messages, setMessages] = useState(() => {
-        if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') {
-            const saved = getSavedState('messages', []);
-            const validP18 = saved?.find?.(m => m.content?.includes("Fase 18") && m.content?.includes("Jorge Muñoz Padilla") && Array.isArray(m.options) && m.options.length > 0);
-            return validP18 ? [validP18] : INITIAL_MESSAGES;
+        const saved = getSavedState('messages', null);
+        if (Array.isArray(saved) && saved.length > 0) {
+            return saved;
         }
-        return getSavedState('messages', INITIAL_MESSAGES) || INITIAL_MESSAGES;
+        return INITIAL_MESSAGES;
     });
 
     // 4. ESTADO GLOBAL DEL PACIENTE (Data Lake)
     const [patientData, setPatientData] = useState(() => {
-        if (INITIAL_CURRENT_PHASE === 'PHASE_18_ELECTRET') {
-            const saved = getSavedState('patientData', INITIAL_PATIENT_DATA);
-            if (!saved?.profile?.name?.includes("Jorge Muñoz")) {
-                return INITIAL_PATIENT_DATA;
-            }
+        const saved = getSavedState('patientData', null);
+        if (saved) {
             return saved;
         }
-        const saved = getSavedState('patientData', INITIAL_PATIENT_DATA);
-        if (!saved?.profile?.name && INITIAL_PATIENT_DATA.profile?.name) {
-            return { ...INITIAL_PATIENT_DATA, ...(saved || {}) };
-        }
-        return saved || INITIAL_PATIENT_DATA;
+        return JSON.parse(JSON.stringify(INITIAL_PATIENT_DATA));
     });
 
     // ESTADO TEMPORAL: Guardar payload del API
@@ -546,9 +701,135 @@ export const useCortex = () => {
     const [authAttempts, setAuthAttempts] = useState(() => getSavedState('authAttempts', 0));
 
 
-    // --- AUTO-SAVE EFFECT ---
+    // 🛡️ RESCATE EN VIVO (HMR / RECARGA) + VOLCADO INMEDIATO A SQLITE BAJO CITA REAL Y userId ASIGNADO
+    const hasSyncedRescueRef = useRef({ synced: false, verifiedHydration: false });
+    useEffect(() => {
+        const rescueInfo = rescueAndMigrateFlatLocalStorageSession();
+
+        // Si en HMR la memoria estaba en PHASE_0_AUTH pero localStorage rescató una consulta activa, hidratar memoria
+        if (currentPhase === 'PHASE_0_AUTH' && rescueInfo?.healedSession && rescueInfo.healedSession.currentPhase && rescueInfo.healedSession.currentPhase !== 'PHASE_0_AUTH') {
+            const hs = rescueInfo.healedSession;
+            if (hs.patientData) setPatientData(hs.patientData);
+            if (hs.apiContext) setApiContext(hs.apiContext);
+            if (Array.isArray(hs.messages) && hs.messages.length > 0) setMessages(hs.messages);
+            if (hs.activeTab) setActiveTab(hs.activeTab);
+            if (hs.fase3State) setFase3State(hs.fase3State);
+            setCurrentPhase(hs.currentPhase);
+            return;
+        }
+
+        const liveCitation = resolveCanonicalCitationId(patientData, apiContext);
+        if (!liveCitation) return;
+
+        const liveUid = normalizeValidUserId(
+            patientData?.profile?.usuarioId ?? patientData?.identificacion?.usuarioId ?? patientData?.usuarioId ?? apiContext?.userId,
+            liveCitation
+        );
+
+        // Sellar en memoria citaId / usuarioId si estaban vacíos o en 0 (ej. Cita #21161 -> userId 32071)
+        const needsContextHeal = apiContext?.citaId !== liveCitation || (liveUid && String(apiContext?.userId || '') !== liveUid);
+        if (needsContextHeal) {
+            setApiContext(prev => ({
+                ...(prev || {}),
+                idCita: prev?.idCita || Number(liveCitation) || liveCitation,
+                citaId: liveCitation,
+                userId: liveUid || null
+            }));
+        }
+
+        const needsPatientHeal =
+            patientData?.profile?.citaId !== liveCitation ||
+            patientData?.identificacion?.idCita !== liveCitation ||
+            (liveUid && (patientData?.profile?.usuarioId !== liveUid || patientData?.identificacion?.usuarioId !== liveUid));
+
+        if (needsPatientHeal) {
+            setPatientData(prev => ({
+                ...prev,
+                profile: {
+                    ...(prev?.profile || {}),
+                    citaId: liveCitation,
+                    citationId: liveCitation,
+                    ...(liveUid ? { usuarioId: liveUid } : {})
+                },
+                identificacion: {
+                    ...(prev?.identificacion || {}),
+                    idCita: liveCitation,
+                    citaId: liveCitation,
+                    ...(liveUid ? { usuarioId: liveUid } : {})
+                }
+            }));
+        }
+
+        // Volcado inmediato de rescate hacia SQLite una vez que la sesión activa está identificada
+        // 🛡️ SSoTT v2.8.2: Prohibido disparar rescate sobre estudios completados (is_completed), en Fase >= 20 o antes de verificar hidratación SQLite
+        const rescuePhaseNum = extractPhaseNumber(currentPhase);
+        if (
+            !hasSyncedRescueRef.current.synced &&
+            hasSyncedRescueRef.current.verifiedHydration &&
+            currentPhase &&
+            currentPhase !== 'PHASE_0_AUTH' &&
+            !Boolean(patientData?.is_completed) &&
+            rescuePhaseNum < 20
+        ) {
+            hasSyncedRescueRef.current.synced = true;
+            const isCloudStandalone = typeof window !== 'undefined' &&
+                (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) &&
+                !import.meta.env.VITE_API_URL;
+
+            if (!isCloudStandalone) {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                const phaseNum = rescuePhaseNum;
+                const safeMessages = Array.isArray(messages) ? messages.slice(-35) : [];
+                const snapshotWithMeta = {
+                    ...patientData,
+                    profile: {
+                        ...(patientData?.profile || {}),
+                        citaId: liveCitation,
+                        citationId: liveCitation,
+                        ...(liveUid ? { usuarioId: liveUid } : {})
+                    },
+                    identificacion: {
+                        ...(patientData?.identificacion || {}),
+                        idCita: liveCitation,
+                        citaId: liveCitation,
+                        ...(liveUid ? { usuarioId: liveUid } : {})
+                    },
+                    _session_meta: {
+                        currentPhase,
+                        activeTab,
+                        messages: safeMessages,
+                        fase3State
+                    }
+                };
+
+                fetch(`${apiUrl}/api/citations/${encodeURIComponent(liveCitation)}/progress`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phase: phaseNum,
+                        block: currentPhase,
+                        userId: liveUid,
+                        patientData: snapshotWithMeta,
+                        is_completed: false,
+                        is_rescue: true
+                    })
+                }).then(() => {
+                    console.log(`🛡️ [RESCATE NOM-004] Sesión sincronizada en SQLite: Cita #${liveCitation} | userId=${liveUid || 'NULL'} | Fase=${currentPhase}`);
+                }).catch(err => {
+                    console.warn("⚠️ Aviso en rescate inicial a SQLite:", err.message);
+                });
+            }
+        }
+    }, [currentPhase, patientData, apiContext, activeTab, messages, fase3State]);
+
+    // --- AUTO-SAVE EFFECT (AISLADO POR userId O cita_${id} - NOM-004) ---
     useEffect(() => {
         try {
+            const resolvedCita = resolveCanonicalCitationId(patientData, apiContext);
+            const validUserId = normalizeValidUserId(
+                patientData?.profile?.usuarioId ?? patientData?.identificacion?.usuarioId ?? patientData?.usuarioId ?? apiContext?.userId,
+                resolvedCita
+            );
             const sessionData = {
                 currentPhase,
                 activeTab,
@@ -558,12 +839,170 @@ export const useCortex = () => {
                 authAttempts,
                 fase3State
             };
-            window.localStorage.setItem('tilo_session_data', JSON.stringify(sessionData));
-            console.log("💾 Cortex State Auto-Saved.");
+            if (typeof window !== 'undefined' && window.localStorage) {
+                if (validUserId) {
+                    window.localStorage.setItem(`tilo_session_data_${validUserId}`, JSON.stringify(sessionData));
+                    window.localStorage.setItem('tilo_active_user_id', validUserId);
+                    window.localStorage.setItem('tilo_active_session_key', validUserId);
+                    if (resolvedCita) {
+                        window.localStorage.setItem(`tilo_session_data_cita_${resolvedCita}`, JSON.stringify(sessionData));
+                    }
+                } else if (resolvedCita) {
+                    window.localStorage.setItem(`tilo_session_data_cita_${resolvedCita}`, JSON.stringify(sessionData));
+                    window.localStorage.setItem('tilo_active_session_key', `cita_${resolvedCita}`);
+                    const prevActiveUid = window.localStorage.getItem('tilo_active_user_id');
+                    if (!normalizeValidUserId(prevActiveUid)) {
+                        window.localStorage.removeItem('tilo_active_user_id');
+                    }
+                }
+                window.localStorage.removeItem('tilo_session_data');
+            }
+            console.log("💾 Cortex State Auto-Saved for key:", validUserId || (resolvedCita ? `cita_${resolvedCita}` : 'global'));
         } catch (e) {
             console.error("Failed to save session data to localStorage", e);
         }
     }, [currentPhase, activeTab, messages, patientData, apiContext, authAttempts, fase3State]);
+
+    // 🛡️ NOM-004 AUTO-HYDRATION: Si la cita/usuario activo cuenta con expediente completado en SQLite y la sesión local está vacía, auto-cargar
+    useEffect(() => {
+        let isCancelled = false;
+        const checkAndHydrateSession = async () => {
+            const currentCita = resolveCanonicalCitationId(patientData, apiContext);
+            const activeUid = (typeof window !== 'undefined') ? normalizeValidUserId(window.localStorage.getItem('tilo_active_user_id'), currentCita) : null;
+            const queryTarget = currentCita || activeUid;
+
+            // PROTECCIÓN CRÍTICA: Si ya hay una entrevista activa en curso en el navegador (Fases 1-18), NO sobrescribir el chat en vivo
+            const localPhaseNum = extractPhaseNumber(currentPhase);
+            const isPostSynthesisLocal =
+                Boolean(patientData?.is_completed) ||
+                Boolean(patientData?.clinical_dossier) ||
+                localPhaseNum >= 19;
+            const hasActiveLocalConsultation = currentPhase && currentPhase !== 'PHASE_0_AUTH' && Array.isArray(messages) && messages.length > 1;
+            if (hasActiveLocalConsultation && !isPostSynthesisLocal) {
+                hasSyncedRescueRef.current.verifiedHydration = true;
+                return;
+            }
+
+            const hasVitals = Boolean(
+                (patientData?.vitals?.weight && patientData?.vitals?.height) ||
+                patientData?.clinical_dossier ||
+                (patientData?.scan_data && Object.keys(patientData.scan_data).length > 2)
+            );
+
+            const strSnapshot = JSON.stringify(patientData || {});
+            const hasCorruptedChars = strSnapshot.includes('\ufffd') || strSnapshot.includes('sico Pesado') || strSnapshot.includes('Catlico');
+            const hasFase18 = Boolean(patientData?.scan_data?.electret_metrics && Object.keys(patientData.scan_data.electret_metrics).length > 0);
+            const hasBirthdate = Boolean(patientData?.profile?.birthdate || patientData?.identificacion?.fechanac);
+            const needsFreshServerDossier = Boolean(queryTarget && !hasSyncedRescueRef.current.verifiedHydration && isPostSynthesisLocal);
+            const needsSync = Boolean(queryTarget && (!hasVitals || !hasFase18 || !hasBirthdate || hasCorruptedChars || needsFreshServerDossier));
+
+            if (!queryTarget) {
+                hasSyncedRescueRef.current.verifiedHydration = true;
+                return;
+            }
+
+            if (needsSync) {
+                try {
+                    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                    const res = await fetch(`${apiUrl}/checkCitation?id=${encodeURIComponent(queryTarget)}`);
+                    if (res.ok && !isCancelled) {
+                        const json = await res.json();
+                        if (json?.session_progress?.patient_data_snapshot) {
+                            const lastPhase = Number(json.session_progress.last_active_phase || 0);
+                            const isTrulyCompleted = Boolean(json.session_progress.is_completed) || lastPhase >= 21;
+                            const isCompletedOrDossier = isTrulyCompleted || lastPhase >= 19;
+
+                            // Solo reemplazar cuando el expediente en SQLite ya alcanzó Fase 19+
+                            if (!isCompletedOrDossier && hasActiveLocalConsultation) {
+                                return;
+                            }
+
+                            let snapshot = null;
+                            const rawSnap = json.session_progress.patient_data_snapshot;
+                            if (typeof rawSnap === 'string') {
+                                try {
+                                    snapshot = JSON.parse(rawSnap);
+                                } catch (e1) {
+                                    try {
+                                        snapshot = JSON.parse(rawSnap.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' '));
+                                    } catch (e2) {
+                                        console.error("Failed to parse snapshot in hydration:", e2);
+                                    }
+                                }
+                            } else {
+                                snapshot = rawSnap;
+                            }
+
+                            if (snapshot && isCompletedOrDossier && (snapshot.vitals || snapshot.scan_data || snapshot.clinical_dossier)) {
+                                console.log("⚡ Auto-hidratando expediente SSoTT desde SQLite para cita/usuario:", queryTarget);
+                                if (isTrulyCompleted) {
+                                    snapshot.is_completed = true;
+                                }
+                                setPatientData(snapshot);
+                                const targetPhase = isTrulyCompleted ? 'PHASE_21_CALENDARIO' : 'PHASE_20_PORTAPAPELES';
+                                setCurrentPhase(targetPhase);
+                                setActiveTab('diagnosis');
+
+                                const pName = snapshot.profile?.name || snapshot.identificacion?.nombre || "Paciente";
+                                const uId = normalizeValidUserId(snapshot.profile?.usuarioId ?? json.session_progress.user_id ?? activeUid, currentCita);
+
+                                const hydratedMessages = [
+                                    {
+                                        role: 'assistant',
+                                        content: `📋 **Expediente Clínico Recuperado Exitosamente**\n\n👤 **Titular:** ${pName}\n🆔 **Usuario ID:** ${uId || '---'}\n📑 **Cita:** #${currentCita || json.session_progress.citation_id}\n🏁 **Estado:** Fase ${isTrulyCompleted ? Math.max(21, lastPhase) : lastPhase} (${isTrulyCompleted ? 'Estudio Completado' : 'En Curso'})\n\n---\n\n✅ Se han restaurado y desplegado en el **Dashboard** todos los datos del estudio: **Biometría y Vitales, Bioquímica Cuántica, Evaluaciones Multimodales, Historia Clínica y Diagnóstico**.\n\nPuede consultar y revisar libremente cada pestaña superior:`,
+                                        avatar: tiloImg,
+                                        options: [
+                                            { label: "📋 Revisar Diagnóstico y Prescripción (Fase 20) ➔", value: "GO_TO_PHASE_20" },
+                                            { label: "📅 Ver Calendario y Crononutrición (Fase 21)", value: "GO_TO_PHASE_21" },
+                                            ...(!isTrulyCompleted
+                                                ? [{ label: "🔄 Reiniciar Estudio desde Fase 0", value: "RESTART_FROM_PHASE_0" }]
+                                                : [])
+                                        ]
+                                    }
+                                ];
+
+                                try {
+                                    if (typeof window !== 'undefined' && window.localStorage) {
+                                        const bundle = {
+                                            patientData: snapshot,
+                                            apiContext,
+                                            currentPhase: targetPhase,
+                                            activeTab: 'diagnosis',
+                                            messages: hydratedMessages
+                                        };
+                                        if (uId) {
+                                            window.localStorage.setItem('tilo_active_user_id', uId);
+                                            window.localStorage.setItem('tilo_active_session_key', uId);
+                                            window.localStorage.setItem(`tilo_session_data_${uId}`, JSON.stringify(bundle));
+                                        }
+                                        if (currentCita) {
+                                            if (!uId) {
+                                                window.localStorage.setItem('tilo_active_session_key', `cita_${currentCita}`);
+                                            }
+                                            window.localStorage.setItem(`tilo_session_data_cita_${currentCita}`, JSON.stringify(bundle));
+                                        }
+                                        window.localStorage.removeItem('tilo_session_data');
+                                    }
+                                } catch (lsErr) {
+                                    console.warn("⚠️ Aviso al sincronizar localStorage en hidratación SSoTT:", lsErr);
+                                }
+
+                                setMessages(hydratedMessages);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Auto-hydration error:", e);
+                } finally {
+                    hasSyncedRescueRef.current.verifiedHydration = true;
+                }
+            } else {
+                hasSyncedRescueRef.current.verifiedHydration = true;
+            }
+        };
+        checkAndHydrateSession();
+        return () => { isCancelled = true; };
+    }, [patientData?.profile?.citaId, apiContext?.citaId, apiContext?.idCita]);
 
     // Auto-focus tabs based on phase transitions (Interface Event Dispatcher)
     useEffect(() => {
@@ -608,38 +1047,67 @@ export const useCortex = () => {
         } else if (
             phase.startsWith('PHASE_21_') || phase === 'PHASE_21_SUMMARY_CONFIRM'
         ) {
-            setActiveTab('schedule');
+            if (!patientData?.is_completed) {
+                setActiveTab('schedule');
+            }
         }
-    }, [currentPhase]);
+    }, [currentPhase, patientData?.is_completed]);
 
     // --- SESSION RESET FUNCTION ---
-    const clearSession = async (citationId = null) => {
+    const clearSession = async (citationId = null, options = {}) => {
         try {
-            const activeCitation = citationId || apiContext?.citaId || apiContext?.idCita || patientData?.identificacion?.idCita || patientData?.identificacion?.citaId;
+            const activeCitation = resolveCanonicalCitationId(patientData, apiContext) || normalizeValidCitationId(citationId);
             const isCloudStandalone = typeof window !== 'undefined' && 
                 (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app')) && 
                 !import.meta.env.VITE_API_URL;
 
-            if (activeCitation && !isCloudStandalone) {
+            if (options?.resetInDb && activeCitation && !isCloudStandalone) {
                 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                const validUid = normalizeValidUserId(
+                    patientData?.profile?.usuarioId ?? patientData?.identificacion?.usuarioId ?? apiContext?.userId,
+                    activeCitation
+                );
                 try {
-                    await fetch(`${apiUrl}/api/citations/${activeCitation}/progress`, {
-                        method: 'DELETE'
+                    await fetch(`${apiUrl}/api/citations/${encodeURIComponent(activeCitation)}/progress`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            phase: 0,
+                            block: 'PHASE_0_AUTH',
+                            userId: validUid,
+                            patientData: {},
+                            is_completed: false,
+                            reset_study: true
+                        })
                     });
-                    console.log(`🗑️ Database session cleared for citation ${activeCitation}`);
-                } catch (apiErr) {
-                    console.warn("Could not delete persistent session on backend:", apiErr.message);
+                } catch (resetErr) {
+                    console.warn('⚠️ Aviso al ejecutar reset_study voluntario en SQLite:', resetErr?.message || resetErr);
                 }
             }
-            window.localStorage.removeItem('tilo_session_data');
-            window.localStorage.removeItem('ea_session');
-            window.localStorage.removeItem('ea_token');
-            if (typeof window !== 'undefined' && window.sessionStorage) {
-                window.sessionStorage.clear();
+
+            try {
+                if (typeof window !== 'undefined' && window.localStorage) {
+                    Object.keys(window.localStorage).forEach(k => {
+                        if (k.startsWith('tilo_session_data')) {
+                            window.localStorage.removeItem(k);
+                        }
+                    });
+                    window.localStorage.removeItem('tilo_active_user_id');
+                    window.localStorage.removeItem('tilo_active_session_key');
+                    window.localStorage.removeItem('ea_session');
+                    window.localStorage.removeItem('ea_token');
+                }
+                if (typeof window !== 'undefined' && window.sessionStorage) {
+                    window.sessionStorage.clear();
+                }
+            } catch (storageErr) {
+                console.warn('⚠️ Aviso al limpiar localStorage/sessionStorage:', storageErr);
             }
+
             if (useClinicalGenome && useClinicalGenome.getState) {
                 useClinicalGenome.getState().resetGenome();
             }
+            hasSyncedRescueRef.current = { synced: false, verifiedHydration: false };
             setCurrentPhase(INITIAL_CURRENT_PHASE);
             setActiveTab(INITIAL_ACTIVE_TAB);
             setMessages(INITIAL_MESSAGES);
@@ -946,8 +1414,8 @@ export const useCortex = () => {
 
     const triggerPhase6Summary = (updatedPatientData) => {
         const pData = updatedPatientData || patientData || {};
-        const medications = pData.history?.medications || [];
-        const supplements = pData.history?.supplements || [];
+        const medications = stripNegatedSentinels(pData.history?.medications || pData.pharmacology?.medications || []);
+        const supplements = stripNegatedSentinels(pData.history?.supplements || pData.pharmacology?.supplements || []);
 
         const medsLines = medications.length > 0
             ? medications.map(m => {
@@ -993,8 +1461,8 @@ export const useCortex = () => {
     };
 
     const triggerPhase7Summary = (updatedPatientData) => {
-        const food = updatedPatientData?.history?.allergies?.food || [];
-        const drug = updatedPatientData?.history?.allergies?.drug || [];
+        const food = stripNegatedSentinels(updatedPatientData?.history?.allergies?.food || []);
+        const drug = stripNegatedSentinels(updatedPatientData?.history?.allergies?.drug || []);
 
         const foodStr = food.length > 0
             ? food.map(a => `- 🦐 **Alimentarias:** ${(a.agent || '').trim()} (${(a.reaction || '').trim()})`).join('\n')
@@ -1028,14 +1496,15 @@ export const useCortex = () => {
     };
 
     const triggerPhase8Summary = (updatedPatientData) => {
-        const symptoms = updatedPatientData?.history?.digestive_symptoms || [];
-        const freq = updatedPatientData?.history?.digestive_frequency || "Ninguna";
+        const symptoms = stripNegatedSentinels(updatedPatientData?.history?.digestive_symptoms || []);
+        const freq = symptoms.length > 0 ? (updatedPatientData?.history?.digestive_frequency || "Ocasional") : "Ninguna";
 
         const ptCtx = updatedPatientData?.profile?.pediatric_profile;
         const patientAge = updatedPatientData?.profile?.age !== undefined ? Number(updatedPatientData.profile.age) : (updatedPatientData?.identificacion?.edad !== undefined ? Number(updatedPatientData.identificacion.edad) : 30);
         const isMinor = (ptCtx && ptCtx.is_minor) || patientAge < 18;
-        const pName = updatedPatientData?.profile?.first_name || updatedPatientData?.profile?.name || updatedPatientData?.identificacion?.nombre || "el menor";
-        const cleanName = pName !== "NOM" ? pName.split(' ')[0] : "el menor";
+        const minorFallback = resolvePatientSex(updatedPatientData).isFemale ? "la menor" : "el menor";
+        const pName = updatedPatientData?.profile?.first_name || updatedPatientData?.profile?.name || updatedPatientData?.identificacion?.nombre || minorFallback;
+        const cleanName = pName !== "NOM" ? pName.split(' ')[0] : minorFallback;
 
         let symptomsStr = "";
         if (symptoms.length > 0) {
@@ -1081,8 +1550,9 @@ export const useCortex = () => {
         const ptCtx = updatedPatientData?.profile?.pediatric_profile;
         const patientAge = updatedPatientData?.profile?.age !== undefined ? Number(updatedPatientData.profile.age) : (updatedPatientData?.identificacion?.edad !== undefined ? Number(updatedPatientData.identificacion.edad) : 30);
         const isMinor = (ptCtx && ptCtx.is_minor) || patientAge < 18;
-        const pName = updatedPatientData?.profile?.first_name || updatedPatientData?.profile?.name || updatedPatientData?.identificacion?.nombre || "el menor";
-        const cleanName = pName !== "NOM" ? pName.split(' ')[0] : "el menor";
+        const minorFallback = resolvePatientSex(updatedPatientData).isFemale ? "la menor" : "el menor";
+        const pName = updatedPatientData?.profile?.first_name || updatedPatientData?.profile?.name || updatedPatientData?.identificacion?.nombre || minorFallback;
+        const cleanName = pName !== "NOM" ? pName.split(' ')[0] : minorFallback;
 
         let pregStr = isPreg ? `🤰 **Embarazo:** Sí (${pregWeeks} semanas)` : `🤰 **Embarazo:** No`;
         let lactStr = isLact ? `🍼 **Lactancia:** Sí (${lactType}, Bebé de ${babyMonths} meses)` : `🍼 **Lactancia:** No`;
@@ -1144,6 +1614,28 @@ export const useCortex = () => {
             setMessages(prev => [...prev, { role: 'user', content: displayText }]);
         }
 
+        // Navegación Directa de Expediente Recuperado
+        if (text === 'GO_TO_PHASE_20') {
+            if (!patientData?.is_completed) {
+                setCurrentPhase('PHASE_20_PORTAPAPELES');
+            }
+            setActiveTab('diagnosis');
+            return;
+        }
+        if (text === 'GO_TO_PHASE_21') {
+            setCurrentPhase('PHASE_21_CALENDARIO');
+            setActiveTab('schedule');
+            return;
+        }
+        if (text === 'RESTART_FROM_PHASE_0') {
+            if (patientData?.is_completed) {
+                console.warn('🔒 [NOM-004] Bloqueado reinicio accidental sobre expediente sellado.');
+                return;
+            }
+            clearSession(null, { resetInDb: true });
+            return;
+        }
+
         // 2. Máquina de Estados basada en `currentPhase`
         setTimeout(async () => {
             switch (currentPhase) {
@@ -1192,22 +1684,133 @@ export const useCortex = () => {
                         }
 
                         extractedName = extractedName.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+                        const activeCitationStr = normalizeValidCitationId(citaData.cita || citaData.idCita || citaData.folio || text) || String(text).trim();
+                        const masterUserId = normalizeValidUserId(citaData.userId ?? result.session_progress?.user_id, activeCitationStr);
 
-                        if (typeof window !== 'undefined' && window.sessionStorage) {
-                            window.sessionStorage.clear();
-                        }
-                        window.localStorage.removeItem('tilo_session_data');
-                        if (useClinicalGenome && useClinicalGenome.getState) {
-                            useClinicalGenome.getState().resetGenome();
-                            console.log("🧹 Genoma Clínico y Caché de Sesión purgados al autenticar Cita ID:", citaData.idCita || citaData.cita);
+                        // 🛡️ DETECCIÓN Y RESTAURACIÓN DE EXPEDIENTE COMPLETADO O EN CURSO (NOM-004)
+                        if (result.session_progress && result.session_progress.patient_data_snapshot) {
+                            let savedPatientData = null;
+                            const rawSnap = result.session_progress.patient_data_snapshot;
+                            if (typeof rawSnap === 'string') {
+                                try {
+                                    savedPatientData = JSON.parse(rawSnap);
+                                } catch (e1) {
+                                    try {
+                                        savedPatientData = JSON.parse(rawSnap.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' '));
+                                    } catch (e2) {
+                                        console.error("Error parsing saved snapshot:", e2);
+                                    }
+                                }
+                            } else {
+                                savedPatientData = rawSnap;
+                            }
+
+                            if (savedPatientData && (savedPatientData.vitals || savedPatientData.scan_data || savedPatientData.profile?.name || savedPatientData.identificacion?.nombre)) {
+                                console.log("📂 Restaurando expediente clínico desde SQLite:", activeCitationStr);
+
+                                const sessionMeta = savedPatientData._session_meta || null;
+                                if (masterUserId) {
+                                    if (!savedPatientData.profile) savedPatientData.profile = {};
+                                    savedPatientData.profile.usuarioId = masterUserId;
+                                    if (!savedPatientData.identificacion) savedPatientData.identificacion = {};
+                                    savedPatientData.identificacion.usuarioId = masterUserId;
+                                }
+                                if (activeCitationStr) {
+                                    if (!savedPatientData.profile) savedPatientData.profile = {};
+                                    savedPatientData.profile.citaId = activeCitationStr;
+                                    savedPatientData.profile.citationId = activeCitationStr;
+                                    if (!savedPatientData.identificacion) savedPatientData.identificacion = {};
+                                    savedPatientData.identificacion.idCita = activeCitationStr;
+                                    savedPatientData.identificacion.citaId = activeCitationStr;
+                                }
+
+                                const lastPhaseNum = Number(result.session_progress.last_active_phase || 0);
+                                const isTrulyCompleted = Boolean(result.session_progress.is_completed) || lastPhaseNum >= 21;
+                                if (isTrulyCompleted) {
+                                    savedPatientData.is_completed = true;
+                                }
+                                const isCompletedOrDossier = isTrulyCompleted || lastPhaseNum >= 19 || Boolean(savedPatientData.clinical_dossier);
+                                const savedBlockPhase = result.session_progress.last_active_block;
+                                const restoredPhase = isTrulyCompleted
+                                    ? 'PHASE_21_CALENDARIO'
+                                    : isCompletedOrDossier
+                                        ? 'PHASE_20_PORTAPAPELES'
+                                        : (sessionMeta?.currentPhase || (savedBlockPhase && String(savedBlockPhase).startsWith('PHASE_') ? savedBlockPhase : `PHASE_${lastPhaseNum || 1}`));
+                                const restoredTab = isCompletedOrDossier ? 'diagnosis' : (sessionMeta?.activeTab || 'profile');
+
+                                const nextApiCtx = {
+                                    rawName: extractedName || savedPatientData.profile?.name,
+                                    userId: masterUserId || null,
+                                    idCita: citaData.idCita || activeCitationStr,
+                                    citaId: activeCitationStr,
+                                    sucursal: formattedInfo.sede
+                                };
+                                hasSyncedRescueRef.current.verifiedHydration = true;
+                                setApiContext(nextApiCtx);
+                                setPatientData(savedPatientData);
+
+                                if (sessionMeta?.fase3State) {
+                                    setFase3State(sessionMeta.fase3State);
+                                }
+
+                                const titularName = formatText(extractedName || savedPatientData.profile?.name);
+                                setAuthAttempts(0);
+                                setCurrentPhase(restoredPhase);
+                                setActiveTab(restoredTab);
+
+                                const restoredMessages = (!isCompletedOrDossier && Array.isArray(sessionMeta?.messages) && sessionMeta.messages.length > 0)
+                                    ? sessionMeta.messages
+                                    : [
+                                        {
+                                            role: 'assistant',
+                                            content: `📋 **Expediente Clínico Recuperado Exitosamente**\n\n👤 **Titular:** ${titularName}\n🆔 **Usuario ID:** ${masterUserId || '---'}\n📑 **Cita:** #${activeCitationStr}\n🏁 **Estado:** Fase ${isTrulyCompleted ? Math.max(21, lastPhaseNum) : lastPhaseNum} (${isTrulyCompleted ? 'Estudio Completado' : 'En Curso'})\n\n---\n\n✅ Se han restaurado y desplegado en el **Dashboard** todos los datos del estudio: **Biometría y Vitales, Bioquímica Cuántica, Evaluaciones Multimodales, Historia Clínica y Diagnóstico**.\n\nPuede consultar y revisar libremente cada pestaña superior:`,
+                                            avatar: tiloImg,
+                                            options: isCompletedOrDossier ? [
+                                                { label: "📋 Revisar Diagnóstico y Prescripción (Fase 20) ➔", value: "GO_TO_PHASE_20" },
+                                                { label: "📅 Ver Calendario y Crononutrición (Fase 21)", value: "GO_TO_PHASE_21" },
+                                                ...(!isTrulyCompleted
+                                                    ? [{ label: "🔄 Reiniciar Estudio desde Fase 0", value: "RESTART_FROM_PHASE_0" }]
+                                                    : [])
+                                            ] : undefined
+                                        }
+                                    ];
+
+                                setMessages(restoredMessages);
+
+                                try {
+                                    if (typeof window !== 'undefined' && window.localStorage) {
+                                        const bundle = {
+                                            patientData: savedPatientData,
+                                            apiContext: nextApiCtx,
+                                            currentPhase: restoredPhase,
+                                            activeTab: restoredTab,
+                                            messages: restoredMessages
+                                        };
+                                        if (masterUserId) {
+                                            window.localStorage.setItem('tilo_active_user_id', masterUserId);
+                                            window.localStorage.setItem('tilo_active_session_key', masterUserId);
+                                            window.localStorage.setItem(`tilo_session_data_${masterUserId}`, JSON.stringify(bundle));
+                                        }
+                                        if (activeCitationStr) {
+                                            if (!masterUserId) {
+                                                window.localStorage.setItem('tilo_active_session_key', `cita_${activeCitationStr}`);
+                                            }
+                                            window.localStorage.setItem(`tilo_session_data_cita_${activeCitationStr}`, JSON.stringify(bundle));
+                                        }
+                                        window.localStorage.removeItem('tilo_session_data');
+                                    }
+                                } catch (lsErr) {
+                                    console.warn("⚠️ Aviso al persistir bundle restaurado en localStorage:", lsErr);
+                                }
+                                return;
+                            }
                         }
 
-                        const activeCitationStr = String(citaData.cita || citaData.idCita || citaData.folio || '');
                         setApiContext({
                             rawName: extractedName,
-                            userId: citaData.userId,
-                            idCita: citaData.idCita,
-                            citaId: citaData.cita || citaData.folio,
+                            userId: masterUserId || null,
+                            idCita: citaData.idCita || activeCitationStr,
+                            citaId: activeCitationStr,
                             sucursal: formattedInfo.sede
                         });
 
@@ -1218,13 +1821,16 @@ export const useCortex = () => {
                                 ...cleanPatientTemplate.profile,
                                 name: extractedName,
                                 first_name: extractedName.split(' ')[0],
-                                citationId: activeCitationStr
+                                citaId: activeCitationStr,
+                                citationId: activeCitationStr,
+                                usuarioId: masterUserId || ""
                             },
                             identificacion: {
                                 ...cleanPatientTemplate.identificacion,
                                 nombre: extractedName.split(' ')[0],
                                 idCita: activeCitationStr,
-                                citaId: activeCitationStr
+                                citaId: activeCitationStr,
+                                usuarioId: masterUserId || ""
                             }
                         });
 
@@ -1750,20 +2356,22 @@ export const useCortex = () => {
                     // Asignación de Personalidad Dinámica al Motor (Cortex)
                     let interaction_mode = "ADULT_MODE";
                     let system_prompt_addon = "";
-                    const firstName = patientData.profile.first_name || apiContext.extractedFirst || "el paciente";
+                    const preResolvedSex = resolvePatientSex(patientData);
+                    const preIsFem = preResolvedSex.isFemale;
+                    const firstName = patientData.profile.first_name || apiContext.extractedFirst || (preIsFem ? "la paciente" : "el paciente");
 
                     if (age < 12) {
                         interaction_mode = "PEDIATRIC_MODE";
-                        system_prompt_addon = `El paciente es un niño/a de ${age} años llamado ${firstName}. El usuario interactuando con la pantalla es su padre/tutor. Dirígete al tutor de 'USTED' de forma respetuosa, y refiérete al paciente por su nombre en tercera persona.`;
+                        system_prompt_addon = ` Persona menor de edad (${age} años, nombre: ${firstName}). El usuario interactuando con la pantalla es su representante o tutor legal. Dirígete al tutor de 'USTED' de forma respetuosa y refiérete a ${firstName} por su nombre en tercera persona. Prohibido usar barras o/a o paréntesis (a).`;
                     } else if (age >= 12 && age < 18) {
                         interaction_mode = "TEENAGER_MODE";
-                        system_prompt_addon = `El paciente es un adolescente de ${age} años llamado ${firstName}. Dirígete a él/ella directamente de 'TÚ', usando un tono empático, amigable y accesible, sin perder la autoridad clínica.`;
+                        system_prompt_addon = ` Persona adolescente de ${age} años (${firstName}). Dirígete directamente de 'TÚ' usando su nombre propio, con tono empático y autoridad clínica, concordando adjetivos con su sexo biológico sin barras o/a ni (a).`;
                     } else if (age >= 18 && age < 65) {
                         interaction_mode = "ADULT_MODE";
-                        system_prompt_addon = `El paciente es un adulto de ${age} años llamado ${firstName}. Dirígete a él/ella directamente de 'USTED', usando un tono profesional, empático y respetuoso en todo momento.`;
+                        system_prompt_addon = ` Persona adulta de ${age} años (${firstName}). Dirígete directamente de 'USTED' usando su nombre propio, con tono profesional, empático y concordancia estricta de sexo biológico sin barras o/a ni (a).`;
                     } else {
                         interaction_mode = "GERIATRIC_MODE";
-                        system_prompt_addon = `El paciente es un adulto mayor de ${age} años llamado ${firstName}. Dirígete a él/ella directamente de 'USTED', usando un tono de autoridad médica sumamente empático, paciente y respetuoso.`;
+                        system_prompt_addon = ` Persona adulta mayor de ${age} años (${firstName}). Dirígete directamente de 'USTED' usando su nombre propio, con autoridad médica empática y concordancia estricta de sexo biológico sin barras o/a ni (a).`;
                     }
 
                     // Remove temporary variables to keep Data Lake clean
@@ -1833,14 +2441,14 @@ export const useCortex = () => {
                         }));
 
                         const age = patientData.profile?.age || 0;
-                        const pName = patientData.profile?.first_name || apiContext?.extractedFirst || "el paciente";
+                        const pName = patientData.profile?.first_name || apiContext?.extractedFirst || (isFemale ? "la paciente" : "el paciente");
                         
                         let occupationPrompt = "";
                         let options = null;
 
                         if (age >= 0 && age <= 4) {
                             // Cohorte 1: Lactantes y Primera Infancia (0 a 4 años)
-                            occupationPrompt = `Para calibrar el requerimiento calórico de crecimiento de **${pName}**, indique el entorno principal de cuidado del menor:`;
+                            occupationPrompt = `Para calibrar el requerimiento calórico de crecimiento de **${pName}**, indique el entorno principal de cuidado ${isFemale ? 'de la menor' : 'del menor'}:`;
                             options = [
                                 { label: "🏠 Cuidados en Casa", value: "casa" },
                                 { label: "🏫 Guardería / Estancia Infantil", value: "guarderia" }
@@ -1872,7 +2480,7 @@ export const useCortex = () => {
                             // Cohorte 5: Geriatría (65+ años)
                             occupationPrompt = `Identidad biológica confirmada.\n\nPara perfilar el gasto energético base en su expediente clínico: ¿Se encuentra actualmente **${isFemale ? 'jubilada' : 'jubilado'}**, **${isFemale ? 'pensionada' : 'pensionado'}** o mantiene alguna **ocupación activa**?`;
                             options = [
-                                { label: "🌴 Jubilado / Pensionado", value: "jubilado" },
+                                { label: isFemale ? "🌴 Jubilada / Pensionada" : "🌴 Jubilado / Pensionado", value: "jubilado" },
                                 { label: "💼 Aún laborando", value: "activo" }
                             ];
                         }
@@ -2059,15 +2667,17 @@ export const useCortex = () => {
                             finalPal = 1.20;
                         }
                     } else if (age >= 65) {
-                        // Cohorte 5: Geriátrico Jubilado
+                        // Cohorte 5: Geriátrico Jubilado (concordancia biológica NOM-004)
+                        const isFemJob = resolvePatientSex(patientData).isFemale;
+                        const jubLabel = isFemJob ? "Jubilada" : "Jubilado";
                         if (selection === 'activo') {
-                            finalDesc = "Jubilado (Independiente y Activo)";
+                            finalDesc = `${jubLabel} (Independiente y ${isFemJob ? 'Activa' : 'Activo'})`;
                             finalPal = 1.37;
                         } else if (selection === 'sedentario') {
-                            finalDesc = "Jubilado (Mayormente Sedentario)";
+                            finalDesc = `${jubLabel} (Mayormente ${isFemJob ? 'Sedentaria' : 'Sedentario'})`;
                             finalPal = 1.20;
                         } else {
-                            finalDesc = "Jubilado (Movilidad Reducida / Asistida)";
+                            finalDesc = `${jubLabel} (Movilidad Reducida / Asistida)`;
                             finalPal = 1.00;
                         }
                     }
@@ -2811,7 +3421,7 @@ export const useCortex = () => {
                     } else if (text === 'OCCUPATION') {
                         const ptCtx = patientData.profile?.pediatric_profile;
                         const isMinor = ptCtx?.is_minor;
-                        const pName = patientData.profile?.first_name || 'el menor';
+                        const pName = patientData.profile?.first_name || (resolvePatientSex(patientData).isFemale ? 'la menor' : 'el menor');
                         const label = ptCtx?.ui_controls?.occupation_label || 'Ocupación';
                         const age = patientData.profile?.age || 0;
                         
@@ -3768,27 +4378,17 @@ export const useCortex = () => {
 
                 case 'PHASE_6_SUMMARY_CONFIRM': {
                     if (text === 'yes') {
-                        setCurrentPhase('PHASE_7_ALLERGIES');
-                    } else if (text === 'no') {
-                        // Reset dynamic data arrays to prevent duplicate accumulated items
                         setPatientData(prev => ({
                             ...prev,
-                            history: {
-                                ...(prev.history || {}),
-                                medications: [],
-                                supplements: []
-                            }
+                            pharmacology_edit_mode: false
                         }));
-
-                        // Slice the messages list to remove everything starting from the first Pharmacology greeting to allow a clean restart
-                        setMessages(prev => {
-                            const idx = prev.findIndex(msg => msg.role === 'assistant' && msg.content.includes("Farmacología"));
-                            if (idx !== -1) {
-                                return prev.slice(0, idx);
-                            }
-                            return prev;
-                        });
-
+                        setCurrentPhase('PHASE_7_ALLERGIES');
+                    } else if (text === 'no') {
+                        // Activar edición granular por línea sin borrar medicamentos ni suplementos capturados
+                        setPatientData(prev => ({
+                            ...prev,
+                            pharmacology_edit_mode: true
+                        }));
                         setCurrentPhase('PHASE_6_PHARMACOLOGY');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
@@ -3800,6 +4400,7 @@ export const useCortex = () => {
                     if (text === 'yes') {
                         setPatientData(prev => ({
                             ...prev,
+                            allergies_edit_mode: false,
                             history: {
                                 ...(prev.history || {}),
                                 allergies_verified: true
@@ -3807,25 +4408,15 @@ export const useCortex = () => {
                         }));
                         setCurrentPhase('PHASE_8_DIGESTIVE');
                     } else if (text === 'no') {
-                        // Reset allergies data in global data lake
+                        // Activar menú granular de corrección sin borrar alergias registradas
                         setPatientData(prev => ({
                             ...prev,
+                            allergies_edit_mode: true,
                             history: {
                                 ...(prev.history || {}),
-                                allergies: { food: [], drug: [] },
                                 allergies_verified: false
                             }
                         }));
-
-                        // Slice messages starting from the first Allergies greeting
-                        setMessages(prev => {
-                            const idx = prev.findIndex(msg => msg.role === 'assistant' && msg.content.includes("sensibilidades inmunológicas"));
-                            if (idx !== -1) {
-                                return prev.slice(0, idx);
-                            }
-                            return prev;
-                        });
-
                         setCurrentPhase('PHASE_7_ALLERGIES');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
@@ -3836,30 +4427,31 @@ export const useCortex = () => {
                 case 'PHASE_8_SUMMARY_CONFIRM': {
                     if (text === 'yes') {
                         setPatientData(prev => {
-                            const symptoms = prev?.history?.digestive_symptoms || [];
-                            const freq = prev?.history?.digestive_frequency || "Ninguna";
-                            let prof = prev?.digestive_profile;
-                            if (!prof) {
-                                if (symptoms.length > 0) {
-                                    const phen = symptoms.some(s => s.toLowerCase().includes('estreñ')) ? 'CONSTIPATION' :
-                                                 symptoms.some(s => s.toLowerCase().includes('diarr')) ? 'DIARRHEA' :
-                                                 symptoms.some(s => s.toLowerCase().includes('inflam') || s.toLowerCase().includes('colit')) ? 'BLOATING' : 'MIXED';
-                                    prof = {
-                                        has_issues: true,
-                                        phenotype: phen,
-                                        details: { symptoms: symptoms.join(', '), frequency: freq }
-                                    };
-                                } else {
-                                    prof = {
-                                        has_issues: false,
-                                        phenotype: 'EUBIOSIS'
-                                    };
-                                }
+                            const symptoms = stripNegatedSentinels(prev?.history?.digestive_symptoms || []);
+                            const freq = symptoms.length > 0 ? (prev?.history?.digestive_frequency || "Ocasional") : "Ninguna";
+                            let prof;
+                            if (symptoms.length > 0) {
+                                const phen = symptoms.some(s => String(s).toLowerCase().includes('estreñ')) ? 'CONSTIPATION' :
+                                             symptoms.some(s => String(s).toLowerCase().includes('diarr')) ? 'DIARRHEA' :
+                                             symptoms.some(s => String(s).toLowerCase().includes('inflam') || String(s).toLowerCase().includes('colit')) ? 'BLOATING' : 'MIXED';
+                                prof = {
+                                    has_issues: true,
+                                    phenotype: phen,
+                                    details: { symptoms: symptoms.join(', '), frequency: freq }
+                                };
+                            } else {
+                                prof = {
+                                    has_issues: false,
+                                    phenotype: 'EUBIOSIS'
+                                };
                             }
                             return {
                                 ...prev,
+                                digestive_edit_mode: false,
                                 history: {
                                     ...(prev?.history || {}),
+                                                                        digestive_symptoms: symptoms,
+                                    digestive_frequency: freq,
                                     digestive_verified: true
                                 },
                                 digestive_profile: prof
@@ -3867,8 +4459,7 @@ export const useCortex = () => {
                         });
 
                         const patientAge = patientData?.profile?.age !== undefined ? Number(patientData.profile.age) : (patientData?.identificacion?.edad !== undefined ? Number(patientData.identificacion.edad) : 30);
-                        const patientSex = patientData?.profile?.sex || patientData?.profile?.gender || patientData?.identificacion?.sexo || 'M';
-                        const isFemale = patientSex.toUpperCase().startsWith('F');
+                        const isFemale = resolvePatientSex(patientData).isFemale;
                         const isGeriatric = patientAge >= 65;
 
                         if (patientAge < 12) {
@@ -3879,26 +4470,11 @@ export const useCortex = () => {
                             setCurrentPhase('PHASE_10_HABITS');
                         }
                     } else if (text === 'no') {
-                        // Reset digestive history data
+                        // Activar menú granular de corrección sin borrar síntomas digestivos previos
                         setPatientData(prev => ({
                             ...prev,
-                            history: {
-                                ...(prev.history || {}),
-                                digestive_symptoms: [],
-                                digestive_frequency: "Ninguna"
-                            },
-                            digestive_profile: undefined
+                            digestive_edit_mode: true
                         }));
-
-                        // Slice the messages list to remove everything starting from the first Digestive greeting to allow a clean restart
-                        setMessages(prev => {
-                            const idx = prev.findIndex(msg => msg.role === 'assistant' && msg.content.includes("salud digestiva"));
-                            if (idx !== -1) {
-                                return prev.slice(0, idx);
-                            }
-                            return prev;
-                        });
-
                         setCurrentPhase('PHASE_8_DIGESTIVE');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
@@ -3908,29 +4484,21 @@ export const useCortex = () => {
 
                 case 'PHASE_9_SUMMARY_CONFIRM': {
                     if (text === 'yes') {
-                        setCurrentPhase('PHASE_10_HABITS');
-                    } else if (text === 'no') {
-                        // Reset physio history data with ignorePhase3PreFill flag
                         setPatientData(prev => ({
                             ...prev,
-                            physio: { ignorePhase3PreFill: true }
+                            physio_edit_mode: false
                         }));
-
-                        // Slice the messages list to remove everything starting from the first Physio greeting to allow a clean restart
-                        setMessages(prev => {
-                            const idx = prev.findIndex(msg => msg.role === 'assistant' && (
-                                msg.content.includes("embarazada actualmente") || 
-                                msg.content.includes("etapa de gestación") || 
-                                msg.content.includes("etapa de lactancia") ||
-                                msg.content.includes("retraso en su ciclo") ||
-                                msg.content.includes("retraso en el ciclo")
-                            ));
-                            if (idx !== -1) {
-                                return prev.slice(0, idx);
+                        setCurrentPhase('PHASE_10_HABITS');
+                    } else if (text === 'no') {
+                        // Activar menú granular de corrección conservando el estado fisiológico capturado
+                        setPatientData(prev => ({
+                            ...prev,
+                            physio_edit_mode: true,
+                            physio: {
+                                ...(prev.physio || {}),
+                                ignorePhase3PreFill: true
                             }
-                            return prev;
-                        });
-
+                        }));
                         setCurrentPhase('PHASE_9_PHYSIO');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir.", avatar: tiloImg }]);
@@ -3987,7 +4555,9 @@ export const useCortex = () => {
                 case 'PHASE_16_BIOMETRICS':
                 case 'PHASE_17_VITALS':
                 case 'PHASE_18_ELECTRET':
-                case 'PHASE_19_DIAGNOSIS': {
+                case 'PHASE_19_DIAGNOSIS':
+                case 'PHASE_20_PORTAPAPELES':
+                case 'PHASE_21_CALENDARIO': {
                     // Estas fases son manejadas por sus respectivos componentes modulares de entrevista.
                     // Si la entrada llega aquí, solicitamos ingresar el dato correspondiente.
                     setMessages(prev => [...prev, {

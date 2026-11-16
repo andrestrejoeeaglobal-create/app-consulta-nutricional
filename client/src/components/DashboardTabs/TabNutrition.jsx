@@ -341,7 +341,7 @@ export const TabNutrition = ({
                                                 favoriteFoods.map((item, i) => (
                                                     <span key={i} className="text-[10px] bg-tilo-bg-panel px-1.5 rounded text-tilo-success border border-tilo-success/25 shadow-sm font-semibold">{item}</span>
                                                 ))
-                                            ) : <span className="text-[10px] text-tilo-text-muted/60 italic font-sansation">Sin datos</span>}
+                                            ) : <span className="text-[10px] text-tilo-text-muted/60 italic font-sansation">{(patientData.evaluacionDietetica?.preferencias || patientData.nutrition?.preferences) ? 'Sin alimentos preferidos' : 'Sin datos'}</span>}
                                         </div>
                                     </div>
                                 </div>

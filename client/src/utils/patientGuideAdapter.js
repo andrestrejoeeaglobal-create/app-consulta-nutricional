@@ -1,0 +1,1439 @@
+/**
+ * Adaptador Resiliente de Guía Empática para el Paciente y Sanitizador Clínico Frontend
+ * Ecosistema T.I.L.O. — Cumplimiento NOM-004-SSA3-2012 y WCAG 2.2 AAA
+ *
+ * Garantiza retrocompatibilidad 100% con citas históricas que carezcan de `patient_friendly_guide`,
+ * filtrando falsos positivos (`NORMAL (-)`), reclasificando desbordes legados del Nodo 7,
+ * sincronizando el Semáforo de Bioseguridad con la posología y eliminando jerga intimidante.
+ */
+
+import { enforcePatientGenderConcordance, resolvePatientSex } from './genderConcordance.js';
+
+export { enforcePatientGenderConcordance };
+
+function matchCase(sourceWord, targetLower, targetCapitalized) {
+    if (!sourceWord) return targetLower;
+    if (sourceWord === sourceWord.toUpperCase() && sourceWord.length > 1) {
+        return targetCapitalized.toUpperCase();
+    }
+    const first = sourceWord.charAt(0);
+    if (first === first.toUpperCase() && first !== first.toLowerCase()) {
+        return targetCapitalized;
+    }
+    return targetLower;
+}
+
+const UNICODE_WORD_FIXES = [
+    [/cardiov[íi]asculares/giu, (m) => matchCase(m, 'cardiovasculares', 'Cardiovasculares')],
+    [/cardiov[íi]ascular/giu, (m) => matchCase(m, 'cardiovascular', 'Cardiovascular')],
+    [/cerebrov[íi]asculares/giu, (m) => matchCase(m, 'cerebrovasculares', 'Cerebrovasculares')],
+    [/cerebrov[íi]ascular/giu, (m) => matchCase(m, 'cerebrovascular', 'Cerebrovascular')],
+    [/microv[íi]asculares/giu, (m) => matchCase(m, 'microvasculares', 'Microvasculares')],
+    [/microv[íi]ascular/giu, (m) => matchCase(m, 'microvascular', 'Microvascular')],
+    [/periv[íi]asculares/giu, (m) => matchCase(m, 'perivasculares', 'Perivasculares')],
+    [/periv[íi]ascular/giu, (m) => matchCase(m, 'perivascular', 'Perivascular')],
+    [/endov[íi]asculares/giu, (m) => matchCase(m, 'endovasculares', 'Endovasculares')],
+    [/endov[íi]ascular/giu, (m) => matchCase(m, 'endovascular', 'Endovascular')],
+    [/neurov[íi]ascular/giu, (m) => matchCase(m, 'neurovascular', 'Neurovascular')],
+    [/renov[íi]ascular/giu, (m) => matchCase(m, 'renovascular', 'Renovascular')],
+    [/v[íi]ascularizaci[óo•\ufffd]n/giu, (m) => matchCase(m, 'vascularización', 'Vascularización')],
+    [/v[íi]asculares/giu, (m) => matchCase(m, 'vasculares', 'Vasculares')],
+    [/v[íi]ascular/giu, (m) => matchCase(m, 'vascular', 'Vascular')],
+    [/(?<![\p{L}\p{N}_])v[íi]asos(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'vasos', 'Vasos')],
+    [/(?<![\p{L}\p{N}_])v[íi]aso(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'vaso', 'Vaso')],
+    [/inv[íi]asiv(o|a|os|as)/giu, (m, suf) => matchCase(m, `invasiv${suf.toLowerCase()}`, `Invasiv${suf.toLowerCase()}`)],
+    [/significativ[íi]as/giu, (m) => matchCase(m, 'significativas', 'Significativas')],
+    [/ev[íi]asluaci[óo•\ufffd]n/giu, (m) => matchCase(m, 'evaluación', 'Evaluación')],
+    [/v[íi]aslor/giu, (m) => matchCase(m, 'valor', 'Valor')],
+    [/cora[íi]z[óo]n/giu, (m) => matchCase(m, 'corazón', 'Corazón')],
+
+    [/(?<![\p{L}\p{N}_])est[•\ufffd]ndar(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'estándar', 'Estándar')],
+    [/(?<![\p{L}\p{N}_])p[•\ufffd]rdidas?(?![\p{L}\p{N}_])/giu, (m) => {
+        const plural = /s$/i.test(m) ? 's' : '';
+        return matchCase(m, `pérdida${plural}`, `Pérdida${plural}`);
+    }],
+    [/(?<![\p{L}\p{N}_])d[•\ufffd]cadas?(?![\p{L}\p{N}_])/giu, (m) => {
+        const plural = /s$/i.test(m) ? 's' : '';
+        return matchCase(m, `década${plural}`, `Década${plural}`);
+    }],
+    [/(?<![\p{L}\p{N}_])r[•\ufffd]pid(o|a|os|as)(?![\p{L}\p{N}_])/giu, (m, suf) => matchCase(m, `rápid${suf.toLowerCase()}`, `Rápid${suf.toLowerCase()}`)],
+    [/(?<![\p{L}\p{N}_])f[•\ufffd]?sic(o|a|os|as)(?![\p{L}\p{N}_])/giu, (m, suf) => matchCase(m, `físic${suf.toLowerCase()}`, `Físic${suf.toLowerCase()}`)],
+    [/(?<![\p{L}\p{N}_])cat[•\ufffd]?lic(o|a|os|as)(?![\p{L}\p{N}_])/giu, (m, suf) => matchCase(m, `católic${suf.toLowerCase()}`, `Católic${suf.toLowerCase()}`)],
+    [/(?<![\p{L}\p{N}_])m[•\ufffd]xico(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'méxico', 'México')],
+    [/(?<![\p{L}\p{N}_])quer[•\ufffd]taro(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'querétaro', 'Querétaro')],
+    [/(?<![\p{L}\p{N}_])a[•\ufffd]os(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'años', 'Años')],
+    [/([\p{L}]+?[cs])i[•\ufffd]n(?![\p{L}\p{N}_])/giu, (_, prefix) => `${prefix}ión`],
+    [/([\p{L}]+?)ol[•\ufffd]gic(o|a|os|as)(?![\p{L}\p{N}_])/giu, (_, prefix, suf) => `${prefix}ológic${suf}`],
+    [/([\p{L}]+?)[•\ufffd]mic(o|a|os|as)(?![\p{L}\p{N}_])/giu, (_, prefix, suf) => `${prefix}émic${suf}`],
+
+    [/(?<![\p{L}\p{N}_])lipo\s*prote[íi]nas?\s+de\s+muy\s+baja\s+denc?idad(?:\s*\(VLDL-C\))?/giu, (m) => /VLDL-C/i.test(m) ? 'Lipoproteínas de Muy Baja Densidad (VLDL-C)' : 'Lipoproteínas de Muy Baja Densidad'],
+    [/(?<![\p{L}\p{N}_])lipo\s*prote[íi]nas?\s+de\s+alta\s+denc?idad(?:\s*\(HDL-C\))?/giu, (m) => /HDL-C/i.test(m) ? 'Lipoproteínas de Alta Densidad (HDL-C)' : 'Lipoproteínas de Alta Densidad'],
+    [/(?<![\p{L}\p{N}_])lipo\s*prote[íi]nas?\s+de\s+baja\s+denc?idad(?:\s*\(LDL-C\))?/giu, (m) => /LDL-C/i.test(m) ? 'Lipoproteínas de Baja Densidad (LDL-C)' : 'Lipoproteínas de Baja Densidad'],
+    [/(?<![\p{L}\p{N}_])lipo\s+prote[íi]nas(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'lipoproteínas', 'Lipoproteínas')],
+    [/(?<![\p{L}\p{N}_])dencidad(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'densidad', 'Densidad')],
+    [/(?<![\p{L}\p{N}_])hipotalmico(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'hipotalámico', 'Hipotalámico')],
+    [/(?<![\p{L}\p{N}_])hipotalamico(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'hipotalámico', 'Hipotalámico')],
+    [/(?<![\p{L}\p{N}_])proteinas(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'proteínas', 'Proteínas')],
+    [/(?<![\p{L}\p{N}_])proteina(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'proteína', 'Proteína')],
+    [/(?<![\p{L}\p{N}_])[iïìî]ndices?(?![\p{L}\p{N}_])/giu, (m) => {
+        const plural = /s$/i.test(m) ? 's' : '';
+        return matchCase(m, `índice${plural}`, `Índice${plural}`);
+    }],
+    [/(?<![\p{L}\p{N}_])trigliceridos?(?![\p{L}\p{N}_])/giu, (m) => {
+        const plural = /s$/i.test(m) ? 's' : '';
+        return matchCase(m, `triglicérido${plural}`, `Triglicérido${plural}`);
+    }],
+    [/(?<![\p{L}\p{N}_])la\s+tiroglobulina(?![\p{L}\p{N}_])/giu, 'Tiroglobulina'],
+    [/Osteocalcina\(BGP\)/gu, 'Osteocalcina (BGP)'],
+    [/[ÍIÏï]ndice\s+de\s+Stroke/giu, 'Índice de Riesgo Cerebrovascular'],
+    [/(?<![\p{L}\p{N}_])sistolico(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'sistólico', 'Sistólico')],
+    [/(?<![\p{L}\p{N}_])sistolica(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'sistólica', 'Sistólica')],
+    [/(?<![\p{L}\p{N}_])diastolico(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'diastólico', 'Diastólico')],
+    [/(?<![\p{L}\p{N}_])diastolica(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'diastólica', 'Diastólica')],
+    [/(?<![\p{L}\p{N}_])periferica(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'periférica', 'Periférica')],
+    [/(?<![\p{L}\p{N}_])periferico(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'periférico', 'Periférico')],
+    [/(?<![\p{L}\p{N}_])saturacion(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'saturación', 'Saturación')],
+    [/(?<![\p{L}\p{N}_])presion(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'presión', 'Presión')],
+    [/(?<![\p{L}\p{N}_])oxigeno(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'oxígeno', 'Oxígeno')],
+    [/(?<![\p{L}\p{N}_])numero(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'número', 'Número')],
+    [/(?<![\p{L}\p{N}_])licuefaccion(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'licuefacción', 'Licuefacción')],
+    [/(?<![\p{L}\p{N}_])estomago(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'estómago', 'Estómago')],
+    [/(?<![\p{L}\p{N}_])vesicula(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'vesícula', 'Vesícula')],
+    [/(?<![\p{L}\p{N}_])circulacion(?![\p{L}\p{N}_])/giu, (m) => matchCase(m, 'circulación', 'Circulación')],
+    [/(?<![\p{L}\p{N}_])sangre\s+miocardial(?![\p{L}\p{N}_])/giu, 'Sangre Miocárdica'],
+    [/(?<![\p{L}\p{N}_])sangu[íi]nea\s+miocardial(?![\p{L}\p{N}_])/giu, 'Sanguínea Miocárdica'],
+    [/(?<![\p{L}\p{N}_])ox[íi]geno\s+miocardial(?![\p{L}\p{N}_])/giu, 'Oxígeno Miocárdico']
+];
+
+export function deduplicateRepeatedClauseVerbs(rawText) {
+    if (!rawText || typeof rawText !== 'string') return '';
+    return rawText.replace(
+        /\b(sugieren|sugiere|indican|indica|muestran|muestra|reflejan|refleja|evidencian|evidencia|revelan|revela|apuntan\s+a|apunta\s+a)\s+([^.!?;]+?)\s+(?:y|e)\s+\1\s+(?=[\p{L}\p{N}])/giu,
+        (_, verb, firstClause, offset, fullStr) => {
+            const afterMatch = fullStr.slice(offset + _.length).trimStart();
+            const conj = /^(?:i|hi(?![aeouáéóú]))/iu.test(afterMatch) ? 'e' : 'y';
+            return `${verb} ${firstClause.trim()} ${conj} `;
+        }
+    );
+}
+
+export function normalizeMetricDecimals(rawText) {
+    if (rawText === null || rawText === undefined) return '';
+    const str = String(rawText);
+    if (/\b(?:pasos|kcal)\b/iu.test(str)) {
+        return str.replace(/\(Ref:\s*([^)]+)\)/giu, (_, inner) => `(Ref: ${inner.replace(/(\d),(\d)/g, '$1.$2')})`);
+    }
+    return str.replace(/(\d),(\d)/g, '$1.$2');
+}
+
+export function joinSpanishList(items = []) {
+    const clean = (Array.isArray(items) ? items : [])
+        .map((x) => String(x || '').trim().replace(/[,;.\s]+$/g, ''))
+        .filter(Boolean);
+    if (clean.length === 0) return '';
+    if (clean.length === 1) return clean[0];
+    const last = clean[clean.length - 1];
+    const conjunction = /^(?:i|hi(?![aeouáéóú]))/iu.test(last) ? ' e ' : ' y ';
+    if (clean.length === 2) return `${clean[0]}${conjunction}${last}`;
+    return `${clean.slice(0, -1).join(', ')}${conjunction}${last}`;
+}
+
+export function sanitizeClinicalSpanish(rawText) {
+    if (rawText === null || rawText === undefined) return '';
+    if (typeof rawText !== 'string') return String(rawText);
+    let text = rawText;
+    for (const [pattern, replacement] of UNICODE_WORD_FIXES) {
+        text = text.replace(pattern, replacement);
+    }
+    text = text.replace(/\(Ref:\s*([^)]+)\)/giu, (_, inner) => `(Ref: ${inner.replace(/(\d),(\d)/g, '$1.$2')})`);
+    text = deduplicateRepeatedClauseVerbs(text);
+    return text;
+}
+
+function polishPatientEditorialPhrasing(rawText) {
+    if (!rawText || typeof rawText !== 'string') return '';
+    return rawText
+        .replace(/qu[ée]\s+est[áa]\s+pasando\s+en\s+su\s+cuerpo/giu, 'qué está ocurriendo en su organismo')
+        .replace(/Para\s+proteger\s+su\s+cuerpo/gu, 'Para proteger su organismo')
+        .replace(/complementari(o|a|os|as)\s+a\s+su\s+comida\s+real/giu, (_, suf) => `complementari${suf} a su alimentación diaria`)
+        .replace(/complementari(o|a|os|as)\s+a\s+la\s+comida\s+real/giu, (_, suf) => `complementari${suf} a la alimentación diaria`)
+        .replace(/\bcomida\s+real\b/giu, 'alimentación diaria')
+        .replace(/\bcomida\s+limpia\b/giu, 'alimentación limpia')
+        .replace(/lo\s+que\s+(su|el)\s+cuerpo(\s+de\s+[^.]+?)?\s+ya\s+no\s+necesita/giu, (_, art, tail = '') => `lo que ${art} organismo${tail} ya no necesita`)
+        .replace(/El\s+cuerpo\s+se\s+repara\s+de\s+verdad\s+cuando\s+usted\s+duerme\s+profundo/giu, 'Su organismo se repara a profundidad cuando usted descansa bien');
+}
+
+export function capitalizeLeadingSpanish(str) {
+    if (!str || typeof str !== 'string') return '';
+    return str.trim().replace(/^(\(\d+\)\s*)?([\p{Ll}])/u, (_, prefix = '', ch) => `${prefix}${ch.toUpperCase()}`);
+}
+
+export function isPhysiologicallyNormal(statusStr) {
+    if (statusStr === null || statusStr === undefined) return true;
+    const s = String(statusStr).trim().toUpperCase();
+    if (!s || s === '-' || s === 'N/A' || s === 'NONE') return true;
+    return (
+        s === 'NORMAL' ||
+        s === 'NORMALES' ||
+        s.startsWith('NORMAL ') ||
+        s.startsWith('NORMAL(') ||
+        s === 'OPTIMAL' ||
+        s.startsWith('OPTIMAL ') ||
+        s === 'OPTIMO' ||
+        s === 'ÓPTIMO' ||
+        s.startsWith('OPTIMO ') ||
+        s.startsWith('ÓPTIMO ') ||
+        s === 'NEGATIVO' ||
+        s === 'CONSERVADO' ||
+        s === 'HOMEOSTASIS' ||
+        s === 'DENTRO DE RANGO' ||
+        s === 'SIN ALTERACIONES'
+    );
+}
+
+const CLINICAL_BIOMARKER_DICT = {
+    'RETICULAR_ERYTHEMA': 'Eritema Reticular',
+    'PUNCTATE_MACULES': 'Máculas Puntiformes',
+    'MICROPAPULAR_ERUPTION': 'Erupción Micropapular',
+    'PERIFOLLICULAR_INVOLVEMENT': 'Compromiso Perifolicular',
+    'CUTANEOUS_EDEMA_SUPERFICIAL': 'Edema Cutáneo Superficial',
+    'SUPERFICIAL_CUTANEOUS_EDEMA': 'Edema Cutáneo Superficial',
+    'CHRONIC_VENOUS_INSUFFICIENCY_DETECTED': 'Insuficiencia Venosa Crónica',
+    'CHRONIC_VENOUS_INSUFFICIENCY': 'Insuficiencia Venosa Crónica',
+    'VARICOSE_VEINS_HIGH_RISK': 'Riesgo Elevado de Várices',
+    'VENOUS_STASIS_DERMATITIS': 'Dermatitis por Estasis Venosa',
+    'EDEMA_PERIPHERAL_MODERATE': 'Edema Periférico Moderado',
+    'PERIPHERAL_EDEMA': 'Edema Periférico',
+    'HYPERPIGMENTATION': 'Hiperpigmentación Cutánea',
+    'HEMOSIDERIN_PIGMENTATION': 'Pigmentación por Hemosiderina',
+    'FOLLICULAR_HYPERKERATOSIS': 'Hiperqueratosis Folicular',
+    'XEROSIS_CUTIS': 'Xerosis Cutánea (Piel Seca)',
+    'TELANGIECTASIA': 'Telangiectasias Superficiales',
+    'VENOUS_ECTASIA': 'Ectasia Venosa',
+    'SUBLINGUAL_VARICES': 'Várices Sublinguales',
+    'LINGUAL_COATING_WHITE': 'Saburra Lingual Blanquecina',
+    'GINGIVAL_CONGESTION': 'Congestión Gingival',
+    'DRY_MUCOSA': 'Resequedad de Mucosa',
+    'ERYTHEMATOUS_EDEMA': 'Edema Eritematoso',
+    'MICROVASCULAR_CONGESTION': 'Congestión Microvascular'
+};
+
+export function formatCleanBiomarkerString(b) {
+    if (!b) return '';
+    let text = normalizeMetricDecimals(sanitizeClinicalSpanish(String(b).trim()));
+    const exactKey = text.toUpperCase().replace(/\s+/g, '_');
+    if (CLINICAL_BIOMARKER_DICT[exactKey]) return CLINICAL_BIOMARKER_DICT[exactKey];
+    for (const [enKey, esVal] of Object.entries(CLINICAL_BIOMARKER_DICT)) {
+        const re = new RegExp(`(?<![\\p{L}\\p{N}_])${enKey}(?![\\p{L}\\p{N}_])`, 'giu');
+        text = text.replace(re, esVal);
+    }
+    return capitalizeLeadingSpanish(text);
+}
+
+/**
+ * Descarta cadenas de biomarcadores legados que contienen un estado NORMAL (-), NORMAL (+), OPTIMAL, etc.
+ */
+export function isBiomarkerStringActuallyNormal(bStr) {
+    if (!bStr) return true;
+    const s = String(bStr).toUpperCase();
+    if (/\|\s*NORMAL\s*(?:\([+-]+\))?\s*\)/.test(s)) return true;
+    if (/ESTADO:\s*NORMAL\b/.test(s)) return true;
+    if (/\(\s*NORMAL\s*(?:\([+-]+\))?\s*\)/.test(s)) return true;
+    return false;
+}
+
+function classifyLegacyBiomarkerToSystemId(rawLabel) {
+    const norm = sanitizeClinicalSpanish(String(rawLabel || ''))
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+
+    if (/(meridiano|shao_yin|yangmin|sutra|vejiga\s+plexo\s+solar|mano\s+intestino)/.test(norm)) {
+        return 'EXCLUDED_MERIDIAN';
+    }
+    if (/(gastro|estomag|intestin|colon|pepsin|pancrea|absorcion|saburra|reflujo|colitis|treonina)/.test(norm)) {
+        return 'digestion_absorcion';
+    }
+    if (/(higado|hepat|vesicul|biliar|renal|rinon|urobilin|proteinuri|acido\s+urico|creatinin|toxin|pesticid|metal|plomo|mercuri|arsenic|cadmi|metionina|molibdeno)/.test(norm)) {
+        return 'filtros_naturales';
+    }
+    if (/(cardio|vascular|coronari|miocard|pulmon|respirat|capacidad\s+vital|paco2|sao2|viscosidad|bombeo|latido|glucos|insulina|colesterol|triglic|lipoprotein|hdl|ldl|coenzim|obesid|vitamina\s+b|potasio|magnesio|hierro|cobre|arginina|bolsas\s+en\s+los\s+ojos|circulos\s+oscuros|hipoxia)/.test(norm)) {
+        return 'circulacion_energia';
+    }
+    if (/(endocrin|tiroid|cerebr|craneal|memoria|pineal|hipotal|prostat|esperma|semen|testosteron|ginecol|menstru|sueno|insomnio|estres|cortisol|inmun|linf|amigdal|alerg|histamin|cutane|melanin|vitamina\s+[ace]\b|zinc|selenio|lisina|triptofano|fenilalanina|yodo|fatiga\s+visual)/.test(norm)) {
+        return 'descanso_defensas';
+    }
+    return 'huesos_musculos';
+}
+
+export function extractPatientAge(patientData, fallback = 35) {
+    const candidates = [
+        patientData?.clinical_dossier?.bioenergetics?.age,
+        patientData?.profile?.age,
+        patientData?.identificacion?.edad,
+        patientData?.identityLock?.patientInfo?.age,
+        patientData?.vitals?.age,
+        patientData?.age,
+        patientData?.edad
+    ];
+    for (const c of candidates) {
+        if (c !== undefined && c !== null && String(c).trim() !== '') {
+            const n = Number(c);
+            if (Number.isFinite(n) && n >= 0 && n <= 125) return n;
+        }
+    }
+
+    const rawDob =
+        patientData?.profile?.birthdate ||
+        patientData?.identificacion?.fechanac ||
+        patientData?.identificacion?.fechaNacimiento ||
+        patientData?.identityLock?.patientInfo?.birthdate;
+    if (rawDob) {
+        const s = String(rawDob).trim();
+        let birthDate = null;
+        const ddmmyyyy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+        const yyyymmdd = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+        if (ddmmyyyy) {
+            birthDate = new Date(Number(ddmmyyyy[3]), Number(ddmmyyyy[2]) - 1, Number(ddmmyyyy[1]));
+        } else if (yyyymmdd) {
+            birthDate = new Date(Number(yyyymmdd[1]), Number(yyyymmdd[2]) - 1, Number(yyyymmdd[3]));
+        }
+        if (birthDate && !Number.isNaN(birthDate.getTime())) {
+            const now = new Date();
+            let years = now.getFullYear() - birthDate.getFullYear();
+            const mDiff = now.getMonth() - birthDate.getMonth();
+            if (mDiff < 0 || (mDiff === 0 && now.getDate() < birthDate.getDate())) {
+                years -= 1;
+            }
+            if (Number.isFinite(years) && years >= 0 && years <= 125) return years;
+        }
+    }
+
+    return fallback;
+}
+
+function humanizeLegacyTimeSlot(rawSlot, idx) {
+    const s = sanitizeClinicalSpanish(String(rawSlot || '').trim());
+    // Preservar calificadores clínicos explícitos (ej. "Días 8 en adelante, según tolerancia" o "(aprox. 4 h...)")
+    if (/\((?:d[íi]as\s*8|seg[úu]n\s+tolerancia|semana\s*2|aprox\.)/i.test(s)) {
+        return s;
+    }
+    if (/04:00|alba|despertar/i.test(s)) return 'Al despertar en ayunas';
+    if (/09:30|media\s+mañana/i.test(s)) return 'A media mañana (aprox. 4 h después de despertar)';
+    if (/15:00|media\s+tarde/i.test(s)) return 'A media tarde';
+    if (/20:30|previa\s+al\s+sueño|antes\s+de\s+dormir|noche/i.test(s)) return '30 a 60 min antes de dormir';
+    const defaults = [
+        'Al despertar en ayunas',
+        'A media mañana',
+        'A media tarde',
+        '30 a 60 min antes de dormir'
+    ];
+    return s || defaults[idx] || `Momento ${idx + 1}`;
+}
+
+export function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
+    if (!rawLabel) return '';
+    const base = sanitizeClinicalSpanish(String(rawLabel).split(':')[0].trim());
+    if (!base) return '';
+
+    if (/radiaci[óo]n\s+electromagn[ée]tica|electromagn[ée]tic/i.test(base)) {
+        return '';
+    }
+    if (/mercurio|ars[ée]nico|plomo|cadmio|pesticida|metales?\s+pesados?|toxina/i.test(base)) {
+        return 'depuración de desechos ambientales';
+    }
+    if (/tiroglobulina|tiroides|tiroide[ao]|tsh|t3|t4|paratiroides/i.test(base)) {
+        return 'equilibrio funcional de la tiroides';
+    }
+    if (/prostatitis|pr[óo]stata|prost[áa]tic|testosterona|gonadotropina|esperma/i.test(base)) {
+        return 'bienestar y equilibrio prostático y hormonal';
+    }
+    if (/estr[óo]geno|progesterona|ginecol|mamari|[úu]tero|ovario/i.test(base)) {
+        return 'equilibrio hormonal cíclico';
+    }
+    if (/hiperplasia\s+[óo]sea|densidad\s+mineral|osteoporosis|osteocalcina|calcificaci[óo]n|cervical|lumbar|fosfatasa|[óo]se[ao]|hueso|crecimiento\s+[óo]seo/i.test(base)) {
+        return 'firmeza mineral de huesos y columna';
+    }
+    if (/reumatismo|articular|articulaci|ligamento|cart[íi]lago/i.test(base)) {
+        return 'confort y movilidad articular';
+    }
+    if (/col[áa]geno|piel|cut[áa]ne|cabello|tejido|muscular|m[úu]sculo/i.test(base)) {
+        return 'reservas de colágeno en articulaciones, piel y tejidos';
+    }
+    if (/grasa\s+en\s+el\s+h[íi]gado|h[íi]gado|hep[áa]tic|ves[íi]cula|biliar|bilirrubina|\bglobulina\b|desintoxicaci[óo]n|energ[íi]a\s+del\s+h[íi]gado/i.test(base)) {
+        return 'procesamiento de grasas y limpieza en hígado';
+    }
+    if (/proteinuria|[áa]cido\s+[úu]rico|urobilin[óo]geno|nitr[óo]geno|urea|creatinina|renal|ri[ñn][óo]n/i.test(base)) {
+        return 'filtración de minerales y proteínas en riñón';
+    }
+    if (/memoria|cerebr|craneal|nervio\s+craneal|enfoque|cognitiv|emoci[óo]n/i.test(base)) {
+        return 'claridad mental, enfoque y memoria';
+    }
+    if (/punta\s+lingual|hpa|suprarrenal|adrenal|pineal|melatonina|cortisol|sue[ñn]o|estr[ée]s|insomnio|timo/i.test(base)) {
+        return 'recuperación frente al estrés y calidad de descanso';
+    }
+    if (/alergia|sensibilidad|polen|polvo|leche|l[áa]cteo|marisco|pintura|fibra\s+qu[íi]mica|antibi[óo]tico|alcohol|tabaco/i.test(base)) {
+        return 'sensibilidad digestiva o ambiental';
+    }
+    if (/c[íi]rculos\s+oscuros|bolsas\s+en\s+los\s+ojos|ojeras|fatiga\s+visual/i.test(base)) {
+        return 'oxigenación microvascular y descanso visual';
+    }
+    if (/sublingual/i.test(base)) {
+        return 'hidratación y microcirculación digestiva';
+    }
+    if (systemId === 'digestion_absorcion' && /treonina|histidina|lisina|valina|leucina|isoleucina|tript[óo]fano|metionina|fenilalanina|arginina|amino[áa]cido/i.test(base)) {
+        return 'aprovechamiento digestivo de aminoácidos y proteínas';
+    }
+    if (systemId === 'circulacion_energia' && /coenzima|vitamina\s+b|hierro|mitocondri/i.test(base)) {
+        return 'producción de energía celular';
+    }
+    if (/vitamina|zinc|selenio|hierro|magnesio|potasio|calcio|coenzima|treonina|histidina|lisina|valina|leucina|isoleucina|tript[óo]fano|metionina|fenilalanina|arginina|amino[áa]cido|inmunoglobulina|linf[áa]tic|am[íi]gdala|bazo|m[ée]dula|respiratori|mucosa/i.test(base)) {
+        return 'reservas de vitaminas, minerales y defensas naturales';
+    }
+    if (/mioc[áa]rdic|coronari|latido|bombeo|viscosidad|elasticidad|vascular|arteri|venos|microcirculaci|ox[íi]geno|pulmonar|riesgo\s+cerebrovascular|stroke|presi[óo]n|impedancia|volumen\s+de\s+perfusi/i.test(base)) {
+        return 'fluidez de la circulación y oxigenación del corazón';
+    }
+    if (/araquid[óo]nico|omega|colesterol|triglic[ée]ridos?|lipoprote[íi]na|grasa\s+en\s+sangre|adiposo|obesidad|l[íi]pido/i.test(base)) {
+        return 'equilibrio de grasas saludables en sangre';
+    }
+    if (/insulina|glucosa|az[úu]car|gluc[óo]geno|energ[íi]a|mitocondri|metabolismo|cuerpo\s+[áa]cido|ph/i.test(base)) {
+        return 'aprovechamiento diario de azúcares y energía celular';
+    }
+    if (/peristalsis|intestin|col[óo]nic|colon|flora|microbiota|estre[ñn]imiento|evacuaci/i.test(base)) {
+        return 'ritmo de movimiento del estómago e intestino';
+    }
+    if (/absorci[óo]n|g[áa]stric|pepsina|est[óo]mago|saburra|lingual|digestiv|amilasa/i.test(base)) {
+        return 'producción de jugos digestivos y absorción de nutrientes';
+    }
+
+    return base
+        .replace(/^(?:grado|coeficiente|[íi]ndice|s[íi]ndrome|factor|tasa)\s+de\s+/i, '')
+        .replace(/\([^)]*\)/g, '')
+        .trim()
+        .toLowerCase();
+}
+
+const RAW_ALARMING_PATIENT_LABEL_RE = /(mercurio|ars[ée]nico|plomo|radiaci[óo]n\s+electromagn[ée]tica|prostatitis|tiroglobulina|hiperplasia\s+[óo]sea|coeficiente\s+de\s+reumatismo|\(ojos\)|\[electret\]|\[ocr_lab\])/i;
+
+/**
+ * Detector Anti-Tuteo de Doble Capa (v2.7.1):
+ * - Capa 1 (`STRICT_TUTEO_TOKEN_RE`): Pronombres, posesivos, desinencias verbales inequívocas de 2.ª persona singular
+ *   e infinitivos/imperativos con enclítico de tuteo. Excluye homógrafos de 3.ª persona (`bebe`, `evita`, `sigue`, `procura`)
+ *   para jamás colisionar con frases formales legítimas (`usted bebe`, `el menor bebe`, `0 Picante (evita irritar...)`).
+ * - Capa 2 (`DIRECTIVE_IMPERATIVE_TUTEO_RE`): Captura imperativos homógrafos únicamente cuando encabezan una oración directiva.
+ */
+export const STRICT_TUTEO_TOKEN_RE = /(?<![\p{L}\p{N}_])(tú|tu|tus|te|ti|contigo|tienes|comes|comas|bebes|duermes|descansas|sientes|pasas|bajas|puedas|puedes|agitarte|requieres|recuperes|imagina|tómalo|disuélvelo|acostarte|acuéstate|enfócate|hidrátate|hidratarte|cuidarte|explicarte|acompañarte|moverte|sentirte)(?![\p{L}\p{N}_])/iu;
+
+export const DIRECTIVE_IMPERATIVE_TUTEO_RE = /(?:^|[.!?]\s+)(?:sigue\s+hoy|procura\s+cenar|bebe\s+aproximadamente|evita\s+(?:tomarlo|cenar|pantallas))\b/iu;
+
+export function hasLegacyTuteo(rawValue) {
+    if (!rawValue) return false;
+    if (typeof rawValue === 'string') {
+        return STRICT_TUTEO_TOKEN_RE.test(rawValue) || DIRECTIVE_IMPERATIVE_TUTEO_RE.test(rawValue);
+    }
+    if (Array.isArray(rawValue)) {
+        return rawValue.some((item) => hasLegacyTuteo(item));
+    }
+    if (typeof rawValue === 'object') {
+        return Object.values(rawValue).some((val) => hasLegacyTuteo(val));
+    }
+    return false;
+}
+
+export function resolveClinicalAddressing({
+    patientName = '',
+    ageYears = 35,
+    isFemale = false,
+    isLactanteExplicit = false
+} = {}) {
+    const safeAge = Number.isFinite(Number(ageYears)) && Number(ageYears) >= 0 ? Number(ageYears) : 35;
+    const isLactante = Boolean(isLactanteExplicit || safeAge < 2);
+    const isTutorChild = !isLactante && safeAge < 13;
+    const isTutorMode = isLactante || isTutorChild;
+    const isAdolescent = safeAge >= 13 && safeAge < 18;
+    const isSenior = safeAge >= 65;
+
+    const cleanFullName = capitalizeLeadingSpanish(
+        sanitizeClinicalSpanish(patientName || (isLactante ? 'su bebé' : 'Paciente'))
+    );
+    const hasSpecificName = !/^(paciente|su\s+beb[ée]|tu\s+beb[ée]|el\s+menor|la\s+menor|lactante)$/i.test(cleanFullName.trim());
+    const rawFirstToken = cleanFullName.split(/\s+/)[0] || cleanFullName;
+    const firstName = hasSpecificName
+        ? rawFirstToken
+        : (isTutorMode
+            ? (isLactante ? 'su bebé' : (isFemale ? 'su hija' : 'su hijo'))
+            : 'paciente');
+
+    const childShortRef = isLactante
+        ? (hasSpecificName ? firstName : 'su bebé')
+        : (hasSpecificName ? firstName : (isFemale ? 'su hija' : 'su hijo'));
+
+    const childSubjectWithKinship = isLactante
+        ? (hasSpecificName ? `${firstName} (su bebé)` : 'su bebé')
+        : (hasSpecificName ? `${firstName} (${isFemale ? 'su hija' : 'su hijo'})` : (isFemale ? 'su hija' : 'su hijo'));
+
+    const mode = isTutorMode
+        ? 'MODO_TUTOR'
+        : isAdolescent
+            ? 'CALIBRADOR_EMPODERADOR'
+            : isSenior
+                ? 'GERIATRIC_MODE'
+                : 'ESTRATEGA_SENIOR';
+
+    return {
+        mode,
+        ageYears: safeAge,
+        isFemale: Boolean(isFemale),
+        isLactante,
+        isTutorChild,
+        isTutorMode,
+        isAdolescent,
+        isSenior,
+        hasSpecificName,
+        cleanFullName,
+        firstName,
+        childShortRef,
+        childSubjectWithKinship,
+        estimadoLabel: isFemale ? 'Estimada' : 'Estimado',
+        directObjCap: isFemale ? 'La' : 'Lo',
+        directObjLower: isFemale ? 'la' : 'lo',
+        seatedLabel: isFemale ? 'sentada' : 'sentado'
+    };
+}
+
+export function buildPatientUiLabels({ addressing, isPaused = false }) {
+    const ref = addressing.childShortRef;
+    const refUpper = String(ref || 'EL MENOR').toUpperCase();
+
+    if (addressing.isLactante) {
+        return {
+            semaphoreFallbackTitle: 'Cuidado exclusivo de lactancia y alimentación guiada por su pediatra',
+            recommendedLabsTitle: `🔬 Estudios de control sugeridos para personalizar el seguimiento pediátrico de ${ref}:`,
+            systemsSectionTitle: `Los 5 Sistemas de Salud de ${ref} Explicados con Sencillez`,
+            observedBoxTitle: `¿Qué observamos en la evaluación de ${ref}?`,
+            alliesSectionKicker: 'Prioridad Pediátrica • Primeros 1000 Días',
+            alliesSectionTitle: 'Cuidado Exclusivo de Lactancia e Hidratación Pediátrica',
+            scheduleCardTitle: 'Orientación diaria de alimentación e hidratación guiada por su pediatra',
+            redPauseTitle: `Primero la seguridad pediátrica de ${ref} (0 sobres activos)`,
+            redPauseBody: 'En menores de 2 años no se utilizan sobres de suplementación para adultos. Continúe hoy mismo con lactancia materna o fórmula pediátrica y las indicaciones directas de su pediatra.',
+            homePlanSectionTitle: `Plan de Acción Diario en Casa para ${ref}`,
+            clipboardPatientLabel: 'Paciente (Atención a Madre/Padre/Tutor):',
+            clipboardSystemsHeading: `LOS 5 SISTEMAS DE SALUD DE ${refUpper} EN PALABRAS SENCILLAS`,
+            clipboardAlliesHeading: 'CUIDADO EXCLUSIVO DE LACTANCIA E HIDRATACIÓN PEDIÁTRICA'
+        };
+    }
+
+    if (addressing.isTutorChild) {
+        return {
+            semaphoreFallbackTitle: `¿Cómo iniciaremos el cuidado nutricional de ${ref} de forma segura?`,
+            recommendedLabsTitle: `🔬 Estudios de control sugeridos para personalizar el seguimiento de ${ref}:`,
+            systemsSectionTitle: `Los 5 Sistemas de Salud de ${ref} Explicados con Sencillez`,
+            observedBoxTitle: `¿Qué observamos en la evaluación de ${ref}?`,
+            alliesSectionKicker: isPaused
+                ? 'Vigilancia Pediátrica Preventiva'
+                : `Soporte Nutricional Pediátrico Adaptado al Día de ${ref}`,
+            alliesSectionTitle: isPaused
+                ? `Hidratación Natural y Cuidado Digestivo para ${ref}`
+                : `Soporte Nutricional Complementario para ${ref} (33Plus® y 34Plus®)`,
+            scheduleCardTitle: isPaused
+                ? `Cómo organizar la hidratación preventiva de ${ref} en casa`
+                : `Cómo integrar las tomas e hidratación a la rutina diaria de ${ref}`,
+            redPauseTitle: `Primero la seguridad médica de ${ref} (0 sobres por ahora)`,
+            redPauseBody: `Por precaución clínica, aún no iniciaremos sobres de suplementación para ${ref}. Siga hoy mismo su guía de alimentación protectora e hidratación natural en casa mientras revisamos sus estudios con su pediatra o médico tratante.`,
+            homePlanSectionTitle: `Plan de Acción Diario en Casa para ${ref}`,
+            clipboardPatientLabel: 'Paciente (Atención a Madre/Padre/Tutor):',
+            clipboardSystemsHeading: `LOS 5 SISTEMAS DE SALUD DE ${refUpper} EN PALABRAS SENCILLAS`,
+            clipboardAlliesHeading: isPaused
+                ? `HIDRATACIÓN PREVENTIVA Y CUIDADO DIARIO PARA ${refUpper}`
+                : `SOPORTE NUTRICIONAL COMPLEMENTARIO Y HORARIOS PARA ${refUpper}`
+        };
+    }
+
+    return {
+        semaphoreFallbackTitle: '¿Cómo iniciaremos su protocolo de forma segura?',
+        recommendedLabsTitle: '🔬 Estudios de control sugeridos para personalizar aún más su seguimiento:',
+        systemsSectionTitle: 'Sus 5 Sistemas de Salud Explicados con Sencillez',
+        observedBoxTitle: '¿Qué observamos en su evaluación?',
+        alliesSectionKicker: 'Nutrición Funcional Sincronizada a su Despertar',
+        alliesSectionTitle: 'Sus Aliados Nutricionales (33Plus® y 34Plus®)',
+        scheduleCardTitle: 'Cómo integrarlo a su rutina diaria (adaptado a su hora real de despertar)',
+        redPauseTitle: 'Primero su seguridad médica (0 sobres por ahora)',
+        redPauseBody: addressing.isAdolescent
+            ? 'Por precaución clínica, aún no iniciaremos sobres de suplementación. Siga hoy mismo su guía de alimentación protectora e hidratación natural en acompañamiento con su madre, padre o tutor legal mientras revisamos sus estudios con su médico.'
+            : 'Por precaución clínica, aún no iniciaremos sobres de suplementación. Siga hoy mismo su guía de alimentación protectora e hidratación natural mientras revisamos sus estudios con su médico.',
+        homePlanSectionTitle: 'Su Plan de Acción Diario en Casa',
+        clipboardPatientLabel: addressing.isAdolescent
+            ? 'Paciente (con acompañamiento de Madre/Padre/Tutor):'
+            : 'Paciente:',
+        clipboardSystemsHeading: 'SUS 5 SISTEMAS DE SALUD EN PALABRAS SENCILLAS',
+        clipboardAlliesHeading: 'SUS ALIADOS NUTRICIONALES Y HORARIOS ADAPTADOS A SU DÍA'
+    };
+}
+
+/**
+ * Resuelve de manera 100% determinista y resiliente toda la información necesaria para
+ * la Vista Empática del Paciente (tanto en expedientes nuevos v2.7.1 como en citas históricas legadas en `tú`).
+ */
+export function resolvePatientFriendlyGuide(patientData = {}) {
+    const dossier = patientData?.clinical_dossier || {};
+    const ortho = dossier?.orthomolecular_prescription || {};
+    const bioenergetics = dossier?.bioenergetics || ortho?.bioenergetics_summary || {};
+    const ageYears = extractPatientAge(patientData);
+    const { isFemale } = resolvePatientSex(patientData);
+    const isLactante = Boolean(patientData?.isLactante || patientData?.profile?.pediatric_profile?.is_lactante || ageYears < 2);
+    const isPediatric = Boolean(isLactante || patientData?.isPediatrico || patientData?.profile?.pediatric_profile?.is_minor || ageYears < 18);
+
+    const rawName =
+        patientData?.profile?.name ||
+        patientData?.identificacion?.nombre ||
+        patientData?.identityLock?.patientInfo?.name ||
+        patientData?.name ||
+        (isLactante ? 'su bebé' : 'Paciente');
+
+    const addr = resolveClinicalAddressing({
+        patientName: rawName,
+        ageYears,
+        isFemale,
+        isLactanteExplicit: isLactante
+    });
+    const ref = addr.childShortRef;
+    const fullName = addr.cleanFullName;
+    const firstName = addr.firstName;
+
+    const existingGuide = dossier?.patient_friendly_guide || null;
+    const rawIfmNodes = Array.isArray(dossier?.ifm_nodes_matrix) ? dossier.ifm_nodes_matrix : [];
+
+    // 1. Filtrar y reclasificar biomarcadores técnicos reales (cero NORMAL (-))
+    const bucketsBySystem = {
+        circulacion_energia: [],
+        digestion_absorcion: [],
+        filtros_naturales: [],
+        descanso_defensas: [],
+        huesos_musculos: []
+    };
+    const bucketsByNode = {
+        NODO_1_ASIMILACION: [],
+        NODO_2_BIOTRANSFORMACION: [],
+        NODO_3_ENERGIA: [],
+        NODO_4_COMUNICACION: [],
+        NODO_5_TRANSPORTE: [],
+        NODO_6_DEFENSA: [],
+        NODO_7_ESTRUCTURAL: []
+    };
+
+    const NODE_TO_DEFAULT_SYSTEM = {
+        NODO_1_ASIMILACION: 'digestion_absorcion',
+        NODO_2_BIOTRANSFORMACION: 'filtros_naturales',
+        NODO_3_ENERGIA: 'circulacion_energia',
+        NODO_4_COMUNICACION: 'descanso_defensas',
+        NODO_5_TRANSPORTE: 'circulacion_energia',
+        NODO_6_DEFENSA: 'descanso_defensas',
+        NODO_7_ESTRUCTURAL: 'huesos_musculos'
+    };
+
+    rawIfmNodes.forEach((node) => {
+        const list = Array.isArray(node?.key_biomarkers) ? node.key_biomarkers : [];
+        list.forEach((rawB) => {
+            if (isBiomarkerStringActuallyNormal(rawB)) return;
+            const cleaned = formatCleanBiomarkerString(rawB);
+            if (!cleaned) return;
+
+            let sysId = NODE_TO_DEFAULT_SYSTEM[node?.nodeId] || 'filtros_naturales';
+            if (node?.nodeId === 'NODO_7_ESTRUCTURAL') {
+                const reclassified = classifyLegacyBiomarkerToSystemId(cleaned);
+                if (reclassified === 'EXCLUDED_MERIDIAN') return;
+                sysId = reclassified;
+            }
+            if (!bucketsBySystem[sysId].includes(cleaned)) {
+                bucketsBySystem[sysId].push(cleaned);
+            }
+            if (node?.nodeId && bucketsByNode[node.nodeId] && !bucketsByNode[node.nodeId].includes(cleaned)) {
+                bucketsByNode[node.nodeId].push(cleaned);
+            }
+        });
+    });
+
+    const sampleBalancedFriendlyTopicsForSystem = (sysId) => {
+        const nodePairs = {
+            circulacion_energia: ['NODO_5_TRANSPORTE', 'NODO_3_ENERGIA'],
+            digestion_absorcion: ['NODO_1_ASIMILACION'],
+            filtros_naturales: ['NODO_2_BIOTRANSFORMACION'],
+            descanso_defensas: ['NODO_4_COMUNICACION', 'NODO_6_DEFENSA'],
+            huesos_musculos: ['NODO_7_ESTRUCTURAL']
+        }[sysId] || [];
+
+        const perNode = nodePairs.map((nid) =>
+            Array.from(new Set((bucketsByNode[nid] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean)))
+        );
+
+        if (perNode.every((arr) => arr.length === 0)) {
+            return Array.from(new Set((bucketsBySystem[sysId] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean))).slice(0, 4);
+        }
+
+        if (perNode.length <= 1) {
+            return (perNode[0] || []).slice(0, 4);
+        }
+
+        const selected = [];
+        perNode.forEach((arr) => {
+            let taken = 0;
+            for (const t of arr) {
+                if (taken >= 2 || selected.length >= 4) break;
+                if (!selected.includes(t)) {
+                    selected.push(t);
+                    taken++;
+                }
+            }
+        });
+        if (selected.length < 4) {
+            perNode.forEach((arr) => {
+                for (const t of arr) {
+                    if (!selected.includes(t) && selected.length < 4) selected.push(t);
+                }
+            });
+        }
+        return selected;
+    };
+
+    const getCanonicalSystemMeta = (sysId, topics, hasAny) => {
+        const listText = (Array.isArray(topics) && topics.length > 0 ? topics : ['equilibrio funcional preventivo']).join(', ');
+        if (addr.isTutorMode) {
+            const mapTutor = {
+                circulacion_energia: {
+                    title: `Circulación, Corazón y Energía Diaria de ${ref}`,
+                    subtitle: 'Cómo viajan el oxígeno y el combustible hacia sus órganos en crecimiento',
+                    observed: hasAny
+                        ? `Notamos que el sistema circulatorio y las reservas de energía de ${ref} están haciendo un esfuerzo extra (especialmente en indicadores como ${listText}).`
+                        : `Los indicadores principales de circulación, oxigenación y manejo de energía de ${ref} se mantienen estables.`,
+                    meaning: hasAny
+                        ? `Imagine las arterias como tuberías flexibles y las células de ${ref} como pequeñas baterías: cuando hay mayor demanda de nutrientes o hidratación, su organismo trabaja más. Con hidratación natural y alimentación fresca le ayudaremos a mantener vitalidad estable.`
+                        : `El transporte de oxígeno y energía celular de ${ref} responde adecuadamente; el objetivo en casa será conservar ese equilibrio día con día.`
+                },
+                digestion_absorcion: {
+                    title: `Digestión y Aprovechamiento de Nutrientes de ${ref}`,
+                    subtitle: 'Cómo reciben su estómago e intestino los alimentos del día',
+                    observed: hasAny
+                        ? `Observamos en ${ref} señales de digestión lenta o sensibilidad en el recubrimiento digestivo (${listText}).`
+                        : `El sistema digestivo de ${ref} muestra buena capacidad general de asimilación.`,
+                    meaning: hasAny
+                        ? `Aunque ${ref} reciba buenos alimentos, si su estómago o intestino presentan sensibilidad cuesta más absorber vitaminas y minerales. Retirar irritantes (picante, embutidos y azúcares) en casa le dará un descanso inmediato a su mucosa digestiva.`
+                        : 'Su intestino está en buenas condiciones para aprovechar los nutrientes de su alimentación diaria.'
+                },
+                filtros_naturales: {
+                    title: `Filtros Naturales de ${ref}: Hígado y Riñones`,
+                    subtitle: 'Los órganos encargados de depurar y mantener limpio su organismo',
+                    observed: hasAny
+                        ? `Los filtros naturales de ${ref} muestran señales de carga acumulada de trabajo (${listText}).`
+                        : `Los filtros hepático y renal de ${ref} se observan despejados y trabajando a buen ritmo.`,
+                    meaning: hasAny
+                        ? `El hígado y los riñones funcionan como los filtros de agua de casa: limpian todos los días lo que el organismo de ${ref} ya no necesita. Por eso cuidamos con tanta prudencia su hidratación natural y ajustamos cualquier pauta sin forzarlos.`
+                        : 'Sus órganos depuradores cuentan con buen margen funcional acorde a su etapa de crecimiento.'
+                },
+                descanso_defensas: {
+                    title: `Descanso, Desarrollo y Defensas de ${ref}`,
+                    subtitle: 'Su reloj interno, calidad de sueño y escudo inmunológico',
+                    observed: hasAny
+                        ? `Identificamos mayor demanda en la recuperación nocturna o en las defensas naturales de ${ref} (${listText}).`
+                        : `El descanso y las defensas naturales de ${ref} mantienen un equilibrio favorable.`,
+                    meaning: hasAny
+                        ? `El organismo infantil crece y se repara a profundidad cuando ${ref} descansa bien por la noche. Al cuidar sus horarios de descanso, hidratación y alimentación diaria, usted ayuda directamente a fortalecer su sistema inmunológico.`
+                        : 'Su escudo protector responde de forma ordenada; conservar sus rutinas de sueño sostendrá esta fortaleza.'
+                },
+                huesos_musculos: {
+                    title: `Huesos, Músculos, Piel y Crecimiento de ${ref}`,
+                    subtitle: 'El sostén estructural que acompaña su desarrollo y movimiento',
+                    observed: hasAny
+                        ? `Observamos en ${ref} mayor demanda de nutrientes de soporte estructural, minerales y colágeno (${listText}).`
+                        : `La estructura ósea, muscular y cutánea de ${ref} conserva buena firmeza funcional.`,
+                    meaning: hasAny
+                        ? `Las proteínas limpias, vitaminas y minerales son los ladrillos que sostienen el crecimiento óseo y muscular de ${ref}. Los acompañaremos con alimentación natural y juego activo seguro acorde a su edad.`
+                        : 'Mantendremos un buen aporte de nutrientes naturales y movimiento diario para acompañar su desarrollo.'
+                }
+            };
+            return mapTutor[sysId] || mapTutor.huesos_musculos;
+        }
+
+        const mapUsted = {
+            circulacion_energia: {
+                title: 'Su Circulación, Corazón y Energía Diaria',
+                subtitle: 'Cómo viaja el oxígeno y el combustible hacia sus órganos',
+                observed: hasAny
+                    ? `Notamos que su sistema circulatorio y sus reservas de energía están haciendo un esfuerzo extra (especialmente en indicadores como ${listText}).`
+                    : 'Sus indicadores principales de circulación, oxigenación y manejo de energía se mantienen estables.',
+                meaning: hasAny
+                    ? 'Imagine sus arterias como tuberías flexibles y a sus células como pequeñas baterías: cuando la sangre viaja un poco más espesa o hay exceso de grasas y azúcares circulando, el corazón trabaja más y usted puede sentir cansancio. Con hidratación, alimentación limpia y antioxidantes ayudaremos a que todo fluya con ligereza.'
+                    : 'Sus "tuberías" y "baterías celulares" responden adecuadamente; el objetivo será conservar esa vitalidad día con día.'
+            },
+            digestion_absorcion: {
+                title: 'Su Digestión y Aprovechamiento de Nutrientes',
+                subtitle: 'Cómo recibe su estómago e intestino lo que usted consume',
+                observed: hasAny
+                    ? `Observamos señales de digestión lenta o sensibilidad en el recubrimiento digestivo (${listText}).`
+                    : 'Su sistema digestivo muestra buena capacidad general de asimilación.',
+                meaning: hasAny
+                    ? 'Aunque usted consuma buenos alimentos, si el estómago y el intestino trabajan lento o están irritados, no logramos absorber al 100% las vitaminas y minerales. Retirar irritantes (picante, cerdo y azúcares) y comer sin prisa le dará un respiro inmediato a su digestión.'
+                    : 'Su intestino está listo para aprovechar los nutrientes de su plan de alimentación.'
+            },
+            filtros_naturales: {
+                title: 'Sus Filtros Naturales: Hígado y Riñones',
+                subtitle: 'Los encargados de depurar y mantener limpio su organismo',
+                observed: hasAny
+                    ? `Sus filtros naturales muestran señales de carga acumulada de trabajo (${listText}).`
+                    : 'Sus filtros hepático y renal se observan despejados y trabajando a buen ritmo.',
+                meaning: hasAny
+                    ? 'Su hígado y sus riñones funcionan como los filtros de agua de casa: limpian todos los días lo que su organismo ya no necesita. Por eso cuidamos tanto la cantidad de agua simple que usted ingiere y ajustamos su suplementación con prudencia para acompañarlos sin forzarlos.'
+                    : 'Sus órganos depuradores tienen buen margen para procesar nutrientes con normalidad.'
+            },
+            descanso_defensas: {
+                title: 'Su Descanso, Equilibrio Hormonal y Defensas',
+                subtitle: 'Su reloj interno, manejo del estrés y escudo protector',
+                observed: hasAny
+                    ? `Identificamos desgaste en su recuperación nerviosa, hormonal o en sus defensas (${listText}).`
+                    : 'Su comunicación hormonal y sus defensas mantienen un equilibrio favorable.',
+                meaning: hasAny
+                    ? 'Su organismo se repara a profundidad cuando usted descansa bien y baja el ritmo por la noche. Al ordenar sus horarios de cena, hidratarse bien y nutrir sus defensas, ayudamos a que su sistema nervioso e inmunológico disminuyan la inflamación.'
+                    : 'Su escudo protector responde de forma ordenada; cuidar su sueño mantendrá esta fortaleza.'
+            },
+            huesos_musculos: {
+                title: 'Sus Huesos, Músculos, Piel y Articulaciones',
+                subtitle: 'El sostén y la estructura que le permite moverse con libertad',
+                observed: hasAny
+                    ? `Observamos mayor demanda de nutrientes de soporte estructural, minerales y colágeno (${listText}).`
+                    : 'Su estructura ósea, muscular y de colágeno conserva buena firmeza funcional.',
+                meaning: hasAny
+                    ? 'Los aminoácidos, minerales, vitamina D y el colágeno son como los ladrillos y el cemento que mantienen firmes sus huesos, músculos y articulaciones. Vamos a nutrirlos con proteína de fácil digestión y movimiento suave que no lastime sus articulaciones.'
+                    : 'Mantendremos un buen aporte de proteína y movimiento diario para proteger su masa muscular.'
+            }
+        };
+        return mapUsted[sysId] || mapUsted.huesos_musculos;
+    };
+
+    // 2. Resolver Semáforo Clínico de Bioseguridad (con sanitización retroactiva anti-tuteo)
+    const buildCanonicalSemaphore = (levelHint, recommendedLabs = []) => {
+        if (addr.isLactante) {
+            return {
+                level: 'ROJO',
+                modeCode: 'PAUSA_PREVENTIVA_PEDIATRICA',
+                badgeLabel: 'Prioridad Pediátrica • Sin Suplementos Adultos',
+                title: 'Cuidado exclusivo de lactancia y alimentación guiada por su pediatra',
+                honestExplanation: `En etapa de lactancia temprana (< 2 años), la nutrición de ${ref} depende prioritariamente de leche materna o fórmula indicada por su pediatra y de la introducción gradual de alimentos naturales. Por seguridad pediátrica, mantenemos cualquier sobre concentrado en pausa estricta.`,
+                ethicalNote: 'Toda orientación nutricional en los primeros 1000 días acompaña y respeta íntegramente las indicaciones de su pediatra tratante.',
+                recommendedLabs: [],
+                isPaused: true,
+                isMicroDose: false,
+                titrationPlanText: '0 sobres activos (etapa de lactancia temprana bajo vigilancia pediátrica).'
+            };
+        }
+
+        if (levelHint === 'ROJO') {
+            return {
+                level: 'ROJO',
+                modeCode: 'PAUSA_PREVENTIVA_MEDICA',
+                badgeLabel: 'Prioridad Médica • Pausa Preventiva',
+                title: addr.isTutorMode
+                    ? `Primero protegemos la seguridad de ${ref}: pausa temporal de suplementación`
+                    : 'Primero protegemos su seguridad: pausa temporal de suplementación',
+                honestExplanation: addr.isTutorMode
+                    ? `En la evaluación de ${ref} identificamos parámetros que ameritan revisión médica prioritaria. Por ética clínica, hoy iniciamos únicamente con alimentación natural suave e hidratación medida en casa, dejando las fórmulas en pausa preventiva hasta contar con sus estudios de control.`
+                    : `Por ética clínica, hoy iniciamos únicamente con alimentación natural suave e hidratación medida, dejando las fórmulas en pausa preventiva hasta contar con la validación presencial y sus estudios de control${addr.isAdolescent ? ' en acompañamiento con su madre, padre o tutor legal' : ''}.`,
+                ethicalNote: addr.isTutorMode
+                    ? `Las fórmulas 33Plus® y 34Plus® son soporte nutricional complementario (no medicamentos) y solo se valoran cuando los filtros naturales de ${ref} están listos bajo supervisión médica.`
+                    : `Las fórmulas 33Plus® y 34Plus® son aliados nutricionales de precisión (no medicamentos) y solo se activan cuando sus filtros naturales están listos para aprovecharlos con total seguridad${addr.isAdolescent ? ', contando siempre con el acompañamiento de su madre, padre o tutor legal' : ''}.`,
+                recommendedLabs,
+                isPaused: true,
+                isMicroDose: false,
+                titrationPlanText: '0 sobres activos por ahora (Pausa preventiva hasta revisión de estudios de laboratorio).'
+            };
+        }
+
+        if (levelHint === 'AMARILLO') {
+            return {
+                level: 'AMARILLO',
+                modeCode: 'MICRO_DOSIS_GRADUAL_CALIBRADA',
+                badgeLabel: 'Inicio Gradual Preventivo • Micro-Dosis Calibrada',
+                title: addr.isTutorMode
+                    ? `Avanzamos paso a paso para cuidar los filtros naturales y la digestión de ${ref}`
+                    : 'Avanzamos paso a paso para cuidar sus filtros naturales y su digestión',
+                honestExplanation: addr.isTutorMode
+                    ? `Para cuidar el organismo de ${ref} con total responsabilidad, iniciaremos los primeros 7 días (Semana 1) con una micro-dosis suave (medio sobre) bien diluida en agua natural, permitiendo una adaptación cómoda y sin sobrecarga.`
+                    : `Sus indicadores muestran carga de trabajo en sus filtros naturales o sensibilidad digestiva. Por seguridad iniciamos los primeros 7 días (Semana 1) con una micro-dosis suave (medio sobre) bien diluida en agua simple, permitiendo que su organismo se adapte sin sobrecarga${addr.isAdolescent ? ', contando siempre con el acompañamiento de su madre, padre o tutor legal' : ''}.`,
+                ethicalNote: addr.isTutorMode
+                    ? `33Plus® y 34Plus® actúan como soporte nutricional complementario a la alimentación diaria de ${ref} (nunca sustituyen sus medicamentos ni el seguimiento de su pediatra o médico tratante).`
+                    : `33Plus® y 34Plus® son aliados nutricionales complementarios a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico${addr.isAdolescent ? ', y se integran en conjunto con su madre, padre o tutor legal' : ''}).`,
+                recommendedLabs: recommendedLabs.length > 0
+                    ? recommendedLabs
+                    : ['Química sanguínea (Creatinina, Ácido Úrico, BUN) y Examen General de Orina (EGO)'],
+                isPaused: false,
+                isMicroDose: true,
+                titrationPlanText: 'Fase de adaptación (Días 1 al 7): 1/2 sobre (5 g) de 33Plus® al despertar + 1/2 sobre (5 g) de 34Plus® antes de dormir en 500 ml de agua simple 💧. Escalar gradualmente según tolerancia.'
+            };
+        }
+
+        return {
+            level: 'VERDE',
+            modeCode: 'DOSIS_ESTANDAR_COMPLETA',
+            badgeLabel: 'Vía Libre Biosegura • Protocolo Completo',
+            title: addr.isTutorMode
+                ? `Los filtros principales de ${ref} están en equilibrio para su acompañamiento nutricional`
+                : 'Sus filtros principales están listos para su protocolo completo',
+            honestExplanation: addr.isTutorMode
+                ? `Los indicadores vitales de ${ref} permiten integrar su acompañamiento nutricional sincronizado con su horario natural de despertar y descanso.`
+                : `Sus indicadores permiten acompañar su alimentación con el protocolo completo sincronizado a su despertar y descanso${addr.isAdolescent ? ', en acompañamiento con su madre, padre o tutor legal' : ''}.`,
+            ethicalNote: addr.isTutorMode
+                ? `33Plus® y 34Plus® son fórmulas de nutrición celular que acompañan la alimentación diaria e hidratación constante de ${ref}.`
+                : `33Plus® y 34Plus® son fórmulas de nutrición celular que acompañan su alimentación diaria e hidratación constante${addr.isAdolescent ? ', supervisadas junto con su madre, padre o tutor legal' : ''}.`,
+            recommendedLabs: [],
+            isPaused: false,
+            isMicroDose: false,
+            titrationPlanText: 'Protocolo estándar sincronizado a su día: 2 tomas matutinas de 33Plus® y 2 tomas vespertinas/nocturnas de 34Plus® en 500 ml de agua simple 💧.'
+        };
+    };
+
+    let rawSem = existingGuide?.biosecurity_semaphore || dossier?.biosecurity_semaphore || ortho?.biosecurity_semaphore || null;
+    let semaphore = null;
+
+    const repairLegacySemaphoreExplanation = (text) => {
+        if (!text) return '';
+        let out = polishPatientEditorialPhrasing(text).replace(/los primeros 7 a 14 d[íi]as/gi, 'los primeros 7 días (Semana 1)');
+        // Si existen razones previas seguidas por la cláusula redundante de calcio fuera del hueso, retirarla y reparar la conjunción española
+        out = out.replace(
+            /^(En su evaluación observamos:\s*)(.+?),\s*detectamos tendencia a acumular calcio fuera del hueso(\.)/iu,
+            (_, prefix, visceralPart, dot) => {
+                const clauses = visceralPart.split(/,\s*(?=(?:sus|su|se\s+registran|hay|presenta)\b)/iu);
+                return `${prefix}${clauses.length > 1 ? joinSpanishList(clauses) : visceralPart}${dot}`;
+            }
+        );
+        return out;
+    };
+
+    if (addr.isLactante) {
+        semaphore = buildCanonicalSemaphore('ROJO', []);
+    } else if (rawSem) {
+        const effectiveLevel = rawSem.isPaused || rawSem.level === 'ROJO'
+            ? 'ROJO'
+            : (rawSem.isMicroDose || rawSem.level === 'AMARILLO' ? 'AMARILLO' : 'VERDE');
+        const safeLabs = (Array.isArray(rawSem.recommendedLabs) ? rawSem.recommendedLabs : []).map(sanitizeClinicalSpanish);
+        const canonicalSem = buildCanonicalSemaphore(effectiveLevel, safeLabs);
+        const cleanedTitle = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(rawSem.title));
+        const cleanedExplanation = repairLegacySemaphoreExplanation(sanitizeClinicalSpanish(rawSem.honestExplanation));
+        const cleanedEthical = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(rawSem.ethicalNote));
+        const cleanedTitration = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(rawSem.titrationPlanText));
+        const mismatchTutorSem = addr.isTutorMode && /\b(su cuerpo|sus síntomas|usted requiere)\b/i.test(cleanedExplanation);
+        const missingTeenTutorNote = addr.isAdolescent && !/tutor|madre|padre/i.test(`${cleanedExplanation} ${cleanedEthical}`);
+
+        semaphore = {
+            ...rawSem,
+            level: effectiveLevel,
+            badgeLabel: sanitizeClinicalSpanish(rawSem.badgeLabel) || canonicalSem.badgeLabel,
+            title: (!cleanedTitle || hasLegacyTuteo(cleanedTitle) || mismatchTutorSem) ? canonicalSem.title : cleanedTitle,
+            honestExplanation: (!cleanedExplanation || hasLegacyTuteo(cleanedExplanation) || mismatchTutorSem || missingTeenTutorNote)
+                ? canonicalSem.honestExplanation
+                : cleanedExplanation,
+            ethicalNote: (!cleanedEthical || hasLegacyTuteo(cleanedEthical) || mismatchTutorSem || missingTeenTutorNote)
+                ? canonicalSem.ethicalNote
+                : cleanedEthical,
+            titrationPlanText: (!cleanedTitration || hasLegacyTuteo(cleanedTitration))
+                ? canonicalSem.titrationPlanText
+                : cleanedTitration,
+            recommendedLabs: safeLabs,
+            isPaused: effectiveLevel === 'ROJO',
+            isMicroDose: effectiveLevel === 'AMARILLO'
+        };
+    } else if (rawIfmNodes.length === 0 && !existingGuide) {
+        // Guardia FAIL-CLOSED: jamás prescribir Semáforo VERDE (40 g/día) sobre un expediente sin síntesis diagnóstica
+        const basePaused = buildCanonicalSemaphore('ROJO', []);
+        semaphore = {
+            ...basePaused,
+            modeCode: 'PAUSA_EXPEDIENTE_NO_SINTETIZADO',
+            badgeLabel: 'Pendiente de Síntesis Diagnóstica • 0 Sobres Activos',
+            isPaused: true,
+            isMicroDose: false
+        };
+    } else {
+        const hasRenalOrHepatic = bucketsBySystem.filtros_naturales.some((b) =>
+            /(proteinuria|creatinina|acido\s+urico|ácido\s+úrico|grasa\s+en\s+el\s+hígado|grasa\s+en\s+el\s+higado)/i.test(b)
+        );
+        const hasCalcLock = Boolean(ortho?.has_calcium_contraction_lock);
+        semaphore = buildCanonicalSemaphore((hasRenalOrHepatic || hasCalcLock || isPediatric) ? 'AMARILLO' : 'VERDE');
+    }
+
+    // 3. Construir o normalizar las 5 Tarjetas de Sistemas Humanos (cero tuteo legado, cero etiquetas crudas alarmantes)
+    let fiveSystems = [];
+    if (Array.isArray(existingGuide?.five_systems) && existingGuide.five_systems.length > 0) {
+        fiveSystems = existingGuide.five_systems.map((sys) => {
+            const rawTitle = sanitizeClinicalSpanish(sys.title);
+            const rawSub = sanitizeClinicalSpanish(sys.subtitle);
+            const rawObs = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(sys.whatWeObserved));
+            const rawMean = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(sys.whatItMeans));
+            const hasRawAlarmingLabel = RAW_ALARMING_PATIENT_LABEL_RE.test(rawObs);
+            const balancedTopics = sampleBalancedFriendlyTopicsForSystem(sys.id);
+            const safeHighlights = hasRawAlarmingLabel && balancedTopics.length > 0
+                ? balancedTopics
+                : (Array.isArray(sys.cleanHighlights) ? sys.cleanHighlights : [])
+                    .map((h) => humanizeBiomarkerTopicForPatient(h, sys.id))
+                    .filter((h) => Boolean(h) && !hasLegacyTuteo(h));
+
+            const finalHighlights = safeHighlights.length > 0 ? Array.from(new Set(safeHighlights)) : balancedTopics;
+            const countVal = Number(sys.findingsCount) || (bucketsBySystem[sys.id] || []).length;
+            const hasAny = sys.status !== 'EN_EQUILIBRIO' && (countVal > 0 || finalHighlights.length > 0);
+            const canonicalSys = getCanonicalSystemMeta(sys.id, finalHighlights, hasAny);
+            const mismatchTutorSys = addr.isTutorMode && /^(su|sus)\s+(circulaci|digesti|filtros|descanso|huesos)/i.test(rawTitle);
+
+            return {
+                ...sys,
+                title: (!rawTitle || hasLegacyTuteo(rawTitle) || mismatchTutorSys) ? canonicalSys.title : rawTitle,
+                subtitle: (!rawSub || hasLegacyTuteo(rawSub) || mismatchTutorSys) ? canonicalSys.subtitle : rawSub,
+                whatWeObserved: (!rawObs || hasRawAlarmingLabel || hasLegacyTuteo(rawObs) || mismatchTutorSys)
+                    ? canonicalSys.observed
+                    : rawObs,
+                whatItMeans: (!rawMean || hasLegacyTuteo(rawMean) || mismatchTutorSys)
+                    ? canonicalSys.meaning
+                    : rawMean,
+                cleanHighlights: finalHighlights,
+                findingsCount: countVal
+            };
+        });
+    } else {
+        const systemDefs = [
+            { id: 'circulacion_energia', iconKey: 'heart', list: bucketsBySystem.circulacion_energia },
+            { id: 'digestion_absorcion', iconKey: 'utensils', list: bucketsBySystem.digestion_absorcion },
+            { id: 'filtros_naturales', iconKey: 'droplets', list: bucketsBySystem.filtros_naturales },
+            { id: 'descanso_defensas', iconKey: 'shield', list: bucketsBySystem.descanso_defensas },
+            { id: 'huesos_musculos', iconKey: 'bone', list: bucketsBySystem.huesos_musculos }
+        ];
+        fiveSystems = systemDefs.map(({ id, iconKey, list }) => {
+            const highlights = sampleBalancedFriendlyTopicsForSystem(id);
+            const hasAny = list.length > 0;
+            const isHigh = list.length >= 3;
+            const canonicalSys = getCanonicalSystemMeta(id, highlights, hasAny);
+            return {
+                id,
+                title: canonicalSys.title,
+                subtitle: canonicalSys.subtitle,
+                iconKey,
+                status: !hasAny ? 'EN_EQUILIBRIO' : (isHigh ? 'ATENCION_PRIORITARIA' : 'VIGILANCIA_PREVENTIVA'),
+                statusLabel: !hasAny ? 'En equilibrio' : (isHigh ? 'Atención prioritaria' : 'Cuidado preventivo'),
+                findingsCount: list.length,
+                cleanHighlights: highlights,
+                whatWeObserved: canonicalSys.observed,
+                whatItMeans: canonicalSys.meaning
+            };
+        });
+    }
+
+    // 4. Sincronizar Horario Circadiano y Tarjetas de Fórmulas (33Plus® y 34Plus®) con el Semáforo y Registro
+    const rawSupplements = Array.isArray(ortho?.supplements) ? ortho.supplements : [];
+    const raw33 = rawSupplements.find((s) => String(s?.id || s?.name || '').toLowerCase().includes('33')) || {};
+    const raw34 = rawSupplements.find((s) => String(s?.id || s?.name || '').toLowerCase().includes('34')) || {};
+
+    const buildCanonicalSchedule = () => {
+        if (semaphore.isPaused) {
+            return [
+                {
+                    tomaNumber: 1,
+                    timeSlot: 'Al despertar en ayunas',
+                    phase: 'Pausa Preventiva — Hidratación Suave',
+                    formula: '💧 Agua natural simple (Suplementos en pausa preventiva)',
+                    dosage: addr.isLactante
+                        ? '0 sobres activos • Continuar lactancia materna o fórmula indicada por su pediatra'
+                        : '0 sobres activos • Beber 300 ml de agua natural a sorbos pausados',
+                    patientObjective: addr.isLactante
+                        ? `Respetar la etapa de lactancia y maduración digestiva de ${ref} bajo guía pediátrica.`
+                        : (addr.isTutorMode
+                            ? `Hidratar suavemente el organismo de ${ref} al despertar sin sobrecargar sus filtros naturales.`
+                            : 'Hidratar sus órganos con suavidad mientras validamos sus estudios de laboratorio.'),
+                    isPaused: true
+                },
+                {
+                    tomaNumber: 2,
+                    timeSlot: '30 a 60 min antes de dormir',
+                    phase: 'Pausa Preventiva — Descanso Nocturno',
+                    formula: '💧 Hidratación ligera nocturna (Pendiente revisión médica)',
+                    dosage: '0 sobres activos • Pendiente valoración médica',
+                    patientObjective: addr.isTutorMode
+                        ? `Cuidar los filtros naturales de ${ref} con total seguridad antes de valorar suplementación.`
+                        : 'Cuidar sus filtros naturales con total seguridad antes de iniciar suplementación.',
+                    isPaused: true
+                }
+            ];
+        }
+        if (semaphore.isMicroDose) {
+            return [
+                {
+                    tomaNumber: 1,
+                    timeSlot: 'Al despertar en ayunas',
+                    phase: 'Mañana — Adaptación Suave de Energía y Circulación',
+                    formula: addr.isTutorMode ? '🔴 33Plus® (Variante Suave Sin Estimulantes)' : '🔴 33Plus® (Energía Celular y Circulación)',
+                    dosage: '1/2 sobre (5 g) disuelto en 300 ml de agua natural o tibia',
+                    patientObjective: addr.isTutorMode
+                        ? `Apoyar la energía matutina y la circulación de ${ref} con una dosis gradual y amable.`
+                        : 'Encender su energía de la mañana y apoyar su circulación de forma suave y progresiva.',
+                    isMicroDose: true
+                },
+                {
+                    tomaNumber: 2,
+                    timeSlot: 'A media mañana (Días 8 en adelante, según tolerancia)',
+                    phase: 'Mañana — Escalamiento Gradual Opcional',
+                    formula: addr.isTutorMode ? '🔴 33Plus® (Variante Suave Sin Estimulantes)' : '🔴 33Plus® (Energía Celular y Circulación)',
+                    dosage: 'Iniciar solo con agua natural (Semana 1) • Valorar 1/2 sobre adicional en Semana 2',
+                    patientObjective: addr.isTutorMode
+                        ? `Permitir que el organismo de ${ref} se adapte primero antes de valorar una segunda toma matutina.`
+                        : 'Permitir que su organismo se adapte primero antes de sumar una segunda toma matutina.',
+                    isMicroDose: true
+                },
+                {
+                    tomaNumber: 3,
+                    timeSlot: 'A media tarde',
+                    phase: 'Tarde — Hidratación Preparatoria de Limpieza',
+                    formula: '💧 Hidratación Preparatoria (Agua Simple)',
+                    dosage: '500 ml de agua simple purificada a sorbos durante la tarde 💧',
+                    patientObjective: addr.isTutorMode
+                        ? `Ayudar a los riñones e intestino de ${ref} a limpiar desechos suavemente durante la tarde.`
+                        : 'Ayudar a sus riñones e intestino a limpiar desechos suavemente durante la tarde.',
+                    isMicroDose: true
+                },
+                {
+                    tomaNumber: 4,
+                    timeSlot: '30 a 60 min antes de dormir',
+                    phase: 'Noche — Reparación Suave de Tejidos y Digestión',
+                    formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
+                    dosage: '1/2 sobre (5 g) disuelto en MÍNIMO 500 ml de agua simple 💧',
+                    patientObjective: addr.isTutorMode
+                        ? `Nutrir articulaciones, piel y digestión mientras ${ref} duerme, siempre con medio litro de agua simple.`
+                        : 'Nutrir sus articulaciones, piel y digestión mientras usted duerme, siempre con suficiente agua simple.',
+                    isMicroDose: true
+                }
+            ];
+        }
+        return [
+            {
+                tomaNumber: 1,
+                timeSlot: 'Al despertar en ayunas',
+                phase: 'Mañana — Energía Celular y Circulación',
+                formula: addr.isTutorMode ? '🔴 33Plus® (Variante Suave Sin Estimulantes)' : '🔴 33Plus® (Energía Celular y Circulación)',
+                dosage: '1 sobre (10 g) en 300 ml de agua natural o tibia',
+                patientObjective: addr.isTutorMode
+                    ? `Impulsar la vitalidad y atención matutina de ${ref} desde temprano.`
+                    : 'Despertar su vitalidad y apoyar su circulación desde temprano.'
+            },
+            {
+                tomaNumber: 2,
+                timeSlot: 'A media mañana (aprox. 4 h después de despertar)',
+                phase: 'Mañana — Enfoque y Estabilidad',
+                formula: addr.isTutorMode ? '🔴 33Plus® (Variante Suave Sin Estimulantes)' : '🔴 33Plus® (Energía Celular y Circulación)',
+                dosage: '1 sobre (10 g) en 300 ml de agua natural',
+                patientObjective: addr.isTutorMode
+                    ? `Mantener la energía de ${ref} estable sin bajones a mitad del día.`
+                    : 'Mantener su energía estable sin bajones a mitad del día.'
+            },
+            {
+                tomaNumber: 3,
+                timeSlot: 'A media tarde',
+                phase: 'Tarde — Bienestar Digestivo',
+                formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
+                dosage: '1 sobre (10 g) en MÍNIMO 500 ml de agua simple 💧',
+                patientObjective: addr.isTutorMode
+                    ? `Cuidar la digestión vespertina de ${ref} e hidratar profundamente sus tejidos.`
+                    : 'Cuidar su digestión e hidratar profundamente sus tejidos.'
+            },
+            {
+                tomaNumber: 4,
+                timeSlot: '30 a 60 min antes de dormir',
+                phase: 'Noche — Reparación de Tejidos y Colágeno',
+                formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
+                dosage: '1 sobre (10 g) en MÍNIMO 500 ml de agua simple 💧',
+                patientObjective: addr.isTutorMode
+                    ? `Aportar los bloques de reparación nocturna para articulaciones, músculos y piel mientras ${ref} duerme.`
+                    : 'Aportar los bloques de reparación nocturna para articulaciones, músculos y piel mientras usted duerme.'
+            }
+        ];
+    };
+
+    const canonicalSchedule = buildCanonicalSchedule();
+    let schedule = [];
+    if (!addr.isLactante && Array.isArray(ortho?.circadianSchedule) && ortho.circadianSchedule.length > 0) {
+        schedule = ortho.circadianSchedule.map((slot, idx) => {
+            const fallbackSlot = canonicalSchedule[idx] || canonicalSchedule[canonicalSchedule.length - 1];
+            const cleanPhase = sanitizeClinicalSpanish(slot.phase);
+            const cleanObj = sanitizeClinicalSpanish(slot.patientObjective || slot.clinicalObjective || '');
+            const mismatchTutorSlot = addr.isTutorMode && /\b(usted|sus órganos|sus articulaciones)\b/i.test(cleanObj);
+            return {
+                ...slot,
+                timeSlot: humanizeLegacyTimeSlot(slot.timeSlot, idx),
+                phase: (!cleanPhase || hasLegacyTuteo(cleanPhase)) ? fallbackSlot.phase : cleanPhase,
+                formula: sanitizeClinicalSpanish(slot.formula || fallbackSlot.formula),
+                dosage: sanitizeClinicalSpanish(slot.dosage || fallbackSlot.dosage).replace(/🍵/g, '💧'),
+                patientObjective: (!cleanObj || hasLegacyTuteo(cleanObj) || mismatchTutorSlot)
+                    ? fallbackSlot.patientObjective
+                    : cleanObj
+            };
+        });
+    } else {
+        schedule = canonicalSchedule;
+    }
+
+    const default33Explanation = semaphore.isPaused
+        ? (addr.isLactante
+            ? 'En menores de 2 años no se utilizan fórmulas concentradas para adultos; la base nutricional exclusiva es la indicada por su pediatra.'
+            : (addr.isTutorMode
+                ? `Por cuidado a la salud de ${ref}, mantenemos 33Plus® en pausa temporal hasta revisar sus análisis de control.`
+                : 'Por cuidado a su salud, mantenemos 33Plus® en pausa temporal hasta revisar sus análisis de control.'))
+        : (addr.isTutorMode
+            ? `Acompaña a ${ref} por la mañana con antioxidantes suaves para apoyar su energía diaria y circulación${semaphore.isMicroDose ? ', iniciando con medio sobre para cuidar su adaptación' : ''}.`
+            : `${addr.directObjCap} acompaña por la mañana con antioxidantes de semilla de uva, Coenzima Q10, L-Teanina y cromo para apoyar su energía diaria y la flexibilidad de su circulación${semaphore.isMicroDose ? ', iniciando con medio sobre para cuidar su adaptación' : ''}.`);
+
+    const default34Explanation = semaphore.isPaused
+        ? (addr.isLactante
+            ? `Mantenemos 34Plus® fuera del esquema de ${ref}, priorizando su alimentación natural acorde a la pauta pediátrica.`
+            : (addr.isTutorMode
+                ? `Mantenemos 34Plus® en pausa preventiva mientras cuidamos la hidratación y alimentación diaria de ${ref} en casa.`
+                : 'Mantenemos 34Plus® en pausa preventiva mientras cuidamos su hidratación y alimentación diaria en casa.'))
+        : (addr.isTutorMode
+            ? `Trabaja mientras ${ref} descansa aportando bloques de construcción (colágeno, fibra prebiótica y vitamina C) para su digestión, piel y tejidos en crecimiento. Disuélvalo siempre en medio litro de agua simple 💧.`
+            : 'Trabaja mientras usted descansa aportando bloques de construcción (colágeno, fibra prebiótica y vitamina C) para su digestión, piel y articulaciones. Tómelo siempre en medio litro de agua simple 💧.');
+
+    const raw33Expl = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(raw33.patient_rationale || ''));
+    const raw34Expl = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(raw34.patient_rationale || ''));
+    const mismatch33Tutor = addr.isTutorMode && /^(lo|la)\s+acompaña/i.test(raw33Expl);
+    const mismatch34Tutor = addr.isTutorMode && /\bmientras\s+usted\s+descansa\b/i.test(raw34Expl);
+
+    const formula33Card = {
+        code: '33PLUS',
+        brandTitle: '33Plus®',
+        subtitle: addr.isTutorMode
+            ? `Soporte matutino de energía celular y circulación para ${ref}`
+            : 'Su aliado matutino de energía celular y circulación',
+        dosage: semaphore.isPaused
+            ? (addr.isLactante
+                ? '0 sobres activos (etapa exclusiva de lactancia y pediatría)'
+                : '0 sobres activos por ahora (en pausa preventiva hasta revisar sus estudios de laboratorio)')
+            : (semaphore.isMicroDose
+                ? 'Inicio gradual (Días 1–7): 1/2 sobre (5 g) al despertar en ayunas en 300 ml de agua natural'
+                : '2 tomas por la mañana: 1 sobre al despertar en ayunas y 1 sobre a media mañana (en 300 ml de agua natural)'),
+        timing: semaphore.isPaused
+            ? (addr.isLactante ? 'No indicado en menores de 2 años' : 'En espera de validación médica')
+            : (addr.isTutorMode
+                ? `Sincronizado al despertar de ${ref} (evitar después de las 2:00 PM)`
+                : 'Sincronizado a su despertar real (evitar después de las 2:00 PM)'),
+        explanation: (!raw33Expl || hasLegacyTuteo(raw33Expl) || mismatch33Tutor || addr.isLactante)
+            ? default33Explanation
+            : raw33Expl
+    };
+
+    const formula34Card = {
+        code: '34PLUS',
+        brandTitle: '34Plus®',
+        subtitle: addr.isTutorMode
+            ? `Soporte vespertino y nocturno de reparación y digestión para ${ref}`
+            : 'Su aliado vespertino y nocturno de reparación y digestión',
+        dosage: semaphore.isPaused
+            ? (addr.isLactante
+                ? '0 sobres activos (etapa exclusiva de lactancia y pediatría)'
+                : '0 sobres activos por ahora (en pausa preventiva hasta revisar sus estudios de laboratorio)')
+            : (semaphore.isMicroDose
+                ? 'Inicio gradual (Días 1–7): 1/2 sobre (5 g) antes de dormir disuelto en MÍNIMO 500 ml de agua simple 💧'
+                : '2 tomas tarde/noche: 1 sobre a media tarde y 1 sobre 30–60 min antes de dormir, cada uno en MÍNIMO 500 ml de agua simple 💧'),
+        timing: semaphore.isPaused
+            ? (addr.isLactante ? 'No indicado en menores de 2 años' : 'En espera de validación médica')
+            : 'Tarde y 30 a 60 min antes de dormir (siempre en medio litro de agua simple 💧)',
+        explanation: (!raw34Expl || hasLegacyTuteo(raw34Expl) || mismatch34Tutor || addr.isLactante)
+            ? default34Explanation
+            : raw34Expl
+    };
+
+    const isMeaningfulExclusion = (val) => {
+        const clean = String(val || '').trim();
+        if (!clean) return false;
+        return !/^(ninguna?|ninguno|niega|negad[oa]s?|n\/a|na|sin\s+alergias?|sin\s+exclusiones?|sin\s+restricciones?|no|no\s+refiere|null|undefined|-+)$/i.test(clean);
+    };
+
+    // 5. Plan de Acción en Casa (Cero tuteo, cero jerga NEAT / HIIT / RIR y cero icono infantil en 13+)
+    const weightKg = Number(bioenergetics?.weightKg) > 0 ? Number(bioenergetics.weightKg) : 70;
+    const litersRecommended = Number(ortho?.hydrationTargetLiters) > 0
+        ? Number(ortho.hydrationTargetLiters)
+        : Math.min(3.2, Math.max(1.8, Number(((weightKg * 32) / 1000).toFixed(1))));
+    const personalExclusions = (ortho?.dietaryPlan?.patientSpecificExclusions || [])
+        .map((x) => capitalizeLeadingSpanish(sanitizeClinicalSpanish(x)))
+        .filter(isMeaningfulExclusion);
+
+    const canonicalHomePlan = {
+        protective_nutrition: {
+            title: 'Alimentación Protectora en Casa',
+            targetKcal: bioenergetics?.targetKcal || null,
+            summary: addr.isLactante
+                ? `Mantener lactancia materna o fórmula indicada por su pediatra e introducción gradual de alimentos naturales para ${ref}, sin sal añadida ni azúcares.`
+                : addr.isTutorChild
+                    ? `El plan alimentario de ${ref} (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'acorde a su crecimiento'}) prioriza verduras frescas, grasas nobles (aguacate, aceite de oliva), fruta natural y proteínas limpias como pescado, pollo o huevo.`
+                    : `Su plan está calculado a la medida de su organismo (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'personalizado'}), priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva, semillas), fibra suave y proteínas limpias como pescado, pollo o huevo.`,
+            universalRules: addr.isTutorMode
+                ? [
+                    '0 Picante (protege la mucosa digestiva)',
+                    '0 Carne de cerdo y embutidos',
+                    '0 Azúcares refinados ni refrescos'
+                ]
+                : [
+                    '0 Picante (protege su mucosa digestiva)',
+                    '0 Carne de cerdo y embutidos',
+                    '0 Azúcares refinados ni refrescos'
+                ],
+            personalExclusions
+        },
+        smart_hydration: {
+            title: 'Hidratación Inteligente Durante el Día',
+            litersPerDay: addr.isLactante ? null : litersRecommended,
+            summary: addr.isLactante
+                ? 'En menores de 2 años la hidratación principal proviene de la leche materna o fórmula pediátrica; ofrezca pequeños sorbos de agua natural simple únicamente según la indicación de su pediatra.'
+                : addr.isTutorChild
+                    ? `La meta aproximada para ${ref} es de ${litersRecommended} litros de agua simple purificada repartidos a sorbos desde la mañana hasta media tarde, disminuyendo cerca de su hora de dormir.`
+                    : `Su meta aproximada es de ${litersRecommended} litros de agua simple purificada repartidos a sorbos desde la mañana hasta media tarde (disminuyendo cerca de su hora de dormir para no interrumpir su sueño).`,
+            keyRule34Plus: addr.isLactante
+                ? 'En etapa de lactancia temprana no se utilizan sobres concentrados; continúe exclusivamente con la pauta de su pediatra.'
+                : (semaphore.isPaused
+                    ? (addr.isTutorChild
+                        ? `Por ahora mantenemos los sobres en pausa preventiva para ${ref} y priorizamos únicamente agua natural simple.`
+                        : 'Por ahora mantenemos sus suplementos en pausa preventiva y nos enfocamos únicamente en agua natural simple.')
+                    : 'Regla de oro para 34Plus®: disuélvalo siempre en MÍNIMO 500 ml (medio litro) de agua simple natural para que su fibra y colágeno se absorban con suavidad.')
+        },
+        gentle_movement: {
+            title: addr.isTutorMode ? 'Juego y Desarrollo Motor Diario' : 'Movimiento Cotidiano Seguro y Articular',
+            isPediatric: Boolean(addr.isTutorMode),
+            summary: addr.isLactante
+                ? `Estimulación motriz temprana (tiempo boca abajo supervisado, gateo libre y juego sensorial acorde a la edad de ${ref}), además de contacto suave con luz natural matutina.`
+                : addr.isTutorChild
+                    ? `Juego activo diario acorde a la etapa de crecimiento de ${ref}, coordinación motriz libre al aire libre y contacto matutino con luz natural.`
+                    : (addr.ageYears >= 55
+                        ? 'Caminata suave y constante a paso cómodo de 15 a 20 minutos después de sus comidas principales (a un ritmo donde usted pueda conversar sin agitarse), acompañada de estiramientos suaves de cuello, hombros y cadera.'
+                        : `Caminata ligera de 20 a 30 minutos al día a ritmo conversacional y pausas activas cada hora si usted permanece mucho tiempo ${addr.seatedLabel}, sumando movilidad articular suave sin impactos bruscos.`),
+            sleepHabit: addr.isLactante
+                ? `Favorezca rutinas tranquilas de sueño para ${ref} con luz tenue y ambiente sereno libre de pantallas.`
+                : addr.isTutorChild
+                    ? `Procure ofrecer a ${ref} una cena ligera al menos 2 horas antes de dormir y apagar pantallas brillantes con anticipación.`
+                    : 'Procure cenar ligero al menos 2 a 3 horas antes de dormir y descansar lejos de pantallas brillantes.'
+        }
+    };
+
+    const rawHome = existingGuide?.home_action_plan;
+    let homeActionPlan = canonicalHomePlan;
+    if (rawHome && !addr.isLactante) {
+        const rawNutSummary = sanitizeClinicalSpanish(rawHome.protective_nutrition?.summary);
+        const rawHydSummary = sanitizeClinicalSpanish(rawHome.smart_hydration?.summary);
+        const rawHydKeyRule = sanitizeClinicalSpanish(rawHome.smart_hydration?.keyRule34Plus);
+        const rawMovSummary = sanitizeClinicalSpanish(rawHome.gentle_movement?.summary);
+        const rawSleepHabit = sanitizeClinicalSpanish(rawHome.gentle_movement?.sleepHabit);
+        const rawRules = (rawHome.protective_nutrition?.universalRules || canonicalHomePlan.protective_nutrition.universalRules)
+            .map(sanitizeClinicalSpanish);
+        const rulesHaveTuteo = rawRules.some((r) => hasLegacyTuteo(r));
+        const mismatchHomeTutor = addr.isTutorMode && /\bsu plan está calculado a la medida de su organismo\b/i.test(rawNutSummary);
+
+        homeActionPlan = {
+            protective_nutrition: {
+                ...canonicalHomePlan.protective_nutrition,
+                ...rawHome.protective_nutrition,
+                title: sanitizeClinicalSpanish(rawHome.protective_nutrition?.title) || canonicalHomePlan.protective_nutrition.title,
+                summary: (!rawNutSummary || hasLegacyTuteo(rawNutSummary) || mismatchHomeTutor)
+                    ? canonicalHomePlan.protective_nutrition.summary
+                    : rawNutSummary,
+                universalRules: rulesHaveTuteo ? canonicalHomePlan.protective_nutrition.universalRules : rawRules,
+                personalExclusions: (rawHome.protective_nutrition?.personalExclusions || personalExclusions)
+                    .map(sanitizeClinicalSpanish)
+                    .filter(isMeaningfulExclusion)
+            },
+            smart_hydration: {
+                ...canonicalHomePlan.smart_hydration,
+                ...rawHome.smart_hydration,
+                litersPerDay: rawHome.smart_hydration?.litersPerDay || litersRecommended,
+                summary: (!rawHydSummary || hasLegacyTuteo(rawHydSummary) || mismatchHomeTutor)
+                    ? canonicalHomePlan.smart_hydration.summary
+                    : rawHydSummary,
+                keyRule34Plus: (!rawHydKeyRule || hasLegacyTuteo(rawHydKeyRule))
+                    ? canonicalHomePlan.smart_hydration.keyRule34Plus
+                    : rawHydKeyRule
+            },
+            gentle_movement: {
+                ...canonicalHomePlan.gentle_movement,
+                ...rawHome.gentle_movement,
+                title: canonicalHomePlan.gentle_movement.title,
+                isPediatric: Boolean(addr.isTutorMode),
+                summary: (!rawMovSummary || hasLegacyTuteo(rawMovSummary) || (!addr.isTutorMode && /juego activo diario acorde a su etapa/i.test(rawMovSummary)))
+                    ? canonicalHomePlan.gentle_movement.summary
+                    : rawMovSummary,
+                sleepHabit: (!rawSleepHabit || hasLegacyTuteo(rawSleepHabit))
+                    ? canonicalHomePlan.gentle_movement.sleepHabit
+                    : rawSleepHabit
+            }
+        };
+    }
+
+    const canonicalGreeting = addr.isLactante
+        ? `Estimada madre, padre o tutor: lectura clara del bienestar de ${ref}`
+        : addr.isTutorChild
+            ? `Estimada madre, padre o tutor: lectura clara de la salud de ${ref}`
+            : `${addr.estimadoLabel} ${firstName}: esta es la lectura clara de su salud hoy`;
+
+    const canonicalLead = addr.isLactante
+        ? `Integramos con todo cuidado la valoración de crecimiento, tolerancia digestiva y desarrollo de ${addr.childSubjectWithKinship} para explicarle con claridad qué observamos y acompañarle paso a paso en casa.`
+        : addr.isTutorChild
+            ? `Reunimos los síntomas, la historia clínica y las mediciones de ${addr.childSubjectWithKinship} para explicarle con total claridad qué observamos en su organismo y cómo vamos a acompañar a ${ref} paso a paso en casa, sin prisas ni sobrecargas.`
+            : addr.isAdolescent
+                ? `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso junto con su madre, padre o tutor legal.`
+                : `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso, sin prisas ni sobrecargas.`;
+
+    const rawGreeting = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(existingGuide?.greetingTitle || ''));
+    const rawLead = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(existingGuide?.empatheticLead || ''));
+    const isLegacyHolaGreeting = /^hola\b/i.test(rawGreeting.trim());
+    const mismatchTutorGreeting = addr.isTutorMode && !/madre,\s*padre\s+o\s+tutor/i.test(rawGreeting);
+    const missingTeenLeadTutor = addr.isAdolescent && !/tutor|madre|padre/i.test(rawLead);
+
+    const uiLabels = buildPatientUiLabels({
+        addressing: addr,
+        isPaused: Boolean(semaphore.isPaused)
+    });
+
+    const totalAbnormalCount = Object.values(bucketsBySystem).reduce((acc, arr) => acc + arr.length, 0);
+    const rawCalciumAlert = existingGuide?.calcium_alert_text || (ortho?.has_calcium_contraction_lock ? ortho?.calcium_alert_text : null);
+    const resolvedCalciumAlert = rawCalciumAlert && !hasLegacyTuteo(String(rawCalciumAlert))
+        ? sanitizeClinicalSpanish(rawCalciumAlert)
+        : (rawCalciumAlert
+            ? 'Detectamos tendencia a depósito de calcio fuera del hueso: evitamos suplementos aislados de calcio inorgánico y priorizamos hidratación constante junto con magnesio y vitamina K2 alimentaria.'
+            : null);
+
+    const applyGenderDeep = (val) => {
+        if (val === null || val === undefined) return val;
+        if (typeof val === 'string') return enforcePatientGenderConcordance(val, isFemale);
+        if (Array.isArray(val)) return val.map(applyGenderDeep);
+        if (typeof val === 'object') {
+            const out = {};
+            for (const [k, v] of Object.entries(val)) {
+                out[k] = applyGenderDeep(v);
+            }
+            return out;
+        }
+        return val;
+    };
+
+    return applyGenderDeep({
+        patientFullName: fullName,
+        patientFirstName: firstName,
+        ageYears,
+        isFemale,
+        isLactante,
+        isTutorMode: addr.isTutorMode,
+        isAdolescent: addr.isAdolescent,
+        isPediatric,
+        uiLabels,
+        greetingTitle: (!rawGreeting || hasLegacyTuteo(rawGreeting) || isLegacyHolaGreeting || mismatchTutorGreeting)
+            ? canonicalGreeting
+            : rawGreeting,
+        empatheticLead: (!rawLead || hasLegacyTuteo(rawLead) || mismatchTutorGreeting || missingTeenLeadTutor)
+            ? canonicalLead
+            : rawLead,
+        biosecuritySemaphore: semaphore,
+        fiveSystems,
+        formula33Card,
+        formula34Card,
+        circadianSchedule: schedule,
+        calciumAlertText: resolvedCalciumAlert,
+        homeActionPlan,
+        totalAbnormalCount
+    });
+}

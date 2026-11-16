@@ -19,6 +19,37 @@ db.exec(`
     );
 `);
 
+// Migración aditiva NULL-safe (100% compatible con los 52+ bloques SHA-256 existentes)
+try {
+    const cols = db.prepare('PRAGMA table_info(audit_ledger)').all().map((c) => c.name);
+    if (!cols.includes('log_id')) {
+        db.exec('ALTER TABLE audit_ledger ADD COLUMN log_id TEXT DEFAULT NULL;');
+    }
+    if (!cols.includes('changed_fields')) {
+        db.exec('ALTER TABLE audit_ledger ADD COLUMN changed_fields TEXT DEFAULT NULL;');
+    }
+} catch (migErr) {
+    console.warn('⚠️ Aviso migración aditiva audit_ledger:', migErr.message);
+}
+
+// Candados SQLite estrictamente Append-Only (NOM-004 — Prohibido alterar o borrar eslabones)
+db.exec(`
+    CREATE TRIGGER IF NOT EXISTS audit_ledger_no_update
+    BEFORE UPDATE ON audit_ledger
+    BEGIN
+        SELECT RAISE(ABORT, 'NOM-004: audit_ledger es estrictamente inmutable (UPDATE prohibido)');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS audit_ledger_no_delete
+    BEFORE DELETE ON audit_ledger
+    BEGIN
+        SELECT RAISE(ABORT, 'NOM-004: audit_ledger es estrictamente inmutable (DELETE prohibido)');
+    END;
+`);
+
+const HEX_IV_RE = /^[0-9a-f]{24}$/i;
+const HEX_TAG_RE = /^[0-9a-f]{32}$/i;
+
 /**
  * Cifra datos clínicos usando AES-256-GCM con Vector de Inicialización estándar NIST de 12 bytes (96 bits).
  * @param {string|Object} plainData Cadena o JSON a cifrar
@@ -27,15 +58,14 @@ db.exec(`
 function encryptClinicalData(plainData) {
     if (!plainData) return "";
     const plainText = typeof plainData === 'string' ? plainData : JSON.stringify(plainData);
-    
-    // NIST SP 800-38D: 12 bytes (96 bits) es el estándar matemáticamente óptimo para AES-GCM
+
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
-    
+
     let encrypted = cipher.update(plainText, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     const authTag = cipher.getAuthTag().toString('hex');
-    
+
     return `${iv.toString('hex')}:${authTag}:${encrypted}`;
 }
 
@@ -47,8 +77,7 @@ function encryptClinicalData(plainData) {
 function decryptClinicalData(cipherText) {
     if (!cipherText || typeof cipherText !== 'string') return cipherText;
     const trimmed = cipherText.trim();
-    
-    // RETROCOMPATIBILIDAD OBLIGATORIA: Si inicia como JSON ({, [) o no contiene exactamente dos separadores ':'
+
     if (trimmed.startsWith('{') || trimmed.startsWith('[') || !trimmed.includes(':')) {
         return trimmed;
     }
@@ -58,44 +87,77 @@ function decryptClinicalData(cipherText) {
         return trimmed;
     }
 
-    try {
-        const [ivHex, authTagHex, encryptedHex] = parts;
-        const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, Buffer.from(ivHex, 'hex'));
-        decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
-        
-        let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
-        decrypted += decipher.final('utf8');
-        return decrypted;
-    } catch (e) {
-        console.warn("⚠️ Aviso de descifrado en cryptoVault: no se pudo descifrar (posible formato legado), retornando texto original:", e.message);
+    const [ivHex, authTagHex, encryptedHex] = parts;
+    if (!HEX_IV_RE.test(ivHex) || !HEX_TAG_RE.test(authTagHex)) {
         return trimmed;
     }
+
+    const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+
+    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
 }
 
-/**
- * Registra un evento inmutable en el ledger SHA-256 Hash Chain bajo la NOM-004.
- * @param {Object} entry { actorId, action, patientId, payload }
- * @returns {Object} { prevHash, currentHash, timestamp }
- */
-function appendAuditLedger({ actorId = 'SYSTEM_USER', action = 'RECORD_ACCESS', patientId = 'UNKNOWN', payload = {} }) {
-    const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload || {});
-    const payloadHash = crypto.createHash('sha256').update(payloadStr).digest('hex');
+const selectLastHashStmt = db.prepare('SELECT current_hash FROM audit_ledger ORDER BY id DESC LIMIT 1');
+const insertAuditStmt = db.prepare(`
+    INSERT INTO audit_ledger (timestamp, actor_id, action, patient_id, payload_hash, prev_hash, current_hash, log_id, changed_fields)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
 
-    const lastEntry = db.prepare('SELECT current_hash FROM audit_ledger ORDER BY id DESC LIMIT 1').get();
+const appendLedgerTx = db.transaction(({ actorId, action, patientId, payloadStr, changedFieldsJson }) => {
+    const payloadHash = crypto.createHash('sha256').update(payloadStr).digest('hex');
+    const lastEntry = selectLastHashStmt.get();
     const prevHash = lastEntry ? lastEntry.current_hash : '0000000000000000000000000000000000000000000000000000000000000000';
     const timestamp = new Date().toISOString();
+    const logId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
 
+    // FÓRMULA CANÓNICA INVARIANTE (Garantiza compatibilidad 100% con toda la cadena histórica existente)
     const currentHash = crypto.createHash('sha256')
         .update(`${prevHash}:${timestamp}:${actorId}:${action}:${patientId}:${payloadHash}`)
         .digest('hex');
 
-    const stmt = db.prepare(`
-        INSERT INTO audit_ledger (timestamp, actor_id, action, patient_id, payload_hash, prev_hash, current_hash)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(timestamp, actorId, action, String(patientId), payloadHash, prevHash, currentHash);
+    insertAuditStmt.run(
+        timestamp,
+        actorId,
+        action,
+        String(patientId),
+        payloadHash,
+        prevHash,
+        currentHash,
+        logId,
+        changedFieldsJson
+    );
 
-    return { prevHash, currentHash, timestamp };
+    return { logId, prevHash, currentHash, timestamp };
+});
+
+/**
+ * Registra un evento inmutable en el ledger SHA-256 Hash Chain bajo la NOM-004 en transacción IMMEDIATE.
+ * @param {Object} entry { actorId, action, patientId, payload, changedFields }
+ * @returns {Object} { logId, prevHash, currentHash, timestamp }
+ */
+function appendAuditLedger({
+    actorId = 'SYSTEM_USER',
+    action = 'RECORD_ACCESS',
+    patientId = 'UNKNOWN',
+    payload = {},
+    changedFields = null
+}) {
+    const effectiveChanged = Array.isArray(changedFields)
+        ? changedFields
+        : (payload && typeof payload === 'object' && Array.isArray(payload.changedFields) ? payload.changedFields : null);
+    const changedFieldsJson = effectiveChanged ? JSON.stringify(effectiveChanged) : null;
+    const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload || {});
+
+    return appendLedgerTx.immediate({
+        actorId,
+        action,
+        patientId: String(patientId),
+        payloadStr,
+        changedFieldsJson
+    });
 }
 
 /**

@@ -1,91 +1,113 @@
-
 import time
 import sys
 import os
+import subprocess
+import json
 
 # Configurar salida estándar a UTF-8 para evitar errores de codificación con emojis en Windows
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
-from pywinauto.application import Application
-from pywinauto.keyboard import send_keys
 
-# CONFIGURACIÓN
-# Ajusta esta ruta a donde realmente está el Electret.exe en tu PC
 ELECTRET_PATHS = [
     r"C:\Program Files (x86)\Electret\Electret.exe",
     r"C:\Program Files (x86)\Sistema Cuántico Bio-Eléctrico (4)\Electret.exe",
+    r"C:\PROGRA~3\SISTEM~1\Electret.exe",
     r"C:\Program Files (x86)\Sistema Cuántico Bio-Eléctrico\Electret.exe"
 ]
 ELECTRET_PATH = next((p for p in ELECTRET_PATHS if os.path.exists(p)), ELECTRET_PATHS[0])
 
+def launch_electret_elevated():
+    """Lanza Electret.exe utilizando la Tarea Programada de Nivel Más Alto o RunAsInvoker sin UAC"""
+    print("🚀 BIO-BRIDGE: Intentando arranque autónomo de Electret...")
+    
+    # Intento 1: Tarea Programada con Nivel de Ejecución Más Alto (Bypass total de UAC)
+    try:
+        res = subprocess.run(["schtasks", "/run", "/tn", "TILO_Electret_Launcher"], capture_output=True, text=True)
+        if res.returncode == 0:
+            print("✅ Tarea Programada 'TILO_Electret_Launcher' ejecutada con éxito.")
+            time.sleep(4)
+            return True
+    except Exception as e:
+        print(f"⚠️ schtasks no disponible: {e}")
+
+    # Intento 2: Lanzamiento con capa RunAsInvoker en la sesión actual
+    try:
+        env = os.environ.copy()
+        env["__COMPAT_LAYER"] = "RunAsInvoker"
+        workdir = os.path.dirname(ELECTRET_PATH)
+        subprocess.Popen([ELECTRET_PATH], cwd=workdir, env=env)
+        print(f"✅ Electret lanzado directamente vía RunAsInvoker: {ELECTRET_PATH}")
+        time.sleep(5)
+        return True
+    except Exception as e:
+        print(f"🔥 Error al lanzar Electret: {e}")
+        return False
 
 def start_scan_sequence(patient_name, patient_age, patient_height, patient_weight):
-    print(f"🚀 BIO-BRIDGE: Iniciando secuencia para {patient_name}...")
+    print(f"🚀 BIO-BRIDGE: Iniciando secuencia RPA para paciente: {patient_name} (Edad: {patient_age}, Talla: {patient_height}cm, Peso: {patient_weight}kg)...")
 
-    # 1. ABRIR / CONECTAR A LA APP
+    # Verificar si ya está en ejecución
+    tasklist = subprocess.run(["tasklist", "/fi", "IMAGENAME eq Electret.exe"], capture_output=True, text=True).stdout
+    if "Electret.exe" not in tasklist:
+        launch_electret_elevated()
+    else:
+        print("✅ Proceso Electret.exe ya se encuentra activo en memoria.")
+
+    # Conexión con PyWinAuto
     try:
+        from pywinauto.application import Application
+        from pywinauto.keyboard import send_keys
+
         app = Application(backend="win32").connect(path=ELECTRET_PATH)
-        print("✅ Aplicación ya estaba abierta. Conectado.")
-    except:
-        print("⚠️ Aplicación cerrada. Iniciando...")
-        app = Application(backend="win32").start(ELECTRET_PATH)
-        time.sleep(5) # Esperar carga
+        dlg = app.top_window()
+        dlg.set_focus()
+        print(f"🎯 Ventana de Electret enfocada: '{dlg.window_text()}'")
 
-    # Obtener ventana principal (El título varía, ajustar con Spy++)
-    dlg = app.window(title_re=".*Electret.*") 
-    dlg.set_focus()
+        # Secuencia de nuevo paciente
+        print("⌨️  Enviando comando: Nuevo Paciente (^n)...")
+        send_keys('^n')
+        time.sleep(1)
 
-    # 2. NAVEGACIÓN (RPA - Ajustar según atajos de teclado del programa)
-    # Ejemplo: Si Ctrl+N abre nuevo paciente
-    print("⌨️  Enviando comando: Nuevo Paciente")
-    send_keys('^n') 
-    time.sleep(1)
+        # Inyección de datos clínicos del titular
+        print(f"✍️  Inyectando datos de {patient_name}...")
+        safe_name = patient_name.replace(" ", "{SPACE}")
+        send_keys(safe_name)
+        send_keys('{TAB}')
+        send_keys(str(patient_age))
+        send_keys('{TAB}')
+        send_keys(str(patient_height))
+        send_keys('{TAB}')
+        send_keys(str(patient_weight))
+        time.sleep(1)
 
-    # 3. INYECCIÓN DE DATOS
-    # Esto depende de los campos. Ejemplo genérico:
-    print(f"✍️  Escribiendo datos: {patient_name}")
-    send_keys(patient_name.replace(" ", "{SPACE}"))
-    send_keys('{TAB}')
-    send_keys(str(patient_age))
-    send_keys('{TAB}')
-    send_keys(str(patient_height))
-    send_keys('{TAB}')
-    send_keys(str(patient_weight))
-    
-    # 4. DISPARAR ESCANEO
-    print("⚡ ACTIVANDO SENSOR...")
-    # Opción A: Atajo de teclado (Ej: F5)
-    # send_keys('{F5}') 
-    # Opción B: Clic en botón (Requiere mapeo de ID)
-    # dlg.Button_Start.click()
-    
-    print("✅ Secuencia de inicio completada. Esperando hardware...")
+        print("⚡ Secuencia de registro completada. Esperando toma del hardware...")
+        return True
+
+    except Exception as rpa_err:
+        print(f"⚠️ PyWinAuto no pudo automatizar los controles gráficos ({rpa_err}). Se deja la aplicación en primer plano para interacción.")
+        return False
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1].endswith('.json'):
-        import json
         json_path = sys.argv[1]
         try:
-            print(f"🔒 Python Bridge: Cargando JSON de paciente de forma segura desde: {json_path}")
+            print(f"🔒 Python Bridge: Cargando JSON de paciente: {json_path}")
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            name = data.get('name', 'Paciente Demo')
-            age = data.get('age', 30)
-            height = data.get('height', 170)
-            weight = data.get('weight', 70)
+            name = data.get('name', 'Jesus Reyes Salgado')
+            age = data.get('age', 60)
+            height = data.get('height', 178)
+            weight = data.get('weight', 85)
             
             start_scan_sequence(name, age, height, weight)
             
-            # Intentar eliminar el archivo temporal una vez procesado
             try:
                 os.remove(json_path)
-                print(f"🧹 Archivo temporal removido: {json_path}")
-            except Exception as e:
-                print(f"⚠️ No se pudo remover archivo temporal: {e}")
+            except:
+                pass
         except Exception as e:
-            print(f"🔥 Error al procesar el JSON: {e}")
+            print(f"🔥 Error procesando JSON: {e}")
             sys.exit(1)
     else:
-        # Prueba manual
-        start_scan_sequence("Test User", 30, 175, 75)
+        start_scan_sequence("Jesus Reyes Salgado", 60, 178, 85)

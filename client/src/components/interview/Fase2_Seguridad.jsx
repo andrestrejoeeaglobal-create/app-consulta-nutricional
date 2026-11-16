@@ -3,6 +3,7 @@ import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { Zap, ShieldCheck, Send } from 'lucide-react';
 import { formatText, applyPhoneMask } from '../../utils/utils';
 import { getBinaryGateLabels } from '../../utils/ageClassifier';
+import { resolvePatientSex } from '../../utils/genderConcordance';
 import tiloImg from '../../assets/tilo.png';
 import SearchableVerticalMenu from '../ui/SearchableVerticalMenu';
 
@@ -16,10 +17,11 @@ export const Fase2_Seguridad = ({
 
     const patientAge = identityLock.patientInfo?.age || 30;
     const patientPhone = identityLock.patientInfo?.phone || "";
+    const { isFemale } = resolvePatientSex(null, identityLock);
 
     const getStarterMessage = () => {
         if (patientAge < 12) {
-            return "Para garantizar la integridad del menor conforme a los lineamientos de asistencia clínica infantil, requerimos documentar una Red de Apoyo Primario.\n\n---\n\n¿Cuál es el nombre completo del tutor o responsable a contactar?";
+            return `Para garantizar la integridad ${isFemale ? 'de la menor' : 'del menor'} conforme a los lineamientos de asistencia clínica infantil, requerimos documentar una Red de Apoyo Primario.\n\n---\n\n¿Cuál es el nombre completo de quien ejerce la patria potestad o tutela a contactar?`;
         } else if (patientAge >= 12 && patientAge <= 17) {
             return "Para asegurar tu bienestar bajo el protocolo de asistencia a menores, requerimos establecer tu Red de Apoyo Primario.\n\n---\n\n¿Cuál es el nombre completo de la persona a contactar?";
         } else {
@@ -41,20 +43,24 @@ export const Fase2_Seguridad = ({
     const getKinshipOptions = () => {
         if (patientAge < 18) {
             return [
-                { label: "Abuelo(a)", value: "Abuelo/a" },
-                { label: "Hermano(a) Mayor", value: "Hermano/a" },
                 { label: "Madre", value: "Madre" },
                 { label: "Padre", value: "Padre" },
-                { label: "Tutor(a) Legal", value: "Tutor Legal" }
+                { label: "Abuela", value: "Abuela" },
+                { label: "Abuelo", value: "Abuelo" },
+                { label: "Hermana Mayor", value: "Hermana Mayor" },
+                { label: "Hermano Mayor", value: "Hermano Mayor" },
+                { label: "Tutor Legal", value: "Tutor Legal" }
             ];
         }
         return [
-            { label: "Amigo(a)", value: "Amigo/a" },
-            { label: "Esposo(a) / Pareja", value: "Pareja" },
-            { label: "Hermano(a)", value: "Hermano/a" },
-            { label: "Hijo(a)", value: "Hijo/a" },
+            { label: "Cónyuge", value: "Cónyuge" },
             { label: "Madre", value: "Madre" },
-            { label: "Padre", value: "Padre" }
+            { label: "Padre", value: "Padre" },
+            { label: "Hermana", value: "Hermana" },
+            { label: "Hermano", value: "Hermano" },
+            { label: "Hija", value: "Hija" },
+            { label: "Hijo", value: "Hijo" },
+            { label: "Amistad cercana", value: "Amistad cercana" }
         ];
     };
 
@@ -79,7 +85,7 @@ export const Fase2_Seguridad = ({
                     updateIdentityLock({ emergencyContact: { ...identityLock.emergencyContact, name: cleanText } });
 
                     if (patientAge < 12) {
-                        responseMsg = `Para establecer el nivel de autoridad clínica sobre las decisiones del paciente, es necesario definir la relación familiar.\n\n---\n\n¿Qué parentesco tiene ${cleanText} con el menor?`;
+                        responseMsg = `Para establecer el nivel de autoridad clínica sobre las decisiones ${isFemale ? 'de la paciente' : 'del paciente'}, es necesario definir la relación familiar.\n\n---\n\n¿Qué parentesco tiene ${cleanText} con ${isFemale ? 'la menor' : 'el menor'}?`;
                     } else if (patientAge >= 12 && patientAge <= 17) {
                         responseMsg = `Para establecer la vía de comunicación principal de su Red de Apoyo Primario, es necesario definir la relación familiar.\n\n---\n\n¿Qué parentesco tiene ${cleanText} con usted?`;
                     } else {

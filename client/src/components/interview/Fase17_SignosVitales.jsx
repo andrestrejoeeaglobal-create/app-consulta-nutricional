@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+import { resolvePatientSex } from '../../utils/genderConcordance';
 import { ShieldAlert, AlertTriangle, Check } from 'lucide-react';
 import tiloImg from '../../assets/tilo.png';
 import { evaluateVitalSignsSafety } from '../../ClinicalRules';
@@ -52,20 +53,23 @@ export default function Fase17_SignosVitales({
     registerInputHandler,
     onPhaseComplete
 }) {
-    const { pName, isMinor, patientSex, patientAge } = usePatientLinguistics(patientData);
+    const { patientName, pName: rawPName, isMinor, patientSex, patientAge } = usePatientLinguistics(patientData);
+    const pName = rawPName || patientName;
+    const { isFemale, genderLock } = resolvePatientSex(patientData);
     const updateVitalSigns = useClinicalGenome(state => state.updateVitalSigns);
 
     const [internalStep, setInternalStep] = useState('BP');
+    const [singleVitalEditMode, setSingleVitalEditMode] = useState(false);
     
-    // Local values cache
-    const [systolic, setSystolic] = useState('');
-    const [diastolic, setDiastolic] = useState('');
-    const [heartRate, setHeartRate] = useState('');
-    const [respiratoryRate, setRespiratoryRate] = useState('');
-    const [temperature, setTemperature] = useState('');
-    const [spo2, setSpo2] = useState('');
-    const [glucose, setGlucose] = useState('');
-    const [glucoseContext, setGlucoseContext] = useState('OMITTED');
+    // Local values cache (hydrated from patientData.vitals if present)
+    const [systolic, setSystolic] = useState(() => patientData?.vitals?.blood_pressure?.systolic ?? '');
+    const [diastolic, setDiastolic] = useState(() => patientData?.vitals?.blood_pressure?.diastolic ?? '');
+    const [heartRate, setHeartRate] = useState(() => patientData?.vitals?.heart_rate ?? patientData?.vitals?.hr ?? '');
+    const [respiratoryRate, setRespiratoryRate] = useState(() => patientData?.vitals?.respiratory_rate ?? patientData?.vitals?.rr ?? '');
+    const [temperature, setTemperature] = useState(() => patientData?.vitals?.temperature ?? '');
+    const [spo2, setSpo2] = useState(() => patientData?.vitals?.spo2 ?? '');
+    const [glucose, setGlucose] = useState(() => (patientData?.vitals?.glucose !== null && patientData?.vitals?.glucose !== undefined ? patientData.vitals.glucose : ''));
+    const [glucoseContext, setGlucoseContext] = useState(() => patientData?.vitals?.glucose_context || 'OMITTED');
 
     // Alert overlays state
     const [showCrisisOverlay, setShowCrisisOverlay] = useState(false);
@@ -119,16 +123,18 @@ export default function Fase17_SignosVitales({
             const lastMsg = messages && messages.length > 0 ? messages[messages.length - 1] : null;
             const hasBpPrompt = lastMsg && (lastMsg.inputType === 'bp' || (lastMsg.content && (lastMsg.content.includes('brazalete de presión') || lastMsg.content.includes('Tensión Arterial'))));
             if (!hasBpPrompt) {
-                const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
+                const gender = genderLock;
+                const erguidoTerm = isFemale ? 'erguida' : 'erguido';
+                const sentadoTranquiloTerm = isFemale ? 'sentada y tranquila' : 'sentado y tranquilo';
                 let target = 'Adulto';
-                let p2Text = `📢 Diga al paciente:\n\n'Por favor siéntate erguido, con la espalda apoyada. Voy a colocar el brazalete de presión.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 110/70):`;
+                let p2Text = `📢 Diga al paciente:\n\n'Por favor siéntese ${erguidoTerm}, con la espalda apoyada. Voy a colocar el brazalete de presión.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 110/70):`;
 
                 if (patientAge < 13) {
                     target = 'Tutor';
-                    p2Text = `📢 Solicite al tutor:\n\n'Por favor mantenga a **${pName}** sentado y tranquilo mientras coloco el brazalete.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 100/65):`;
+                    p2Text = `📢 Solicite al tutor:\n\n'Por favor mantenga a **${pName}** ${sentadoTranquiloTerm} mientras coloco el brazalete.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 100/65):`;
                 } else if (patientAge >= 13 && patientAge < 18) {
                     target = 'Adolescente';
-                    p2Text = `📢 Diga a **${pName}**:\n\n'Por favor siéntate erguido, con la espalda apoyada. Voy a colocar el brazalete de presión.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 110/70):`;
+                    p2Text = `📢 Diga a **${pName}**:\n\n'Por favor siéntate ${erguidoTerm}, con la espalda apoyada. Voy a colocar el brazalete de presión.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 110/70):`;
                 }
 
                 const initialBpMsg = `<binary_gate_execution>\n` +
@@ -193,16 +199,35 @@ export default function Fase17_SignosVitales({
         setIsGlobalTyping(true);
         await new Promise(resolve => setTimeout(resolve, 800));
 
-        const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
+        if (singleVitalEditMode) {
+            setSingleVitalEditMode(false);
+            setIsGlobalTyping(false);
+            setPendingBpConfirmed(false);
+            setPendingBp(null);
+            showSummary({
+                sys: bp.systolic,
+                dia: bp.diastolic,
+                hr: heartRate,
+                rr: respiratoryRate,
+                temp: temperature,
+                ox: spo2,
+                gl: glucose === 'OMITTED' || glucose === '' ? NaN : parseFloat(glucose),
+                glCtx: glucoseContext
+            });
+            return;
+        }
+
+        const gender = genderLock;
+        const quietoTerm = isFemale ? 'quieta' : 'quieto';
         let target = 'Adulto';
-        let p2Text = `📢 Diga al paciente:\n\n'Permanezca quieto y en silencio mientras tomo su pulso.'\n\n(Mida el pulso y registre la Frecuencia Cardíaca en LPM, ej. 75):`;
+        let p2Text = `📢 Diga al paciente:\n\n'Permanezca ${quietoTerm} y en silencio mientras tomo su pulso.'\n\n(Mida el pulso y registre la Frecuencia Cardíaca en LPM, ej. 75):`;
 
         if (patientAge < 13) {
             target = 'Tutor';
-            p2Text = `📢 Solicite al tutor:\n\n'Por favor mantenga a **${pName}** quieto y en silencio mientras tomo su pulso.'\n\n(Mida el pulso y registre la Frecuencia Cardíaca en LPM, ej. 85):`;
+            p2Text = `📢 Solicite al tutor:\n\n'Por favor mantenga a **${pName}** ${quietoTerm} y en silencio mientras tomo su pulso.'\n\n(Mida el pulso y registre la Frecuencia Cardíaca en LPM, ej. 85):`;
         } else if (patientAge >= 13 && patientAge < 18) {
             target = 'Adolescente';
-            p2Text = `📢 Diga a **${pName}**:\n\n'Permanece quieto y en silencio mientras tomo tu pulso.'\n\n(Mida el pulso y registre la Frecuencia Cardíaca en LPM, ej. 75):`;
+            p2Text = `📢 Diga a **${pName}**:\n\n'Permanece ${quietoTerm} y en silencio mientras tomo tu pulso.'\n\n(Mida el pulso y registre la Frecuencia Cardíaca en LPM, ej. 75):`;
         }
 
         let alertNotice = '';
@@ -240,7 +265,7 @@ export default function Fase17_SignosVitales({
             `- 🩸 **Saturación SpO2**: ${spo2Text}\n` +
             `- 🍭 **Glucosa Capilar**: ${glucText}\n\n` +
             `P2: ¿Es correcta y verídica toda esta información?\n\n` +
-            `<!-- meta user_target: Adulto gender_lock: M triage_mode: Inactivo -->\n` +
+            `<!-- meta user_target: Adulto gender_lock: ${genderLock} triage_mode: Inactivo -->\n` +
             `</binary_gate_execution>`;
 
         setMessages(prev => [...prev, {
@@ -297,8 +322,22 @@ export default function Fase17_SignosVitales({
         }
     };
 
+    const promptForSpo2Again = () => {
+        setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: "🩸 Sensor recalibrado. Ingrese nuevamente la **Saturación SpO2** en % (ej. 98):",
+            avatar: tiloImg,
+            inputType: 'number'
+        }]);
+        setInternalStep('SPO2');
+    };
+
     async function handleSend(userMsg) {
-        const isInternalOption = ['FASTING', 'CASUAL', 'CONFIRM_DATA', 'CORRECT_DATA'].includes(userMsg);
+        const isInternalOption = [
+            'FASTING', 'CASUAL', 'CONFIRM_DATA', 'CORRECT_DATA', 'OMIT',
+            'EDIT_BP', 'EDIT_HR', 'EDIT_RR', 'EDIT_TEMP', 'EDIT_SPO2', 'EDIT_GLUCOSE',
+            'RESET_ALL_VITALS', 'RETURN_SUMMARY'
+        ].includes(userMsg);
         if (!isInternalOption) {
             setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
         }
@@ -375,6 +414,23 @@ export default function Fase17_SignosVitales({
                 }]);
             }
 
+            setIsRetakingHR(false);
+
+            if (singleVitalEditMode) {
+                setSingleVitalEditMode(false);
+                showSummary({
+                    sys: systolic,
+                    dia: diastolic,
+                    hr: val,
+                    rr: respiratoryRate,
+                    temp: temperature,
+                    ox: spo2,
+                    gl: glucose === 'OMITTED' || glucose === '' ? NaN : parseFloat(glucose),
+                    glCtx: glucoseContext
+                });
+                return;
+            }
+
             setIsGlobalTyping(true);
             await new Promise(resolve => setTimeout(resolve, 800));
 
@@ -418,6 +474,21 @@ export default function Fase17_SignosVitales({
                 }));
             }
 
+            if (singleVitalEditMode) {
+                setSingleVitalEditMode(false);
+                showSummary({
+                    sys: systolic,
+                    dia: diastolic,
+                    hr: heartRate,
+                    rr: val,
+                    temp: temperature,
+                    ox: spo2,
+                    gl: glucose === 'OMITTED' || glucose === '' ? NaN : parseFloat(glucose),
+                    glCtx: glucoseContext
+                });
+                return;
+            }
+
             setIsGlobalTyping(true);
             await new Promise(resolve => setTimeout(resolve, 800));
 
@@ -459,6 +530,21 @@ export default function Fase17_SignosVitales({
                         temperature: val
                     }
                 }));
+            }
+
+            if (singleVitalEditMode) {
+                setSingleVitalEditMode(false);
+                showSummary({
+                    sys: systolic,
+                    dia: diastolic,
+                    hr: heartRate,
+                    rr: respiratoryRate,
+                    temp: val,
+                    ox: spo2,
+                    gl: glucose === 'OMITTED' || glucose === '' ? NaN : parseFloat(glucose),
+                    glCtx: glucoseContext
+                });
+                return;
             }
 
             setIsGlobalTyping(true);
@@ -513,6 +599,7 @@ export default function Fase17_SignosVitales({
         }
         else if (internalStep === 'GLUCOSE_VAL') {
             if (userMsg === 'OMIT') {
+                setSingleVitalEditMode(false);
                 setGlucose('OMITTED');
                 setGlucoseContext('OMITTED');
                 if (setPatientData) {
@@ -583,6 +670,7 @@ export default function Fase17_SignosVitales({
             setIsGlobalTyping(false);
         }
         else if (internalStep === 'GLUCOSE_CTX') {
+            setSingleVitalEditMode(false);
             const ctx = userMsg === 'FASTING' ? 'FASTING' : 'CASUAL';
             setGlucoseContext(ctx);
             if (setPatientData) {
@@ -605,8 +693,87 @@ export default function Fase17_SignosVitales({
                 glCtx: ctx
             });
         }
+        else if (internalStep === 'SELECT_VITAL_EDIT') {
+            if (userMsg === 'EDIT_BP') {
+                setSingleVitalEditMode(true);
+                setPendingBp(null);
+                setPendingBpConfirmed(false);
+                addBotMsg("🩺 Ingrese la **Presión Arterial** corregida como Sistólica/Diastólica en mmHg (ej. 120/80):", 'bp');
+                setInternalStep('BP');
+            } else if (userMsg === 'EDIT_HR') {
+                setSingleVitalEditMode(true);
+                setIsRetakingHR(false);
+                addBotMsg("❤️ Ingrese la **Frecuencia Cardíaca** corregida en LPM (ej. 72):", 'number');
+                setInternalStep('HR');
+            } else if (userMsg === 'EDIT_RR') {
+                setSingleVitalEditMode(true);
+                addBotMsg("🫁 Ingrese la **Frecuencia Respiratoria** corregida en RPM (ej. 16):", 'number');
+                setInternalStep('RR');
+            } else if (userMsg === 'EDIT_TEMP') {
+                setSingleVitalEditMode(true);
+                addBotMsg("🌡️ Ingrese la **Temperatura Corporal** corregida en °C (ej. 36.5):", 'number');
+                setInternalStep('TEMP');
+            } else if (userMsg === 'EDIT_SPO2') {
+                setSingleVitalEditMode(true);
+                setDismissedHypoxia(false);
+                addBotMsg("🩸 Ingrese la **Saturación SpO2** corregida en % (ej. 98):", 'number');
+                setInternalStep('SPO2');
+            } else if (userMsg === 'EDIT_GLUCOSE') {
+                setSingleVitalEditMode(true);
+                setMessages(prev => [...prev, {
+                    role: "assistant",
+                    content: "🍬 Ingrese la **Glucosa Capilar** corregida en mg/dL (o seleccione 'Omitir'):",
+                    avatar: tiloImg,
+                    inputType: 'number',
+                    options: [{ label: "⏩ Omitir medición de glucosa", value: "OMIT" }]
+                }]);
+                setInternalStep('GLUCOSE_VAL');
+            } else if (userMsg === 'RETURN_SUMMARY') {
+                setSingleVitalEditMode(false);
+                showSummary({
+                    sys: systolic,
+                    dia: diastolic,
+                    hr: heartRate,
+                    rr: respiratoryRate,
+                    temp: temperature,
+                    ox: spo2,
+                    gl: glucose === 'OMITTED' || glucose === '' ? NaN : parseFloat(glucose),
+                    glCtx: glucoseContext
+                });
+            } else if (userMsg === 'RESET_ALL_VITALS') {
+                setSingleVitalEditMode(false);
+                setIsRetakingHR(false);
+                setDismissedHypoxia(false);
+                setPendingBp(null);
+                setPendingBpConfirmed(false);
+
+                const gender = genderLock;
+                const erguidoTerm = isFemale ? 'erguida' : 'erguido';
+                const sentadoTranquiloTerm = isFemale ? 'sentada y tranquila' : 'sentado y tranquilo';
+                let target = 'Adulto';
+                let p2Text = `📢 Diga al paciente:\n\n'Por favor siéntese ${erguidoTerm}, con la espalda apoyada. Voy a colocar el brazalete de presión.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 110/70):`;
+
+                if (patientAge < 13) {
+                    target = 'Tutor';
+                    p2Text = `📢 Solicite al tutor:\n\n'Por favor mantenga a **${pName}** ${sentadoTranquiloTerm} mientras coloco el brazalete.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 100/65):`;
+                } else if (patientAge >= 13 && patientAge < 18) {
+                    target = 'Adolescente';
+                    p2Text = `📢 Diga a **${pName}**:\n\n'Por favor siéntate ${erguidoTerm}, con la espalda apoyada. Voy a colocar el brazalete de presión.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 110/70):`;
+                }
+
+                const nextMsg = `<binary_gate_execution>\n` +
+                    `P1: Reiniciando el registro de Signos Vitales. Asegure la correcta calibración de los dispositivos.\n\n` +
+                    `P2: ${p2Text}\n\n` +
+                    `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
+                    `</binary_gate_execution>`;
+
+                setMessages(prev => [...prev, { role: "assistant", content: nextMsg, avatar: tiloImg, inputType: 'bp' }]);
+                setInternalStep('BP');
+            }
+        }
         else if (internalStep === 'REVIEW_SUMMARY') {
             if (userMsg === 'CONFIRM_DATA') {
+                setSingleVitalEditMode(false);
                 const finalVitals = {
                     ...patientData.vitals,
                     blood_pressure: {
@@ -618,7 +785,7 @@ export default function Fase17_SignosVitales({
                     respiratory_rate: parseInt(respiratoryRate, 10),
                     temperature: parseFloat(temperature),
                     spo2: parseInt(spo2, 10),
-                    glucose: !isNaN(glucose) ? parseInt(glucose, 10) : null,
+                    glucose: !isNaN(glucose) && glucose !== 'OMITTED' && glucose !== '' ? parseInt(glucose, 10) : null,
                     glucose_context: glucoseContext
                 };
 
@@ -635,7 +802,7 @@ export default function Fase17_SignosVitales({
                     respiratoryRate: parseInt(respiratoryRate, 10),
                     temperature: parseFloat(temperature),
                     spo2: parseInt(spo2, 10),
-                    glucose: !isNaN(glucose) ? parseInt(glucose, 10) : null,
+                    glucose: !isNaN(glucose) && glucose !== 'OMITTED' && glucose !== '' ? parseInt(glucose, 10) : null,
                     glucoseContext: glucoseContext
                 });
 
@@ -643,31 +810,43 @@ export default function Fase17_SignosVitales({
                     onPhaseComplete('PHASE_18_ELECTRET');
                 }
             } else if (userMsg === 'CORRECT_DATA') {
-                const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
-                let target = 'Adulto';
-                let p2Text = `📢 Diga al paciente:\n\n'Por favor siéntate erguido, con la espalda apoyada. Voy a colocar el brazalete de presión.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 110/70):`;
-
-                if (patientAge < 13) {
-                    target = 'Tutor';
-                    p2Text = `📢 Solicite al tutor:\n\n'Por favor mantenga a **${pName}** sentado y tranquilo mientras coloco el brazalete.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 100/65):`;
-                } else if (patientAge >= 13 && patientAge < 18) {
-                    target = 'Adolescente';
-                    p2Text = `📢 Diga a **${pName}**:\n\n'Por favor siéntate erguido, con la espalda apoyada. Voy a colocar el brazalete de presión.'\n\n(Mida la presión arterial y regístrela como Sistólica/Diastólica en mmHg, ej. 110/70):`;
-                }
-
-                const nextMsg = `<binary_gate_execution>\n` +
-                    `P1: Reiniciando el registro de Signos Vitales. Asegure la correcta calibración de los dispositivos.\n\n` +
-                    `P2: ${p2Text}\n\n` +
-                    `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
-                    `</binary_gate_execution>`;
-
-                setMessages(prev => [...prev, { role: "assistant", content: nextMsg, avatar: tiloImg, inputType: 'bp' }]);
-                setInternalStep('BP');
+                setSingleVitalEditMode(false);
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "¿Qué signo vital desea corregir de forma puntual?",
+                    avatar: tiloImg,
+                    inputType: 'strict_select',
+                    options: [
+                        { label: "🩺 Presión Arterial", value: "EDIT_BP" },
+                        { label: "❤️ Frecuencia Cardíaca", value: "EDIT_HR" },
+                        { label: "🫁 Frecuencia Respiratoria", value: "EDIT_RR" },
+                        { label: "🌡️ Temperatura", value: "EDIT_TEMP" },
+                        { label: "🩸 Saturación SpO2", value: "EDIT_SPO2" },
+                        { label: "🍬 Glucosa Capilar", value: "EDIT_GLUCOSE" },
+                        { label: "🔄 Reiniciar todos los signos vitales", value: "RESET_ALL_VITALS" },
+                        { label: "❌ Volver al resumen", value: "RETURN_SUMMARY" }
+                    ]
+                }]);
+                setInternalStep('SELECT_VITAL_EDIT');
             }
         }
     }
 
     const advanceToGlucoseStep = (oxVal) => {
+        if (singleVitalEditMode) {
+            setSingleVitalEditMode(false);
+            showSummary({
+                sys: systolic,
+                dia: diastolic,
+                hr: heartRate,
+                rr: respiratoryRate,
+                temp: temperature,
+                ox: oxVal,
+                gl: glucose === 'OMITTED' || glucose === '' ? NaN : parseFloat(glucose),
+                glCtx: glucoseContext
+            });
+            return;
+        }
         setIsGlobalTyping(true);
         setTimeout(() => {
             const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
@@ -873,7 +1052,7 @@ export default function Fase17_SignosVitales({
                     </p>
                     
                     <p className="text-xs text-slate-500 leading-relaxed">
-                        Por favor, permanezca sentado, en reposo y con los brazos apoyados durante el tiempo de reposo para realizar la lectura de confirmación.
+                        Por favor, permanezca {isFemale ? 'sentada' : 'sentado'}, en reposo y con los brazos apoyados durante el tiempo de reposo para realizar la lectura de confirmación.
                     </p>
 
                     <div className="my-2 py-3 px-6 bg-slate-900 text-amber-400 rounded-2xl border border-slate-800 shadow-inner">

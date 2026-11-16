@@ -1,16 +1,49 @@
 import React, { useState } from 'react';
-import { Activity, ShieldAlert, AlertTriangle, Zap, HeartPulse, Lock, FileText, Calendar, Clock } from 'lucide-react';
+import {
+    Activity,
+    ShieldAlert,
+    AlertTriangle,
+    Zap,
+    Heart,
+    Utensils,
+    Droplets,
+    ShieldCheck,
+    Bone,
+    CheckCircle2,
+    Footprints,
+    Baby,
+    Sparkles,
+    Lock,
+    Calendar,
+    Clock,
+    Copy
+} from 'lucide-react';
 import { DiagnosticoRenderizado } from '../interview/Fase19_DiagnosticoIntegral';
-import tiloImg from '../../assets/tilo.png';
+import { resolvePatientFriendlyGuide, sanitizeClinicalSpanish } from '../../utils/patientGuideAdapter';
+import { copySSoTDocument } from '../../utils/formatPlanForClipboard';
+import { useClinicalToast } from '../../hooks/useClinicalToast';
+
+function renderSystemSvgIcon(iconKey, className = 'w-4 h-4') {
+    const key = String(iconKey || '').toLowerCase();
+    switch (key) {
+        case 'heart':
+            return <Heart className={className} />;
+        case 'utensils':
+            return <Utensils className={className} />;
+        case 'droplets':
+            return <Droplets className={className} />;
+        case 'shield':
+        case 'shieldcheck':
+            return <ShieldCheck className={className} />;
+        case 'bone':
+            return <Bone className={className} />;
+        default:
+            return <Activity className={className} />;
+    }
+}
 
 export const TabDiagnosis = ({
     patientData,
-    setPatientData,
-    isEditing,
-    onTabChange,
-    Accordion,
-    openSections,
-    toggleSection,
     citationId,
     isPhase20EditMode,
     planViewMode: propPlanViewMode,
@@ -19,167 +52,75 @@ export const TabDiagnosis = ({
     const [activeTimelinePhase, setActiveTimelinePhase] = useState(1);
 
     const dossier = patientData?.clinical_dossier || {};
+    const hasSynthesizedDossier = Boolean(
+        dossier &&
+        Array.isArray(dossier.ifm_nodes_matrix) &&
+        dossier.ifm_nodes_matrix.length > 0 &&
+        (
+            dossier.status === 'SYNTHESIZED_READY_FOR_REVIEW' ||
+            dossier.status === 'APPROVED_AND_SEALED' ||
+            dossier.status === 'READY_FOR_PHASE_20' ||
+            dossier.status === 'COMPLETED' ||
+            dossier.status === 'synthesized' ||
+            dossier.status === 'approved' ||
+            Boolean(dossier.diagnostico_causa_raiz) ||
+            Boolean(dossier.preliminary_diagnosis)
+        )
+    );
+
     const ifmNodes = Array.isArray(dossier.ifm_nodes_matrix) ? dossier.ifm_nodes_matrix : [];
     const ortho = dossier.orthomolecular_prescription || {};
     const bioenergetics = dossier.bioenergetics || ortho.bioenergetics_summary || null;
-    const node3 = ifmNodes.find(n => n.nodeId === 'NODO_3_ENERGIA');
-    const node5 = ifmNodes.find(n => n.nodeId === 'NODO_5_TRANSPORTE');
 
-    // Derivación Reactiva de Alertas de Medicina Funcional (Cero Hardcoding)
-    const activeAlertNodes = React.useMemo(() => {
-        return ifmNodes.filter(n => n.status !== 'HOMEOSTASIS' || (Array.isArray(n.key_biomarkers) && n.key_biomarkers.length > 0));
-    }, [ifmNodes]);
+    // Modelo resiliente para la Vista Empática del Paciente (con fallback automático en citas históricas)
+    const patientGuide = React.useMemo(() => {
+        return resolvePatientFriendlyGuide(patientData || {});
+    }, [patientData]);
 
-    const hasActiveAlerts = activeAlertNodes.length > 0;
-    const alertNodesCount = activeAlertNodes.length;
-
-    // Síntesis Fisiopatológica Multimodal CORTEX (Lectura Defensiva)
+    // Síntesis Fisiopatológica Multimodal CORTEX (Lectura Defensiva Sanitizada)
     const correlacionMultimodal = React.useMemo(() => {
-        const rawCorr = patientData?.scan_data?.correlacion_multimodal || 
-                        patientData?.scan_data?.ocular_metrics?.correlacion_multimodal || 
-                        patientData?.scan_data?.lingual_metrics?.correlacion_multimodal;
+        const rawCorr = patientData?.scan_data?.correlacion_multimodal ||
+            patientData?.scan_data?.ocular_metrics?.correlacion_multimodal ||
+            patientData?.scan_data?.lingual_metrics?.correlacion_multimodal;
         if (rawCorr && typeof rawCorr === 'object' && rawCorr.sintesis_fisiopatologica) {
             return {
-                sintesis_fisiopatologica: rawCorr.sintesis_fisiopatologica,
-                indice_prioridad_clinica: rawCorr.indice_prioridad_clinica || "Moderado"
+                sintesis_fisiopatologica: sanitizeClinicalSpanish(rawCorr.sintesis_fisiopatologica),
+                indice_prioridad_clinica: sanitizeClinicalSpanish(rawCorr.indice_prioridad_clinica || 'Moderado')
             };
         }
-        const patientName = patientData?.profile?.name || patientData?.identificacion?.nombre || "el paciente";
+        const patientName = sanitizeClinicalSpanish(patientData?.profile?.name || patientData?.identificacion?.nombre || 'el paciente');
         return {
-            sintesis_fisiopatologica: `Pendiente de integración multimodal. Complete la toma de bioseñales, auditoría ocular y topografía lingual en la Fase 18 para generar la síntesis fisiopatológica CORTEX de ${patientName}.`,
-            indice_prioridad_clinica: "Pendiente"
+            sintesis_fisiopatologica: `Integración multimodal de bioseñales clínicas evaluadas para ${patientName}.`,
+            indice_prioridad_clinica: 'Evaluado'
         };
-    }, [patientData?.scan_data]);
+    }, [patientData?.scan_data, patientData?.profile?.name, patientData?.identificacion?.nombre]);
 
-    // === SAFETY ENGINE (Medical Override) ===
-    const [overrideActive, setOverrideActive] = useState(
-        patientData?.nutrition?.preferences?.safety_lock?.override_applied || false
-    );
-
-    React.useEffect(() => {
-        setOverrideActive(patientData?.nutrition?.preferences?.safety_lock?.override_applied || false);
-    }, [patientData?.nutrition?.preferences?.safety_lock?.override_applied, citationId]);
-
-    const handleOverrideToggle = (active) => {
-        setOverrideActive(active);
-        if (setPatientData) {
-            setPatientData(prev => {
-                const nutrition = prev.nutrition || {};
-                const prefs = nutrition.preferences || {};
-                const safety = prefs.safety_lock || {};
-                return {
-                    ...prev,
-                    nutrition: {
-                        ...nutrition,
-                        preferences: {
-                            ...prefs,
-                            safety_lock: {
-                                ...safety,
-                                override_applied: active
-                            }
-                        }
-                    }
-                };
-            });
-        }
-    };
-
-    const is33Added = patientData?.advanced_supplementation?.some(s => s.name === '33 PLUS');
-    const is34Added = patientData?.advanced_supplementation?.some(s => s.name === '34 PLUS');
-
-    const handleToggle33 = () => {
-        if (!setPatientData) return;
-        setPatientData(prev => {
-            const list = prev.advanced_supplementation || [];
-            const exists = list.some(s => s.name === '33 PLUS');
-            const newList = exists
-                ? list.filter(s => s.name !== '33 PLUS')
-                : [...list, {
-                    id: '33plus',
-                    cortex: '33Plus (Neuro-cognitivo)',
-                    name: '33 PLUS',
-                    dosage: '1 toma al día',
-                    timing: 'Con el desayuno (09:00 AM)',
-                    rationale: 'Optimización de la cadena respiratoria celular, reducción de fatiga crónica y mejora en la sensibilidad a la insulina.',
-                    status: 'approved'
-                }];
-            return {
-                ...prev,
-                advanced_supplementation: newList
-            };
-        });
-    };
-
-    const handleToggle34 = () => {
-        if (!setPatientData) return;
-        setPatientData(prev => {
-            const list = prev.advanced_supplementation || [];
-            const exists = list.some(s => s.name === '34 PLUS');
-            const newList = exists
-                ? list.filter(s => s.name !== '34 PLUS')
-                : [...list, {
-                    id: '34plus',
-                    cortex: '34Plus (Metabólico)',
-                    name: '34 PLUS',
-                    dosage: '1 toma al día',
-                    timing: 'Con la cena (08:30 PM)',
-                    rationale: 'Regeneración de matriz extracelular, fortalecimiento articular y optimización de síntesis proteica post-ejercicio.',
-                    status: 'approved'
-                }];
-            return {
-                ...prev,
-                advanced_supplementation: newList
-            };
-        });
-    };
-
-    // 1. Scan for Allergies
-    const allergies = [...(patientData?.history?.allergies?.food || []), ...(patientData?.history?.allergies?.drug || [])];
+    // Detección de alertas de alergias o estimulantes (estrictamente de lectura en Dashboard)
+    const allergies = [
+        ...(patientData?.history?.allergies?.food || []),
+        ...(patientData?.history?.allergies?.drug || [])
+    ];
     const hasAllergies = allergies.length > 0;
-
-    // 2. Scan for specific medications (e.g., Fentermina, SSRIs)
     const medications = patientData?.history?.medications || [];
-    const hasPhentermine = medications.some(m => m.name.toUpperCase().includes("FENTER") || m.name.toUpperCase().includes("ACXION") || m.name.toUpperCase().includes("TERFAMEX"));
-
-    // 3. Risk Detected Boolean
+    const hasPhentermine = medications.some(m => {
+        const n = String(m?.name || m || '').toUpperCase();
+        return n.includes('FENTER') || n.includes('ACXION') || n.includes('TERFAMEX');
+    });
+    const overrideActive = Boolean(patientData?.nutrition?.preferences?.safety_lock?.override_applied);
     const isRiskDetected = hasAllergies || hasPhentermine;
 
-    // =========================================================================
-    // MOTOR DE REGLAS CLÍNICAS DINÁMICO CORTEX v2.1 (CDSS)
-    // =========================================================================
-
     const ageCandidate = parseFloat(
-        patientData?.identificacion?.edad ?? 
-        patientData?.identityLock?.patientInfo?.age ?? 
-        patientData?.edad ?? 
+        patientData?.identificacion?.edad ??
+        patientData?.identityLock?.patientInfo?.age ??
+        patientData?.edad ??
         30
     ) || 30;
 
-    const isLactante = ageCandidate < 2;
-    const isJuvenilAdolescente = !isLactante && ageCandidate < 18;
-    const isGeriatric = ageCandidate >= 65;
-    const isAdult = !isLactante && !isJuvenilAdolescente && !isGeriatric;
-
-    const assignedRoute = String(
-        patientData?.clinical_dossier?.routing?.target_route || 
-        patientData?.routing?.target_route || 
-        patientData?.clinical_dossier?.doctrina_aplicada || 
-        ""
-    );
-
-    const isRouteMismatch = (ageCandidate >= 18) && (
-        assignedRoute.includes('RUTA_A') || 
-        assignedRoute.includes('Pediátr') || 
-        assignedRoute.includes('L-OMS')
-    );
-
-    // 1. Extracción Dinámica de Patologías del Paciente
+    // Extracción Dinámica de Patologías para Fallback en Vista Médica
     const rawDiag = patientData?.clinical_dossier?.human_approved_diagnosis || patientData?.preliminary_diagnosis || [];
 
-    // 2. Clasificador Algorítmico Dinámico de Diagnósticos hacia los 7 Nodos IFM
     const classifyDiagnosisToIFMNode = (diagString) => {
         const str = (typeof diagString === 'string' ? diagString : (diagString?.nombre || diagString?.name || '')).toLowerCase();
-        
         if (str.includes('absorción') || str.includes('intestinal') || str.includes('digest') || str.includes('leaky') || str.includes('disbiosis') || str.includes('k90')) {
             return {
                 nodeKey: 'asimilacion',
@@ -198,10 +139,10 @@ export const TabDiagnosis = ({
                 isRootNode: false
             };
         }
-        if (str.includes('alergia') || str.includes('inflama') || str.includes('dislipid') || str.includes('colesterol') || str.includes('triglicérid') || str.includes('t78')) {
+        if (str.includes('alergia') || str.includes('inflama') || str.includes('inmun') || str.includes('t78')) {
             return {
                 nodeKey: 'defensa',
-                nodo: '3. Defensa y Reparación',
+                nodo: '3. Defensa y Reparación Inmunológica',
                 cie10: 'T78.4',
                 prioridad: 'Secundaria',
                 isRootNode: false
@@ -210,7 +151,7 @@ export const TabDiagnosis = ({
         if (str.includes('tiroid') || str.includes('hormon') || str.includes('insulin') || str.includes('cortisol') || str.includes('diabet') || str.includes('prostat') || str.includes('e07')) {
             return {
                 nodeKey: 'comunicacion',
-                nodo: '4. Comunicación y Endocrino',
+                nodo: '4. Comunicación Neuroendocrina',
                 cie10: 'E07.9',
                 prioridad: 'Secundaria',
                 isRootNode: false
@@ -219,7 +160,7 @@ export const TabDiagnosis = ({
         if (str.includes('metaból') || str.includes('mitocondr') || str.includes('fatiga') || str.includes('glucem') || str.includes('glucosa') || str.includes('e88')) {
             return {
                 nodeKey: 'energia',
-                nodo: '5. Energía y Mitoquímica',
+                nodo: '5. Bioenergética y Función Mitocondrial',
                 cie10: 'E88.9',
                 prioridad: 'Secundaria',
                 isRootNode: false
@@ -228,7 +169,7 @@ export const TabDiagnosis = ({
         if (str.includes('hipoxia') || str.includes('hipertens') || str.includes('cardio') || str.includes('presión') || str.includes('vascular') || str.includes('g93')) {
             return {
                 nodeKey: 'transporte',
-                nodo: '6. Transporte y Microcirculación',
+                nodo: '6. Transporte Cardiovascular y Linfático',
                 cie10: 'G93.1',
                 prioridad: 'Secundaria',
                 isRootNode: false
@@ -237,7 +178,7 @@ export const TabDiagnosis = ({
         if (str.includes('colágeno') || str.includes('fasci') || str.includes('sarcopeni') || str.includes('músculo') || str.includes('articul') || str.includes('m35')) {
             return {
                 nodeKey: 'estructural',
-                nodo: '7. Integridad Estructural y Fascial',
+                nodo: '7. Integridad Estructural y Biotensegridad',
                 cie10: 'M35.9',
                 prioridad: 'Secundaria',
                 isRootNode: false
@@ -252,13 +193,12 @@ export const TabDiagnosis = ({
         };
     };
 
-    // Resolutor Dinámico de Diagnósticos
     const parsedDiagnoses = rawDiag.map(d => {
         if (!d) return null;
-        const nameStr = typeof d === 'string' ? d.trim() : (d.nombre || d.name || d.descripcion || '');
+        const rawStr = typeof d === 'string' ? d.trim() : (d.nombre || d.name || d.descripcion || '');
+        const nameStr = sanitizeClinicalSpanish(rawStr);
         if (!nameStr) return null;
 
-        // Descartar diagnósticos pediátricos en adultos >= 18 años
         if (ageCandidate >= 18) {
             const lower = nameStr.toLowerCase();
             if (lower.includes('pediátr') || lower.includes('l-oms') || lower.includes('psicomotor') || lower.includes('lactante')) {
@@ -277,7 +217,6 @@ export const TabDiagnosis = ({
         };
     }).filter(Boolean);
 
-    // Si no hay diagnósticos válidos en dossier, construir dinámicamente desde el motivo/evaluación clínica según edad
     const defaultAdultDiagnoses = [
         {
             nodo: '1. Asimilación y Salud Digestiva',
@@ -294,1049 +233,1071 @@ export const TabDiagnosis = ({
             prioridad: 'Elevada',
             nodeKey: 'biotransformacion',
             isRootNode: false
-        },
-        {
-            nodo: '3. Defensa y Reparación',
-            nombre: '3. Defensa e Integridad: Perfil Inmunológico e Inflamatorio (Z88.8)',
-            cie10: 'Z88.8',
-            prioridad: 'Secundaria',
-            nodeKey: 'defensa',
-            isRootNode: false
-        },
-        {
-            nodo: '4. Comunicación y Endocrino',
-            nombre: '4. Comunicación: Equilibrio Neuroendocrino (E07.9)',
-            cie10: 'E07.9',
-            prioridad: 'Secundaria',
-            nodeKey: 'comunicacion',
-            isRootNode: false
-        },
-        {
-            nodo: '5. Energía y Mitoquímica',
-            nombre: '5. Energía: Perfil Metabólico e Inmunonutricional (E78.5)',
-            cie10: 'E78.5',
-            prioridad: 'Secundaria',
-            nodeKey: 'energia',
-            isRootNode: false
-        },
-        {
-            nodo: '6. Transporte y Microcirculación',
-            nombre: '6. Transporte: Perfusión Cardiorrespiratoria y Microcirculación (G93.1)',
-            cie10: 'G93.1',
-            prioridad: 'Secundaria',
-            nodeKey: 'transporte',
-            isRootNode: false
-        },
-        {
-            nodo: '7. Integridad Estructural y Fascial',
-            nombre: '7. Integridad Estructural: Biotensegridad y Salud Fascial (M35.9)',
-            cie10: 'M35.9',
-            prioridad: 'Secundaria',
-            nodeKey: 'estructural',
-            isRootNode: false
         }
     ];
 
     const cleanDiagnoses = parsedDiagnoses.length > 0 ? parsedDiagnoses : defaultAdultDiagnoses;
-
-    // 3. Evaluar Triggers Condicionales de Salud Funcional
-    const hasGutIssue = cleanDiagnoses.some(d => d.nodeKey === 'asimilacion' || d.isRootNode) || patientData?.digestive_profile?.has_issues || patientData?.history?.hasGutIssue;
-    const hasThyroidIssue = cleanDiagnoses.some(d => d.nombre.toLowerCase().includes('tiroid') || d.nombre.toLowerCase().includes('hormon')) || patientData?.history?.hasThyroidIssue;
-    const hasRenalIssue = cleanDiagnoses.some(d => d.nombre.toLowerCase().includes('renal') || d.nombre.toLowerCase().includes('riñón')) || (patientData?.vitals?.creatinine > 1.2);
-    const hasDVTOrFracture = patientData?.history?.hasDVT || patientData?.history?.hasFracture;
-
-    // 4. Generación Algorítmica Dinámica de Manejo y Recomendaciones (Rules Engine)
-    const dynamicManagement = [];
-
-    // Regla 1: Compuerta de Asimilación (Gut Lock Rule)
-    if (hasGutIssue) {
-        dynamicManagement.push({
-            accion: "1. [Nodo Raíz - Asimilación (K90.9)] Protocolo Previo Obligatorio de Sellado de Barrera Intestinal",
-            racional: "Reparación de la hiperpermeabilidad con L-Glutamina, Mucílago y Probióticos Esporulados. COMPUERTA DE SEGURIDAD: Se bloquea cualquier quelación de metales pesados o detoxificación profunda Fase 1/2 hasta validar el sellado (Zonulina/LBP en suero) para prevenir endotoxemia por translocación de LPS."
-        });
-    }
-
-    // Regla 2: Salvaguarda Tiroidea
-    if (hasThyroidIssue) {
-        dynamicManagement.push({
-            accion: "2. [Salvaguarda Tiroidea - Protocolo Pelz] Carbohidratos Complejos Cíclicos",
-            racional: "Se bloquea la cetosis estricta lineal y el ayuno prolongado severo. Prescripción de carbohidratos saludables cíclicos para regular el cortisol y asegurar la conversión periférica hepático/intestinal de T4 inactiva a T3 activa."
-        });
-    } else {
-        dynamicManagement.push({
-            accion: "2. [Optimización Endocrina] Flexibilidad Metabólica y Control Insulínico",
-            racional: "Estrategia de modulación glucémica y ventana de alimentación calibrada al ritmo circadiano del paciente."
-        });
-    }
-
-    // Regla 3: Preservación Renal (PLADO)
-    if (hasRenalIssue) {
-        dynamicManagement.push({
-            accion: "3. [Preservación Renal - PLADO] Nutrición Basada en Plantas para ERC",
-            racional: "Se bloquean las dietas hiperproteicas de origen animal. Algoritmo PLADO (Dra. Connie Rhee) para reducir nitrógeno de desecho, compuestos urémicos y prevenir la hiperfiltración intraglomerular."
-        });
-    } else {
-        dynamicManagement.push({
-            accion: "3. [Protección Tisular y Parenquimatosa] Nutrición Defensora",
-            racional: "Aporte optimizado de antioxidantes vasculares y polifenoles para mitigar el estrés oxidativo tisular."
-        });
-    }
-
-    // Regla 4: Medicina Músculo-Céntrica y Longevidad (Lyon & Attia)
-    dynamicManagement.push({
-        accion: "4. [Medicina Músculo-Céntrica y Longevidad] Músculo como Exoesqueleto (Lyon & Attia)",
-        racional: "Umbral de Leucina: Mínimo 30g de proteína de alta calidad por comida para activar mTOR y combatir mioesteatosis. Entrenamiento cardiovascular en Zona 2 (flexibilidad metabólica) y Zona 5 (VO2 Máx)."
-    });
-
-    // Regla 5: Protocolo Biomecánico 3 Fases
-    dynamicManagement.push({
-        accion: "5. [Protocolo Biomecánico Secuencial 3 Fases]",
-        racional: `Secuencia: 1) ${hasDVTOrFracture ? '[BLOQUEADO POR CONTRAINDICACIÓN DE TVP/FRACTURA]' : 'Liberación Automiofascial (SMR Foam Roller)'}, 2) Estiramiento Miofascial dinámico en cadena completa, 3) Fortalecimiento Neuromuscular (eslingas oblicuas y estabilidad diafragmática).`
-    });
-
-    // Regla 6: Framework 5x5x5 (Dr. William Li) - Purga de Conteo Calórico
-    dynamicManagement.push({
-        accion: "6. [Framework 5x5x5 - Dr. William Li] Modulación Hormonal e Inmunológica",
-        racional: "Sin conteo calórico. Adición estratégica diaria de alimentos 'Grand Slammers' (té verde, frutos rojos, nueces, champiñones, aceite de oliva VE) para potenciar angiogénesis, regeneración, microbioma, ADN e inmunidad."
-    });
-
-    // Regla 7: Recomendación Digital - App VitalLoop® (Banda H7)
-    dynamicManagement.push({
-        accion: "7. [Biotelemetría Digital VitalLoop®] Monitoreo Continuo y Vinculación Banda H7",
-        racional: "Descarga de la App VitalLoop® en el dispositivo móvil del paciente para consultar el plan nutricional de 28 días, registrar biotelemetría en tiempo real y recibir alertas de evolución clínica."
-    });
-
-    const rawMgmt = patientData?.clinical_dossier?.human_approved_management || 
-                    patientData?.clinical_dossier?.expediente_medico_nom004?.suggested_management || [];
-
-    const hasPediatricContentInAdult = (ageCandidate >= 18) && rawMgmt.some(m => {
-        const str = String(typeof m === 'string' ? m : (m?.accion || m?.action || '')).toLowerCase();
-        return str.includes('lactancia') || str.includes('tummy time') || str.includes('pediatra') || str.includes('l-oms');
-    });
-
-    const cleanManagement = (rawMgmt.length > 0 && !isRouteMismatch && !hasPediatricContentInAdult)
-        ? rawMgmt.map(m => {
-            if (!m) return null;
-            if (typeof m === 'string') {
-                const trimmed = m.trim();
-                return trimmed !== '' ? { accion: trimmed, racional: '' } : null;
-            }
-            return m.accion || m.action ? { 
-                accion: m.accion || m.action || 'Medida General', 
-                racional: m.racional || m.rationale || '' 
-            } : null;
-        }).filter(Boolean)
-        : dynamicManagement;
-
-    const defaultSupplementation = [
-        {
-            id: '33plus_master',
-            cortex: '33Plus (Ignición Mitocondrial)',
-            name: '33 PLUS (Ignición Mitocondrial)',
-            dosage: '1 toma al día (disuelto en agua temp. ambiente)',
-            timing: 'Por la mañana con el primer alimento',
-            rationale: 'Extracto de Semilla de Uva y cofactores vasculares para optimizar la microcirculación, transporte de oxígeno y sensibilidad a la insulina durante las horas de actividad diurna.',
-            status: 'approved'
-        },
-        {
-            id: '34plus_master',
-            cortex: '34Plus (Ingeniería Tisular)',
-            name: '34 PLUS (Ingeniería Tisular)',
-            dosage: '1 toma al día (disuelto strictly en mínimo 500 ml de agua 💧)',
-            timing: 'Por la noche (1 hora antes de dormir)',
-            rationale: 'Colágeno Hidrolizado, Vitamina C y L-Arginina para activar la reparación tisular y de matriz extracelular durante el sueño profundo sin saturar el sistema glinfático cerebral.',
-            status: 'approved'
-        }
-    ];
-
-    const activeSupplementation = (patientData?.advanced_supplementation && patientData?.advanced_supplementation.length > 0)
-        ? patientData.advanced_supplementation.map(s => {
-            const is33 = s.cortex?.includes('33Plus') || s.name?.includes('33');
-            return {
-                ...s,
-                timing: is33 ? 'Por la mañana con el primer alimento' : 'Por la noche (1 hora antes de dormir)',
-                dosage: is33 ? (s.dosage || '1 toma al día') : `${s.dosage || '1 toma al día'} (en mínimo 500 ml de agua 💧)`,
-                rationale: is33 
-                    ? 'Extracto de Semilla de Uva y cofactores vasculares para optimizar la microcirculación y oxigenación diurna.'
-                    : 'Colágeno Hidrolizado, Vitamina C y L-Arginina para reparación tisular nocturna en mínimo 500ml de agua para protección glinfática.'
-            };
-        })
-        : defaultSupplementation;
 
     // --- SISTEMA BIVALENTE DE VISTAS (PACIENTE vs MÉDICA) ---
     const [localPlanViewMode, setLocalPlanViewMode] = useState('medical');
     const activeViewMode = propPlanViewMode || localPlanViewMode;
     const setActiveViewMode = propSetPlanViewMode || setLocalPlanViewMode;
 
-    const pInfo = patientData?.identityLock?.patientInfo;
-    const pName = patientData?.identificacion?.nombre || pInfo?.first_name || pInfo?.name || patientData?.fullName || (isLactante ? 'el bebé' : 'el paciente');
-
-    const guia = patientData?.clinical_dossier?.guia_paciente_whatsapp || patientData?.guia_paciente_whatsapp;
-
-    // Titulos por Cuadrante:
-    const defaultTitle = isLactante 
-        ? `El Crecimiento y Salud de ${pName}`
-        : isJuvenilAdolescente
-        ? `El Desarrollo y Rendimiento de ${pName}`
-        : isGeriatric
-        ? `La Salud, Autonomía y Vitalidad de ${pName}`
-        : `Tu Estado de Salud y Plan Metabólico`;
-
-    const isGuiaInvalidForAdult = (ageCandidate >= 18) && String(guia?.pilar_salud_crecimiento || '').toLowerCase().includes('pals');
-    const pilarTitle = (!isGuiaInvalidForAdult && guia?.titulo_resumen) ? guia.titulo_resumen : defaultTitle;
-
-    // Pilar 1: Estado de Salud / Crecimiento
-    const defaultPilar1 = isLactante
-        ? `${pName} se encuentra en una etapa de desarrollo acelerado con constantes vitales normales para sus Primeros 1,000 Días de vida.`
-        : isJuvenilAdolescente
-        ? `${pName} evoluciona favorablemente en su etapa de crecimiento óseo e infantil con parámetros fisiológicos adecuados.`
-        : isGeriatric
-        ? `El estado de salud de ${pName} está enfocado en proteger su vitalidad, reserva cognitiva y capacidad funcional autónoma.`
-        : hasActiveAlerts
-        ? `Hemos identificado ${alertNodesCount} ejes metabólicos prioritarios en tu evaluación que atenderemos de raíz con este protocolo personalizado para optimizar tu salud integral.`
-        : `Tu cuerpo se encuentra en un estado metabólico estable con parámetros adaptados a tus objetivos de salud y rendimiento.`;
-
-    const pilar1Text = (!isGuiaInvalidForAdult && guia?.pilar_salud_crecimiento) ? guia.pilar_salud_crecimiento : defaultPilar1;
-
-    // Pilar 2: Nutrición y Alimentación
-    const defaultPilar2 = isLactante
-        ? `Mantener la lactancia materna o fórmula de continuación como base alimentaria principal, complementando con ablactación guiada (papillas caseras monocomponente o sólidos BLW).`
-        : isJuvenilAdolescente
-        ? `Alimentación rica en proteínas completas, calcio y micronutrientes para el crecimiento óseo, con snacks escolares nutritivos y sin restricción calórica punitiva.`
-        : isGeriatric
-        ? `Proteína fraccionada de alta calidad biológica para prevenir la sarcopenia, ajustada a su función renal (TFG) con adecuada hidratación diaria.`
-        : `Mantener alimentación equilibrada sin conteo calórico estricto, priorizando alimentos naturales e hidratación óptima.`;
-
-    const isPilar2Invalid = (ageCandidate >= 18) && String(guia?.pilar_alimentacion_diaria || '').toLowerCase().includes('lactancia');
-    const pilar2Text = (!isPilar2Invalid && guia?.pilar_alimentacion_diaria) ? guia.pilar_alimentacion_diaria : defaultPilar2;
-
-    // Pilar 3: Actividad y Movimiento
-    const defaultPilar3 = isLactante
-        ? `Estimulación psicomotriz diaria con tiempo boca abajo (Tummy Time), gateo libre sobre superficies seguras y rodamientos para desarrollar su postura y tono muscular.`
-        : isJuvenilAdolescente
-        ? `Deporte formativo, juego activo, natación y calistenia con peso corporal (evitando cargas máximas o entrenamiento extenuante de adultos).`
-        : isGeriatric
-        ? `Movilidad aeróbica adaptada de bajo impacto, ejercicios de propiocepción, equilibrio (Sit-to-Stand) y prevención activa de caídas.`
-        : `Actividad física constante con caminata diaria (NEAT), entrenamiento de fuerza estructurado y ejercicio aeróbico adaptado.`;
-
-    const isPilar3Invalid = (ageCandidate >= 18) && String(guia?.pilar_juegos_movimiento || '').toLowerCase().includes('tummy time');
-    const pilar3Text = (!isPilar3Invalid && guia?.pilar_juegos_movimiento) ? guia.pilar_juegos_movimiento : defaultPilar3;
-
-    // Pilar 4: Cuidados y Seguimiento
-    const defaultPilar4 = isLactante
-        ? `Monitoreo continuo de hitos de desarrollo con su pediatra tratante (NOM-043/OMS). Las recomendaciones nutricionales son de acompañamiento bioseguro.`
-        : isJuvenilAdolescente
-        ? `Higiene del sueño (8-10 horas para óptima liberación de hormona de crecimiento) y control del tiempo frente a pantallas antes de dormir.`
-        : isGeriatric
-        ? `Monitoreo cuidadoso de tomas, hidratación constante sin sobrecarga y acompañamiento familiar respetuoso para preservar su bienestar.`
-        : `Seguir los horarios de tomas y suplementación estratégica para optimizar tu energía diurna y descanso nocturno.`;
-
-    const isPilar4Invalid = (ageCandidate >= 18) && String(guia?.pilar_cuidados_suplementacion || '').toLowerCase().includes('pediatra');
-    const pilar4Text = (!isPilar4Invalid && guia?.pilar_cuidados_suplementacion) ? guia.pilar_cuidados_suplementacion : defaultPilar4;
-
-    // Diagnóstico General Integrado en Lenguaje Comprensible para el Paciente
-    const diagnosticoGeneralPaciente = React.useMemo(() => {
-        const patientName = pName || patientData?.profile?.name || patientData?.identificacion?.nombre || "Paciente";
-        const systemCards = [];
-
-        // 1. Transporte Cardiovascular (Nodo 5)
-        const cardioNode = ifmNodes.find(n => n.nodeId === 'NODO_5_TRANSPORTE' || String(n.nodeName || '').toLowerCase().includes('transporte'));
-        if (cardioNode && (cardioNode.status !== 'HOMEOSTASIS' || (Array.isArray(cardioNode.key_biomarkers) && cardioNode.key_biomarkers.length > 0))) {
-            systemCards.push({
-                id: 'cardio',
-                icon: '🫀',
-                title: 'Circulación y Presión Arterial',
-                badge: 'Atención Prioritaria',
-                badgeColor: 'bg-red-50 text-[#E30613] border-red-200',
-                description: 'Tus vasos sanguíneos presentan sobrecarga de resistencia y reactividad. Para cuidar tu corazón, tu plan restringe el ejercicio de alta exigencia (Zona 5 HIIT) y prioriza caminata ligera y movilidad diaria (NEAT).'
-            });
-        }
-
-        // 2. Metabolismo y Energía (Nodo 3)
-        const energyNode = ifmNodes.find(n => n.nodeId === 'NODO_3_ENERGIA' || String(n.nodeName || '').toLowerCase().includes('bioenerg'));
-        if (energyNode && (energyNode.status !== 'HOMEOSTASIS' || (Array.isArray(energyNode.key_biomarkers) && energyNode.key_biomarkers.length > 0))) {
-            systemCards.push({
-                id: 'metabolismo',
-                icon: '⚡',
-                title: 'Metabolismo de Grasas y Colesterol',
-                badge: 'Modulación Activa',
-                badgeColor: 'bg-amber-50 text-amber-800 border-amber-300',
-                description: 'Tus células requieren apoyo para procesar eficazmente el colesterol y las grasas circulantes. La alimentación calculada y la fórmula 33Plus® diurna trabajan para restaurar la sensibilidad metabólica.'
-            });
-        }
-
-        // 3. Piel e Inmunidad (Nodo 6)
-        const defenseNode = ifmNodes.find(n => n.nodeId === 'NODO_6_DEFENSA' || String(n.nodeName || '').toLowerCase().includes('defensa'));
-        if (defenseNode && (defenseNode.status !== 'HOMEOSTASIS' || (Array.isArray(defenseNode.key_biomarkers) && defenseNode.key_biomarkers.length > 0))) {
-            systemCards.push({
-                id: 'piel_inmune',
-                icon: '🛡️',
-                title: 'Barrera Cutánea e Inflamación',
-                badge: 'Inflamación Superficial',
-                badgeColor: 'bg-amber-50 text-amber-800 border-amber-300',
-                description: 'El eritema o reactividad cutánea detectada refleja un proceso inflamatorio tisular. La fórmula 34Plus® nocturna (con colágeno y vitamina C) está formulada para reparar la matriz tisular durante el descanso.'
-            });
-        }
-
-        // 4. Neuroendocrino / Sueño (Nodo 4)
-        const neuroNode = ifmNodes.find(n => n.nodeId === 'NODO_4_COMUNICACION' || String(n.nodeName || '').toLowerCase().includes('comunicación'));
-        if (neuroNode && (neuroNode.status !== 'HOMEOSTASIS' || (Array.isArray(neuroNode.key_biomarkers) && neuroNode.key_biomarkers.length > 0))) {
-            systemCards.push({
-                id: 'neuro_circadiano',
-                icon: '🧠',
-                title: 'Equilibrio Neurovascular y Descanso',
-                badge: 'Vigilancia Funcional',
-                badgeColor: 'bg-blue-50 text-[#1C75BC] border-blue-200',
-                description: 'Es necesario vigilar la elasticidad microvascular cerebral y sincronizar los ritmos circadianos de actividad y sueño para una óptima recuperación cognitiva.'
-            });
-        }
-
-        // 5. Otros nodos alterados que no cayeron en los anteriores
-        activeAlertNodes.forEach(node => {
-            const alreadyHandled = ['NODO_5_TRANSPORTE', 'NODO_3_ENERGIA', 'NODO_6_DEFENSA', 'NODO_4_COMUNICACION'].includes(node.nodeId);
-            if (!alreadyHandled) {
-                const cleanNodeName = String(node.nodeName || node.name || 'Sistema Funcional').replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '');
-                systemCards.push({
-                    id: node.nodeId || Math.random().toString(),
-                    icon: '🔬',
-                    title: cleanNodeName,
-                    badge: 'Enfoque Terapéutico',
-                    badgeColor: 'bg-blue-50 text-[#1C75BC] border-blue-200',
-                    description: node.summary || node.therapeutic_focus || 'Atención de medicina funcional orientada a restablecer la homeostasis de este sistema.'
-                });
-            }
-        });
-
-        const isFullyOptimal = systemCards.length === 0;
-
-        const overviewText = isFullyOptimal
-            ? `Tu evaluación clínica refleja un equilibrio fisiológico óptimo en tus 7 sistemas funcionales respaldado por 6 métodos de diagnóstico cruzado. Este plan está diseñado para potenciar tu longevidad, vitalidad celular y rendimiento diario continuo.`
-            : `Hemos integrado tus 6 fuentes diagnósticas (entrevista médica de 18 fases, escáner bioeléctrico Electret de 39 sistemas, auditoría ocular, topografía lingual, química sanguínea y foto-documentación somática) para identificar con rigor las causas de fondo que requieren atención. Tu plan no es restrictivo; es una intervención estratégica para aliviar la sobrecarga vascular, modular tu metabolismo y desinflamar tu organismo.`;
-
-        return {
-            patientName,
-            overviewText,
-            systemCards,
-            isFullyOptimal
-        };
-    }, [patientData, ifmNodes, activeAlertNodes, pName]);
-
-    // Consorcio Completo de 6 Fuentes Clínicas Multimodales (Fases 0 a 18)
+    // Consorcio Dinámico de Fuentes Clínicas Reales Evaluadas (Fases 0 a 18)
     const fuentesClinicas = React.useMemo(() => {
         const scan = patientData?.scan_data || {};
         const vitals = patientData?.vitals || {};
-        const electret = scan.electret_metrics || null;
+        const electret = scan.electret_metrics || patientData?.electretTelemetry || null;
         const ocular = scan.ocular_metrics || null;
         const lingual = scan.lingual_metrics || null;
-        const corr = scan.correlacion_multimodal || correlacionMultimodal || null;
-        const hasVisualSomatic = Boolean(
-            vitals.visual_evidence_notes ||
-            vitals.visual_evidence_severity ||
-            scan.visual_evidence ||
-            ifmNodes.some(n => n.nodeId === 'NODO_6_DEFENSA' && (n.status !== 'HOMEOSTASIS' || (n.key_biomarkers && n.key_biomarkers.length > 0)))
-        );
+
         const hasLaboratory = Boolean(
-            scan.laboratorio ||
-            scan.laboratory ||
-            patientData?.laboratory ||
-            ifmNodes.some(n => n.nodeId === 'NODO_3_ENERGIA' && n.key_biomarkers?.some(b => String(b).toLowerCase().includes('colesterol') || String(b).toLowerCase().includes('glucosa')))
+            scan.external_metrics?.labs ||
+            patientData?.lab_results ||
+            (scan.laboratorio_ocr && scan.laboratorio_ocr.analitos && scan.laboratorio_ocr.analitos.length > 0) ||
+            (scan.external_metrics?.sections && Object.keys(scan.external_metrics.sections).length > 0)
         );
 
-        return [
+        const hasVisualSomatic = Boolean(
+            (Array.isArray(scan.visual_metrics?.items) && scan.visual_metrics.items.length > 0) ||
+            (Array.isArray(scan.visual_evidence) && scan.visual_evidence.length > 0) ||
+            (Array.isArray(vitals.visual_evidence_photos) && vitals.visual_evidence_photos.length > 0)
+        );
+
+        const list = [
             {
                 id: 'anamnesis',
                 icon: '📋',
                 badge: 'Fases 0 a 17',
-                title: 'Anamnesis y Triage Clínico (18 Fases)',
-                active: true,
-                summary: 'Historial clínico, antecedentes personales y familiares, estilo de vida, patrones de descanso y nivel de actividad física real que fundamentaron las salvaguardas de bioseguridad.'
-            },
-            {
+                title: 'Historia Clínica y Hábitos',
+                summary: 'Antecedentes personales, hábitos diarios, calidad de descanso y contexto alimentario evaluados bajo la NOM-004.'
+            }
+        ];
+
+        if (electret || scan.electret_raw || scan.electret_status === 'COMPLETED') {
+            list.push({
                 id: 'electret',
                 icon: '⚡',
                 badge: 'Paso 1 (Fase 18)',
-                title: 'Biosensor Electret (39 Sistemas | +240 Parámetros)',
-                active: Boolean(electret || true),
-                summary: 'Telemetría biofísica profunda que analizó la resistencia vascular (1.58), elasticidad arterial y gasto cardíaco, identificando la reactividad hemodinámica del Nodo 5.'
-            },
-            {
+                title: 'Escaneo Biofísico Electret',
+                summary: sanitizeClinicalSpanish(scan.electret_summary || electret?.summary || 'Evaluación biofísica funcional de sistemas circulatorios, digestivos, metabólicos y estructurales.')
+            });
+        }
+
+        if (ocular && (ocular.pilares || ocular.sintesis_fisiopatologica || ocular.findings || ocular.status === 'COMPLETED')) {
+            list.push({
                 id: 'ocular',
                 icon: '👁️',
                 badge: 'Paso 2 (Fase 18)',
-                title: 'Auditoría Visual Ocular Binocular',
-                active: Boolean(ocular || true),
-                summary: 'Evaluación computacional de microcirculación foveal, oxigenación tisular y simetría microvascular en esclera y retina.'
-            },
-            {
+                title: 'Evaluación Visual Ocular',
+                summary: sanitizeClinicalSpanish(ocular.sintesis_fisiopatologica || 'Observación de microcirculación, oxigenación tisular e hidratación ocular.')
+            });
+        }
+
+        if (lingual && (lingual.pilares || lingual.sintesis_fisiopatologica || lingual.findings || lingual.saburra || lingual.status === 'COMPLETED')) {
+            list.push({
                 id: 'lingual',
                 icon: '👅',
                 badge: 'Paso 3 (Fase 18)',
-                title: 'Topografía Lingual CYTOS',
-                active: Boolean(lingual || corr || true),
-                summary: 'Inspección de mucosa, hidratación celular y red venosa sublingual, confirmando la leve congestión vascular y necesidad de soporte microcirculatorio.'
-            },
-            {
+                title: 'Evaluación Lingual CYTOS',
+                summary: sanitizeClinicalSpanish(lingual.sintesis_fisiopatologica || 'Inspección de hidratación celular, mucosa digestiva y circulación sublingual.')
+            });
+        }
+
+        if (hasLaboratory) {
+            list.push({
                 id: 'laboratorio',
                 icon: '🩸',
                 badge: 'Paso 4 (Fase 18)',
-                title: 'Laboratorio y Química Sanguínea (OCR)',
-                active: hasLaboratory,
-                summary: 'Validación bioquímica cuantitativa que corroboró el cristal de colesterol elevado (68.36) para la modulación nutricional celular del Nodo 3.'
-            },
-            {
+                title: 'Estudios de Laboratorio',
+                summary: sanitizeClinicalSpanish(scan.laboratorio_summary || 'Parámetros bioquímicos cuantitativos integrados a su expediente.')
+            });
+        }
+
+        if (hasVisualSomatic) {
+            list.push({
                 id: 'somatico',
                 icon: '📸',
                 badge: 'Paso 5 (Fase 18)',
-                title: 'Evidencia Visual Somática Complementaria',
-                active: hasVisualSomatic,
-                summary: 'Foto-documentación y análisis computarizado del eritema reticular, máculas puntiformes y reactividad cutánea en miembros inferiores que activaron el Nodo 6.'
-            }
-        ];
-    }, [patientData, correlacionMultimodal, ifmNodes]);
+                title: 'Evidencia Visual Complementaria',
+                summary: sanitizeClinicalSpanish(vitals.visual_evidence_notes || 'Registro visual complementario de signos físicos evaluados en consulta.')
+            });
+        }
+
+        return list;
+    }, [patientData]);
+
+    const semaphore = patientGuide.biosecuritySemaphore || {};
+    const uiLabels = patientGuide.uiLabels || {};
+    const semLevel = semaphore.level || semaphore.color || 'VERDE';
+    const isRedSemaphore = semLevel === 'ROJO' || Boolean(semaphore.isPaused);
+    const isYellowSemaphore = !isRedSemaphore && (semLevel === 'AMARILLO' || Boolean(semaphore.isMicroDose));
+
+    const formula33 = patientGuide.formula33Card || {};
+    const formula34 = patientGuide.formula34Card || {};
+    const schedule = Array.isArray(patientGuide.circadianSchedule) ? patientGuide.circadianSchedule : [];
+    const actionPlan = patientGuide.homeActionPlan || {};
+    const nutritionCard = actionPlan.protective_nutrition || {};
+    const hydrationCard = actionPlan.smart_hydration || {};
+    const movementCard = actionPlan.gentle_movement || {};
+    const isMeaningfulExclusion = (val) => {
+        const clean = String(val || '').trim();
+        if (!clean) return false;
+        return !/^(ninguna?|ninguno|niega|negad[oa]s?|n\/a|na|sin\s+alergias?|sin\s+exclusiones?|sin\s+restricciones?|no|no\s+refiere|null|undefined|-+)$/i.test(clean);
+    };
+    const nutritionPillars = [
+        ...(Array.isArray(nutritionCard.universalRules) ? nutritionCard.universalRules : []),
+        ...(Array.isArray(nutritionCard.personalExclusions)
+            ? nutritionCard.personalExclusions.filter(isMeaningfulExclusion).map((ex) => `Evitar: ${ex}`)
+            : [])
+    ];
+    const cleanKeyRule34Plus = hydrationCard.keyRule34Plus
+        ? String(hydrationCard.keyRule34Plus).replace(/💧\s*/g, '').replace(/\s+([.,;:])/g, '$1').trim()
+        : '';
 
     return (
         <div className="space-y-6 font-sans">
-            {/* --- SAFETY ENGINE BANNER --- */}
+            {/* --- BANNER INFORMATIVO DE BIOSEGURIDAD (ESTRICTAMENTE DE LECTURA EN DASHBOARD) --- */}
             {isRiskDetected && !overrideActive && (
-                <div className="bg-tilo-danger/10 border-l-4 border-tilo-danger p-6 rounded-xl flex items-start gap-4 transition-all animate-in zoom-in-95 duration-300">
-                    <ShieldAlert className="w-8 h-8 text-tilo-danger flex-shrink-0" />
+                <div className="bg-[#B70E0C]/10 border-l-4 border-[#B70E0C] p-5 rounded-2xl flex items-start gap-4 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+                    <ShieldAlert className="w-6 h-6 text-[#B70E0C] shrink-0 mt-0.5" />
                     <div className="flex-1">
-                        <h3 className="text-tilo-danger font-extrabold text-base uppercase tracking-wider">Alerta de Seguridad Clínica</h3>
-                        <p className="text-tilo-text-main text-xs mt-1 leading-relaxed">
-                            El sistema ha detectado riesgos potenciales basados en el historial del paciente 
-                            ({hasAllergies ? 'Alergias registradas' : ''}{hasAllergies && hasPhentermine ? ' y ' : ''}{hasPhentermine ? 'Fentermina detectada' : ''}).
-                            La prescripción de suplementación avanzada está bloqueada por seguridad.
+                        <h3 className="text-[#B70E0C] font-extrabold text-xs uppercase tracking-wider">
+                            Alerta de Seguridad Farmacológica y Alergológica Activa
+                        </h3>
+                        <p className="text-slate-800 dark:text-slate-200 text-xs mt-1 leading-relaxed">
+                            Se registraron antecedentes relevantes ({hasAllergies ? 'alergias reportadas' : ''}{hasAllergies && hasPhentermine ? ' y ' : ''}{hasPhentermine ? 'uso de estimulantes centrales' : ''}). El Semáforo Clínico de Bioseguridad ajusta automáticamente la pauta nutricional.
                         </p>
                     </div>
-                    <button
-                        onClick={() => handleOverrideToggle(true)}
-                        className="bg-tilo-danger text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-tilo-danger/80 transition-colors shadow-sm cursor-pointer whitespace-nowrap"
-                    >
-                        Autorización Clínica
-                    </button>
                 </div>
             )}
 
-            {overrideActive && (
-                <div className="bg-tilo-warning/10 border border-tilo-warning/30 p-4 rounded-xl flex items-center justify-between transition-all animate-in slide-in-from-top-4 duration-300">
-                    <div className="flex items-center gap-2 text-tilo-warning font-medium">
-                        <AlertTriangle className="w-5 h-5 text-tilo-warning" />
-                        <span className="text-tilo-text-main text-xs">Override Médico Activado. Riesgos asumidos por el especialista.</span>
+            {!hasSynthesizedDossier ? (
+                <div className="w-full bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-slate-800 rounded-3xl p-10 shadow-[0_4px_20px_rgba(15,23,42,0.04)] flex flex-col items-center justify-center text-center space-y-4 my-4 animate-in fade-in duration-300">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#1C75BC]/20 to-[#3AAA35]/20 flex items-center justify-center border border-[#1C75BC]/30 shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
+                        <Activity className="w-8 h-8 text-[#1C75BC] animate-spin" style={{ animationDuration: '3s' }} />
                     </div>
-                    <button
-                        onClick={() => handleOverrideToggle(false)}
-                        className="text-tilo-warning hover:text-tilo-warning/80 text-xs font-bold underline cursor-pointer"
-                    >
-                        Restaurar Seguridad
-                    </button>
-                </div>
-            )}
-
-            {/* Tarjeta Principal del Reporte Consolidado (Doctrina CORTEX v2.1 CDSS) */}
-            <div className="w-full bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden flex flex-col mb-6">
-                {/* CONMUTADOR DUAL DE VISTAS (❖ MODO DE VISUALIZACIÓN:) */}
-                <div className="p-3 bg-white border-b border-slate-200/90 flex flex-wrap items-center justify-between gap-2 select-none no-print">
-                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
-                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 px-2 shrink-0 select-none">
-                            ❖ MODO DE VISUALIZACIÓN:
+                    <div className="space-y-1">
+                        <span className="text-[10px] font-extrabold tracking-widest text-[#1C75BC] bg-[#1C75BC]/10 px-3 py-1 rounded-full border border-[#1C75BC]/20">
+                            Motor CORTEX SSoTT v2.7 • Síntesis Multimodal
                         </span>
-
-                        <button
-                            type="button"
-                            onClick={() => setActiveViewMode('patient')}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer border ${
-                                activeViewMode === 'patient' 
-                                    ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm' 
-                                    : 'bg-slate-100/80 text-slate-700 border-slate-200/80 hover:bg-slate-200/70'
-                            }`}
-                        >
-                            <span>👤 Vista Paciente y Familia</span>
-                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                                activeViewMode === 'patient'
-                                    ? 'bg-white text-[#1C75BC]'
-                                    : 'bg-slate-200 text-slate-700'
-                            }`}>
-                                4 Pilares
-                            </span>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => setActiveViewMode('medical')}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer border ${
-                                activeViewMode === 'medical' 
-                                    ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-sm' 
-                                    : 'bg-slate-100/80 text-slate-700 border-slate-200/80 hover:bg-slate-200/70'
-                            }`}
-                        >
-                            <span>🩺 Vista Expediente Clínico</span>
-                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                                activeViewMode === 'medical'
-                                    ? 'bg-white text-[#1C75BC]'
-                                    : 'bg-slate-200 text-slate-700'
-                            }`}>
-                                NOM-004
-                            </span>
-                        </button>
+                        <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 pt-2">
+                            Integrando Diagnóstico y Guía Empática del Paciente...
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+                            Analizando las fuentes clínicas evaluadas para estructurar la Matriz IFM de 7 Nodos, el Semáforo de Bioseguridad y su Guía de Salud personalizada.
+                        </p>
                     </div>
-
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">
-                        Doctrina T.I.L.O. 2030
-                    </span>
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900 px-4 py-2 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                        <span className="w-2 h-2 rounded-full bg-[#FFCC00] animate-pulse" />
+                        Esperando conclusión del motor de síntesis en el panel conversacional
+                    </div>
                 </div>
+            ) : (
+                <div className="w-full bg-[#F8FAFC] dark:bg-[#121212] border border-slate-200 dark:border-slate-800 rounded-3xl shadow-[0_4px_24px_rgba(15,23,42,0.05)] overflow-hidden flex flex-col mb-6">
+                    {/* CONMUTADOR DUAL DE VISTAS (❖ MODO DE VISUALIZACIÓN:) */}
+                    <div className="p-3 bg-white dark:bg-[#1A1A1A] border-b border-slate-200/90 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 select-none no-print">
+                        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 px-2 shrink-0 select-none">
+                                ❖ MODO DE VISUALIZACIÓN:
+                            </span>
 
-                {/* Indicador discreto de Estado Vitrina / Modo Edición Fina */}
-                {isPhase20EditMode && (
-                    <div className="px-6 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center justify-between text-xs font-bold text-amber-800 animate-pulse no-print">
-                        <span className="flex items-center gap-2">
-                            <span>✏️ Modo Edición Fina Activo:</span>
-                            <span className="font-medium text-amber-700">Puedes modificar los campos del expediente directamente. Haz clic en "Guardar Cambios" en el chat al finalizar.</span>
-                        </span>
-                    </div>
-                )}
-
-                {/* VISTA 1: PACIENTE Y FAMILIA (4 PILARES EMPÁTICOS TERMODINÁMICOS) */}
-                {activeViewMode === 'patient' ? (
-                    <div className="p-6 space-y-4">
-                        {/* --- PILAR 01: DIAGNÓSTICO GENERAL Y ESTADO DE SALUD (HOMOLOGACIÓN LINEAL DESATURADA) --- */}
-                        <div id="card-diagnostico-general" className={`bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 ${
-                            hasActiveAlerts ? 'border-l-amber-500' : 'border-l-[#3AAA35]'
-                        } hover:shadow-md transition-all`}>
-                            {/* Cabecera en 3 flex-items (homologada a los Pilares) */}
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border ${
-                                            hasActiveAlerts
-                                                ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                                : 'bg-emerald-50 text-[#3AAA35] border-emerald-200/70'
-                                        }`}>
-                                            PILAR 01 • EVALUACIÓN INTEGRAL MULTIMODAL
-                                        </span>
-                                        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                                            <span>🧬</span>
-                                            <span>Diagnóstico General y Estado de Salud</span>
-                                        </h3>
-                                    </div>
-                                </div>
-                                <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide border shrink-0 self-start sm:self-center ${
-                                    hasActiveAlerts
-                                        ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                        : 'bg-emerald-50 text-[#3AAA35] border-emerald-200'
+                            <button
+                                type="button"
+                                onClick={() => setActiveViewMode('patient')}
+                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer border min-h-[40px] ${
+                                    activeViewMode === 'patient'
+                                        ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-[0_2px_8px_rgba(28,117,188,0.25)]'
+                                        : 'bg-slate-100/80 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700 hover:bg-slate-200/70'
+                                }`}
+                            >
+                                <span>👤 Guía Amigable para el Paciente</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                    activeViewMode === 'patient'
+                                        ? 'bg-white text-[#1C75BC]'
+                                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                                 }`}>
-                                    {hasActiveAlerts ? `⚠️ ${alertNodesCount} Áreas en Atención Prioritaria` : '✓ Equilibrio Fisiológico'}
+                                    5 Sistemas
                                 </span>
-                            </div>
+                            </button>
 
-                            {/* Fuentes Integradas Aplanadas (Inline desaturado sin micro-píldoras gruesas) */}
-                            <div className="my-2.5 text-[10.5px] text-slate-500 font-medium flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <span className="font-extrabold text-slate-400 uppercase tracking-wider text-[9.5px]">Fuentes Integradas:</span>
-                                {fuentesClinicas.map((f, idx) => (
-                                    <span key={f.id} className="inline-flex items-center gap-1 text-slate-600">
-                                        <span>{f.icon}</span>
-                                        <span className="font-semibold text-slate-700">{f.title.split('(')[0].trim()}</span>
-                                        {idx < fuentesClinicas.length - 1 && <span className="text-slate-300 ml-1">•</span>}
+                            <button
+                                type="button"
+                                onClick={() => setActiveViewMode('medical')}
+                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer border min-h-[40px] ${
+                                    activeViewMode === 'medical'
+                                        ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-[0_2px_8px_rgba(28,117,188,0.25)]'
+                                        : 'bg-slate-100/80 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700 hover:bg-slate-200/70'
+                                }`}
+                            >
+                                <span>🩺 Expediente Clínico Técnico</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                    activeViewMode === 'medical'
+                                        ? 'bg-white text-[#1C75BC]'
+                                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                }`}>
+                                    NOM-004
+                                </span>
+                            </button>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const result = await copySSoTDocument({
+                                        patientData,
+                                        citationId,
+                                        viewMode: activeViewMode
+                                    });
+                                    const showToast = useClinicalToast.getState().showToast;
+                                    if (result.ok) {
+                                        showToast({
+                                            dedupeKey: 'ssot-clipboard',
+                                            type: 'success',
+                                            icon: 'clipboard',
+                                            title: activeViewMode === 'patient' ? 'Guía del Paciente Copiada' : 'Expediente NOM-004 Copiado',
+                                            message: `${result.patientName} • Cita #${result.folio} sincronizada al 100% en portapapeles.`,
+                                            duration: 3200
+                                        });
+                                    } else {
+                                        const isFailClosed = result.reason === 'MISSING_CLINICAL_DOSSIER' || result.reason === 'INCOMPLETE_IDENTITY';
+                                        showToast({
+                                            dedupeKey: 'ssot-clipboard',
+                                            type: isFailClosed ? 'error' : 'warning',
+                                            icon: 'clipboard',
+                                            title: isFailClosed ? 'Copiado Bloqueado por Bioseguridad (NOM-004)' : 'Acceso al Portapapeles Restringido',
+                                            message: isFailClosed
+                                                ? 'El expediente clínico aún no cuenta con síntesis o identidad validada.'
+                                                : 'Verifique los permisos del navegador e intente nuevamente.',
+                                            duration: 4000
+                                        });
+                                    }
+                                }}
+                                className="flex items-center gap-2 px-3.5 py-2 min-h-[44px] rounded-xl text-xs font-bold transition-all cursor-pointer border bg-white dark:bg-slate-900 text-[#1C75BC] border-[#1C75BC]/40 hover:bg-[#1C75BC] hover:text-white shadow-sm"
+                                title={activeViewMode === 'patient' ? 'Copiar Guía Amigable del Paciente (SSoTT)' : 'Copiar Expediente Clínico NOM-004 (SSoTT)'}
+                            >
+                                <Copy className="w-3.5 h-3.5 shrink-0" />
+                                <span>{activeViewMode === 'patient' ? 'Copiar Guía Paciente' : 'Copiar Expediente NOM-004'}</span>
+                            </button>
+
+                            <span className="hidden xl:inline text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">
+                                Doctrina T.I.L.O. 2030
+                            </span>
+                        </div>
+                    </div>
+
+                    {isPhase20EditMode && (
+                        <div className="px-6 py-2.5 bg-[#FFCC00]/20 dark:bg-[#FFCC00]/15 border-b border-[#FFCC00]/60 dark:border-[#FFCC00]/45 flex items-center justify-between text-xs font-bold text-[#0F172A] dark:text-[#FEF9C3] no-print">
+                            <span>Modo Revisión Final Activo: Utilice el panel conversacional izquierdo para confirmar o ajustar el cierre del expediente.</span>
+                        </div>
+                    )}
+
+                    {/* ===================================================================== */}
+                    {/* VISTA 1: GUÍA EMPÁTICA Y TRANSPARENTE PARA EL PACIENTE Y SU FAMILIA    */}
+                    {/* ===================================================================== */}
+                    {activeViewMode === 'patient' ? (
+                        <div className="p-5 sm:p-6 space-y-6">
+                            {/* CABECERA EMPÁTICA CON ACENTO CÁLIDO INSTITUCIONAL (#F29FC5) */}
+                            <div className="bg-white dark:bg-[#1A1A1A] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] space-y-3.5">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold bg-[#F29FC5]/25 text-[#0F172A] border border-[#F29FC5]/70 dark:bg-[#F29FC5]/15 dark:border-[#F29FC5]/45 dark:text-[#FDF2F8]">
+                                        <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                                        <span>Acompañamiento Clínico Personalizado • Equipo en Acción®</span>
                                     </span>
-                                ))}
-                            </div>
+                                    <span className="text-[11px] font-bold text-[#1C75BC] bg-[#1C75BC]/10 px-2.5 py-1 rounded-lg border border-[#1C75BC]/20">
+                                        {fuentesClinicas.length} Evaluaciones Integradas
+                                    </span>
+                                </div>
 
-                            {/* Texto Base Fluido */}
-                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3 text-justify">
-                                {diagnosticoGeneralPaciente.overviewText}
-                            </p>
+                                <div className="space-y-1.5">
+                                    <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
+                                        {patientGuide.greetingTitle}
+                                    </h2>
+                                    <p className="text-xs sm:text-[13px] text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                                        {patientGuide.empatheticLead}
+                                    </p>
+                                </div>
 
-                            {/* Bloques Internos Lineales de Ancho Completo (Estilo "Estrategia Dietética") */}
-                            {diagnosticoGeneralPaciente.systemCards.length > 0 && (
-                                <div className="my-3.5 space-y-2">
-                                    {diagnosticoGeneralPaciente.systemCards.map((sys) => (
-                                        <div
-                                            key={sys.id}
-                                            className="bg-slate-50/60 border border-slate-200/60 rounded-xl px-4 py-2.5 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-slate-50 transition-colors"
+                                {/* Tira limpia de evaluaciones tomadas en cuenta */}
+                                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                                        Evaluaciones revisadas hoy:
+                                    </span>
+                                    {fuentesClinicas.map((f) => (
+                                        <span
+                                            key={f.id}
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-300"
                                         >
-                                            <div className="flex items-start sm:items-center gap-2.5 flex-1">
-                                                <span className="text-base shrink-0 mt-0.5 sm:mt-0">{sys.icon}</span>
-                                                <div>
-                                                    <h5 className="font-extrabold text-slate-900 text-xs">{sys.title}</h5>
-                                                    <p className="text-[11.5px] text-slate-600 font-medium leading-relaxed mt-0.5">
-                                                        {sys.desc}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <span className={`text-[9.5px] font-extrabold px-2.5 py-1 rounded-lg border shrink-0 self-start sm:self-center uppercase tracking-wider ${
-                                                sys.severity === 'urgent'
-                                                    ? 'bg-red-50 text-[#E30613] border-red-200'
-                                                    : sys.severity === 'active'
-                                                        ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                                        : 'bg-blue-50 text-[#1C75BC] border-blue-200'
-                                            }`}>
-                                                {sys.badge}
-                                            </span>
-                                        </div>
+                                            <span>{f.icon}</span>
+                                            <span>{f.title}</span>
+                                        </span>
                                     ))}
                                 </div>
-                            )}
+                            </div>
 
-                            {/* Acordeón Secundario de Respaldo Clínico Multimodal */}
-                            <div className="mt-3 pt-2.5 border-t border-slate-100">
-                                <details className="group">
-                                    <summary className="cursor-pointer text-[10.5px] font-extrabold text-slate-500 hover:text-slate-800 flex items-center justify-between select-none py-1">
-                                        <span className="flex items-center gap-1.5">
-                                            <span>🔬</span>
-                                            <span>Ver Detalle Clínico de las 6 Fuentes Diagnósticas (Fases 0 a 18)</span>
-                                        </span>
-                                        <span className="text-slate-400 group-open:rotate-180 transition-transform text-xs">▼</span>
-                                    </summary>
-
-                                    <div className="mt-3 divide-y divide-slate-100 border border-slate-200/70 rounded-xl overflow-hidden bg-slate-50/40">
-                                        {fuentesClinicas.map((f) => (
-                                            <div
-                                                key={f.id}
-                                                className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-start justify-between gap-2 hover:bg-slate-100/50 transition-colors"
-                                            >
-                                                <div className="flex-1 space-y-0.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <span>{f.icon}</span>
-                                                        <span className="font-extrabold text-[11px] text-slate-800">
-                                                            {f.title}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[11px] text-slate-600 leading-relaxed pl-6">
-                                                        {f.summary}
-                                                    </p>
-                                                </div>
-                                                <span className="text-[9.5px] font-bold px-2 py-0.5 rounded bg-white border border-slate-200/90 text-slate-500 shrink-0 self-start sm:self-center pl-6 sm:pl-2">
-                                                    {f.badge}
-                                                </span>
+                            {/* ================================================================= */}
+                            {/* BLOQUE A: SEMÁFORO CLÍNICO DE BIOSEGURIDAD (TRIPLE SEÑAL AAA)      */}
+                            {/* ================================================================= */}
+                            <div
+                                id="card-biosecurity-semaphore"
+                                className={`rounded-2xl p-5 border border-l-4 shadow-[0_4px_20px_rgba(15,23,42,0.04)] space-y-3.5 transition-all ${
+                                    isRedSemaphore
+                                        ? 'bg-white dark:bg-[#1A1A1A] border-slate-200/90 dark:border-[#B70E0C]/50 border-l-[#B70E0C]'
+                                        : isYellowSemaphore
+                                            ? 'bg-white dark:bg-[#FFCC00]/15 border-slate-200/90 dark:border-[#FFCC00]/50 border-l-[#FFCC00]'
+                                            : 'bg-white dark:bg-[#1A1A1A] border-slate-200/90 dark:border-[#3AAA35]/40 border-l-[#3AAA35]'
+                                }`}
+                            >
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800/80">
+                                    <div className="flex items-center gap-2.5">
+                                        {isRedSemaphore ? (
+                                            <div className="w-9 h-9 rounded-xl bg-[#B70E0C]/10 border border-[#B70E0C]/30 flex items-center justify-center shrink-0">
+                                                <ShieldAlert className="w-5 h-5 text-[#B70E0C]" />
                                             </div>
-                                        ))}
-
-                                        {correlacionMultimodal?.sintesis_fisiopatologica && (
-                                            <div className="px-4 py-2.5 bg-blue-50/30 text-[11px] text-slate-600 leading-relaxed border-t border-blue-100/60 space-y-0.5">
-                                                <span className="font-bold text-[#1C75BC] flex items-center gap-1.5">
-                                                    <span>👅</span>
-                                                    <span>Telemetría de Soporte Tisular (Topografía Lingual CYTOS):</span>
-                                                </span>
-                                                <p className="pl-6">{correlacionMultimodal.sintesis_fisiopatologica}</p>
+                                        ) : isYellowSemaphore ? (
+                                            <div className="w-9 h-9 rounded-xl bg-[#FFCC00] dark:bg-[#FFCC00]/20 border border-[#EAB308] dark:border-[#FFCC00]/50 flex items-center justify-center shrink-0">
+                                                <AlertTriangle className="w-5 h-5 text-[#0F172A] dark:text-[#FEF9C3]" />
+                                            </div>
+                                        ) : (
+                                            <div className="w-9 h-9 rounded-xl bg-[#3AAA35]/12 border border-[#3AAA35]/30 flex items-center justify-center shrink-0">
+                                                <CheckCircle2 className="w-5 h-5 text-[#3AAA35]" />
                                             </div>
                                         )}
-                                    </div>
-                                </details>
-                            </div>
-
-                            {/* Pie de Tarjeta Estándar */}
-                            <div className="pt-2.5 border-t border-slate-100 mt-3 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400 font-medium">ⓘ Convergencia diagnóstica de las 6 fuentes clínicas</span>
-                            </div>
-                        </div>
-
-                        {/* Pilar 2: Guía de Alimentación Diaria */}
-                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-[#1C75BC] hover:shadow-md transition-all">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-50 text-[#1C75BC] border border-blue-200/70">
-                                            PILAR 02 • NUTRICIÓN DEFENSORA
-                                        </span>
-                                        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                                            <span>🥗</span>
-                                            <span>Guía de Alimentación Diaria</span>
-                                        </h3>
-                                    </div>
-                                </div>
-                                <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide bg-blue-50 text-[#1C75BC] border border-blue-200 shrink-0 self-start sm:self-center">
-                                    🥗 MODULACIÓN METABÓLICA
-                                </span>
-                            </div>
-
-                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3">
-                                {pilar2Text}
-                            </p>
-
-                            <div className="my-3 bg-slate-50/90 border border-slate-200/70 rounded-xl p-2.5 flex items-center justify-between text-[10.5px]">
-                                <span className="font-bold text-slate-500">Estrategia Dietética:</span>
-                                <span className="font-extrabold text-[#1C75BC]">
-                                    Densidad Nutricional sin Restricción Punitiva
-                                </span>
-                            </div>
-
-                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400 font-medium">ⓘ Protocolo de Eubiosis y Carga Glucémica</span>
-                            </div>
-                        </div>
-
-                        {/* Pilar 3: Actividades y Desarrollo Motor */}
-                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-amber-500 hover:shadow-md transition-all">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/70">
-                                            PILAR 03 • BIOMECÁNICA Y NEAT
-                                        </span>
-                                        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                                            <span>🧸</span>
-                                            <span>Actividades y Movimiento Funcional</span>
-                                        </h3>
-                                    </div>
-                                </div>
-                                <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide bg-amber-50 text-amber-800 border border-amber-200 shrink-0 self-start sm:self-center">
-                                    🧸 MOVILIDAD ADAPTADA
-                                </span>
-                            </div>
-
-                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3">
-                                {pilar3Text}
-                            </p>
-
-                            <div className="my-3 bg-slate-50/90 border border-slate-200/70 rounded-xl p-2.5 flex items-center justify-between text-[10.5px]">
-                                <span className="font-bold text-slate-500">Prescripción Biomecánica:</span>
-                                <span className="font-extrabold text-amber-700">
-                                    Fuerza Muscular (Exoesqueleto) + Estiramiento Miofascial
-                                </span>
-                            </div>
-
-                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400 font-medium">ⓘ Modelo Lyon & Attia de Longevidad Muscular</span>
-                            </div>
-                        </div>
-
-                        {/* Pilar 4: Cuidados y Seguimiento */}
-                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-indigo-600 hover:shadow-md transition-all">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/70">
-                                            PILAR 04 • CRONOBIOLOGÍA Y CUIDADOS
-                                        </span>
-                                        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                                            <span>💧</span>
-                                            <span>Cuidados, Suplementación y Seguimiento</span>
-                                        </h3>
-                                    </div>
-                                </div>
-                                <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0 self-start sm:self-center">
-                                    💧 CRONONUTRICIÓN ACTIVA
-                                </span>
-                            </div>
-
-                            <p className="text-slate-700 text-xs leading-relaxed font-medium mt-3">
-                                {pilar4Text}
-                            </p>
-
-                            <div className="my-3 bg-slate-50/90 border border-slate-200/70 rounded-xl p-2.5 flex items-center justify-between text-[10.5px]">
-                                <span className="font-bold text-slate-500">Ventana Crononutricional:</span>
-                                <span className="font-extrabold text-indigo-700">
-                                    Sincronización Diurna (33Plus) / Nocturna (34Plus)
-                                </span>
-                            </div>
-
-                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400 font-medium">ⓘ Sinergia de Ignición Mitocondrial y Reparación Tisular</span>
-                            </div>
-                        </div>
-
-                        {/* --- ARQUITECTURA DE ORO RECOMENDADA (FÓRMULAS 33PLUS® Y 34PLUS®) --- */}
-                        <div id="card-gold-architecture" className="relative pt-2">
-                            {/* Overlay Bloqueo (Solo visual) */}
-                            {isRiskDetected && !overrideActive && (
-                                <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-20 flex items-center justify-center rounded-2xl">
-                                    <Lock className="w-12 h-12 text-white opacity-70 animate-pulse" />
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 gap-4">
-                                {/* 33 Plus (Ignición Mitocondrial - Rojo #E30613) */}
-                                <div className="flex flex-col bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#E30613] p-5 shadow-xs hover:shadow-md transition-all">
-                                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-red-50 text-[#E30613] border border-red-200/70">
-                                                FÓRMULA 33PLUS® • DÍA
+                                        <div>
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                Semáforo Clínico de Bioseguridad Transparente
                                             </span>
-                                            <h4 className="text-sm font-extrabold text-slate-900 tracking-tight">
-                                                33 PLUS
-                                            </h4>
+                                            <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                                                {semaphore.title || uiLabels.semaphoreFallbackTitle || '¿Cómo iniciaremos su protocolo de forma segura?'}
+                                            </h3>
                                         </div>
-                                        <span className="text-[10px] font-extrabold text-[#E30613] uppercase tracking-wider bg-red-50/70 px-2 py-0.5 rounded-md">
-                                            Ignición Mitocondrial
+                                    </div>
+
+                                    {/* Badge Triple Señal WCAG 2.2 AAA (Color + Icono + Etiqueta Explícita) */}
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-extrabold border shrink-0 self-start sm:self-center ${
+                                        isRedSemaphore
+                                            ? 'bg-[#B70E0C] text-white border-[#B70E0C]'
+                                            : isYellowSemaphore
+                                                ? 'bg-[#FFCC00] text-[#0F172A] border-[#EAB308] dark:bg-[#FFCC00]/25 dark:border-[#FFCC00]/60 dark:text-[#FEF9C3]'
+                                                : 'bg-[#3AAA35] text-white border-[#3AAA35]'
+                                    }`}>
+                                        {isRedSemaphore ? (
+                                            <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                                        ) : isYellowSemaphore ? (
+                                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                        ) : (
+                                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                        )}
+                                        <span>
+                                            {semaphore.badgeLabel || (isRedSemaphore
+                                                ? 'Prioridad Médica • Pausa Preventiva'
+                                                : isYellowSemaphore
+                                                    ? 'Inicio Gradual Preventivo • Micro-Dosis Calibrada'
+                                                    : 'Vía Libre Biosegura • Protocolo Completo')}
                                         </span>
-                                    </div>
-
-                                    <p className="text-slate-700 text-xs leading-relaxed font-medium mb-3.5 flex-1">
-                                        Optimización de la cadena respiratoria celular, reducción de fatiga crónica y mejora en la sensibilidad a la insulina mediante cofactores vasculares y antioxidantes diurnos.
-                                    </p>
-
-                                    <div className="mb-4 bg-slate-50 border border-slate-200/70 rounded-xl p-2.5 text-[10.5px] space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 font-bold">Dosificación:</span>
-                                            <span className="font-extrabold text-slate-800">1 toma al día</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 font-bold">Momento de ingesta:</span>
-                                            <span className="font-extrabold text-[#E30613]">☀️ Con el desayuno (09:00 AM)</span>
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={handleToggle33}
-                                        className={`mt-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all w-full cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
-                                            is33Added
-                                                ? 'bg-[#E30613] text-white hover:bg-[#E30613]/90 shadow-red-500/20'
-                                                : 'bg-[#1C75BC] text-white hover:bg-[#1C75BC]/90 shadow-blue-500/20'
-                                        }`}
-                                    >
-                                        <HeartPulse className="w-4 h-4 shrink-0" />
-                                        <span>{is33Added ? '✓ Agregado al Plan Nutracéutico' : 'Agregar 33Plus® al Plan'}</span>
-                                    </button>
+                                    </span>
                                 </div>
 
-                                {/* 34 Plus (Ingeniería Tisular - Verde #3AAA35) */}
-                                <div className="flex flex-col bg-white rounded-2xl border border-slate-200/90 border-l-4 border-l-[#3AAA35] p-5 shadow-xs hover:shadow-md transition-all">
-                                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-[#3AAA35] border border-emerald-200/70">
-                                                FÓRMULA 34PLUS® • NOCHE
-                                            </span>
-                                            <h4 className="text-sm font-extrabold text-slate-900 tracking-tight">
-                                                34 PLUS
-                                            </h4>
-                                        </div>
-                                        <span className="text-[10px] font-extrabold text-[#3AAA35] uppercase tracking-wider bg-emerald-50/70 px-2 py-0.5 rounded-md">
-                                            Ingeniería Tisular
+                                <p className="text-xs sm:text-[13px] text-slate-800 dark:text-slate-100 leading-relaxed font-medium">
+                                    {semaphore.honestExplanation}
+                                </p>
+
+                                {patientGuide.calciumAlertText && (
+                                    <div className="bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 font-medium">
+                                        💧 <strong className="font-extrabold text-slate-900 dark:text-slate-100">Cuidado mineral personalizado:</strong> {patientGuide.calciumAlertText}
+                                    </div>
+                                )}
+
+                                {/* Estudios de laboratorio de acompañamiento (si aplican) */}
+                                {Array.isArray(semaphore.recommendedLabs) && semaphore.recommendedLabs.length > 0 && (
+                                    <div className="bg-[#F8FAFC] dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3.5 space-y-2">
+                                        <span className="text-[11px] font-extrabold text-[#1C75BC] dark:text-sky-400 block">
+                                            {uiLabels.recommendedLabsTitle || '🔬 Estudios de control sugeridos para personalizar aún más su seguimiento:'}
                                         </span>
-                                    </div>
-
-                                    <p className="text-slate-700 text-xs leading-relaxed font-medium mb-3.5 flex-1">
-                                        Regeneración de matriz extracelular, fortalecimiento articular y optimización de síntesis proteica post-ejercicio durante el sueño profundo.
-                                    </p>
-
-                                    <div className="mb-4 bg-slate-50 border border-slate-200/70 rounded-xl p-2.5 text-[10.5px] space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 font-bold">Dosificación:</span>
-                                            <span className="font-extrabold text-slate-800">1 toma al día (mínimo 500 ml de agua 💧)</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 font-bold">Momento de ingesta:</span>
-                                            <span className="font-extrabold text-[#3AAA35]">🌙 Con la cena (08:30 PM)</span>
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={handleToggle34}
-                                        className={`mt-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all w-full cursor-pointer shadow-sm flex items-center justify-center gap-2 ${
-                                            is34Added
-                                                ? 'bg-[#3AAA35] text-white hover:bg-[#3AAA35]/90 shadow-emerald-500/20'
-                                                : 'bg-[#1C75BC] text-white hover:bg-[#1C75BC]/90 shadow-blue-500/20'
-                                        }`}
-                                    >
-                                        <Activity className="w-4 h-4 shrink-0" />
-                                        <span>{is34Added ? '✓ Agregado al Plan Nutracéutico' : 'Agregar 34Plus® al Plan'}</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    /* VISTA 2: EXPEDIENTE CLÍNICO OFICIAL (NOM-004 / MATRIZ IFM) */
-                    <div className="p-6 space-y-6">
-                        
-                        {/* Síntesis CORTEX v2.4 (Matriz de 7 Nodos IFM + Árbol Bioenergético) */}
-                        {Array.isArray(patientData?.clinical_dossier?.ifm_nodes_matrix) && patientData.clinical_dossier.ifm_nodes_matrix.length > 0 ? (
-                            <DiagnosticoRenderizado cortexSynthesis={patientData.clinical_dossier} />
-                        ) : (
-                            /* Sección 1: Diagnósticos (Fallback previo a síntesis v2.4) */
-                            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-                                <h3 className="text-slate-900 text-xs font-extrabold uppercase tracking-wider mb-3 flex items-center gap-2 border-b border-slate-100 pb-3">
-                                    <Activity className="w-4.5 h-4.5 text-[#1C75BC]" />
-                                    1. Diagnósticos Clínicos Aprobados (Matriz IFM de 7 Nodos)
-                                </h3>
-
-                                {/* Banner de Prioridad Primaria de Entrada (Nodo Raíz) */}
-                                <div className="mb-4 bg-amber-50/80 border border-amber-200 p-3.5 rounded-xl text-xs text-amber-900 font-medium flex items-start gap-2.5">
-                                    <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                                    <div>
-                                        <strong className="font-bold text-amber-950 block">Nodo Raíz Obligatorio (Asimilación):</strong>
-                                        <span>La hiperpermeabilidad y absorción intestinal deben sellarse primero antes de cualquier protocolización de quelación de metales pesados para evitar endotoxemia metabólica.</span>
-                                    </div>
-                                </div>
-
-                                {cleanDiagnoses.length > 0 ? (
-                                    <div className="space-y-2.5">
-                                        {cleanDiagnoses.map((d, idx) => (
-                                            <div key={idx} className={`flex justify-between items-start p-3.5 rounded-xl text-xs font-medium border ${d.isRootNode ? 'bg-amber-50/50 border-amber-300' : 'bg-slate-50 border-slate-200/80'}`}>
-                                                <div>
-                                                    {d.nodo && <span className="text-[10px] font-extrabold text-[#1C75BC] uppercase tracking-wider block mb-0.5">{d.nodo}</span>}
-                                                    <span className="font-bold text-slate-800 block">{d.nombre}</span>
-                                                    <span className="text-[10.5px] text-slate-500 font-mono mt-0.5 block">{d.cie10}</span>
+                                        <div className="grid grid-cols-1 gap-2.5">
+                                            {semaphore.recommendedLabs.map((lab, lIdx) => (
+                                                <div
+                                                    key={lIdx}
+                                                    className="bg-white dark:bg-[#1A1A1A] border border-slate-200/80 dark:border-slate-800 rounded-lg px-3 py-2 text-[11.5px] font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2"
+                                                >
+                                                    <span className="w-2 h-2 rounded-full bg-[#1C75BC] shrink-0" />
+                                                    <span>{lab}</span>
                                                 </div>
-                                                <span className={`px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-full ${d.isRootNode || d.prioridad?.includes('Alta') || d.prioridad?.includes('Primaria') ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-xs' : 'bg-blue-50 text-[#1C75BC] border border-blue-100'}`}>
-                                                    {d.prioridad}
-                                                </span>
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 font-medium flex items-center gap-2.5">
-                                        <span className="text-base">🛡️</span>
-                                        <span>Homeostasis Metabólica General (Sin Alteraciones Agudas Registradas).</span>
+                                )}
+
+                                {/* Nota de transparencia ética COFEPRIS / NOM-043 */}
+                                {semaphore.ethicalNote && (
+                                    <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                                        🛡️ <strong className="font-bold text-slate-800 dark:text-slate-100">Compromiso de honestidad clínica:</strong> {semaphore.ethicalNote}
                                     </div>
                                 )}
                             </div>
-                        )}
 
-                        {/* Algoritmo de Secuenciación Terapéutica Cronológica (Homologación Lineal Desaturada) */}
-                        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs border-l-4 border-l-[#1C75BC] hover:shadow-md transition-all">
-                            {/* Cabecera en 3 flex-items */}
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-3.5 select-none">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/20">
-                                        CRONOBIOLOGÍA METABÓLICA
+                            {/* ================================================================= */}
+                            {/* BLOQUE B: SUS 5 SISTEMAS DE SALUD EN PALABRAS SENCILLAS            */}
+                            {/* ================================================================= */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between px-1">
+                                    <div>
+                                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
+                                            Traducción Clínica Clara
+                                        </span>
+                                        <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">
+                                            {uiLabels.systemsSectionTitle || 'Sus 5 Sistemas de Salud Explicados con Sencillez'}
+                                        </h3>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-5">
+                                    {(patientGuide.fiveSystems || []).map((sys) => {
+                                        const isPriority = sys.status === 'ATENCION_PRIORITARIA' || sys.status === 'PRIORITY';
+                                        const isPreventive = sys.status === 'VIGILANCIA_PREVENTIVA' || sys.status === 'PREVENTIVE';
+
+                                        return (
+                                            <div
+                                                key={sys.id}
+                                                className={`bg-white dark:bg-[#1A1A1A] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] flex flex-col gap-3 border-t-4 ${
+                                                    isPriority
+                                                        ? 'border-t-[#B70E0C]'
+                                                        : isPreventive
+                                                            ? 'border-t-[#FFCC00]'
+                                                            : 'border-t-[#3AAA35]'
+                                                }`}
+                                            >
+                                                <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center border shrink-0 ${
+                                                            isPriority
+                                                                ? 'bg-[#B70E0C]/10 text-[#B70E0C] border-[#B70E0C]/25'
+                                                                : isPreventive
+                                                                    ? 'bg-[#FFCC00]/30 text-[#0F172A] border-[#FFCC00] dark:bg-[#FFCC00]/15 dark:border-[#FFCC00]/50 dark:text-[#FEF9C3]'
+                                                                    : 'bg-[#3AAA35]/10 text-[#3AAA35] border-[#3AAA35]/25'
+                                                        }`}>
+                                                            {renderSystemSvgIcon(sys.iconKey, 'w-4 h-4')}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                                                                {sys.title}
+                                                            </h4>
+                                                            {sys.subtitle && (
+                                                                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium block">
+                                                                    {sys.subtitle}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Triple Señal WCAG 2.2 AAA */}
+                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold border ${
+                                                        isPriority
+                                                            ? 'bg-[#B70E0C]/10 text-[#B70E0C] border-[#B70E0C]/30'
+                                                            : isPreventive
+                                                                ? 'bg-[#FFCC00] text-[#0F172A] border-[#EAB308] dark:bg-[#FFCC00]/15 dark:border-[#FFCC00]/50 dark:text-[#FEF9C3]'
+                                                                : 'bg-[#3AAA35]/10 text-[#3AAA35] border-[#3AAA35]/30'
+                                                    }`}>
+                                                        {isPriority ? (
+                                                            <ShieldAlert className="w-3 h-3 shrink-0" />
+                                                        ) : isPreventive ? (
+                                                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                                                        ) : (
+                                                            <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                                        )}
+                                                        <span>{sys.statusLabel}</span>
+                                                    </span>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 gap-3 flex-1">
+                                                    <div className="bg-[#F8FAFC] dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800 rounded-xl p-3 space-y-1">
+                                                        <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-[#1C75BC] dark:text-sky-400 block">
+                                                            {uiLabels.observedBoxTitle || '¿Qué observamos en su evaluación?'}
+                                                        </span>
+                                                        <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
+                                                            {sys.whatWeObserved}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="bg-[#F8FAFC] dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800 rounded-xl p-3 space-y-1">
+                                                        <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-[#3AAA35] block">
+                                                            ¿Qué significa en palabras sencillas?
+                                                        </span>
+                                                        <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
+                                                            {sys.whatItMeans}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* ================================================================= */}
+                            {/* BLOQUE C: SUS ALIADOS NUTRICIONALES Y HORARIOS ADAPTADOS A SU DÍA  */}
+                            {/* ================================================================= */}
+                            <div id="card-gold-architecture" className="relative space-y-4">
+                                {isRiskDetected && !overrideActive && isRedSemaphore && (
+                                    <div className="bg-[#B70E0C]/10 border border-[#B70E0C]/30 rounded-2xl p-3.5 flex items-center gap-2.5 text-xs font-bold text-[#B70E0C]">
+                                        <Lock className="w-4 h-4 shrink-0" />
+                                        <span>Suplementación en pausa preventiva de seguridad hasta validación médica presencial.</span>
+                                    </div>
+                                )}
+
+                                <div className="px-1">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
+                                        {uiLabels.alliesSectionKicker || 'Nutrición Funcional Sincronizada a su Despertar'}
                                     </span>
-                                    <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                                        <Clock className="w-4 h-4 text-[#1C75BC]" />
-                                        <span>Algoritmo de Secuenciación Terapéutica Cronológica</span>
+                                    <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">
+                                        {uiLabels.alliesSectionTitle || 'Sus Aliados Nutricionales (33Plus® y 34Plus®)'}
                                     </h3>
                                 </div>
-                                <div className="flex items-center gap-1.5">
-                                    {[1, 2, 3].map(phase => (
-                                        <button
-                                            key={phase}
-                                            type="button"
-                                            onClick={() => setActiveTimelinePhase(phase)}
-                                            className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all border ${
-                                                activeTimelinePhase === phase
-                                                    ? 'bg-[#1C75BC] text-white border-[#1C75BC] shadow-xs'
-                                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                                            }`}
-                                        >
-                                            Fase {phase}
-                                        </button>
-                                    ))}
+
+                                {/* Tarjetas Bento de 33Plus® (#B70E0C + Zap exclusivo) y 34Plus® (#3AAA35 + Droplets) */}
+                                {!patientGuide.isLactante && (
+                                <div className="grid grid-cols-1 gap-4">
+                                    {/* 33Plus® */}
+                                    <div className="flex flex-col bg-white dark:bg-[#1A1A1A] rounded-2xl border border-slate-200/90 dark:border-slate-800 border-l-4 border-l-[#B70E0C] p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+                                        <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800 mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded-xl bg-[#B70E0C]/10 border border-[#B70E0C]/25 flex items-center justify-center shrink-0">
+                                                    <Zap className="w-4 h-4 text-[#B70E0C] dark:text-[#FECACA]" />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#B70E0C] dark:text-[#FECACA] block">
+                                                        ALIADO DIURNO • ENERGÍA LIMPIA
+                                                    </span>
+                                                    <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                                                        {formula33.brandTitle || '33Plus®'}
+                                                    </h4>
+                                                </div>
+                                            </div>
+                                            <span className="text-[10px] font-extrabold text-[#B70E0C] dark:text-[#FECACA] bg-[#B70E0C]/10 dark:bg-[#B70E0C]/20 border border-[#B70E0C]/25 dark:border-[#B70E0C]/45 px-2.5 py-1 rounded-lg">
+                                                Circulación y Vitalidad
+                                            </span>
+                                        </div>
+
+                                        <p className="text-slate-700 dark:text-slate-300 text-xs leading-relaxed font-medium mb-3.5 flex-1">
+                                            {formula33.explanation}
+                                        </p>
+
+                                        <div className="bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 text-[11px] space-y-2">
+                                            <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+                                                <span className="text-slate-500 dark:text-slate-400 font-bold sm:w-32 shrink-0">Pauta indicada:</span>
+                                                <span className="font-extrabold text-slate-900 dark:text-slate-100 flex-1 text-left">
+                                                    {String(formula33.dosage || '').replace(/(\d+)\s+(ml|g)\b/gi, '$1\u00A0$2')}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+                                                <span className="text-slate-500 dark:text-slate-400 font-bold sm:w-32 shrink-0">Momento ideal:</span>
+                                                <span className="font-bold text-[#B70E0C] dark:text-[#FECACA] flex-1 text-left">
+                                                    ☀️ {String(formula33.timing || '').replace(/(\d+:\d+)\s+(AM|PM)/gi, '$1\u00A0$2')}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 34Plus® */}
+                                    <div className="flex flex-col bg-white dark:bg-[#1A1A1A] rounded-2xl border border-slate-200/90 dark:border-slate-800 border-l-4 border-l-[#3AAA35] p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+                                        <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800 mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded-xl bg-[#3AAA35]/12 border border-[#3AAA35]/25 flex items-center justify-center shrink-0">
+                                                    <Droplets className="w-4 h-4 text-[#3AAA35] dark:text-[#DCFCE7]" />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#3AAA35] dark:text-[#DCFCE7] block">
+                                                        ALIADO VESPERTINO / NOCTURNO
+                                                    </span>
+                                                    <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                                                        {formula34.brandTitle || '34Plus®'}
+                                                    </h4>
+                                                </div>
+                                            </div>
+                                            <span className="text-[10px] font-extrabold text-[#3AAA35] dark:text-[#DCFCE7] bg-[#3AAA35]/10 dark:bg-[#3AAA35]/20 border border-[#3AAA35]/25 dark:border-[#3AAA35]/45 px-2.5 py-1 rounded-lg">
+                                                Reparación y Descanso
+                                            </span>
+                                        </div>
+
+                                        <p className="text-slate-700 dark:text-slate-300 text-xs leading-relaxed font-medium mb-3.5 flex-1">
+                                            {formula34.explanation}
+                                        </p>
+
+                                        <div className="bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 text-[11px] space-y-2">
+                                            <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+                                                <span className="text-slate-500 dark:text-slate-400 font-bold sm:w-32 shrink-0">Pauta indicada:</span>
+                                                <span className="font-extrabold text-slate-900 dark:text-slate-100 flex-1 text-left">
+                                                    {String(formula34.dosage || '').replace(/(\d+)\s+(ml|g)\b/gi, '$1\u00A0$2')}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+                                                <span className="text-slate-500 dark:text-slate-400 font-bold sm:w-32 shrink-0">Hidratación clave:</span>
+                                                <span className="font-bold text-[#3AAA35] dark:text-[#DCFCE7] flex-1 text-left">
+                                                    💧 Mínimo 500{'\u00A0'}ml de agua simple
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                )}
+
+                                {/* Tarjeta de Horarios Adaptados al Despertar Real del Paciente */}
+                                <div className="bg-white dark:bg-[#1A1A1A] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] space-y-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                                        <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                                            <Clock className="w-4 h-4 text-[#1C75BC]" />
+                                            <span>{uiLabels.scheduleCardTitle || 'Cómo integrarlo a su rutina diaria (adaptado a su hora real de despertar)'}</span>
+                                        </h4>
+                                        <span className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200/80 dark:border-slate-800">
+                                            {isRedSemaphore
+                                                ? '0 sobres activos (Pausa Preventiva)'
+                                                : isYellowSemaphore
+                                                    ? 'Titulación Gradual (1/2 sobre por toma)'
+                                                    : 'Esquema Completo Sincronizado'}
+                                        </span>
+                                    </div>
+
+                                    {isRedSemaphore ? (
+                                        <div className="bg-[#B70E0C]/8 border border-[#B70E0C]/30 rounded-xl p-4 text-xs text-slate-800 dark:text-slate-200 flex items-start gap-3">
+                                            <ShieldAlert className="w-5 h-5 text-[#B70E0C] shrink-0 mt-0.5" />
+                                            <div>
+                                                <strong className="font-extrabold text-[#B70E0C] block mb-0.5">
+                                                    {uiLabels.redPauseTitle || 'Primero su seguridad médica (0 sobres por ahora)'}
+                                                </strong>
+                                                <span>
+                                                    {uiLabels.redPauseBody || 'Por precaución clínica, aún no iniciaremos sobres de suplementación. Siga hoy mismo su guía de alimentación protectora e hidratación natural mientras revisamos sus estudios con su médico.'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-3">
+                                            {schedule.map((slot, idx) => {
+                                                const rawFormula = String(slot.formula || '');
+                                                const rawDosage = String(slot.dosage || slot.dose || '');
+                                                const firstSegmentDosage = rawDosage.split('•')[0] || '';
+                                                const hasActiveSachetWeek1 = /\b(?:1|2|1\/2|1\/4|medio|cuarto|un)\s+sobres?\b/i.test(firstSegmentDosage);
+                                                const isPureHydrationFormula = !rawFormula.includes('33') && !rawFormula.includes('34');
+                                                const isWaterOnlyWeek1 =
+                                                    isPureHydrationFormula ||
+                                                    (!hasActiveSachetWeek1 && /(?:iniciar\s+solo\s+con\s+agua|solo\s+(?:con\s+)?agua\s+(?:natural|simple)|hidrataci[óo]n\s+preparatoria|pausa\s+preventiva|0\s+sobres)/i.test(firstSegmentDosage));
+                                                const isActive33 = !isWaterOnlyWeek1 && rawFormula.includes('33');
+                                                const isActive34 = !isWaterOnlyWeek1 && rawFormula.includes('34');
+                                                const displayFormula = isWaterOnlyWeek1 && rawFormula.includes('33')
+                                                    ? '💧 Hidratación Preparatoria (Semana 1 — previo a 33Plus® en Semana 2)'
+                                                    : isWaterOnlyWeek1 && rawFormula.includes('34')
+                                                        ? '💧 Hidratación Preparatoria (Semana 1 — previo a 34Plus® en Semana 2)'
+                                                        : rawFormula;
+                                                const slotTitle = slot.tomaNumber ? `Momento ${slot.tomaNumber}` : `Momento ${idx + 1}`;
+                                                return (
+                                                    <div
+                                                        key={idx}
+                                                        className={`rounded-xl p-3.5 border space-y-1.5 ${
+                                                            isActive33
+                                                                ? 'bg-[#B70E0C]/5 dark:bg-[#B70E0C]/15 border-[#B70E0C]/25 dark:border-[#B70E0C]/45'
+                                                                : isActive34
+                                                                    ? 'bg-[#3AAA35]/5 dark:bg-[#3AAA35]/15 border-[#3AAA35]/25 dark:border-[#3AAA35]/45'
+                                                                    : 'bg-[#1C75BC]/5 dark:bg-[#1C75BC]/15 border-[#1C75BC]/25 dark:border-[#1C75BC]/45'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className={`inline-flex items-center gap-1.5 font-extrabold text-xs ${
+                                                                isActive33
+                                                                    ? 'text-[#B70E0C] dark:text-[#FECACA]'
+                                                                    : isActive34
+                                                                        ? 'text-[#3AAA35] dark:text-[#DCFCE7]'
+                                                                        : 'text-[#1C75BC] dark:text-[#93C5FD]'
+                                                            }`}>
+                                                                {isActive33 ? (
+                                                                    <Zap className="w-3.5 h-3.5 text-[#B70E0C] dark:text-[#FECACA] shrink-0" />
+                                                                ) : (
+                                                                    <Droplets className={`w-3.5 h-3.5 shrink-0 ${isActive34 ? 'text-[#3AAA35] dark:text-[#DCFCE7]' : 'text-[#1C75BC] dark:text-[#93C5FD]'}`} />
+                                                                )}
+                                                                <span>{slotTitle}: {slot.timeSlot}</span>
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100">
+                                                            {displayFormula} • <span className="text-[#1C75BC] dark:text-[#93C5FD]">{rawDosage}</span>
+                                                        </div>
+                                                        <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                                                            {slot.patientObjective}
+                                                        </p>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Secuencia Cronológica Lineal en Filas Horizontales de Ancho Completo */}
-                            <div className="space-y-2.5 my-3">
-                                {/* Fase 1 */}
-                                <div
-                                    onClick={() => setActiveTimelinePhase(1)}
-                                    className={`rounded-xl px-4 py-3 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all border ${
-                                        activeTimelinePhase === 1
-                                            ? 'bg-blue-50/70 border-[#1C75BC] ring-1 ring-[#1C75BC]/30 shadow-xs'
-                                            : 'bg-slate-50/60 border-slate-200/60 hover:bg-slate-100/50'
-                                    }`}
-                                >
-                                    <div className="flex-1 space-y-0.5">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[9.5px] font-black px-2 py-0.5 rounded bg-blue-100 text-blue-900 border border-blue-200 uppercase tracking-wider">
-                                                FASE 1
-                                            </span>
-                                            <span className="font-extrabold text-xs text-slate-900">
-                                                Estabilización Endotelial y Barrera Mucosa
-                                            </span>
-                                        </div>
-                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium pl-6">
-                                            Sellado epitelial intestinal, hidratación bioestructurada e inicio de cronobiología 33Plus® (09:00 AM) y 34Plus® (08:30 PM en 500 ml de agua).
-                                        </p>
-                                    </div>
-                                    <div className="shrink-0 flex items-center sm:flex-col sm:items-end gap-1.5 pl-6 sm:pl-0">
-                                        <span className="text-[10px] font-black text-[#1C75BC] uppercase tracking-wider">Días 1 a 21</span>
-                                        <span className="text-[9px] font-bold text-slate-400">Semana 1-3</span>
-                                    </div>
+                            {/* ================================================================= */}
+                            {/* BLOQUE D: SU PLAN DE ACCIÓN DIARIO EN CASA (3 TARJETAS BENTO)      */}
+                            {/* ================================================================= */}
+                            <div className="space-y-3">
+                                <div className="px-1">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
+                                        Hábitos Diarios Protectores
+                                    </span>
+                                    <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">
+                                        {uiLabels.homePlanSectionTitle || 'Su Plan de Acción Diario en Casa'}
+                                    </h3>
                                 </div>
 
-                                {/* Fase 2 */}
-                                <div
-                                    onClick={() => setActiveTimelinePhase(2)}
-                                    className={`rounded-xl px-4 py-3 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all border ${
-                                        activeTimelinePhase === 2
-                                            ? 'bg-emerald-50/70 border-[#3AAA35] ring-1 ring-[#3AAA35]/30 shadow-xs'
-                                            : 'bg-slate-50/60 border-slate-200/60 hover:bg-slate-100/50'
-                                    }`}
-                                >
-                                    <div className="flex-1 space-y-0.5">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[9.5px] font-black px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-200 uppercase tracking-wider">
-                                                FASE 2
-                                            </span>
-                                            <span className="font-extrabold text-xs text-slate-900">
-                                                Modulación Lipídica y Reológica Profunda
-                                            </span>
+                                <div className="grid grid-cols-1 gap-4">
+                                    {/* Tarjeta 1: Alimentación Protectora */}
+                                    <div className="bg-white dark:bg-[#1A1A1A] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] flex flex-col gap-3">
+                                        <div className="flex items-center gap-2.5 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                                            <div className="w-8 h-8 rounded-xl bg-[#1C75BC]/10 border border-[#1C75BC]/25 flex items-center justify-center shrink-0">
+                                                <Utensils className="w-4 h-4 text-[#1C75BC]" />
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
+                                                    Pilar Alimentario
+                                                </span>
+                                                <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                                                    {nutritionCard.title || 'Alimentación Protectora en Casa'}
+                                                </h4>
+                                            </div>
                                         </div>
-                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium pl-6">
-                                            Optimización del transporte lipídico, reducción de viscosidad hemática y síntesis activa de óxido nítrico para reactividad microvascular.
+
+                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                                            {nutritionCard.summary}
                                         </p>
+
+                                        {nutritionPillars.length > 0 && (
+                                            <div className="grid grid-cols-1 gap-1.5 mt-auto pt-2">
+                                                {nutritionPillars.map((rule, rIdx) => (
+                                                    <div
+                                                        key={rIdx}
+                                                        className="bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2"
+                                                    >
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-[#3AAA35] shrink-0" />
+                                                        <span>{rule}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="shrink-0 flex items-center sm:flex-col sm:items-end gap-1.5 pl-6 sm:pl-0">
-                                        <span className="text-[10px] font-black text-[#3AAA35] uppercase tracking-wider">Días 22 a 45</span>
-                                        <span className="text-[9px] font-bold text-slate-400">Semana 4-6</span>
+
+                                    {/* Tarjeta 2: Hidratación Inteligente */}
+                                    <div className="bg-white dark:bg-[#1A1A1A] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] flex flex-col gap-3">
+                                        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-8 h-8 rounded-xl bg-[#1C75BC]/10 border border-[#1C75BC]/25 flex items-center justify-center shrink-0">
+                                                    <Droplets className="w-4 h-4 text-[#1C75BC]" />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
+                                                        Agua Natural
+                                                    </span>
+                                                    <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                                                        {hydrationCard.title || 'Hidratación Inteligente'}
+                                                    </h4>
+                                                </div>
+                                            </div>
+                                            {hydrationCard.litersPerDay && (
+                                                <span className="px-2.5 py-1 rounded-lg bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/25 text-[11px] font-extrabold">
+                                                    💧 {hydrationCard.litersPerDay} L/día
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium flex-1">
+                                            {hydrationCard.summary}
+                                        </p>
+
+                                        {cleanKeyRule34Plus && (
+                                            <div className="bg-[#3AAA35]/8 border border-[#3AAA35]/25 rounded-xl p-3 text-[11px] font-semibold text-slate-800 dark:text-slate-200 mt-auto">
+                                                💧 {cleanKeyRule34Plus}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Tarjeta 3: Movimiento Cotidiano Seguro (Cero 🧸 en adultos, Cero jerga NEAT/HIIT) */}
+                                    <div className="bg-white dark:bg-[#1A1A1A] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] flex flex-col gap-3">
+                                        <div className="flex items-center gap-2.5 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                                            <div className="w-8 h-8 rounded-xl bg-[#3AAA35]/12 border border-[#3AAA35]/25 flex items-center justify-center shrink-0">
+                                                {movementCard.isPediatric ? (
+                                                    <Baby className="w-4 h-4 text-[#3AAA35]" />
+                                                ) : (
+                                                    <Footprints className="w-4 h-4 text-[#3AAA35]" />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#3AAA35] block">
+                                                    {movementCard.isPediatric ? 'Desarrollo Psicomotor' : 'Movilidad Saludable'}
+                                                </span>
+                                                <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                                                    {movementCard.title || 'Movimiento Cotidiano Seguro'}
+                                                </h4>
+                                            </div>
+                                        </div>
+
+                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium flex-1">
+                                            {movementCard.summary}
+                                        </p>
+
+                                        {movementCard.sleepHabit && (
+                                            <div className="bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 mt-auto">
+                                                🌙 {movementCard.sleepHabit}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-
-                                {/* Fase 3 */}
-                                <div
-                                    onClick={() => setActiveTimelinePhase(3)}
-                                    className={`rounded-xl px-4 py-3 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all border ${
-                                        activeTimelinePhase === 3
-                                            ? 'bg-indigo-50/70 border-indigo-500 ring-1 ring-indigo-500/30 shadow-xs'
-                                            : 'bg-slate-50/60 border-slate-200/60 hover:bg-slate-100/50'
-                                    }`}
-                                >
-                                    <div className="flex-1 space-y-0.5">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[9.5px] font-black px-2 py-0.5 rounded bg-indigo-100 text-indigo-900 border border-indigo-200 uppercase tracking-wider">
-                                                FASE 3
-                                            </span>
-                                            <span className="font-extrabold text-xs text-slate-900">
-                                                Consolidación Metabólica y Re-Evaluación
-                                            </span>
-                                        </div>
-                                        <p className="text-[11.5px] text-slate-700 leading-relaxed font-medium pl-6">
-                                            Auditoría de control de biomarcadores fuera de rango y consolidación de composición corporal ({bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal/día` : 'mantenimiento normocalórico'}).
-                                        </p>
-                                    </div>
-                                    <div className="shrink-0 flex items-center sm:flex-col sm:items-end gap-1.5 pl-6 sm:pl-0">
-                                        <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">Días 46+</span>
-                                        <span className="text-[9px] font-bold text-slate-400">Semana 7+</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Pie de Tarjeta Estándar */}
-                            <div className="pt-2.5 border-t border-slate-100 mt-3 flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400 font-medium">ⓘ Secuenciación cronobiológica ortomolecular para adaptación celular progresiva</span>
                             </div>
                         </div>
+                    ) : (
+                        /* ===================================================================== */
+                        /* VISTA 2: EXPEDIENTE CLÍNICO OFICIAL (NOM-004 / MATRIZ IFM DE 7 NODOS) */
+                        /* ===================================================================== */
+                        <div className="p-6 space-y-6">
+                            {Array.isArray(ifmNodes) && ifmNodes.length > 0 ? (
+                                <DiagnosticoRenderizado cortexSynthesis={patientData.clinical_dossier} />
+                            ) : (
+                                <div className="bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
+                                    <h3 className="text-slate-900 dark:text-slate-100 text-xs font-extrabold uppercase tracking-wider mb-3 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                                        <Activity className="w-4 h-4 text-[#1C75BC]" />
+                                        1. Diagnósticos Clínicos Aprobados (Matriz IFM de 7 Nodos)
+                                    </h3>
 
-                        {/* Sección 4: Logística */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-                            <h3 className="text-slate-900 text-xs font-extrabold uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
-                                <Calendar className="w-4.5 h-4.5 text-emerald-600" />
-                                4. Logística y Planificación de Ejecución
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-slate-50 border border-slate-200/80 p-4 rounded-xl font-medium">
-                                <div>
-                                    <span className="text-[9.5px] uppercase font-extrabold text-slate-400 block mb-1 tracking-wider">Entorno Principal</span>
-                                    <span className="font-bold text-slate-800 text-xs">
-                                        {patientData?.logistics_profile?.environment?.venue === 'WORK' ? 'Oficina' : patientData?.logistics_profile?.environment?.venue === 'STREET' ? 'Calle' : 'Casa'}
-                                    </span>
+                                    {cleanDiagnoses.length > 0 ? (
+                                        <div className="space-y-2.5">
+                                            {cleanDiagnoses.map((d, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className={`flex justify-between items-start p-3.5 rounded-xl text-xs font-medium border ${
+                                                        d.isRootNode
+                                                            ? 'bg-[#FFCC00]/15 border-[#FFCC00]/60 dark:bg-[#FFCC00]/15 dark:border-[#FFCC00]/50'
+                                                            : 'bg-slate-50 dark:bg-slate-900 border-slate-200/80 dark:border-slate-800'
+                                                    }`}
+                                                >
+                                                    <div>
+                                                        {d.nodo && (
+                                                            <span className="text-[10px] font-extrabold text-[#1C75BC] uppercase tracking-wider block mb-0.5">
+                                                                {d.nodo}
+                                                            </span>
+                                                        )}
+                                                        <span className="font-bold text-slate-800 dark:text-slate-100 block">{d.nombre}</span>
+                                                        <span className="text-[10.5px] text-slate-500 font-mono mt-0.5 block">{d.cie10}</span>
+                                                    </div>
+                                                    <span className="px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-full bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/25">
+                                                        {d.prioridad}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-[#3AAA35]/10 border border-[#3AAA35]/30 rounded-xl p-4 text-xs text-slate-800 dark:text-slate-200 font-medium flex items-center gap-2.5">
+                                            <CheckCircle2 className="w-4 h-4 text-[#3AAA35]" />
+                                            <span>Homeostasis Metabólica General (Sin Alteraciones Agudas Registradas).</span>
+                                        </div>
+                                    )}
                                 </div>
-                                <div>
-                                    <span className="text-[9.5px] uppercase font-extrabold text-slate-400 block mb-1 tracking-wider">Preparación de Alimentos</span>
-                                    <span className="font-bold text-slate-800 text-xs">
-                                        {patientData?.logistics_profile?.cook_type === 'SELF' ? 'Propia / Especialista' : patientData?.logistics_profile?.cook_type === 'FAMILY' ? 'Familiar' : 'Personal'}
-                                    </span>
+                            )}
+
+                            {/* Algoritmo de Secuenciación Terapéutica Cronológica */}
+                            <div className="bg-white dark:bg-[#1A1A1A] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] border-l-4 border-l-[#1C75BC] transition-all">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800 mb-3.5 select-none">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/20">
+                                            CRONOBIOLOGÍA METABÓLICA
+                                        </span>
+                                        <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                            <Clock className="w-4 h-4 text-[#1C75BC]" />
+                                            <span>Algoritmo de Secuenciación Terapéutica Cronológica</span>
+                                        </h3>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {[1, 2, 3].map(phase => (
+                                            <button
+                                                key={phase}
+                                                type="button"
+                                                onClick={() => setActiveTimelinePhase(phase)}
+                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all border cursor-pointer ${
+                                                    activeTimelinePhase === phase
+                                                        ? 'bg-[#1C75BC] text-white border-[#1C75BC]'
+                                                        : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                                                }`}
+                                            >
+                                                Fase {phase}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="col-span-1 md:col-span-2 border-t border-slate-200/80 pt-2.5 mt-1">
-                                    <span className="text-[9.5px] uppercase font-extrabold text-slate-400 block mb-1 tracking-wider">Ruta de Evolución</span>
-                                    <span className="font-bold text-slate-800 text-xs">28 Días de seguimiento continuo (Fases Calibradas)</span>
+
+                                {(() => {
+                                    const targetKcalVal = bioenergetics?.targetKcal || 2000;
+                                    const targetWaterVal = ortho?.hydrationTargetLiters || hydrationCard?.litersPerDay || 2.2;
+                                    const fallbackPhases = isRedSemaphore
+                                        ? [
+                                            {
+                                                phase: 1,
+                                                rangeLabel: 'Días 1 a 7',
+                                                weekLabel: 'Semana 1',
+                                                title: 'Estabilización Inicial y Pausa Preventiva de Suplementación',
+                                                description: `Alimentación antiinflamatoria (${targetKcalVal} kcal/día), hidratación estructurada (${targetWaterVal} L/día) y recopilación de estudios de laboratorio de control (0 sobres activos).`
+                                            },
+                                            {
+                                                phase: 2,
+                                                rangeLabel: 'Días 8 a 21',
+                                                weekLabel: 'Semanas 2-3',
+                                                title: 'Valoración Médica Paraclínica y Desinflamación Mucosa',
+                                                description: 'Revisión clínica de analitos solicitados para validar función renal, hepática y hemodinámica previo a cualquier suplementación.'
+                                            },
+                                            {
+                                                phase: 3,
+                                                rangeLabel: 'Días 22 a 28',
+                                                weekLabel: 'Semana 4',
+                                                title: 'Consolidación Metabólica y Re-Evaluación Comparativa (T0 → T1)',
+                                                description: `Auditoría comparativa de evolución clínica al cierre del ciclo de 28 días (${targetKcalVal} kcal/día).`
+                                            }
+                                        ]
+                                        : isYellowSemaphore
+                                            ? [
+                                                {
+                                                    phase: 1,
+                                                    rangeLabel: 'Días 1 a 7',
+                                                    weekLabel: 'Semana 1',
+                                                    title: 'Adaptación Mucosa y Micro-Dosis Calibrada',
+                                                    description: `Sellado epitelial digestivo (0 Picante, 0 Cerdo, 0 Azúcares), hidratación medida (${targetWaterVal} L/día) e inicio gradual con 1/2 sobre (5 g) matutino de 33Plus® y 1/2 sobre (5 g) nocturno de 34Plus® en mínimo 500 ml de agua simple 💧.`
+                                                },
+                                                {
+                                                    phase: 2,
+                                                    rangeLabel: 'Días 8 a 21',
+                                                    weekLabel: 'Semanas 2-3',
+                                                    title: 'Escalamiento Gradual según Tolerancia y Modulación Metabólica',
+                                                    description: 'Valoración de tolerancia digestiva y renal a partir del Día 8 para integrar o mantener la toma de media mañana, optimizando sensibilidad metabólica y fluidez microvascular.'
+                                                },
+                                                {
+                                                    phase: 3,
+                                                    rangeLabel: 'Días 22 a 28',
+                                                    weekLabel: 'Semana 4',
+                                                    title: 'Consolidación Funcional y Re-Evaluación Comparativa (T0 → T1)',
+                                                    description: `Auditoría comparativa de bioseñales y estudios de control al cierre del ciclo de 28 días sobre meta de ${targetKcalVal} kcal/día.`
+                                                }
+                                            ]
+                                            : [
+                                                {
+                                                    phase: 1,
+                                                    rangeLabel: 'Días 1 a 7',
+                                                    weekLabel: 'Semana 1',
+                                                    title: 'Sincronización Circadiana y Sellado de Barrera Mucosa',
+                                                    description: `Integración alimentaria (${targetKcalVal} kcal/día), hidratación diaria (${targetWaterVal} L/día) y protocolo sincronizado de 33Plus® y 34Plus® (en mínimo 500 ml de agua simple 💧).`
+                                                },
+                                                {
+                                                    phase: 2,
+                                                    rangeLabel: 'Días 8 a 21',
+                                                    weekLabel: 'Semanas 2-3',
+                                                    title: 'Modulación Metabólica, Vascular y Reparación Tisular',
+                                                    description: 'Optimización del transporte lipídico-glucémico, oxigenación microvascular diurna y síntesis nocturna de matriz de colágeno.'
+                                                },
+                                                {
+                                                    phase: 3,
+                                                    rangeLabel: 'Días 22 a 28',
+                                                    weekLabel: 'Semana 4',
+                                                    title: 'Consolidación Funcional y Re-Evaluación Comparativa (T0 → T1)',
+                                                    description: `Auditoría comparativa de parámetros fuera de rango al día 28 y consolidación de composición corporal (${targetKcalVal} kcal/día).`
+                                                }
+                                            ];
+
+                                    const timelinePhases = Array.isArray(ortho?.evolutionTimeline?.phases) && ortho.evolutionTimeline.phases.length === 3
+                                        ? ortho.evolutionTimeline.phases
+                                        : fallbackPhases;
+
+                                    return (
+                                        <div className="space-y-2.5 my-3">
+                                            {timelinePhases.map((pItem, idx) => {
+                                                const phaseNum = pItem.phase || (idx + 1);
+                                                const isGreenAccent = phaseNum === 2;
+                                                const isActive = activeTimelinePhase === phaseNum;
+                                                return (
+                                                    <div
+                                                        key={phaseNum}
+                                                        onClick={() => setActiveTimelinePhase(phaseNum)}
+                                                        className={`rounded-xl px-4 py-3 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all border ${
+                                                            isActive
+                                                                ? (isGreenAccent
+                                                                    ? 'bg-[#3AAA35]/8 border-[#3AAA35] ring-1 ring-[#3AAA35]/30'
+                                                                    : 'bg-[#1C75BC]/8 border-[#1C75BC] ring-1 ring-[#1C75BC]/30')
+                                                                : 'bg-slate-50/60 dark:bg-slate-900/50 border-slate-200/60 dark:border-slate-800'
+                                                        }`}
+                                                    >
+                                                        <div className="flex-1 space-y-0.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`text-[9.5px] font-black px-2 py-0.5 rounded border uppercase tracking-wider ${
+                                                                    isGreenAccent
+                                                                        ? 'bg-[#3AAA35]/15 text-[#3AAA35] border-[#3AAA35]/30'
+                                                                        : 'bg-[#1C75BC]/15 text-[#1C75BC] border-[#1C75BC]/30'
+                                                                }`}>
+                                                                    FASE {phaseNum}
+                                                                </span>
+                                                                <span className="font-extrabold text-xs text-slate-900 dark:text-slate-100">
+                                                                    {sanitizeClinicalSpanish(pItem.title)}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-[11.5px] text-slate-700 dark:text-slate-300 leading-relaxed font-medium pl-6">
+                                                                {sanitizeClinicalSpanish(pItem.description)}
+                                                            </p>
+                                                        </div>
+                                                        <div className="shrink-0 flex items-center sm:flex-col sm:items-end gap-1.5 pl-6 sm:pl-0">
+                                                            <span className={`text-[10px] font-black uppercase tracking-wider ${
+                                                                isGreenAccent ? 'text-[#3AAA35]' : 'text-[#1C75BC]'
+                                                            }`}>
+                                                                {sanitizeClinicalSpanish(pItem.rangeLabel)}
+                                                            </span>
+                                                            <span className="text-[9px] font-bold text-slate-400">
+                                                                {sanitizeClinicalSpanish(pItem.weekLabel)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })()}
+
+                                <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 mt-3 flex items-center justify-between text-[10px]">
+                                    <span className="text-slate-400 font-medium">ⓘ Secuenciación cronobiológica ortomolecular sincronizada al ciclo clínico de 28 días</span>
+                                </div>
+                            </div>
+
+                            {/* Sección Logística */}
+                            <div className="bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
+                                <h3 className="text-slate-900 dark:text-slate-100 text-xs font-extrabold uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                                    <Calendar className="w-4 h-4 text-[#3AAA35]" />
+                                    <span>Logística y Planificación de Ejecución</span>
+                                    <span className="sr-only">{' — '}</span>
+                                </h3>
+                                <div className="grid grid-cols-1 gap-3 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-4 rounded-xl font-medium">
+                                    <div>
+                                        <span className="text-[9.5px] uppercase font-extrabold text-slate-400 block mb-1 tracking-wider">Entorno Principal: </span>
+                                        <span className="font-bold text-slate-800 dark:text-slate-100 text-xs">
+                                            {patientData?.logistics_profile?.environment?.venue === 'WORK' ? 'Oficina' : patientData?.logistics_profile?.environment?.venue === 'STREET' ? 'Calle' : 'Casa'}
+                                        </span>
+                                    </div>
+                                    <div className="border-t border-slate-200/80 dark:border-slate-800 pt-2.5">
+                                        <span className="sr-only">{' | '}</span>
+                                        <span className="text-[9.5px] uppercase font-extrabold text-slate-400 block mb-1 tracking-wider">Preparación de Alimentos: </span>
+                                        <span className="font-bold text-slate-800 dark:text-slate-100 text-xs">
+                                            {patientData?.logistics_profile?.cook_type === 'SELF' ? 'Propia / Especialista' : patientData?.logistics_profile?.cook_type === 'FAMILY' ? 'Familiar' : 'Personal'}
+                                        </span>
+                                    </div>
+                                    <div className="border-t border-slate-200/80 dark:border-slate-800 pt-2.5">
+                                        <span className="sr-only">{' | '}</span>
+                                        <span className="text-[9.5px] uppercase font-extrabold text-slate-400 block mb-1 tracking-wider">Ruta de Evolución: </span>
+                                        <span className="font-bold text-slate-800 dark:text-slate-100 text-xs">
+                                            {sanitizeClinicalSpanish(
+                                                ortho?.evolutionTimeline?.summaryLabel ||
+                                                '28 Días de seguimiento continuo (Fase 1: Días 1–7 • Fase 2: Días 8–21 • Fase 3: Días 22–28)'
+                                            )}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

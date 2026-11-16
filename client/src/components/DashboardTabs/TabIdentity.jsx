@@ -43,7 +43,7 @@ export const TabIdentity = ({
                         />
                     ) : (
                         <span className="text-tilo-text-main font-medium dashboard-data-text">
-                            {formatDateShort(patientData?.profile?.birthdate) || '--'}
+                            {formatDateShort(patientData?.profile?.birthdate || patientData?.identificacion?.fechanac) || '--'}
                         </span>
                     )}
                 </div>
@@ -86,9 +86,13 @@ export const TabIdentity = ({
                                     <div>
                                         <label className="block text-xs font-bold text-tilo-text-muted uppercase mb-1">Edad</label>
                                         <div className="p-3 bg-tilo-bg-base/40 rounded-xl text-tilo-text-main font-medium border border-tilo-border min-h-[50px] flex items-center relative transition-all duration-300">
-                                            {patientData?.profile?.age !== undefined && patientData?.profile?.age !== null && patientData?.profile?.birthdate
-                                                ? (patientData.profile.age === 0 ? `${patientData.profile.baby_age_months ?? '--'} Meses` : `${patientData.profile.age} Años`) 
-                                                : '-- Años'}
+                                            {(() => {
+                                                const ageVal = patientData?.profile?.age ?? patientData?.identificacion?.edad;
+                                                if (ageVal !== undefined && ageVal !== null && ageVal !== '') {
+                                                    return ageVal === 0 ? `${patientData?.profile?.baby_age_months ?? '--'} Meses` : `${ageVal} Años`;
+                                                }
+                                                return '-- Años';
+                                            })()}
                                         </div>
                                     </div>
 

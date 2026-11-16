@@ -53,17 +53,47 @@ export default function Fase15_FrecuenciaConsumoFFQ({
         }
         return 0;
     });
-    const [ffqData, setFfqData] = useState({});
+    const [ffqData, setFfqData] = useState(() => patientData?.evaluacionDietetica?.ffq || {});
     const [clinicalFlags, setClinicalFlags] = useState([]);
+    const [isSingleLineEdit, setIsSingleLineEdit] = useState(false);
     const hasGreeted = useRef(false);
+
+    const buildFfqSelectorOptions = (data, returnCode = "RETURN_SUMMARY") => {
+        const itemOpts = ACTIVE_STEPS.map((st, idx) => {
+            const cleanTitle = st.label.replace(/\*\*/g, '').replace(/:$/, '');
+            const curVal = data[st.key] !== undefined ? data[st.key] : 0;
+            const unit = st.key === 'agua' ? 'vasos/día' : 'días/sem';
+            return {
+                label: `✏️ ${cleanTitle} (Actual: ${curVal} ${unit})`,
+                value: `FFQ_IDX_${idx}`
+            };
+        });
+        return [
+            ...itemOpts,
+            { label: "🔄 Limpiar y reiniciar todo el FFQ", value: "CLEAR_ALL" },
+            { label: "❌ Volver al resumen", value: returnCode }
+        ];
+    };
+
+    const computeFlagsFromFfq = (data) => {
+        const computed = [];
+        ACTIVE_STEPS.forEach((st) => {
+            if (st.type && st.flag && data[st.key] !== undefined) {
+                if (checkFreq(data[st.key], st.type)) {
+                    computed.push(st.flag);
+                }
+            }
+        });
+        return computed;
+    };
 
     // Auto-transition on mount if already completed (resilience against page reloads/crashes)
     useEffect(() => {
         const alreadyCompleted = messages.some(msg => msg.role === 'assistant' && msg.content.includes("Cuestionario de Frecuencia de Consumo (FFQ) completado con éxito"));
-        if (alreadyCompleted) {
+        if (alreadyCompleted && stepIndex !== -1 && stepIndex !== -2) {
             onPhaseComplete('PHASE_16_BIOMETRICS');
         }
-    }, [messages, onPhaseComplete]);
+    }, [messages, onPhaseComplete, stepIndex]);
 
     // Inicialización - Mitigación absoluta de doble render en StrictMode
     useEffect(() => {
@@ -73,12 +103,8 @@ export default function Fase15_FrecuenciaConsumoFFQ({
             hasGreeted.current = true;
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: "De acuerdo. ¿Qué cambio o acción desea realizar en su cuestionario de Frecuencia de Consumo de Alimentos (FFQ)?",
-                options: [
-                    { label: "✏️ Modificar frecuencia de consumo", value: "MODIFY_FFQ" },
-                    { label: "🔄 Limpiar y reiniciar FFQ", value: "CLEAR_ALL" },
-                    { label: "❌ Cancelar (Volver al resumen)", value: "FINISH" }
-                ]
+                content: "De acuerdo. Seleccione el grupo de alimentos que desea corregir en su Frecuencia de Consumo (FFQ):",
+                options: buildFfqSelectorOptions(ffqData, "FINISH")
             }]);
             return;
         }
@@ -131,10 +157,10 @@ export default function Fase15_FrecuenciaConsumoFFQ({
     async function processStep(input, label = null) {
         let userText = (label && label !== 'text' && label !== 'button') ? label : input;
         if (input === "MODIFY_FFQ") userText = "✏️ Modificar frecuencia de consumo";
-        if (input === "CLEAR_ALL") userText = "🔄 Limpiar y reiniciar FFQ";
-        if (input === "FINISH") userText = "❌ Cancelar (Volver al resumen)";
+        if (input === "CLEAR_ALL") userText = "🔄 Limpiar y reiniciar todo el FFQ";
+        if (input === "FINISH" || input === "RETURN_SUMMARY") userText = "❌ Volver al resumen";
 
-        if (stepIndex === -1) {
+        if (stepIndex === -1 || stepIndex === -2) {
             if (label !== 'button') {
                 setMessages(prev => [...prev, { role: 'user', content: userText }]);
             }
@@ -142,22 +168,39 @@ export default function Fase15_FrecuenciaConsumoFFQ({
             await new Promise(resolve => setTimeout(resolve, 800));
 
             if (input === "MODIFY_FFQ") {
-                setStepIndex(0);
+                setStepIndex(-2);
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: STEPS[0].label,
-                    inputType: 'number'
+                    content: "Seleccione el grupo de alimentos que desea corregir:",
+                    options: buildFfqSelectorOptions(ffqData, "RETURN_SUMMARY")
                 }]);
+            } else if (input.startsWith("FFQ_IDX_")) {
+                const idx = parseInt(input.replace("FFQ_IDX_", ""), 10);
+                if (!isNaN(idx) && ACTIVE_STEPS[idx]) {
+                    setIsSingleLineEdit(true);
+                    setStepIndex(idx);
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: ACTIVE_STEPS[idx].label,
+                        inputType: 'number'
+                    }]);
+                }
             } else if (input === "CLEAR_ALL") {
+                setIsSingleLineEdit(false);
                 setFfqData({});
                 setClinicalFlags([]);
                 setStepIndex(0);
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: "Historial de FFQ reiniciado.\n\n1. **Lácteos** (Leche, Queso, Yogurt):",
+                    content: `Historial de FFQ reiniciado.\n\n${ACTIVE_STEPS[0].label}`,
                     inputType: 'number'
                 }]);
+            } else if (input === "RETURN_SUMMARY") {
+                setIsSingleLineEdit(false);
+                showSummary(ffqData);
+                setStepIndex(ACTIVE_STEPS.length);
             } else if (input === "FINISH") {
+                setIsSingleLineEdit(false);
                 onPhaseComplete(ffqData, messages);
             }
             setIsGlobalTyping(false);
@@ -165,7 +208,25 @@ export default function Fase15_FrecuenciaConsumoFFQ({
         }
 
         if (stepIndex === ACTIVE_STEPS.length) {
-            // Already finished all steps, waiting for confirmation
+            if (label !== 'button') {
+                setMessages(prev => [...prev, { role: 'user', content: userText }]);
+            }
+            const upper = String(input || '').toUpperCase();
+            if (upper === "CONFIRM_DATA" || /^s[ií]\b/i.test(String(input || '').trim())) {
+                setIsSingleLineEdit(false);
+                saveAndFinish();
+            } else {
+                setIsSingleLineEdit(false);
+                setIsGlobalTyping(true);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                setStepIndex(-2);
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "De acuerdo. Seleccione el grupo específico de alimentos cuya frecuencia desea corregir:",
+                    options: buildFfqSelectorOptions(ffqData, "RETURN_SUMMARY")
+                }]);
+                setIsGlobalTyping(false);
+            }
             return;
         }
 
@@ -205,17 +266,15 @@ export default function Fase15_FrecuenciaConsumoFFQ({
         const updatedFfq = { ...ffqData, [currentStep.key]: freqVal };
         setFfqData(updatedFfq);
 
-        // Evaluar banderas clínicas
-        const newFlags = [...clinicalFlags];
-        if (currentStep.type && currentStep.flag) {
-            const meetsCondition = checkFreq(freqVal, currentStep.type);
-            if (meetsCondition) {
-                newFlags.push(currentStep.flag);
-            }
-        }
+        // Evaluar banderas clínicas de forma determinista sobre updatedFfq
+        const newFlags = computeFlagsFromFfq(updatedFfq);
         setClinicalFlags(newFlags);
 
-        if (nextIndex < ACTIVE_STEPS.length) {
+        if (isSingleLineEdit) {
+            setIsSingleLineEdit(false);
+            showSummary(updatedFfq);
+            setStepIndex(ACTIVE_STEPS.length);
+        } else if (nextIndex < ACTIVE_STEPS.length) {
             setStepIndex(nextIndex);
             setMessages(prev => [...prev, { 
                 role: 'assistant', 
@@ -286,29 +345,9 @@ export default function Fase15_FrecuenciaConsumoFFQ({
         }]);
     };
 
-    // Manejar confirmación de resumen
-    useEffect(() => {
-        if (stepIndex === ACTIVE_STEPS.length) {
-            const lastMsg = messages[messages.length - 1];
-            if (lastMsg && lastMsg.role === 'user') {
-                const userVal = lastMsg.content;
-                if (userVal.includes("Sí") || userVal.includes("CONFIRM")) {
-                    saveAndFinish();
-                } else if (userVal.includes("No") || userVal.includes("CORRECT")) {
-                    setFfqData({});
-                    setClinicalFlags([]);
-                    setStepIndex(0);
-                    setMessages(prev => [...prev, { 
-                        role: 'assistant', 
-                        content: "Reconfigurando frecuencias. 1. **Lácteos** (Leche, Queso, Yogurt):",
-                        inputType: 'number'
-                    }]);
-                }
-            }
-        }
-    }, [messages, stepIndex]);
-
     const saveAndFinish = () => {
+        const finalComputedFlags = computeFlagsFromFfq(ffqData);
+        const allFfqFlagKeys = new Set(STEPS.map(s => s.flag).filter(Boolean));
         // Persistir
         setPatientData(prev => ({
             ...prev,
@@ -316,7 +355,12 @@ export default function Fase15_FrecuenciaConsumoFFQ({
                 ...(prev.evaluacionDietetica || {}),
                 ffq: ffqData
             },
-            clinical_flags: [...new Set([...(prev.clinical_flags || []), ...clinicalFlags])]
+            clinical_flags: [
+                ...new Set([
+                    ...(prev.clinical_flags || []).filter(f => !allFfqFlagKeys.has(f)),
+                    ...finalComputedFlags
+                ])
+            ]
         }));
 
         setMessages(prev => [...prev, { 

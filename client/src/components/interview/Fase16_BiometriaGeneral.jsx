@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import tiloImg from '../../assets/tilo.png';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
+import { resolvePatientSex } from '../../utils/genderConcordance';
 import { evaluateBiometricGoalConsistency } from '../../ClinicalRules';
 
 // Parser helpers to normalize metrics mathematically and prevent stale errors
@@ -40,9 +41,12 @@ export default function Fase16_BiometriaGeneral({
     registerInputHandler,
     setIsGlobalTyping
 }) {
-    const { pName, isMinor, patientSex, patientAge } = usePatientLinguistics(patientData);
+    const { patientName, pName: rawPName, isMinor, patientSex, patientAge } = usePatientLinguistics(patientData);
+    const pName = rawPName || patientName;
+    const { isFemale, genderLock } = resolvePatientSex(patientData);
 
     const [internalStep, setInternalStep] = useState('WEIGHT');
+    const [isSingleLineEdit, setIsSingleLineEdit] = useState(false);
     const [biometria, setBiometria] = useState({
         vitals: {
             height: patientData?.vitals?.height || null,
@@ -68,6 +72,9 @@ export default function Fase16_BiometriaGeneral({
             const msg = messagesList[i];
             if (msg.role === 'assistant' && msg.content) {
                 const content = msg.content;
+                if (content.includes("¿Qué medición biométrica desea corregir")) {
+                    return 'SELECT_BIOMETRIC_FIELD';
+                }
                 if (content.includes("Verifique las mediciones biométricas") || content.includes("¿Es correcta y verídica toda esta información?")) {
                     return 'REVIEW_SUMMARY';
                 }
@@ -157,6 +164,258 @@ export default function Fase16_BiometriaGeneral({
         }
     }, [messages, isMinor, pName, patientSex, patientAge, setMessages]);
 
+    const renderSummaryMessage = (vData) => {
+        const weight = vData.weight || 0;
+        const height = vData.height || 0;
+        const waist = vData.waist || 0;
+        const hip = vData.hip || 0;
+
+        let bmi = vData.bmi ?? null;
+        let bmi_class = vData.bmi_class || "Normopeso";
+        if (weight && height) {
+            const heightMeters = height < 3 ? height : height / 100;
+            bmi = parseFloat((weight / (heightMeters * heightMeters)).toFixed(1));
+            if (patientAge < 2) {
+                bmi_class = "Desarrollo L-OMS (Lactante)";
+            } else if (patientAge < 13) {
+                bmi_class = "Percentil Pediátrico (OMS)";
+            } else {
+                if (bmi < 18.5) bmi_class = "Bajo Peso";
+                else if (bmi < 24.9) bmi_class = "Normopeso";
+                else if (bmi < 29.9) bmi_class = "Sobrepeso";
+                else bmi_class = "Obesidad";
+            }
+        }
+
+        let whr = null;
+        let whr_risk = 'LOW';
+        if (waist && hip && hip > 0) {
+            whr = parseFloat((waist / hip).toFixed(2));
+            const limit = isFemale ? 0.85 : 0.90;
+            if (patientAge >= 13 && whr > limit) {
+                whr_risk = 'HIGH';
+            }
+        }
+
+        const gender = genderLock;
+        let target = 'Adulto';
+        if (patientAge < 13) target = 'Tutor';
+        else if (patientAge >= 13 && patientAge < 18) target = 'Adolescente';
+
+        const displayHeightStr = height ? (height < 3 ? (height * 100).toFixed(0) : Number(height).toFixed(0)) : '--';
+        const displayWeightStr = weight ? weight.toString() : '--';
+        const displayMaxWeightStr = vData.max_weight ? `${vData.max_weight} kg` : 'No referido';
+        const displayBmiStr = bmi ? bmi.toString() : '--';
+        const displayWhrStr = whr ? whr.toString() : '--';
+
+        const summaryMsg = patientAge < 2
+            ? `<binary_gate_execution>\n` +
+                `P1: Verifique las mediciones biométricas de **${pName}** (su bebé) para cerrar este bloque en cumplimiento con la **NOM-004-SSA3-2012**:\n\n` +
+                `- ⚖️ **Peso**: ${displayWeightStr} kg\n` +
+                `- 📏 **Longitud corporal**: ${displayHeightStr} cm\n` +
+                `- 📈 **Peso al nacer**: ${displayMaxWeightStr}\n` +
+                `- 🧮 **Indicador Pediátrico**: ${bmi_class}\n` +
+                `- 📐 **Perímetro Abdominal / Cadera**: ${waist || '--'}/${hip || '--'} cm (Relación: ${displayWhrStr})\n\n` +
+                `P2: ¿Es correcta y verídica toda esta información?\n\n` +
+                `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
+                `</binary_gate_execution>`
+            : `<binary_gate_execution>\n` +
+                `P1: Verifique las mediciones biométricas registradas para cerrar este bloque en cumplimiento con la **NOM-004-SSA3-2012**:\n\n` +
+                `- ⚖️ **Peso**: ${displayWeightStr} kg\n` +
+                `- 📏 **Estatura**: ${displayHeightStr} cm\n` +
+                `- 📈 **Peso Máximo**: ${displayMaxWeightStr}\n` +
+                `- 🧮 **IMC**: ${displayBmiStr} (${bmi_class})\n` +
+                `- 📐 **Cintura/Cadera**: ${waist || '--'}/${hip || '--'} cm (ICC: ${displayWhrStr} - ${whr_risk === 'HIGH' ? 'Android / Riesgo Elevado' : 'Ginoide / Riesgo Bajo'})\n\n` +
+                `P2: ¿Es correcta y verídica toda esta información?\n\n` +
+                `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
+                `</binary_gate_execution>`;
+
+        setMessages(prev => [...prev, {
+            role: "assistant",
+            content: summaryMsg,
+            avatar: tiloImg,
+            inputType: 'strict_select',
+            options: [
+                { label: "✅ Sí, es correcta", value: "CONFIRM_DATA" },
+                { label: "❌ No, quiero corregir", value: "CORRECT_DATA" }
+            ]
+        }]);
+        setInternalStep('REVIEW_SUMMARY');
+    };
+
+    const finalizeBiometricsAndShowSummary = async (partialUpdate) => {
+        const mergedLocal = {
+            ...(patientData?.vitals || {}),
+            ...(biometria.vitals || {}),
+            ...partialUpdate
+        };
+
+        const weight = mergedLocal.weight || 0;
+        const height = mergedLocal.height || 0;
+        const waist = mergedLocal.waist || 0;
+        const hip = mergedLocal.hip || 0;
+
+        let bmi = null;
+        let bmi_class = "Normopeso";
+        if (weight && height) {
+            const heightMeters = height < 3 ? height : height / 100;
+            bmi = parseFloat((weight / (heightMeters * heightMeters)).toFixed(1));
+            if (patientAge < 2) {
+                bmi_class = "Desarrollo L-OMS (Lactante)";
+            } else if (patientAge < 13) {
+                bmi_class = "Percentil Pediátrico (OMS)";
+            } else {
+                if (bmi < 18.5) bmi_class = "Bajo Peso";
+                else if (bmi < 24.9) bmi_class = "Normopeso";
+                else if (bmi < 29.9) bmi_class = "Sobrepeso";
+                else bmi_class = "Obesidad";
+            }
+        }
+
+        let whr = null;
+        let whr_risk = 'LOW';
+        if (waist && hip && hip > 0) {
+            whr = parseFloat((waist / hip).toFixed(2));
+            const limit = isFemale ? 0.85 : 0.90;
+            if (patientAge >= 13 && whr > limit) {
+                whr_risk = 'HIGH';
+            }
+        }
+
+        const finalVitals = {
+            ...mergedLocal,
+            weight,
+            height,
+            waist,
+            hip,
+            bmi,
+            bmi_class,
+            whr,
+            whr_risk
+        };
+
+        setBiometria(prev => ({ ...prev, vitals: finalVitals }));
+        setIsSingleLineEdit(false);
+
+        const newFlags = [];
+        if (whr_risk === 'HIGH') {
+            newFlags.push("HIGH_CARDIO_RISK");
+        }
+
+        const currentObjective = patientData?.objective || patientData?.primaryGoal || 'Bajar de Peso';
+        const evaluation = evaluateBiometricGoalConsistency({
+            objective: currentObjective,
+            weight: finalVitals.weight,
+            height: finalVitals.height,
+            waist: finalVitals.waist,
+            hip: finalVitals.hip,
+            gender: isFemale ? 'FEMENINO' : 'MASCULINO',
+            age: patientAge
+        });
+
+        if (evaluation.hasConflict) {
+            if (evaluation.status === 'HARD_STOP_UNDERWEIGHT') {
+                newFlags.push("HARD_STOP_UNDERWEIGHT");
+                if (setPatientData) {
+                    setPatientData(prev => ({
+                        ...prev,
+                        objective: evaluation.suggestedObjective,
+                        vitals: { ...(prev.vitals || {}), ...finalVitals },
+                        clinical_flags: [
+                            ...new Set([
+                                ...(prev.clinical_flags || []).filter(f => f !== "HIGH_CARDIO_RISK"),
+                                ...newFlags
+                            ])
+                        ]
+                    }));
+                }
+                setIsGlobalTyping(true);
+                await new Promise(resolve => setTimeout(resolve, 800));
+
+                const gender = genderLock;
+                let target = 'Adulto';
+                if (patientAge < 13) target = 'Tutor';
+                else if (patientAge >= 13 && patientAge < 18) target = 'Adolescente';
+
+                const hardStopMsg = `<binary_gate_execution>\n` +
+                    `P1: ${evaluation.message}\n\n` +
+                    `P2: Por su seguridad metabólica, se ha mutado de forma asistida su objetivo a **'${evaluation.suggestedObjective}'**. Por favor confirme para continuar:\n\n` +
+                    `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
+                    `</binary_gate_execution>`;
+
+                setMessages(prev => [...prev, {
+                    role: "assistant",
+                    content: hardStopMsg,
+                    avatar: tiloImg,
+                    inputType: 'strict_select',
+                    options: [
+                        { label: "🤝 Comprendo y Acepto el Cambio de Objetivo", value: "ACCEPT_MUTATED_OBJECTIVE" },
+                        { label: "⛔ Terminar Consulta por Criterio Clínico", value: "CANCEL_CONSULTATION" }
+                    ]
+                }]);
+                setInternalStep('HARD_STOP_INTERVENT');
+                setIsGlobalTyping(false);
+                return;
+            } else if (evaluation.status === 'REORIENTATION_SUGGESTED') {
+                newFlags.push("INCONGRUENCIA_OBJETIVO_BIOMETRIA");
+                if (setPatientData) {
+                    setPatientData(prev => ({
+                        ...prev,
+                        vitals: { ...(prev.vitals || {}), ...finalVitals },
+                        clinical_flags: [
+                            ...new Set([
+                                ...(prev.clinical_flags || []).filter(f => f !== "HIGH_CARDIO_RISK"),
+                                ...newFlags
+                            ])
+                        ]
+                    }));
+                }
+                setIsGlobalTyping(true);
+                await new Promise(resolve => setTimeout(resolve, 800));
+
+                const gender = genderLock;
+                let target = 'Adulto';
+                if (patientAge < 13) target = 'Tutor';
+                else if (patientAge >= 13 && patientAge < 18) target = 'Adolescente';
+
+                const reorientMsg = `<binary_gate_execution>\n` +
+                    `P1: ${evaluation.message}\n\n` +
+                    `P2: Seleccione una opción para la optimización de su expediente metabólico:\n\n` +
+                    `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
+                    `</binary_gate_execution>`;
+
+                setMessages(prev => [...prev, {
+                    role: "assistant",
+                    content: reorientMsg,
+                    avatar: tiloImg,
+                    inputType: 'strict_select',
+                    options: evaluation.suggestedObjectives
+                }]);
+                setInternalStep('GOAL_REORIENTATION_SELECT');
+                setIsGlobalTyping(false);
+                return;
+            }
+        }
+
+        if (setPatientData) {
+            setPatientData(prev => ({
+                ...prev,
+                vitals: { ...(prev.vitals || {}), ...finalVitals },
+                clinical_flags: [
+                    ...new Set([
+                        ...(prev.clinical_flags || []).filter(f => f !== "HIGH_CARDIO_RISK"),
+                        ...newFlags
+                    ])
+                ]
+            }));
+        }
+
+        setIsGlobalTyping(true);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        renderSummaryMessage(finalVitals);
+        setIsGlobalTyping(false);
+    };
+
     async function handleSend(userMsg) {
         const lower = userMsg.toLowerCase();
         const addBotMsg = (msg, inputType = 'number') => setMessages(prev => [...prev, { role: "assistant", content: msg, avatar: tiloImg, inputType }]);
@@ -178,6 +437,11 @@ export default function Fase16_BiometriaGeneral({
             setMessages(prev => [...prev, { role: 'user', content: `${val} kg` }]);
             const updatedVitals = { ...biometria.vitals, weight: val };
             setBiometria(prev => ({ ...prev, vitals: updatedVitals }));
+
+            if (isSingleLineEdit) {
+                await finalizeBiometricsAndShowSummary({ weight: val });
+                return;
+            }
 
             // Real-time synchronization with Espejo Clínico (Panel Derecho)
             if (setPatientData) {
@@ -242,6 +506,11 @@ export default function Fase16_BiometriaGeneral({
             const updatedVitals = { ...biometria.vitals, height: val };
             setBiometria(prev => ({ ...prev, vitals: updatedVitals }));
 
+            if (isSingleLineEdit) {
+                await finalizeBiometricsAndShowSummary({ height: val });
+                return;
+            }
+
             // Real-time synchronization with Espejo Clínico (Panel Derecho)
             if (setPatientData) {
                 setPatientData(prev => {
@@ -268,7 +537,6 @@ export default function Fase16_BiometriaGeneral({
             setIsGlobalTyping(true);
             await new Promise(resolve => setTimeout(resolve, 800));
 
-            const isFemale = patientSex === 'FEMENINO' || patientSex === 'F' || patientSex === 'Mujer';
             const extraPregnancyInstruction = isFemale ? ", sin contar embarazo," : "";
 
             const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
@@ -305,24 +573,25 @@ export default function Fase16_BiometriaGeneral({
                 return;
             }
             setMessages(prev => [...prev, { role: 'user', content: val ? `${val} kg` : userMsg }]);
-            const updatedVitals = { ...biometria.vitals };
-            if (val) {
-                updatedVitals.max_weight = val;
-                setBiometria(prev => ({ ...prev, vitals: { ...prev.vitals, max_weight: val } }));
+            const updatedVitals = { ...biometria.vitals, max_weight: val || null };
+            setBiometria(prev => ({ ...prev, vitals: { ...prev.vitals, max_weight: val || null } }));
 
-                // Real-time synchronization with Espejo Clínico (Panel Derecho)
-                if (setPatientData) {
-                    setPatientData(prev => {
-                        const currentVitals = prev.vitals || {};
-                        return {
-                            ...prev,
-                            vitals: {
-                                ...currentVitals,
-                                max_weight: val
-                            }
-                        };
-                    });
-                }
+            if (setPatientData) {
+                setPatientData(prev => {
+                    const currentVitals = prev.vitals || {};
+                    return {
+                        ...prev,
+                        vitals: {
+                            ...currentVitals,
+                            max_weight: val || null
+                        }
+                    };
+                });
+            }
+
+            if (isSingleLineEdit) {
+                await finalizeBiometricsAndShowSummary({ max_weight: val || null });
+                return;
             }
 
             setIsGlobalTyping(true);
@@ -363,6 +632,11 @@ export default function Fase16_BiometriaGeneral({
             const updatedVitals = { ...biometria.vitals, waist: val };
             setBiometria(prev => ({ ...prev, vitals: updatedVitals }));
 
+            if (isSingleLineEdit) {
+                await finalizeBiometricsAndShowSummary({ waist: val });
+                return;
+            }
+
             // Real-time synchronization with Espejo Clínico (Panel Derecho)
             if (setPatientData) {
                 setPatientData(prev => {
@@ -373,7 +647,6 @@ export default function Fase16_BiometriaGeneral({
                     };
                     if (newVitals.hip) {
                         newVitals.whr = parseFloat((val / newVitals.hip).toFixed(2));
-                        const isFemale = patientSex === 'FEMENINO' || patientSex === 'F' || patientSex === 'Mujer';
                         const limit = isFemale ? 0.85 : 0.90;
                         newVitals.whr_risk = newVitals.whr > limit ? 'HIGH' : 'LOW';
                     }
@@ -387,19 +660,21 @@ export default function Fase16_BiometriaGeneral({
             setIsGlobalTyping(true);
             await new Promise(resolve => setTimeout(resolve, 800));
 
-            const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
+            const gender = genderLock;
+            const erguidoTerm = isFemale ? 'erguida' : 'erguido';
+            const recostadoTerm = isFemale ? 'recostada' : 'recostado';
             let target = 'Adulto';
-            let p2Text = `📢 Diga al paciente:\n\n'Junte los pies y manténgase erguido.'\n\n(Mida la circunferencia de la cadera en la zona más prominente de los glúteos en cm):`;
+            let p2Text = `📢 Diga al paciente:\n\n'Junte los pies y manténgase ${erguidoTerm}.'\n\n(Mida la circunferencia de la cadera en la zona más prominente de los glúteos en cm):`;
 
             if (patientAge < 2) {
                 target = 'Tutor';
-                p2Text = `📢 Solicite al tutor:\n\n'Por favor mantenga a **${pName}** (su bebé) recostado/a o en brazos.'\n\n(Mida la circunferencia de la cadera en la zona más prominente de los glúteos en cm):`;
+                p2Text = `📢 Solicite al tutor:\n\n'Por favor mantenga a **${pName}** (su bebé) ${recostadoTerm} o en brazos.'\n\n(Mida la circunferencia de la cadera en la zona más prominente de los glúteos en cm):`;
             } else if (patientAge < 13) {
                 target = 'Tutor';
-                p2Text = `📢 Solicite al tutor:\n\n'Por favor solicite que **${pName}** junte los pies y se mantenga erguido.'\n\n(Mida la circunferencia de la cadera en la zona más prominente de los glúteos en cm):`;
+                p2Text = `📢 Solicite al tutor:\n\n'Por favor solicite que **${pName}** junte los pies y se mantenga ${erguidoTerm}.'\n\n(Mida la circunferencia de la cadera en la zona más prominente de los glúteos en cm):`;
             } else if (patientAge >= 13 && patientAge < 18) {
                 target = 'Adolescente';
-                p2Text = `📢 Diga a **${pName}**:\n\n'Junta los pies y mantente erguido.'\n\n(Mida la circunferencia de la cadera en la zona más prominente de los glúteos en cm):`;
+                p2Text = `📢 Diga a **${pName}**:\n\n'Junta los pies y mantente ${erguidoTerm}.'\n\n(Mida la circunferencia de la cadera en la zona más prominente de los glúteos en cm):`;
             }
 
             const nextMsg = `<binary_gate_execution>\n` +
@@ -419,203 +694,7 @@ export default function Fase16_BiometriaGeneral({
                 return;
             }
             setMessages(prev => [...prev, { role: 'user', content: `${val} cm` }]);
-
-            const updatedVitalsLocal = {
-                ...(patientData?.vitals || {}),
-                ...(biometria.vitals || {}),
-                hip: val
-            };
-
-            const weight = updatedVitalsLocal.weight || patientData?.vitals?.weight || 0;
-            const height = updatedVitalsLocal.height || patientData?.vitals?.height || 0;
-            const waist = updatedVitalsLocal.waist || patientData?.vitals?.waist || 0;
-            const hip = val;
-
-            let bmi = null;
-            let bmi_class = "Normopeso";
-            if (weight && height) {
-                const heightMeters = height < 3 ? height : height / 100;
-                bmi = parseFloat((weight / (heightMeters * heightMeters)).toFixed(1));
-                if (patientAge < 2) {
-                    bmi_class = "Desarrollo L-OMS (Lactante)";
-                } else if (patientAge < 13) {
-                    bmi_class = "Percentil Pediátrico (OMS)";
-                } else {
-                    if (bmi < 18.5) bmi_class = "Bajo Peso";
-                    else if (bmi < 24.9) bmi_class = "Normopeso";
-                    else if (bmi < 29.9) bmi_class = "Sobrepeso";
-                    else bmi_class = "Obesidad";
-                }
-            }
-
-            let whr = null;
-            let whr_risk = 'LOW';
-            if (waist && hip && hip > 0) {
-                whr = parseFloat((waist / hip).toFixed(2));
-                const isFemale = patientSex === 'FEMENINO' || patientSex === 'F' || patientSex === 'Mujer';
-                const limit = isFemale ? 0.85 : 0.90;
-                if (patientAge >= 13 && whr > limit) {
-                    whr_risk = 'HIGH';
-                }
-            }
-
-            const finalVitals = {
-                ...updatedVitalsLocal,
-                weight,
-                height,
-                waist,
-                hip,
-                bmi,
-                bmi_class,
-                whr,
-                whr_risk
-            };
-
-            // Inyectar banderas clínicas de riesgo si aplica
-            const newFlags = [];
-            if (whr_risk === 'HIGH') {
-                newFlags.push("HIGH_CARDIO_RISK");
-            }
-
-            // Realizar evaluación de Incongruencia Biométrica Triangulada (Solo adultos >= 13 años)
-            const currentObjective = patientData?.objective || patientData?.primaryGoal || 'Bajar de Peso';
-            const evaluation = evaluateBiometricGoalConsistency({
-                objective: currentObjective,
-                weight: finalVitals.weight,
-                height: finalVitals.height,
-                waist: finalVitals.waist,
-                hip: val,
-                gender: patientSex,
-                age: patientAge
-            });
-
-            if (evaluation.hasConflict) {
-                if (evaluation.status === 'HARD_STOP_UNDERWEIGHT') {
-                    newFlags.push("HARD_STOP_UNDERWEIGHT");
-                    if (setPatientData) {
-                        setPatientData(prev => ({
-                            ...prev,
-                            objective: evaluation.suggestedObjective,
-                            vitals: { ...(prev.vitals || {}), ...finalVitals },
-                            clinical_flags: [...new Set([...(prev.clinical_flags || []), ...newFlags])]
-                        }));
-                    }
-                    setIsGlobalTyping(true);
-                    await new Promise(resolve => setTimeout(resolve, 800));
-
-                    const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
-                    let target = 'Adulto';
-                    if (patientAge < 13) target = 'Tutor';
-                    else if (patientAge >= 13 && patientAge < 18) target = 'Adolescente';
-
-                    const hardStopMsg = `<binary_gate_execution>\n` +
-                        `P1: ${evaluation.message}\n\n` +
-                        `P2: Por su seguridad metabólica, se ha mutado de forma asistida su objetivo a **'${evaluation.suggestedObjective}'**. Por favor confirme para continuar:\n\n` +
-                        `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
-                        `</binary_gate_execution>`;
-
-                    setMessages(prev => [...prev, {
-                        role: "assistant",
-                        content: hardStopMsg,
-                        avatar: tiloImg,
-                        inputType: 'strict_select',
-                        options: [
-                            { label: "🤝 Comprendo y Acepto el Cambio de Objetivo", value: "ACCEPT_MUTATED_OBJECTIVE" },
-                            { label: "⛔ Terminar Consulta por Criterio Clínico", value: "CANCEL_CONSULTATION" }
-                        ]
-                    }]);
-                    setInternalStep('HARD_STOP_INTERVENT');
-                    setIsGlobalTyping(false);
-                    return;
-                } else if (evaluation.status === 'REORIENTATION_SUGGESTED') {
-                    newFlags.push("INCONGRUENCIA_OBJETIVO_BIOMETRIA");
-                    if (setPatientData) {
-                        setPatientData(prev => ({
-                            ...prev,
-                            vitals: { ...(prev.vitals || {}), ...finalVitals },
-                            clinical_flags: [...new Set([...(prev.clinical_flags || []), ...newFlags])]
-                        }));
-                    }
-                    setIsGlobalTyping(true);
-                    await new Promise(resolve => setTimeout(resolve, 800));
-
-                    const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
-                    let target = 'Adulto';
-                    if (patientAge < 13) target = 'Tutor';
-                    else if (patientAge >= 13 && patientAge < 18) target = 'Adolescente';
-
-                    const reorientMsg = `<binary_gate_execution>\n` +
-                        `P1: ${evaluation.message}\n\n` +
-                        `P2: Seleccione una opción para la optimización de su expediente metabólico:\n\n` +
-                        `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
-                        `</binary_gate_execution>`;
-
-                    setMessages(prev => [...prev, {
-                        role: "assistant",
-                        content: reorientMsg,
-                        avatar: tiloImg,
-                        inputType: 'strict_select',
-                        options: evaluation.suggestedObjectives
-                    }]);
-                    setInternalStep('GOAL_REORIENTATION_SELECT');
-                    setIsGlobalTyping(false);
-                    return;
-                }
-            }
-
-            if (setPatientData) {
-                setPatientData(prev => ({
-                    ...prev,
-                    vitals: { ...(prev.vitals || {}), ...finalVitals },
-                    clinical_flags: [...new Set([...(prev.clinical_flags || []), ...newFlags])]
-                }));
-            }
-
-            setIsGlobalTyping(true);
-            await new Promise(resolve => setTimeout(resolve, 800));
-
-            const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
-            let target = 'Adulto';
-            if (patientAge < 13) target = 'Tutor';
-            else if (patientAge >= 13 && patientAge < 18) target = 'Adolescente';
-
-            const displayHeightStr = height ? (height < 3 ? (height * 100).toFixed(0) : Number(height).toFixed(0)) : '--';
-            const displayWeightStr = weight ? weight.toString() : '--';
-            const displayBmiStr = bmi ? bmi.toString() : '--';
-            const displayWhrStr = whr ? whr.toString() : '--';
-
-            const summaryMsg = patientAge < 2
-                ? `<binary_gate_execution>\n` +
-                    `P1: Verifique las mediciones biométricas de **${pName}** (su bebé) para cerrar este bloque en cumplimiento con la **NOM-004-SSA3-2012**:\n\n` +
-                    `- ⚖️ **Peso**: ${displayWeightStr} kg\n` +
-                    `- 📏 **Longitud corporal**: ${displayHeightStr} cm\n` +
-                    `- 🧮 **Indicador Pediátrico**: ${bmi_class}\n` +
-                    `- 📐 **Perímetro Abdominal / Cadera**: ${waist}/${hip} cm (Relación: ${displayWhrStr})\n\n` +
-                    `P2: ¿Es correcta y verídica toda esta información?\n\n` +
-                    `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
-                    `</binary_gate_execution>`
-                : `<binary_gate_execution>\n` +
-                    `P1: Verifique las mediciones biométricas registradas para cerrar este bloque en cumplimiento con la **NOM-004-SSA3-2012**:\n\n` +
-                    `- ⚖️ **Peso**: ${displayWeightStr} kg\n` +
-                    `- 📏 **Estatura**: ${displayHeightStr} cm\n` +
-                    `- 🧮 **IMC**: ${displayBmiStr} (${bmi_class})\n` +
-                    `- 📐 **Cintura/Cadera**: ${waist}/${hip} cm (ICC: ${displayWhrStr} - ${whr_risk === 'HIGH' ? 'Android / Riesgo Elevado' : 'Ginoide / Riesgo Bajo'})\n\n` +
-                    `P2: ¿Es correcta y verídica toda esta información?\n\n` +
-                    `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
-                    `</binary_gate_execution>`;
-
-            setMessages(prev => [...prev, {
-                role: "assistant",
-                content: summaryMsg,
-                avatar: tiloImg,
-                inputType: 'strict_select',
-                options: [
-                    { label: "✅ Sí, es correcta", value: "CONFIRM_DATA" },
-                    { label: "❌ No, quiero corregir", value: "CORRECT_DATA" }
-                ]
-            }]);
-            setInternalStep('REVIEW_SUMMARY');
-            setIsGlobalTyping(false);
+            await finalizeBiometricsAndShowSummary({ hip: val });
         }
         else if (internalStep === 'HARD_STOP_INTERVENT') {
             if (userMsg === "ACCEPT_MUTATED_OBJECTIVE") {
@@ -624,57 +703,8 @@ export default function Fase16_BiometriaGeneral({
                     content: "✅ **Ajuste de objetivo aceptado y sellado en su expediente.**",
                     avatar: tiloImg
                 }]);
-                // Proceed to summary
-                setInternalStep('REVIEW_SUMMARY');
-                // Trigger summary display
                 const v = { ...(patientData?.vitals || {}), ...(biometria.vitals || {}) };
-                const weight = v.weight || 0;
-                const height = v.height || 0;
-                const waist = v.waist || 0;
-                const hip = v.hip || 0;
-
-                const heightMeters = height < 3 ? height : height / 100;
-                const bmi = (weight && height) ? parseFloat((weight / (heightMeters * heightMeters)).toFixed(1)) : null;
-                let bmi_class = "Normopeso";
-                if (bmi && bmi < 18.5) bmi_class = "Bajo Peso";
-                else if (bmi && bmi < 24.9) bmi_class = "Normopeso";
-                else if (bmi && bmi < 29.9) bmi_class = "Sobrepeso";
-                else if (bmi) bmi_class = "Obesidad";
-
-                const whr = (waist && hip && hip > 0) ? parseFloat((waist / hip).toFixed(2)) : null;
-                const isFemale = patientSex === 'FEMENINO' || patientSex === 'F' || patientSex === 'Mujer';
-                const whr_risk = (whr && whr > (isFemale ? 0.85 : 0.90)) ? 'HIGH' : 'LOW';
-
-                const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
-                let target = 'Adulto';
-                if (patientAge < 13) target = 'Tutor';
-                else if (patientAge >= 13 && patientAge < 18) target = 'Adolescente';
-
-                const displayHeightStr = height ? (height < 3 ? (height * 100).toFixed(0) : Number(height).toFixed(0)) : '--';
-                const displayWeightStr = weight ? weight.toString() : '--';
-                const displayBmiStr = bmi ? bmi.toString() : '--';
-                const displayWhrStr = whr ? whr.toString() : '--';
-
-                const summaryMsg = `<binary_gate_execution>\n` +
-                    `P1: Verifique las mediciones biométricas registradas para cerrar este bloque en cumplimiento con la **NOM-004-SSA3-2012**:\n\n` +
-                    `- ⚖️ **Peso**: ${displayWeightStr} kg\n` +
-                    `- 📏 **Estatura**: ${displayHeightStr} cm\n` +
-                    `- 🧮 **IMC**: ${displayBmiStr} (${bmi_class})\n` +
-                    `- 📐 **Cintura/Cadera**: ${waist}/${hip} cm (ICC: ${displayWhrStr} - ${whr_risk === 'HIGH' ? 'Android / Riesgo Elevado' : 'Ginoide / Riesgo Bajo'})\n\n` +
-                    `P2: ¿Es correcta y verídica toda esta información?\n\n` +
-                    `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
-                    `</binary_gate_execution>`;
-
-                setMessages(prev => [...prev, {
-                    role: "assistant",
-                    content: summaryMsg,
-                    avatar: tiloImg,
-                    inputType: 'strict_select',
-                    options: [
-                        { label: "✅ Sí, es correcta", value: "CONFIRM_DATA" },
-                        { label: "❌ No, quiero corregir", value: "CORRECT_DATA" }
-                    ]
-                }]);
+                renderSummaryMessage(v);
             } else {
                 setMessages(prev => [...prev, {
                     role: 'assistant',
@@ -697,77 +727,43 @@ export default function Fase16_BiometriaGeneral({
                 content: `✅ **Objetivo actualizado a: '${selectedGoal}'.**`,
                 avatar: tiloImg
             }]);
-            setInternalStep('REVIEW_SUMMARY');
-            // Trigger summary display
             const v = { ...(patientData?.vitals || {}), ...(biometria.vitals || {}) };
-            const weight = v.weight || 0;
-            const height = v.height || 0;
-            const waist = v.waist || 0;
-            const hip = v.hip || 0;
-
-            const heightMeters = height < 3 ? height : height / 100;
-            const bmi = (weight && height) ? parseFloat((weight / (heightMeters * heightMeters)).toFixed(1)) : null;
-            let bmi_class = "Normopeso";
-            if (bmi && bmi < 18.5) bmi_class = "Bajo Peso";
-            else if (bmi && bmi < 24.9) bmi_class = "Normopeso";
-            else if (bmi && bmi < 29.9) bmi_class = "Sobrepeso";
-            else if (bmi) bmi_class = "Obesidad";
-
-            const whr = (waist && hip && hip > 0) ? parseFloat((waist / hip).toFixed(2)) : null;
-            const isFemale = patientSex === 'FEMENINO' || patientSex === 'F' || patientSex === 'Mujer';
-            const whr_risk = (whr && whr > (isFemale ? 0.85 : 0.90)) ? 'HIGH' : 'LOW';
-
-            const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
-            let target = 'Adulto';
-            if (patientAge < 13) target = 'Tutor';
-            else if (patientAge >= 13 && patientAge < 18) target = 'Adolescente';
-
-            const displayHeightStr = height ? (height < 3 ? (height * 100).toFixed(0) : Number(height).toFixed(0)) : '--';
-            const displayWeightStr = weight ? weight.toString() : '--';
-            const displayBmiStr = bmi ? bmi.toString() : '--';
-            const displayWhrStr = whr ? whr.toString() : '--';
-
-            const summaryMsg = `<binary_gate_execution>\n` +
-                `P1: Verifique las mediciones biométricas registradas para cerrar este bloque en cumplimiento con la **NOM-004-SSA3-2012**:\n\n` +
-                `- ⚖️ **Peso**: ${displayWeightStr} kg\n` +
-                `- 📏 **Estatura**: ${displayHeightStr} cm\n` +
-                `- 🧮 **IMC**: ${displayBmiStr} (${bmi_class})\n` +
-                `- 📐 **Cintura/Cadera**: ${waist}/${hip} cm (ICC: ${displayWhrStr} - ${whr_risk === 'HIGH' ? 'Android / Riesgo Elevado' : 'Ginoide / Riesgo Bajo'})\n\n` +
-                `P2: ¿Es correcta y verídica toda esta información?\n\n` +
-                `<!-- meta user_target: ${target} gender_lock: ${gender} triage_mode: Inactivo -->\n` +
-                `</binary_gate_execution>`;
-
-            setMessages(prev => [...prev, {
-                role: "assistant",
-                content: summaryMsg,
-                avatar: tiloImg,
-                inputType: 'strict_select',
-                options: [
-                    { label: "✅ Sí, es correcta", value: "CONFIRM_DATA" },
-                    { label: "❌ No, quiero corregir", value: "CORRECT_DATA" }
-                ]
-            }]);
+            renderSummaryMessage(v);
         }
-        else if (internalStep === 'REVIEW_SUMMARY') {
-            if (userMsg === "CONFIRM_DATA") {
-                setMessages(prev => [...prev, {
-                    role: 'assistant',
-                    content: "✅ **Mediciones biométricas registradas y selladas con éxito.**",
-                    avatar: tiloImg
-                }]);
-                setInternalStep('FINALIZED');
-                setTimeout(() => {
-                    if (onPhaseComplete) onPhaseComplete();
-                }, 1000);
-            }
-            else if (userMsg === "CORRECT_DATA") {
-                // Reset local state
+        else if (internalStep === 'SELECT_BIOMETRIC_FIELD') {
+            if (userMsg === 'EDIT_WEIGHT') {
+                setIsSingleLineEdit(true);
+                addBotMsg("⚖️ Ingrese el **Peso** corregido en kg (ej. 72.5):");
+                setInternalStep('WEIGHT');
+            } else if (userMsg === 'EDIT_HEIGHT') {
+                setIsSingleLineEdit(true);
+                addBotMsg("📏 Ingrese la **Estatura** corregida en cm o m (ej. 170 o 1.70):");
+                setInternalStep('HEIGHT');
+            } else if (userMsg === 'EDIT_MAX_WEIGHT') {
+                setIsSingleLineEdit(true);
+                addBotMsg("📈 Ingrese el **Peso Máximo** en kg (o escriba 'No lo sé'):");
+                setInternalStep('MAX_WEIGHT');
+            } else if (userMsg === 'EDIT_WAIST') {
+                setIsSingleLineEdit(true);
+                addBotMsg("📐 Ingrese la circunferencia de **Cintura** corregida en cm (ej. 84):");
+                setInternalStep('WAIST');
+            } else if (userMsg === 'EDIT_HIP') {
+                setIsSingleLineEdit(true);
+                addBotMsg("📐 Ingrese la circunferencia de **Cadera** corregida en cm (ej. 98):");
+                setInternalStep('HIP');
+            } else if (userMsg === 'RETURN_SUMMARY') {
+                setIsSingleLineEdit(false);
+                const v = { ...(patientData?.vitals || {}), ...(biometria.vitals || {}) };
+                renderSummaryMessage(v);
+            } else if (userMsg === 'RESET_ALL_BIOMETRICS') {
+                setIsSingleLineEdit(false);
                 setBiometria(prev => ({
                     ...prev,
                     vitals: {
                         ...prev.vitals,
                         height: null,
                         weight: null,
+                        max_weight: null,
                         waist: null,
                         hip: null,
                         bmi: null,
@@ -777,7 +773,6 @@ export default function Fase16_BiometriaGeneral({
                     }
                 }));
 
-                // Reset patientData.vitals and clear cardio flag
                 if (setPatientData) {
                     setPatientData(prev => {
                         const currentFlags = prev.clinical_flags || [];
@@ -788,6 +783,7 @@ export default function Fase16_BiometriaGeneral({
                                 ...(prev.vitals || {}),
                                 height: null,
                                 weight: null,
+                                max_weight: null,
                                 waist: null,
                                 hip: null,
                                 bmi: null,
@@ -800,7 +796,7 @@ export default function Fase16_BiometriaGeneral({
                     });
                 }
 
-                const gender = (patientSex && patientSex.toLowerCase().startsWith('f')) ? 'F' : 'M';
+                const gender = genderLock;
                 let target = 'Adulto';
                 let p2Text = `📢 Diga al paciente:\n\n'Por favor suba a la báscula. Quítese los zapatos y retire objetos pesados de sus bolsillos.'\n\n(Espere a que el peso se estabilice y registre en kg):`;
 
@@ -825,6 +821,39 @@ export default function Fase16_BiometriaGeneral({
                     inputType: 'number'
                 }]);
                 setInternalStep('WEIGHT');
+            }
+        }
+        else if (internalStep === 'REVIEW_SUMMARY') {
+            if (userMsg === "CONFIRM_DATA") {
+                setIsSingleLineEdit(false);
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "✅ **Mediciones biométricas registradas y selladas con éxito.**",
+                    avatar: tiloImg
+                }]);
+                setInternalStep('FINALIZED');
+                setTimeout(() => {
+                    if (onPhaseComplete) onPhaseComplete();
+                }, 1000);
+            }
+            else if (userMsg === "CORRECT_DATA") {
+                setIsSingleLineEdit(false);
+                setMessages(prev => [...prev, {
+                    role: "assistant",
+                    content: "¿Qué medición biométrica desea corregir de forma puntual?",
+                    avatar: tiloImg,
+                    inputType: 'strict_select',
+                    options: [
+                        { label: "⚖️ Modificar Peso", value: "EDIT_WEIGHT" },
+                        { label: "📏 Modificar Estatura", value: "EDIT_HEIGHT" },
+                        { label: "📈 Modificar Peso Máximo", value: "EDIT_MAX_WEIGHT" },
+                        { label: "📐 Modificar Cintura", value: "EDIT_WAIST" },
+                        { label: "📐 Modificar Cadera", value: "EDIT_HIP" },
+                        { label: "🔄 Reiniciar todas las mediciones", value: "RESET_ALL_BIOMETRICS" },
+                        { label: "❌ Volver al resumen", value: "RETURN_SUMMARY" }
+                    ]
+                }]);
+                setInternalStep('SELECT_BIOMETRIC_FIELD');
             }
         }
     }

@@ -5,30 +5,34 @@ import { useClinicalToast } from '../../hooks/useClinicalToast';
 
 const TYPE_CONFIG = {
     success: {
-        bg: 'bg-white dark:bg-slate-900 border-emerald-500/40 shadow-emerald-950/5',
-        iconBg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
-        badgeBg: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300',
+        bg: 'bg-white dark:bg-[#1E293B] border-[#3AAA35]/60',
+        iconBg: 'bg-[#3AAA35]/10 text-[#166534] dark:text-[#86EFAC] border-[#3AAA35]/40',
+        badge: 'VALIDADO',
+        badgeStyle: 'bg-[#3AAA35] text-white',
         icon: CheckCircle2,
         defaultTitle: 'Operación Exitosa'
     },
     warning: {
-        bg: 'bg-white dark:bg-slate-900 border-amber-500/40 shadow-amber-950/5',
-        iconBg: 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800',
-        badgeBg: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300',
+        bg: 'bg-white dark:bg-[#1E293B] border-[#FFCC00]',
+        iconBg: 'bg-[#FFCC00] text-[#0F172A] border-[#0F172A]/20',
+        badge: 'PREVENCIÓN',
+        badgeStyle: 'bg-[#FFCC00] text-[#0F172A]',
         icon: AlertTriangle,
         defaultTitle: 'Advertencia Clínica'
     },
     error: {
-        bg: 'bg-white dark:bg-slate-900 border-red-500/40 shadow-red-950/5',
-        iconBg: 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800',
-        badgeBg: 'bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300',
+        bg: 'bg-white dark:bg-[#1E293B] border-[#B70E0C]',
+        iconBg: 'bg-[#B70E0C]/10 text-[#B70E0C] dark:text-[#FCA5A5] border-[#B70E0C]/40',
+        badge: 'ACCIÓN REQUERIDA',
+        badgeStyle: 'bg-[#B70E0C] text-white',
         icon: XCircle,
         defaultTitle: 'Alerta de Seguridad'
     },
     info: {
-        bg: 'bg-white dark:bg-slate-900 border-blue-500/40 shadow-blue-950/5',
-        iconBg: 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800',
-        badgeBg: 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300',
+        bg: 'bg-white dark:bg-[#1E293B] border-[#1C75BC]/60',
+        iconBg: 'bg-[#1C75BC]/10 text-[#1C75BC] dark:text-[#93C5FD] border-[#1C75BC]/40',
+        badge: 'AVISO',
+        badgeStyle: 'bg-[#1C75BC] text-white',
         icon: Info,
         defaultTitle: 'Notificación del Sistema'
     }
@@ -38,7 +42,7 @@ export function ClinicalToastContainer() {
     const { toasts, removeToast } = useClinicalToast();
 
     return (
-        <div className="fixed top-5 right-5 z-[99999] flex flex-col gap-3 max-w-sm w-full pointer-events-none px-4 sm:px-0">
+        <div className="fixed top-5 right-5 z-[99999] flex flex-col gap-3 max-w-md w-full pointer-events-none px-4 sm:px-0">
             <AnimatePresence>
                 {toasts.map((toast) => {
                     const config = TYPE_CONFIG[toast.type] || TYPE_CONFIG.info;
@@ -47,35 +51,56 @@ export function ClinicalToastContainer() {
                     return (
                         <motion.div
                             key={toast.id}
-                            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                            role={toast.sticky ? 'alertdialog' : 'status'}
+                            aria-live={toast.sticky ? 'assertive' : 'polite'}
+                            initial={{ opacity: 0, y: -16, scale: 0.97 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, x: 50, scale: 0.9 }}
-                            transition={{ duration: 0.25, ease: 'easeOut' }}
-                            className={`pointer-events-auto p-4 rounded-2xl border shadow-lg backdrop-blur-md flex items-start gap-3.5 ${config.bg}`}
+                            exit={{ opacity: 0, x: 40, scale: 0.95 }}
+                            transition={{ duration: 0.2, ease: 'easeOut' }}
+                            className={`pointer-events-auto p-4 rounded-2xl border-2 shadow-xl backdrop-blur-md flex flex-col gap-3 ${config.bg}`}
                         >
-                            <div className={`p-2.5 rounded-xl border flex items-center justify-center shrink-0 ${config.iconBg}`}>
-                                <IconComponent className="w-5 h-5" />
-                            </div>
-
-                            <div className="flex-1 min-w-0 pr-2">
-                                <div className="flex items-center gap-2">
-                                    <h4 className="text-xs font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
-                                        {toast.title || config.defaultTitle}
-                                    </h4>
+                            <div className="flex items-start gap-3.5">
+                                <div className={`p-2.5 rounded-xl border flex items-center justify-center shrink-0 ${config.iconBg}`}>
+                                    <IconComponent className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
                                 </div>
-                                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium mt-1">
-                                    {toast.message}
-                                </p>
+
+                                <div className="flex-1 min-w-0 pr-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider ${config.badgeStyle}`}>
+                                            {config.badge}
+                                        </span>
+                                        <h4 className="text-xs font-extrabold text-[#0F172A] dark:text-[#F8FAFC] uppercase tracking-wide">
+                                            {toast.title || config.defaultTitle}
+                                        </h4>
+                                    </div>
+                                    <p className="text-xs text-[#334155] dark:text-[#CBD5E1] leading-relaxed font-medium mt-1.5">
+                                        {toast.message}
+                                    </p>
+                                </div>
+
+                                {!toast.sticky && (
+                                    <button
+                                        type="button"
+                                        onClick={() => removeToast(toast.id)}
+                                        className="min-w-[44px] min-h-[44px] -mt-1 -mr-1 inline-flex items-center justify-center text-[#334155] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+                                        aria-label="Cerrar notificación"
+                                    >
+                                        <X className="w-4 h-4" strokeWidth={2} />
+                                    </button>
+                                )}
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={() => removeToast(toast.id)}
-                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
-                                aria-label="Cerrar notificación"
-                            >
-                                <X className="w-4 h-4" />
-                            </button>
+                            {toast.sticky && (
+                                <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-slate-700">
+                                    <button
+                                        type="button"
+                                        onClick={() => removeToast(toast.id)}
+                                        className="min-h-[44px] min-w-[112px] px-4 py-2 rounded-xl bg-[#1C75BC] hover:bg-[#155A92] text-white text-xs font-bold tracking-wide transition-colors cursor-pointer"
+                                    >
+                                        Entendido
+                                    </button>
+                                </div>
+                            )}
                         </motion.div>
                     );
                 })}

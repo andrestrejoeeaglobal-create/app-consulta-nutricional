@@ -624,7 +624,7 @@ export const TabClinicalHistory = ({
                                             ))}
                                         </div>
                                     ) : (
-                                        renderEditableField(null, 'farma_lista', (patientData?.pharmacology || fase6State) ? 'Ninguno' : 'Pendiente de evaluar', 'clinica')
+                                        renderEditableField(null, 'farma_lista', (Array.isArray(patientData.history?.medications) || patientData?.pharmacology || fase6State) ? 'Ninguno' : 'Pendiente de evaluar', 'clinica')
                                     )}
                                 </div>
 
