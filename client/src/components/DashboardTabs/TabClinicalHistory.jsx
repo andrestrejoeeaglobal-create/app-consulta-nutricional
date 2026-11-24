@@ -565,26 +565,29 @@ export const TabClinicalHistory = ({
                         <div id="card-surgical" className="space-y-3">
                             <div className="space-y-3 relative z-10">
                                 {(() => {
-                                    const surgical = patientData.history?.surgical;
+                                    const surgical = patientData?.history?.surgical ?? patientData?.quirurgicos ?? patientData?.cirugias;
                                     if (Array.isArray(surgical) && surgical.length > 0) {
                                         return (
                                             <div className="flex flex-wrap gap-2">
-                                                {surgical.map((item, idx) => (
-                                                    <span key={idx} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-tilo-primary/10 text-tilo-primary border border-tilo-primary/20">
-                                                        🩺 CIRUGÍA: {item.label}
-                                                    </span>
-                                                ))}
+                                                {surgical.map((item, idx) => {
+                                                    const surgLabel = typeof item === 'string' ? item : (item?.label || item?.nombre || item?.name || 'Intervención registrada');
+                                                    return (
+                                                        <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-tilo-primary/10 text-tilo-primary border border-tilo-primary/20">
+                                                            🩺 CIRUGÍA: {surgLabel}
+                                                        </span>
+                                                    );
+                                                })}
                                             </div>
                                         );
                                     } else if (surgical === 'Niega') {
                                         return (
-                                            <div className="p-3 bg-tilo-bg-base/40 rounded-xl text-slate-500 font-medium border border-tilo-border text-sm italic">
+                                            <div className="p-3 bg-tilo-bg-base/40 rounded-xl text-[#334155] dark:text-[#CBD5E1] font-medium border border-tilo-border text-sm italic">
                                                 Niega antecedentes quirúrgicos
                                             </div>
                                         );
                                     } else {
                                         return (
-                                            <div className="p-3 bg-tilo-bg-base/20 rounded-xl text-slate-400 border border-tilo-border/50 text-sm italic select-none">
+                                            <div className="p-3 bg-tilo-bg-base/20 rounded-xl text-[#334155] dark:text-[#CBD5E1] border border-tilo-border/50 text-sm italic select-none">
                                                 Pendiente de evaluar
                                             </div>
                                         );
@@ -631,25 +634,41 @@ export const TabClinicalHistory = ({
                                 {/* SECTION: SUPPLEMENTS */}
                                 <div>
                                     <h4 className="text-xs font-bold text-tilo-text-muted uppercase tracking-wider mb-2">Suplementación</h4>
-                                    {patientData.history?.supplements && patientData.history.supplements.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {patientData.history.supplements.map((item, idx) => (
-                                                <div key={idx} className="flex justify-between items-start p-3 bg-tilo-bg-base/40 rounded-xl text-sm border border-tilo-border">
-                                                    <div>
-                                                        <div className="font-bold text-tilo-text-main">{item.name}</div>
-                                                        <div className="text-xs text-tilo-text-muted mt-0.5">{item.frequency}</div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <span className="inline-block px-2 py-0.5 bg-tilo-bg-panel rounded border border-tilo-border text-[10px] font-bold text-tilo-text-muted">
-                                                            {item.duration || 'Sin dato'}
-                                                        </span>
-                                                    </div>
+                                    {(() => {
+                                        const resolvedSupplements = (Array.isArray(patientData?.history?.supplements) && patientData.history.supplements.length > 0)
+                                            ? patientData.history.supplements
+                                            : (Array.isArray(patientData?.pharmacology?.supplements) ? patientData.pharmacology.supplements : []);
+
+                                        const formatInstitutionalSupp = (rawName) => {
+                                            const s = String(rawName || '').trim();
+                                            if (/^33\s*plus®?$/i.test(s)) return '🔴 33Plus®';
+                                            if (/^34\s*plus®?$/i.test(s)) return '🟢 34Plus®';
+                                            return s
+                                                .replace(/\b33\s*plus®?\b/gi, '33Plus®')
+                                                .replace(/\b34\s*plus®?\b/gi, '34Plus®');
+                                        };
+
+                                        if (resolvedSupplements.length > 0) {
+                                            return (
+                                                <div className="space-y-2">
+                                                    {resolvedSupplements.map((item, idx) => (
+                                                        <div key={idx} className="flex justify-between items-start p-3 bg-tilo-bg-base/40 rounded-xl text-sm border border-tilo-border">
+                                                            <div>
+                                                                <div className="font-bold text-tilo-text-main">{formatInstitutionalSupp(item.name)}</div>
+                                                                <div className="text-xs text-tilo-text-muted mt-0.5">{item.frequency || item.dose_frequency}</div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <span className="inline-block px-2 py-0.5 bg-tilo-bg-panel rounded border border-tilo-border text-[10px] font-bold text-tilo-text-muted tabular-nums">
+                                                                    {item.duration || 'Sin dato'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        renderEditableField(null, 'suple_lista', (patientData?.pharmacology || fase6State) ? 'Ninguno' : 'Pendiente de evaluar', 'clinica')
-                                    )}
+                                            );
+                                        }
+                                        return renderEditableField(null, 'suple_lista', (patientData?.pharmacology || patientData?.history?.supplements_negated || fase6State) ? 'Ninguno' : 'Pendiente de evaluar', 'clinica');
+                                    })()}
                                 </div>
                             </div>
                         </div>

@@ -1,5 +1,121 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import tiloImg from '../../assets/tilo.png';
+import {
+    resolvePatientFriendlyGuide,
+    resolveVerifiedPatientAge,
+    resolveMetabolicAgeStudySSoT,
+    translateLogisticsProfile,
+    sanitizeClinicalSpanish
+} from '../../utils/patientGuideAdapter';
+import { resolvePatientSex } from '../../utils/genderConcordance';
+
+function formatInlineSpanishDate(rawStr = '') {
+    return String(rawStr || '')
+        .trim()
+        .replace(/^(lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bado|domingo),\s*/iu, '$1 ')
+        .replace(
+            /\b(Lunes|Martes|Miércoles|Miercoles|Jueves|Viernes|Sábado|Sabado|Domingo|Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Setiembre|Octubre|Noviembre|Diciembre)\b/gu,
+            (m) => m.toLowerCase()
+        );
+}
+
+function resolveDefaultFollowupWeekdayLabel() {
+    const d = new Date();
+    d.setDate(d.getDate() + 28);
+    if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+    if (d.getDay() === 6) d.setDate(d.getDate() + 2);
+    const raw = d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return formatInlineSpanishDate(raw);
+}
+
+/**
+ * Constructor SSoTT minimalista ejecutivo (EGM-54) para la despedida institucional en Fase 21.
+ * Dos párrafos breves y cálidos, cero repetición de métricas/viñetas y options: [] (0 botones inferiores).
+ */
+export function buildPhase21InstitutionalClosureMessage(patientData = {}) {
+    try {
+        const verifiedAgeInfo = resolveVerifiedPatientAge(patientData, 30);
+        const ageYears = Number(verifiedAgeInfo.ageYears) || 30;
+        const isLactante = Boolean(ageYears < 2 && (verifiedAgeInfo.isLactanteVerified || patientData?.isLactante === true));
+        const isJuvenil = Boolean(!isLactante && ageYears < 18 && (verifiedAgeInfo.isPediatricVerified || patientData?.isPediatrico === true));
+        const isTutorMode = Boolean(isLactante || (isJuvenil && ageYears < 13));
+        const { isFemale } = resolvePatientSex(patientData);
+
+        let fullName = '';
+        try {
+            const guide = resolvePatientFriendlyGuide(patientData);
+            if (guide?.patientFullName && !/^(paciente|usuario|titular|del paciente)$/i.test(String(guide.patientFullName).trim())) {
+                fullName = sanitizeClinicalSpanish(guide.patientFullName);
+            }
+        } catch (_) {
+            // Fallback seguro a llaves de identificación directa
+        }
+        if (!fullName) {
+            const composed = [
+                patientData?.identificacion?.nombre,
+                patientData?.identificacion?.apellidoPaterno,
+                patientData?.identificacion?.apellidoMaterno
+            ].map((x) => String(x || '').trim()).filter(Boolean).join(' ');
+            const rawCandidate =
+                patientData?.identificacion?.nombreCompleto ||
+                patientData?.profile?.name ||
+                composed ||
+                '';
+            fullName = sanitizeClinicalSpanish(String(rawCandidate).replace(/^(?:don|doña|sr\.?|sra\.?)\s+/i, '').trim());
+        }
+        const hasValidName = Boolean(fullName && !/^(paciente|null|undefined|---)$/i.test(fullName));
+        const estimadoLower = isFemale ? 'estimada' : 'estimado';
+
+        const scheduledAppt = patientData?.scheduledAppointment || patientData?.proxima_cita || {};
+        const rawExplicitDate = sanitizeClinicalSpanish(String(scheduledAppt.chosenDate || scheduledAppt.fecha || '').trim());
+        const explicitDate = rawExplicitDate ? formatInlineSpanishDate(rawExplicitDate) : '';
+        const explicitTime = sanitizeClinicalSpanish(String(scheduledAppt.chosenTime || scheduledAppt.horario || '').trim());
+        const fallbackWindowDate = resolveDefaultFollowupWeekdayLabel();
+
+        const paragraph1 = isTutorMode
+            ? `El **Calendario y Ruta de Ejecución de 28\u00A0Días** ya se encuentra desplegado a la vista en el panel derecho para acompañar día a día el cuidado en casa.`
+            : `Su **Calendario y Ruta de Ejecución de 28\u00A0Días** ya se encuentra desplegado a la vista en el panel derecho para acompañarle día a día.`;
+
+        const followupClause = explicitDate
+            ? `en su próxima consulta de seguimiento el **${explicitDate}**${explicitTime ? ` (${explicitTime})` : ''}`
+            : `en su próxima consulta de revaloración al cumplir sus primeros **28\u00A0días** (a partir del **${fallbackWindowDate}**)`;
+
+        const paragraph2 = isTutorMode
+            ? (hasValidName
+                ? `Muchas gracias por su confianza, **estimada madre, padre o tutor de ${fullName}**. Ha sido un privilegio acompañar hoy la valoración nutricional ${isFemale ? 'de la menor' : 'del menor'} en **Equipo en Acción®**; les deseamos un excelente inicio de ciclo y nos vemos ${followupClause} para celebrar juntos sus avances.`
+                : `Muchas gracias por su confianza, **estimada madre, padre o tutor**. Ha sido un privilegio acompañar hoy esta valoración nutricional en **Equipo en Acción®**; les deseamos un excelente inicio de ciclo y nos vemos ${followupClause} para celebrar juntos sus avances.`)
+            : (hasValidName
+                ? `Muchas gracias por su confianza, **${estimadoLower} ${fullName}**. Ha sido un privilegio acompañarle hoy en **Equipo en Acción®**; le deseamos un excelente inicio de ciclo y nos vemos ${followupClause} para celebrar juntos sus avances.`
+                : `Muchas gracias por su confianza. Ha sido un privilegio acompañarle hoy en **Equipo en Acción®**; le deseamos un excelente inicio de ciclo y nos vemos ${followupClause} para celebrar juntos sus avances.`);
+
+        return {
+            id: 'phase21_institutional_farewell',
+            role: 'assistant',
+            avatar: tiloImg,
+            headerBadge: {
+                iconKey: 'calendar_check',
+                label: 'CONSULTA FINALIZADA • CICLO 1 EN MARCHA'
+            },
+            content: `${paragraph1}\n\n${paragraph2}`,
+            options: []
+        };
+    } catch (fallbackErr) {
+        console.warn('⚠️ [buildPhase21InstitutionalClosureMessage Safe Catch]:', fallbackErr?.message || fallbackErr);
+        return {
+            id: 'phase21_institutional_farewell',
+            role: 'assistant',
+            avatar: tiloImg,
+            headerBadge: {
+                iconKey: 'calendar_check',
+                label: 'CONSULTA FINALIZADA • CICLO 1 EN MARCHA'
+            },
+            content:
+                `Su **Calendario y Ruta de Ejecución de 28\u00A0Días** ya se encuentra desplegado a la vista en el panel derecho para acompañarle día a día.\n\n` +
+                `Muchas gracias por su confianza. Ha sido un privilegio acompañarle hoy en **Equipo en Acción®**; le deseamos un excelente inicio de ciclo y nos vemos en su próxima consulta de seguimiento al cumplir sus primeros 28\u00A0días para celebrar juntos sus avances.`,
+            options: []
+        };
+    }
+}
 
 /**
  * Calcula el Peso Ideal (Fórmula de Devine Bidireccional + Referencia Lemmens)
@@ -135,11 +251,13 @@ function computeClientBioenergetics(patientData, ageYears, isLactante, isJuvenil
 }
 
 const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessages, registerInputHandler, patientData, setActiveTab }) => {
-    const ageCandidate = Number(patientData?.identificacion?.edad ?? patientData?.identityLock?.patientInfo?.age ?? patientData?.edad ?? 30);
+    const verifiedAgeInfo = resolveVerifiedPatientAge(patientData, 30);
+    const ageCandidate = Number(verifiedAgeInfo.ageYears) || 30;
 
-    const isLactante = ageCandidate < 2 || patientData?.isLactante;
-    const isJuvenilAdolescente = !isLactante && (ageCandidate < 18 || patientData?.isPediatrico);
-    const isGeriatric = ageCandidate >= 65 || patientData?.isGeriatrico;
+    const isLactante = Boolean(ageCandidate < 2 && (verifiedAgeInfo.isLactanteVerified || patientData?.isLactante === true));
+    const isJuvenilAdolescente = Boolean(!isLactante && ageCandidate < 18 && (verifiedAgeInfo.isPediatricVerified || patientData?.isPediatrico === true));
+    const isGeriatric = Boolean(ageCandidate >= 65 || (ageCandidate >= 60 && patientData?.isGeriatrico === true));
+    const isTutorMode = Boolean(isLactante || (isJuvenilAdolescente && ageCandidate < 13));
 
     const dossierStatus = String(patientData?.clinical_dossier?.status || '').toUpperCase();
     const hasApprovedSSoTT = Boolean(
@@ -235,39 +353,86 @@ const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessa
                 const m = ssotBio?.macros || defaultMacros;
                 const eqName = ssotBio?.equationUsed || bio.equationUsed || 'Mifflin-St Jeor';
 
+                let metabolicBullet = '';
+                let logisticsBullet = '';
+                try {
+                    const metStudy = resolveMetabolicAgeStudySSoT(patientData);
+                    if (metStudy?.isSuppressedBySafetyGate) {
+                        const safeProtectiveNote = sanitizeClinicalSpanish(
+                            metStudy.suppressionReasonText ||
+                            (isTutorMode
+                                ? 'Seguimiento centrado en curvas saludables de crecimiento y desarrollo junto con su madre, padre o tutor, sin comparaciones punitivas de edad metabólica.'
+                                : 'Por protocolo de seguridad clínica de su ruta activa, se prioriza su bienestar funcional integral sin comparaciones punitivas de edad metabólica.')
+                        );
+                        metabolicBullet = `• **Enfoque Clínico Protector:** ${safeProtectiveNote}\n\n`;
+                    } else if (metStudy && metStudy.metabolicAge !== null && metStudy.metabolicAge !== undefined) {
+                        const chronoVal = metStudy.chronologicalAge ?? ageCandidate;
+                        const exactAge = metStudy.metabolicAgeExact ?? metStudy.metabolicAge;
+                        const deltaNum = Number(metStudy.deltaYears ?? 0);
+                        const deltaTag = deltaNum > 0 ? `+${deltaNum}\u00A0años` : `${deltaNum}\u00A0años`;
+                        const target28d = metStudy.cycle1TargetAge28d ?? exactAge;
+                        const target90d = metStudy.cycle3ProjectionAge90d ?? target28d;
+                        const tierBadge = sanitizeClinicalSpanish(metStudy.evidenceTierBadge || 'Certeza Clínica Integral');
+                        metabolicBullet =
+                            `• **Estudio de Edad Metabólica (${tierBadge}):** **${exactAge}\u00A0años** frente a **${chronoVal}\u00A0años** cronológicos (${deltaTag}) • Meta Ciclo\u00A01 (28\u00A0días): **${target28d}\u00A0años** | Proyección a 90\u00A0días: **${target90d}\u00A0años**\n\n`;
+                    }
+
+                    const logistics = translateLogisticsProfile(patientData);
+                    if (logistics?.venueLabel && logistics?.cookLabel) {
+                        logisticsBullet = `• **Logística de Ejecución:** ${logistics.venueLabel} | Preparación de alimentos: **${logistics.cookLabel}**\n\n`;
+                    }
+                } catch (metErr) {
+                    console.warn('⚠️ [Fase21 SSoTT Metabolic Summary Fallback]:', metErr?.message || metErr);
+                }
+
+                const closingInstruction = isTutorMode
+                    ? `Seleccione la acción de cierre clínico para concluir la valoración en acompañamiento de madre, padre o tutor bajo **NOM-004-SSA3-2012**:`
+                    : `Seleccione la acción de cierre clínico para concluir su estudio bajo **NOM-004-SSA3-2012**:`;
+
                 const gateContent =
-                    `📅 **Calendario y Periodización Celular de 28 Días (SSoTT — Fase 21)**\n\n` +
-                    `La arquitectura crononutricional se encuentra sincronizada en el panel derecho con los parámetros sellados del expediente:\n\n` +
+                    `**Calendario y Periodización Celular de 28 Días (SSoTT — Fase 21)**\n\n` +
+                    (isTutorMode
+                        ? `La arquitectura crononutricional pediátrica se encuentra sincronizada en el panel derecho con los parámetros sellados del expediente:\n\n`
+                        : `Su arquitectura crononutricional se encuentra sincronizada en el panel derecho con los parámetros sellados de su expediente:\n\n`) +
                     `• **Ecuación Bioenergética:** ${eqName}\n\n` +
                     `• **Meta Calórica Prescrita:** **${formattedKcal}**\n\n` +
                     `• **Distribución de Macronutrientes:** ${m.carbs}% Hidratos de Carbono | ${m.protein}% Proteínas | ${m.fat}% Lípidos\n\n` +
-                    `Seleccione la acción de cierre clínico para concluir el estudio bajo **NOM-004-SSA3-2012**:`;
+                    metabolicBullet +
+                    logisticsBullet +
+                    closingInstruction;
 
                 setMessages(prev => {
                     const safePrev = Array.isArray(prev) ? prev : [];
-                    const alreadyExists = safePrev.some(
+                    const existingIdx = safePrev.findIndex(
                         msg => msg?.id === 'phase21_ssot_calendar_gate' ||
                             (typeof msg?.content === 'string' && msg.content.includes('Calendario y Periodización Celular de 28 Días (SSoTT — Fase 21)'))
                     );
-                    if (alreadyExists) return safePrev;
-                    return [
-                        ...safePrev,
-                        {
-                            id: 'phase21_ssot_calendar_gate',
-                            role: 'assistant',
-                            content: gateContent,
-                            avatar: tiloImg,
-                            options: [
-                                { label: '📅 Agendar Cita de Seguimiento (4 Semanas) ➔', value: 'SCHEDULE_FOLLOWUP_APPOINTMENT' },
-                                { label: '📱 Sincronizar Plataforma Digital Equipo en Acción®', value: 'SYNC_VITALLOOP_APP' },
-                                { label: '🏁 Sellar y Cerrar Consulta NOM-004', value: 'FINAL_CONSULTATION_CLOSE' }
-                            ]
-                        }
-                    ];
+                    const nextGateMsg = {
+                        id: 'phase21_ssot_calendar_gate',
+                        role: 'assistant',
+                        headerBadge: {
+                            iconKey: 'calendar',
+                            label: 'CALENDARIO Y PERIODIZACIÓN DE 28 DÍAS • SSoTT'
+                        },
+                        content: gateContent,
+                        avatar: tiloImg,
+                        options: [
+                            { label: 'Agendar Cita de Seguimiento (4 Semanas)', value: 'SCHEDULE_FOLLOWUP_APPOINTMENT', iconKey: 'calendar' },
+                            { label: 'Sincronizar Plataforma Digital Equipo en Acción®', value: 'SYNC_VITALLOOP_APP', iconKey: 'smartphone' },
+                            { label: 'Sellar y Cerrar Consulta NOM-004', value: 'FINAL_CONSULTATION_CLOSE', iconKey: 'check' }
+                        ]
+                    };
+                    if (existingIdx !== -1) {
+                        if (safePrev[existingIdx]?.content === gateContent && safePrev[existingIdx]?.headerBadge) return safePrev;
+                        const updated = [...safePrev];
+                        updated[existingIdx] = nextGateMsg;
+                        return updated;
+                    }
+                    return [...safePrev, nextGateMsg];
                 });
             }
         }
-    }, [isStudyCompleted, hasApprovedSSoTT, setActiveTab, setPatientData, setMessages, registerInputHandler, patientData, bio, defaultTarget, defaultTdee, defaultMacros]);
+    }, [isStudyCompleted, hasApprovedSSoTT, setActiveTab, setPatientData, setMessages, registerInputHandler, patientData, bio, defaultTarget, defaultTdee, defaultMacros, ageCandidate, isTutorMode]);
 
     // Deduplicación reactiva y sanitización de opciones de mensajes preexistentes en historial (solo ruta legacy sin SSoTT)
     useEffect(() => {

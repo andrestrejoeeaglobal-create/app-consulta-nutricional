@@ -3,10 +3,14 @@ import {
     Calendar,
     Clock, Coffee, Moon, Sun, Utensils,
     Navigation, Activity, MapPin, Briefcase, User, Smartphone, Shield,
-    Layers, Dumbbell, Zap, RefreshCw, Lock
+    Layers, Dumbbell, Zap, RefreshCw, Lock, CheckCircle2, AlertTriangle
 } from 'lucide-react';
 import { resolvePatientSex } from '../../utils/genderConcordance';
-import { extractPatientAge } from '../../utils/patientGuideAdapter';
+import {
+    extractPatientAge,
+    resolveMetabolicAgeStudySSoT,
+    translateLogisticsProfile
+} from '../../utils/patientGuideAdapter';
 import { useClinicalToast } from '../../hooks/useClinicalToast';
 
 export const TabCalendar = ({
@@ -230,46 +234,22 @@ export const TabCalendar = ({
         }
     };
 
-    const translateVenue = (v) => {
-        if (v === 'HOME') return 'Casa';
-        if (v === 'WORK') return 'Oficina';
-        if (v === 'STREET') return 'Calle / Restaurante';
-        return v;
-    };
-
-    const translateCook = (c) => {
-        if (c === 'SELF') return 'Yo mismo';
-        if (c === 'FAMILY') return 'Familia';
-        if (c === 'STAFF') return 'Personal';
-        if (c === 'BUYING') return 'Pre-hecha';
-        return c;
-    };
+    const logisticsSummary = translateLogisticsProfile(patientData);
 
     // -------------------------------------------------------------------------
-    // ALGORITMO DETERMINISTA DE EDAD METABÓLICA REVERSIBLE (SSoTT v2.8.4 — Cero Literales Fantasma)
+    // SELECTOR SSoTT DE EDAD METABÓLICA MULTIVARIABLE (EGM-51 v2 — Cero Cálculo Duplicado)
     // -------------------------------------------------------------------------
     const baseAge = resolvedChronoAge !== null ? resolvedChronoAge : ageCandidate;
+    const metabolicAgeStudy = resolveMetabolicAgeStudySSoT(patientData);
+    const isSafetyGateActive = Boolean(metabolicAgeStudy?.isSuppressedBySafetyGate);
+    const chronoAgeDisplay = Number(metabolicAgeStudy?.chronologicalAge) || Math.round(baseAge);
+    const metabolicAgeDisplay = metabolicAgeStudy?.metabolicAgeExact ?? metabolicAgeStudy?.metabolicAge ?? chronoAgeDisplay;
+    const deltaYearsExact = Number(metabolicAgeStudy?.deltaYears ?? 0);
+    const cycle1Target28d = metabolicAgeStudy?.cycle1TargetAge28d ?? chronoAgeDisplay;
+    const cycle3Target90d = metabolicAgeStudy?.cycle3ProjectionAge90d ?? cycle1Target28d;
+    const evidenceBadgeText = metabolicAgeStudy?.evidenceTierBadge || 'Certeza Clínica y Antropométrica Basal';
 
-    // 1. Delta IMC Real (Cero fallback a 26.8; si falta IMC, aporta 0.0)
-    const realWeightKg = parseFloat(
-        patientData?.clinical_dossier?.bioenergetics?.weightKg ??
-        patientData?.vitals?.weight ??
-        patientData?.weight_kg
-    );
-    const realHeightCm = parseFloat(
-        patientData?.clinical_dossier?.bioenergetics?.heightCm ??
-        patientData?.vitals?.height ??
-        patientData?.height_cm
-    );
-    const bmiVal = parseFloat(
-        patientData?.clinical_dossier?.bioenergetics?.bmi ??
-        patientData?.bioenergetics?.bmi ??
-        patientData?.vitals?.bmi ??
-        (realWeightKg > 0 && realHeightCm > 0 ? realWeightKg / Math.pow(realHeightCm / 100, 2) : NaN)
-    );
-    const deltaIMC = !Number.isFinite(bmiVal) ? 0.0 : (bmiVal >= 30 ? 3.0 : bmiVal >= 25 ? 1.5 : 0.0);
-
-    // 2. Carga Alostática Ponderada y Acotada desde `clinical_dossier.ifm_nodes_matrix` Real
+    // Construcción dinámica de los ejes dominantes reales a partir de `ifm_nodes_matrix`
     const rawIfmMatrix = Array.isArray(patientData?.clinical_dossier?.ifm_nodes_matrix)
         ? patientData.clinical_dossier.ifm_nodes_matrix
         : [];
@@ -286,36 +266,6 @@ export const TabCalendar = ({
         if (cie === 'Z00.0' || cie === 'Z00.1') return false;
         return getNodeSeverityRank(node.status) > 0;
     });
-
-    const rawIfmLoad = activeIfmNodes.reduce((acc, node) => {
-        const rank = getNodeSeverityRank(node.status);
-        if (rank === 3) return acc + 0.75;
-        if (rank === 2) return acc + 0.50;
-        return acc + 0.25;
-    }, 0.0);
-
-    // Respaldo honesto si el expediente aún no tiene nodos IFM pero presenta hallazgos reales en Electret (.itemsDict)
-    const realVascularRes = parseFloat(
-        patientData?.scan_data?.electret_metrics?.cardiovascular?.itemsDict?.resistencia_vascular?.value ??
-        patientData?.scan_data?.electret_metrics?.cardiovascular?.resistencia_vascular?.value
-    );
-    const realNeutralFats = parseFloat(
-        patientData?.scan_data?.electret_metrics?.blood_lipids?.itemsDict?.grasas_neutras_mb?.value ??
-        patientData?.scan_data?.electret_metrics?.blood_lipids?.grasas_neutras_mb?.value
-    );
-    const fallbackElectretLoad = activeIfmNodes.length === 0
-        ? ((Number.isFinite(realVascularRes) && realVascularRes > 1.2 ? 1.5 : 0.0) +
-           (Number.isFinite(realNeutralFats) && realNeutralFats > 1.3 ? 1.0 : 0.0))
-        : 0.0;
-
-    const cappedSystemicLoad = Math.min(6.0, rawIfmLoad > 0 ? rawIfmLoad : fallbackElectretLoad);
-    const totalAllostaticLoad = isLactanteOrPediatric ? 0.0 : Math.min(8.0, deltaIMC + cappedSystemicLoad);
-
-    const edadMetabolica = Math.round(baseAge + totalAllostaticLoad);
-    const deltaSobrecarga = Math.max(0, edadMetabolica - Math.round(baseAge));
-    const metaReversion = Math.max(Math.round(baseAge), edadMetabolica - Math.min(5, deltaSobrecarga));
-
-    // Construcción dinámica de los ejes dominantes reales a partir de `ifm_nodes_matrix`
     const sortedDominantNodes = [...activeIfmNodes].sort((a, b) => {
         const rankDiff = getNodeSeverityRank(b.status) - getNodeSeverityRank(a.status);
         if (rankDiff !== 0) return rankDiff;
@@ -337,11 +287,13 @@ export const TabCalendar = ({
     };
     const dominantAxesProse = joinDynamicAxes(topAxisNames);
     const extraActiveNodesCount = Math.max(0, sortedDominantNodes.length - 3);
-    const metabolicCardSubLabel = deltaSobrecarga > 0
-        ? (sortedDominantNodes.length > 0
-            ? `${sortedDominantNodes.length} ${sortedDominantNodes.length === 1 ? 'Nodo IFM Activo' : 'Nodos IFM Activos'}`
-            : 'Sobrecarga Metabólica Reversible')
-        : 'Homeostasis Conservada';
+    const metabolicCardSubLabel = deltaYearsExact > 1.5
+        ? 'Sobrecarga Reversible'
+        : deltaYearsExact > 0.4
+            ? 'Ajuste Preventivo Leve'
+            : deltaYearsExact < -0.4
+                ? 'Reserva Funcional Joven'
+                : 'Homeostasis Conservada';
 
     const targetKcalVal =
         patientData?.clinical_dossier?.bioenergetics?.targetKcal ||
@@ -380,7 +332,7 @@ export const TabCalendar = ({
             <Accordion
                 title="Calendario y Ruta de Ejecución"
                 id="accordion-calendar-parent"
-                isOpen={openSections.parentCalendar}
+                isOpen={openSections?.parentCalendar !== undefined ? openSections.parentCalendar : true}
                 onToggle={() => toggleSection('parentCalendar')}
                 variant="parent"
             >
@@ -393,89 +345,129 @@ export const TabCalendar = ({
                         isOpen={openSections.childMetabolicClock !== undefined ? openSections.childMetabolicClock : true}
                         onToggle={() => toggleSection('childMetabolicClock')}
                     >
-                        <div id="card-metabolic-clock" className="bg-tilo-bg-base/40 rounded-2xl p-6 border border-tilo-border space-y-5">
-                            
-                            {/* Header del Bloque */}
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-tilo-border">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-lg bg-tilo-primary/10 border border-tilo-primary/20 flex items-center justify-center text-tilo-primary">
-                                        <Clock className="w-4 h-4" />
+                        <div id="card-metabolic-clock" className="bg-white dark:bg-[#1E293B] rounded-2xl p-6 border border-slate-200/90 dark:border-[#334155] space-y-5 tabular-nums">
+                            {isSafetyGateActive ? (
+                                <>
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-[#334155]">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 rounded-lg bg-[#1C75BC]/10 border border-[#1C75BC]/25 flex items-center justify-center text-[#1C75BC]">
+                                                <Shield className="w-4 h-4" strokeWidth={2} />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">Enfoque Clínico Protector No Punitivo</div>
+                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Compuerta de Seguridad Activa (EGM-51 v2)</div>
+                                            </div>
+                                        </div>
+                                        <span className="bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/30 text-[10.5px] font-extrabold tracking-wider px-3 py-1 rounded-xl uppercase inline-flex items-center gap-1.5 w-fit">
+                                            <Shield className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                            <span>Ruta Protectora Activa</span>
+                                        </span>
                                     </div>
-                                    <div>
-                                        <div className="text-sm font-bold text-tilo-text-main">Auditoría Bioenergética y Reología Tisular</div>
-                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">Matriz Funcional de 7 Nodos IFM (SSoTT)</div>
+                                    <div className="bg-[#F8FAFC] dark:bg-[#0F172A] p-4 rounded-xl border border-slate-200/80 dark:border-[#334155] text-xs text-[#334155] dark:text-[#CBD5E1] leading-relaxed font-medium">
+                                        {metabolicAgeStudy?.suppressionReasonText || 'Por protocolo de seguridad clínica, se omite la comparación punitiva de Edad Metabólica y se prioriza su bienestar funcional integral.'}
                                     </div>
-                                </div>
-                                {deltaSobrecarga > 0 ? (
-                                    <span className="bg-[#E30613]/10 text-[#E30613] border border-[#E30613]/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase flex items-center gap-1 w-fit">
-                                        <Activity className="w-3 h-3" />
-                                        Sobrecarga Reversible: +{deltaSobrecarga} {deltaSobrecarga === 1 ? 'Año' : 'Años'}
-                                    </span>
-                                ) : (
-                                    <span className="bg-tilo-success/10 text-tilo-success border border-tilo-success/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase flex items-center gap-1 w-fit">
-                                        <Shield className="w-3 h-3" />
-                                        Homeostasis Metabólica Conservada
-                                    </span>
-                                )}
-                            </div>
+                                </>
+                            ) : (
+                                <>
+                                    {/* Header del Bloque */}
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-[#334155]">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 rounded-lg bg-[#1C75BC]/10 border border-[#1C75BC]/25 flex items-center justify-center text-[#1C75BC]">
+                                                <Clock className="w-4 h-4" strokeWidth={2} />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">Estudio Multivariable de Edad Metabólica</div>
+                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Motor SSoTT EGM-51 v2 • {evidenceBadgeText}</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            {deltaYearsExact > 1.5 ? (
+                                                <span className="bg-[#B70E0C]/10 text-[#B70E0C] border border-[#B70E0C]/30 text-[10.5px] font-extrabold tracking-wider px-3 py-1 rounded-xl uppercase inline-flex items-center gap-1.5 w-fit">
+                                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                                    <span>Sobrecarga Reversible: +{deltaYearsExact} años</span>
+                                                </span>
+                                            ) : deltaYearsExact > 0.4 ? (
+                                                <span className="bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/15 text-[10.5px] font-extrabold tracking-wider px-3 py-1 rounded-xl uppercase inline-flex items-center gap-1.5 w-fit">
+                                                    <Activity className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                                    <span>Ajuste Leve: +{deltaYearsExact} años</span>
+                                                </span>
+                                            ) : (
+                                                <span className="bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30 text-[10.5px] font-extrabold tracking-wider px-3 py-1 rounded-xl uppercase inline-flex items-center gap-1.5 w-fit">
+                                                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                                    <span>{deltaYearsExact < -0.4 ? `Reserva Joven (${deltaYearsExact} años)` : 'Homeostasis Metabólica Conservada'}</span>
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
 
-                            {/* Bento de Edades Comparativas */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div className="bg-white/60 dark:bg-slate-800/60 p-4 rounded-xl border border-tilo-border/60 flex flex-col items-center justify-center text-center transition-all duration-300">
-                                    <span className="text-[10px] uppercase font-bold text-tilo-text-muted tracking-wider mb-1">
-                                        Edad Cronológica
-                                    </span>
-                                    <span className="text-2xl font-bold text-tilo-text-main dashboard-data-text">
-                                        {Math.round(baseAge)} <span className="text-xs font-normal text-tilo-text-muted">años</span>
-                                    </span>
-                                    <span className="text-[9px] text-tilo-text-muted mt-1 uppercase font-semibold">Registro de Nacimiento</span>
-                                </div>
+                                    {/* Bento de Edades Comparativas y Metas Realistas (28d vs 90d) */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                        <div className="bg-[#F8FAFC] dark:bg-[#0F172A] p-4 rounded-xl border border-slate-200/80 dark:border-[#334155] flex flex-col items-center justify-center text-center">
+                                            <span className="text-[10px] uppercase font-extrabold text-[#334155] dark:text-[#CBD5E1] tracking-wider mb-1">
+                                                Edad Cronológica
+                                            </span>
+                                            <span className="text-2xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
+                                                {chronoAgeDisplay} <span className="text-xs font-semibold text-[#334155] dark:text-[#CBD5E1]">años</span>
+                                            </span>
+                                            <span className="text-[9.5px] text-[#334155] dark:text-[#CBD5E1] mt-1 uppercase font-bold">Registro de Nacimiento</span>
+                                        </div>
 
-                                <div className={`${deltaSobrecarga > 0 ? 'bg-[#E30613]/5 dark:bg-[#E30613]/10 border-[#E30613]/20' : 'bg-tilo-success/5 dark:bg-tilo-success/10 border-tilo-success/20'} p-4 rounded-xl border flex flex-col items-center justify-center text-center transition-all duration-300`}>
-                                    <span className={`text-[10px] uppercase font-bold ${deltaSobrecarga > 0 ? 'text-[#E30613]' : 'text-tilo-success'} tracking-wider mb-1`}>
-                                        Edad Metabólica Actual
-                                    </span>
-                                    <span className={`text-2xl font-black ${deltaSobrecarga > 0 ? 'text-[#E30613]' : 'text-tilo-success'} dashboard-data-text`}>
-                                        {edadMetabolica} <span className={`text-xs font-semibold ${deltaSobrecarga > 0 ? 'text-[#E30613]/80' : 'text-tilo-success/80'}`}>años</span>
-                                    </span>
-                                    <span className={`text-[9px] ${deltaSobrecarga > 0 ? 'text-[#E30613]' : 'text-tilo-success'} mt-1 uppercase font-bold`}>{metabolicCardSubLabel}</span>
-                                </div>
+                                        <div className={`${deltaYearsExact > 1.5 ? 'bg-[#B70E0C]/5 dark:bg-[#B70E0C]/15 border-[#B70E0C]/30' : 'bg-[#3AAA35]/5 dark:bg-[#3AAA35]/15 border-[#3AAA35]/30'} p-4 rounded-xl border flex flex-col items-center justify-center text-center`}>
+                                            <span className={`text-[10px] uppercase font-extrabold ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'} tracking-wider mb-1`}>
+                                                Edad Metabólica Actual
+                                            </span>
+                                            <span className={`text-2xl font-black ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'} tabular-nums`}>
+                                                {metabolicAgeDisplay} <span className={`text-xs font-semibold ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'}`}>años</span>
+                                            </span>
+                                            <span className={`text-[9.5px] ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'} mt-1 uppercase font-bold`}>{metabolicCardSubLabel}</span>
+                                        </div>
 
-                                <div className="bg-tilo-success/5 dark:bg-tilo-success/10 p-4 rounded-xl border border-tilo-success/20 flex flex-col items-center justify-center text-center transition-all duration-300">
-                                    <span className="text-[10px] uppercase font-bold text-tilo-success tracking-wider mb-1">
-                                        Meta Ciclo 1 (28 Días)
-                                    </span>
-                                    <span className="text-2xl font-black text-tilo-success dashboard-data-text">
-                                        {metaReversion} <span className="text-xs font-semibold text-tilo-success/80">años</span>
-                                    </span>
-                                    <span className="text-[9px] text-tilo-success mt-1 uppercase font-bold">🎯 Objetivo Ciclo 1</span>
-                                </div>
-                            </div>
+                                        <div className="bg-[#3AAA35]/5 dark:bg-[#3AAA35]/15 p-4 rounded-xl border border-[#3AAA35]/30 flex flex-col items-center justify-center text-center">
+                                            <span className="text-[10px] uppercase font-extrabold text-[#3AAA35] tracking-wider mb-1">
+                                                Meta Ciclo 1 (28 Días)
+                                            </span>
+                                            <span className="text-2xl font-black text-[#3AAA35] tabular-nums">
+                                                {cycle1Target28d} <span className="text-xs font-semibold text-[#3AAA35]">años</span>
+                                            </span>
+                                            <span className="text-[9.5px] text-[#334155] dark:text-[#CBD5E1] mt-1 uppercase font-bold">Objetivo Defendible (≤ 1.5 a)</span>
+                                        </div>
 
-                            {/* Párrafo de Poder Empático Basado en `ifm_nodes_matrix` Real */}
-                            <div className="bg-white/80 dark:bg-slate-800/80 p-4 rounded-xl border border-tilo-border text-xs text-tilo-text-main leading-relaxed space-y-2">
-                                {deltaSobrecarga > 0 ? (
-                                    <>
-                                        <p>
-                                            {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica es de <strong>{Math.round(baseAge)} años</strong>, y el análisis integral de sus ejes de <strong>{dominantAxesProse}</strong>{extraActiveNodesCount > 0 ? ` (junto con ${extraActiveNodesCount} ${extraActiveNodesCount === 1 ? 'nodo funcional adicional' : 'nodos funcionales adicionales'} en vigilancia activa)` : ''} indica que sus células y tejidos operan actualmente con una <strong>Edad Metabólica de {edadMetabolica} años</strong>.
+                                        <div className="bg-[#1C75BC]/5 dark:bg-[#1C75BC]/15 p-4 rounded-xl border border-[#1C75BC]/30 flex flex-col items-center justify-center text-center">
+                                            <span className="text-[10px] uppercase font-extrabold text-[#1C75BC] tracking-wider mb-1">
+                                                Proyección Ciclo 3 (90 Días)
+                                            </span>
+                                            <span className="text-2xl font-black text-[#1C75BC] tabular-nums">
+                                                {cycle3Target90d} <span className="text-xs font-semibold text-[#1C75BC]">años</span>
+                                            </span>
+                                            <span className="text-[9.5px] text-[#334155] dark:text-[#CBD5E1] mt-1 uppercase font-bold">Consolidación Trimestral</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Párrafo de Poder Empático SSoTT */}
+                                    <div className="bg-[#F8FAFC] dark:bg-[#0F172A] p-4 rounded-xl border border-slate-200/80 dark:border-[#334155] text-xs text-[#0F172A] dark:text-[#F8FAFC] leading-relaxed space-y-2">
+                                        {metabolicAgeStudy?.patientSummary ? (
+                                            <p className="text-[#334155] dark:text-[#CBD5E1] font-medium">
+                                                {metabolicAgeStudy.patientSummary}
+                                            </p>
+                                        ) : deltaYearsExact > 0.5 ? (
+                                            <p>
+                                                {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica es de <strong>{chronoAgeDisplay} años</strong>, y la integración ponderada de sus ejes de <strong>{dominantAxesProse}</strong>{extraActiveNodesCount > 0 ? ` (junto con ${extraActiveNodesCount} ${extraActiveNodesCount === 1 ? 'nodo funcional adicional' : 'nodos funcionales adicionales'})` : ''} estima una <strong>Edad Metabólica de {metabolicAgeDisplay} años</strong>.
+                                            </p>
+                                        ) : (
+                                            <p>
+                                                {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica de <strong>{chronoAgeDisplay} años</strong> guarda equilibrio fisiológico con su <strong>Edad Metabólica actual ({metabolicAgeDisplay} años)</strong>, reflejando una reserva funcional conservada en sus sistemas evaluados.
+                                            </p>
+                                        )}
+                                        <p className="font-semibold text-[#0F172A] dark:text-[#F8FAFC] pt-2 border-t border-slate-200/80 dark:border-[#334155]">
+                                            {(has33Plus || has34Plus) ? (
+                                                <>Al apegarse a su prescripción nutricional de {targetKcalFormatted} y activar la modulación celular con <strong>33Plus®</strong> y la reparación tisular con <strong>34Plus®</strong> conforme a su pauta personalizada, nuestra meta realista en estos primeros 28 días es alcanzar <strong>{cycle1Target28d} años</strong> y consolidar hacia los 90 días una proyección de <strong>{cycle3Target90d} años</strong>.</>
+                                            ) : (
+                                                <>Al apegarse a su prescripción nutricional antiinflamatoria de {targetKcalFormatted}, hidratación constante y estudios clínicos de control (manteniendo en pausa preventiva la suplementación concentrada), nuestra meta realista en estos primeros 28 días es avanzar hacia <strong>{cycle1Target28d} años</strong> con total bioseguridad.</>
+                                            )}
                                         </p>
-                                        <p className="text-tilo-text-muted">
-                                            Esta diferencia de <strong>+{deltaSobrecarga} {deltaSobrecarga === 1 ? 'año' : 'años'}</strong> refleja un esfuerzo adaptativo adicional para sostener su homeostasis diaria. La excelente noticia es que <strong>esta sobrecarga metabólica es reversible</strong>.
-                                        </p>
-                                    </>
-                                ) : (
-                                    <p>
-                                        {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica de <strong>{Math.round(baseAge)} años</strong> guarda equilibrio directo con su <strong>Edad Metabólica actual ({edadMetabolica} años)</strong>, reflejando una reserva funcional conservada en sus sistemas evaluados.
-                                    </p>
-                                )}
-                                <p className="font-semibold text-tilo-text-main pt-1 border-t border-tilo-border/60">
-                                    {(has33Plus || has34Plus) ? (
-                                        <>Al apegarse a su prescripción nutricional de {targetKcalFormatted} y activar la modulación celular con <strong>33Plus®</strong> y la reparación tisular con <strong>34Plus®</strong> conforme a su pauta personalizada, nuestro objetivo en estos primeros 28 días es {deltaSobrecarga > 0 ? <>hacer retroceder su reloj biológico hacia los <strong>{metaReversion} años</strong></> : <>consolidar su vitalidad metabólica en <strong>{metaReversion} años</strong></>}, restaurando la ligereza endotelial y su energía diaria.</>
-                                    ) : (
-                                        <>Al apegarse a su prescripción nutricional antiinflamatoria de {targetKcalFormatted}, hidratación constante y estudios clínicos de control (manteniendo en pausa preventiva la suplementación concentrada), nuestro objetivo en estos primeros 28 días es {deltaSobrecarga > 0 ? <>hacer retroceder su reloj biológico hacia los <strong>{metaReversion} años</strong></> : <>proteger su equilibrio metabólico en <strong>{metaReversion} años</strong></>} con total bioseguridad.</>
-                                    )}
-                                </p>
-                            </div>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </Accordion>
 
@@ -577,6 +569,11 @@ export const TabCalendar = ({
                                             ? `Consulte desde su dispositivo su menú de ${targetKcalFormatted}, registre su caminata diaria (6\u00A0000 a 8\u00A0000 pasos/día), confirme sus tomas programadas de 33Plus® y 34Plus® y dé seguimiento a su descanso nocturno.`
                                             : `Consulte desde su dispositivo su menú de ${targetKcalFormatted}, registre su caminata diaria e hidratación constante (mientras se validan sus estudios de control) y dé seguimiento a su descanso nocturno.`}
                                     </p>
+                                    <div className="pt-1.5 flex flex-wrap items-center gap-3 text-[11px] font-semibold text-[#334155] dark:text-[#CBD5E1] tabular-nums">
+                                        <span>🏠 Entorno: <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{logisticsSummary.venueLabel}</strong></span>
+                                        <span>•</span>
+                                        <span>🍽️ Preparación de alimentos: <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{logisticsSummary.cookLabel}</strong></span>
+                                    </div>
                                 </div>
 
                                 <div className="shrink-0">

@@ -27,40 +27,73 @@ class BiomarkerScoringEngine {
             } else {
                 let totalWeeklyMin = 0;
                 let totalCalories = 0;
-                const isTelemetry = activity.source_type === "TELEMETRY_TCX" || 
-                                    (activity.log && activity.log.some(x => typeof x === 'object'));
+                const meta = activity.telemetry_metadata || null;
+                const isTelemetry = activity.source_type === "TELEMETRY_TCX" && Boolean(meta);
 
-                if (activity.log && activity.log.length > 0) {
-                    activity.log.forEach(item => {
-                        if (typeof item === 'object' && item !== null) {
-                            totalWeeklyMin += (item.duration || item.durationMinutes || 0);
-                            totalCalories += (item.calories_device || item.calories || 0);
-                        } else if (typeof item === 'string') {
-                            const daysMatch = item.match(/(\d+)\s*días/i);
-                            const minsMatch = item.match(/(\d+)\s*min/i);
-                            if (daysMatch && minsMatch) {
-                                const days = parseInt(daysMatch[1], 10);
-                                const mins = parseInt(minsMatch[1], 10);
-                                totalWeeklyMin += (days * mins);
-                            }
-                        }
-                    });
-                }
-
-                if (isTelemetry) {
-                    const minScore = (totalWeeklyMin / 150) * 80;
-                    const calScore = (totalCalories / 1000) * 20;
-                    exerciseScore = Math.min(100, Math.round(minScore + calScore));
+                if (isTelemetry && meta.preview_pending_confirm && !meta.weekly_days) {
+                    exerciseScore = null;
+                    exerciseLabel = "Por confirmar";
                 } else {
-                    exerciseScore = Math.min(100, Math.round((totalWeeklyMin / 150) * 100));
+                    if (isTelemetry) {
+                        const wkDays = Number(meta.weekly_days) > 0 ? Number(meta.weekly_days) : 0;
+                        const dailyMin = Number(meta.daily_minutes || meta.total_minutes || 0);
+                        const dailyCal = Number(meta.daily_calories || meta.total_calories || 0);
+                        totalWeeklyMin = Number(meta.weekly_minutes) > 0
+                            ? Number(meta.weekly_minutes)
+                            : (wkDays > 0 ? Math.round(dailyMin * wkDays) : dailyMin);
+                        totalCalories = Number(meta.weekly_calories) > 0
+                            ? Number(meta.weekly_calories)
+                            : (wkDays > 0 ? Math.round(dailyCal * wkDays) : dailyCal);
+                    } else if (activity.log && activity.log.length > 0) {
+                        activity.log.forEach(item => {
+                            if (typeof item === 'object' && item !== null) {
+                                const itemDur = item.duration || item.durationMinutes || item.weekly_minutes || 0;
+                                const freq = item.weekly_days || item.frequency || 0;
+                                if (item.weekly_minutes > 0) {
+                                    totalWeeklyMin += Number(item.weekly_minutes);
+                                } else if (freq > 0) {
+                                    totalWeeklyMin += (freq * itemDur);
+                                } else {
+                                    totalWeeklyMin += itemDur;
+                                }
+                            } else if (typeof item === 'string') {
+                                const daysMatch = item.match(/(\d+)\s*(?:días|dias|d\/sem|días\/sem)/i);
+                                const minsMatch = item.match(/(\d+)\s*min/i);
+                                if (daysMatch && minsMatch) {
+                                    const days = parseInt(daysMatch[1], 10);
+                                    const mins = parseInt(minsMatch[1], 10);
+                                    totalWeeklyMin += (days * mins);
+                                } else if (minsMatch) {
+                                    totalWeeklyMin += parseInt(minsMatch[1], 10);
+                                }
+                            }
+                        });
+                    }
+
+                    if (totalWeeklyMin === 0) {
+                        if (activity.weekly_minutes) {
+                            totalWeeklyMin = parseInt(activity.weekly_minutes, 10);
+                        } else if (activity.duration_history) {
+                            const minsMatch = String(activity.duration_history).match(/(\d+)\s*min/i);
+                            if (minsMatch) totalWeeklyMin = parseInt(minsMatch[1], 10);
+                        }
+                    }
+
+                    if (isTelemetry && totalCalories > 0) {
+                        const minScore = (totalWeeklyMin / 150) * 80;
+                        const calScore = (totalCalories / 1000) * 20;
+                        exerciseScore = Math.min(100, Math.round(minScore + calScore));
+                    } else {
+                        exerciseScore = Math.min(100, Math.round((totalWeeklyMin / 150) * 100));
+                    }
+
+                    if (exerciseScore < 30) exerciseScore = 30;
+
+                    if (exerciseScore >= 90) exerciseLabel = "Óptimo";
+                    else if (exerciseScore >= 70) exerciseLabel = "Bueno";
+                    else if (exerciseScore >= 50) exerciseLabel = "Regular";
+                    else exerciseLabel = "Deficiente";
                 }
-
-                if (exerciseScore < 30) exerciseScore = 30;
-
-                if (exerciseScore >= 90) exerciseLabel = "Óptimo";
-                else if (exerciseScore >= 70) exerciseLabel = "Bueno";
-                else if (exerciseScore >= 50) exerciseLabel = "Regular";
-                else exerciseLabel = "Deficiente";
             }
         }
 

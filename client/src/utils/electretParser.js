@@ -1,17 +1,23 @@
 /**
  * Motor Universal de Ingesta y Parseo de Telemetría Electret (Cliente Frontend)
- * Ecosistema T.I.L.O. - Cumplimiento NOM-004-SSA3-2012
+ * Ecosistema T.I.L.O. - Cumplimiento NOM-004-SSA3-2012 y Constitución Sinergix v2.0.2
  */
 
-/**
- * Normaliza cualquier cadena eliminando acentos, caracteres invisibles (&nbsp;), 
- * saltos de línea y formateando a snake_case / slug canónico.
- */
+import { sanitizeClinicalSpanish } from './patientGuideAdapter';
+
+export function collapseWhitespace(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[\r\n\t]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 export function normalizeKey(str) {
     if (!str) return '';
-    return String(str)
-        .replace(/&nbsp;/g, ' ')
-        .replace(/[\r\n\t]+/g, ' ')
+    return collapseWhitespace(str)
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^\w\s-]/g, '')
@@ -20,12 +26,10 @@ export function normalizeKey(str) {
         .replace(/\s+/g, '_');
 }
 
-/**
- * Convierte cualquier representación de número a float puro.
- */
 export function cleanFloat(val) {
     if (val === null || val === undefined) return null;
-    const str = String(val).trim().replace(',', '.');
+    const str = collapseWhitespace(val).replace(',', '.');
+    if (!str || /^sin\s+direcci/i.test(str) || /^[+-]+$/.test(str)) return null;
     const match = str.match(/-?\d+(?:\.\d+)?/);
     if (!match) return null;
     const num = parseFloat(match[0]);
@@ -33,39 +37,110 @@ export function cleanFloat(val) {
 }
 
 /**
- * Evalúa el estado biosemántico del parámetro.
+ * Detecta si un bloque de categorías proviene del antiguo motor sintético QuantumResonanceEngine
+ * (body_composition con Clasificación Componencial = 1.000 e ICW = 0.000).
+ */
+export function isSyntheticElectretPayload(categories) {
+    if (!categories || typeof categories !== 'object') return false;
+    const bc = categories.body_composition;
+    if (!bc) return false;
+    const items = Array.isArray(bc.items) ? bc.items : Object.values(bc.items || bc);
+    if (!Array.isArray(items) || items.length === 0) return false;
+    const hasFakeHeader = items.some((i) =>
+        /clasificaci[oó]n\s+componencial/i.test(String(i?.name || '')) &&
+        String(i?.val ?? i?.value ?? '') === '1.000'
+    );
+    const hasZeroIcw = items.some((i) =>
+        /l[íi]quido\s+intracelular/i.test(String(i?.name || '')) &&
+        String(i?.val ?? i?.value ?? '') === '0.000'
+    );
+    return hasFakeHeader && hasZeroIcw;
+}
+
+/**
+ * Evalúa el estado biosemántico del parámetro respetando iconos YC01..YC10,
+ * rangos invertidos (ej. DMO 0,796 - 0,433) y valores cualitativos de 3 columnas (Padecimientos Óseos).
  */
 export function evalParamStatus(imgSrc, val, ref) {
     if (imgSrc) {
-        const s = String(imgSrc).toLowerCase();
-        // Mapeo canónico del semáforo cuántico Electret:
-        // YC01 / YC07: Extremos (- - - / + + +) -> ANORMAL SEVERO
-        // YC02 / YC06: Medios (- - / + +) -> ANORMAL MODERADO
-        // YC03 / YC05 / YC09: Ligeros (- / +) -> ANORMAL LEVE
-        // YC04 / YC08: Centro verde (Dentro de rango / Normal) -> NORMAL
-        if (s.includes('yc01') || s.includes('yc07') || s.includes('ycmark1') || s.includes('+++')) return 'ANORMAL SEVERO';
-        if (s.includes('yc02') || s.includes('yc06') || s.includes('ycmark2') || s.includes('++')) return 'ANORMAL MODERADO';
-        if (s.includes('yc03') || s.includes('yc05') || s.includes('yc09') || s.includes('ycmark3') || s.includes('+')) return 'ANORMAL LEVE';
-        if (s.includes('yc04') || s.includes('yc08') || s.includes('ycmark4') || s.includes('normal')) return 'NORMAL';
-    }
-
-    if (ref && String(ref).includes('-')) {
-        const parts = String(ref).split('-');
-        if (parts.length === 2) {
-            const min = cleanFloat(parts[0]);
-            const max = cleanFloat(parts[1]);
-            const v = cleanFloat(val);
-            if (min !== null && max !== null && v !== null) {
-                if (v >= min && v <= max) return 'NORMAL';
-                const rangeLen = Math.abs(max - min) || 1;
-                const dev = Math.abs(v < min ? min - v : v - max) / rangeLen;
-                if (dev > 0.5) return 'ANORMAL SEVERO';
-                if (dev > 0.2) return 'ANORMAL MODERADO';
-                return 'ANORMAL LEVE';
-            }
+        const s = String(imgSrc).toLowerCase().trim();
+        if (s.includes('yc01') || s.includes('yc07') || s.includes('ycmark1') || s.includes('+++') || s.includes('---')) {
+            return 'ANORMAL SEVERO (+++)';
+        }
+        if (s.includes('yc02') || s.includes('yc06') || s.includes('ycmark2') || s.includes('++') || s.includes('--')) {
+            return 'ANORMAL MODERADO (++)';
+        }
+        if (
+            s.includes('yc03') ||
+            s.includes('yc05') ||
+            s.includes('yc09') ||
+            s.includes('yc10') ||
+            s.includes('ycmark3') ||
+            s === '+' ||
+            s === '-'
+        ) {
+            return s === '-' ? 'NORMAL (-)' : 'ANORMAL LEVE (+)';
+        }
+        if (s.includes('yc04') || s.includes('yc08') || s.includes('ycmark4') || s.includes('normal')) {
+            return 'NORMAL (-)';
         }
     }
-    return 'NORMAL';
+
+    const valClean = collapseWhitespace(val);
+    const refClean = collapseWhitespace(ref);
+
+    if (!refClean || /^mediciones$|^informativo$|^normativo$/i.test(refClean)) {
+        return 'NORMAL (-)';
+    }
+
+    if (valClean && refClean && valClean.toLowerCase() === refClean.toLowerCase()) {
+        return 'NORMAL (-)';
+    }
+
+    const ltMatch = refClean.match(/^<=?\s*[a-zA-Z]*\s*(-?\d+(?:[.,]\d+)?)/);
+    if (ltMatch) {
+        const limit = parseFloat(ltMatch[1].replace(',', '.'));
+        const vNum = cleanFloat(valClean);
+        if (!isNaN(limit) && vNum !== null) {
+            if (vNum <= limit) return 'NORMAL (-)';
+            const excessRatio = (vNum - limit) / (Math.abs(limit) || 1);
+            if (excessRatio > 0.5) return 'ANORMAL SEVERO (+++)';
+            if (excessRatio > 0.15) return 'ANORMAL MODERADO (++)';
+            return 'ANORMAL LEVE (+)';
+        }
+    }
+
+    const gtMatch = refClean.match(/^>=?\s*[a-zA-Z]*\s*(-?\d+(?:[.,]\d+)?)/);
+    if (gtMatch) {
+        const limit = parseFloat(gtMatch[1].replace(',', '.'));
+        const vNum = cleanFloat(valClean);
+        if (!isNaN(limit) && vNum !== null) {
+            if (vNum >= limit) return 'NORMAL (-)';
+            const defRatio = (limit - vNum) / (Math.abs(limit) || 1);
+            if (defRatio > 0.35) return 'ANORMAL SEVERO (+++)';
+            if (defRatio > 0.15) return 'ANORMAL MODERADO (++)';
+            return 'ANORMAL LEVE (+)';
+        }
+    }
+
+    const rangeMatch = refClean.match(/^\s*(-?\d+(?:[.,]\d+)?)%?\s*[-~]\s*(-?\d+(?:[.,]\d+)?)%?(?:\s*[a-zA-Z/%²2]*)?\s*$/);
+    if (rangeMatch) {
+        const rawA = parseFloat(rangeMatch[1].replace(',', '.'));
+        const rawB = parseFloat(rangeMatch[2].replace(',', '.'));
+        const v = cleanFloat(valClean);
+        if (!isNaN(rawA) && !isNaN(rawB) && v !== null) {
+            const min = Math.min(rawA, rawB);
+            const max = Math.max(rawA, rawB);
+            if (v >= min && v <= max) return 'NORMAL (-)';
+            const rangeLen = Math.abs(max - min) || 1;
+            const dev = Math.abs(v < min ? min - v : v - max) / rangeLen;
+            if (dev > 0.5) return 'ANORMAL SEVERO (+++)';
+            if (dev > 0.2) return 'ANORMAL MODERADO (++)';
+            return 'ANORMAL LEVE (+)';
+        }
+    }
+
+    return 'NORMAL (-)';
 }
 
 export const CATEGORY_MAP = {
@@ -86,7 +161,7 @@ export const CATEGORY_MAP = {
     'gallbladder': 'gallbladder',
     'funcion_pancreatica': 'pancreas',
     'pancreatica': 'pancreas',
-    'pancreatica': 'pancreas',
+    'pancreas': 'pancreas',
     'funcion_renal': 'renal',
     'renal': 'renal',
     'funcion_pulmonar': 'pulmonary',
@@ -97,7 +172,8 @@ export const CATEGORY_MAP = {
     'densidad_mineral_osea': 'bone_density',
     'enfermedad_de_hueso_reumatoide': 'rheumatoid',
     'indice_de_crecimiento_oseo': 'bone_growth',
-    'glucosa_en_la_sangre': 'blood_glucose',
+    'glucosa_en_la_sangre': 'blood_sugar',
+    'blood_glucose': 'blood_sugar',
     'oligoelementos': 'trace_elements',
     'oligoelementos_y_minerales': 'trace_elements',
     'vitamina': 'vitamins',
@@ -126,6 +202,7 @@ export const CATEGORY_MAP = {
     'ginecologia': 'gynecology',
     'senos': 'breasts',
     'cyclo_menstrual': 'menstrual_cycle',
+    'ciclo_menstrual': 'menstrual_cycle',
     'elementos_humanos': 'body_composition',
     'prostata': 'prostate',
     'esperma_y_semen': 'sperm_semen',
@@ -133,17 +210,16 @@ export const CATEGORY_MAP = {
 };
 
 /**
- * Procesa en frontend objetos de telemetría asegurando normalización estandarizada
+ * Procesa en frontend objetos de telemetría asegurando normalización ortográfica,
+ * preservación de banderas inSynthesisReport y cortocircuito libre de falsificaciones.
  */
 export function parseElectretData(rawInput) {
     if (!rawInput || typeof rawInput !== 'object') {
         return { success: false, categories: {}, totalParameters: 0, abnormalCount: 0 };
     }
 
-    // INYECCIÓN ANTIGRAVITY: Cortocircuito metabólico (Mitigación ATP).
-    // Si el objeto ya contiene la raíz 'cardiovascular' o 'categories', ya fue procesado.
-    if (rawInput.cardiovascular || rawInput.categories) {
-        return rawInput.categories ? rawInput : { success: true, categories: rawInput, totalParameters: 450, abnormalCount: 0 };
+    if (rawInput.categories && typeof rawInput.categories === 'object') {
+        return rawInput;
     }
 
     const resultCategories = {};
@@ -151,11 +227,12 @@ export function parseElectretData(rawInput) {
     let abnormalCount = 0;
 
     Object.entries(rawInput).forEach(([catKey, catData]) => {
+        if (!catData || typeof catData !== 'object') return;
         const normCatKey = CATEGORY_MAP[normalizeKey(catKey)] || normalizeKey(catKey);
-        
+
         if (!resultCategories[normCatKey]) {
             resultCategories[normCatKey] = {
-                title: catKey,
+                title: sanitizeClinicalSpanish(catData.title || catKey),
                 key: normCatKey,
                 total: 0,
                 abnormalCount: 0,
@@ -168,46 +245,54 @@ export function parseElectretData(rawInput) {
         if (typeof itemsSource === 'object') {
             const sourceEntries = Array.isArray(itemsSource) ? itemsSource.entries() : Object.entries(itemsSource);
             for (const [itemKey, itemVal] of sourceEntries) {
-                if (['title', 'key', 'total', 'abnormalCount', 'itemsDict'].includes(itemKey)) continue;
+                if (['title', 'key', 'total', 'abnormalCount', 'itemsDict'].includes(String(itemKey))) continue;
                 if (!itemVal || typeof itemVal !== 'object') continue;
 
-                const name = itemVal.name || itemVal.label || itemKey;
-                const ref = itemVal.reference || itemVal.ref || 'Normativo';
-                const val = itemVal.value || itemVal.val || itemVal.raw_value || '';
-                const cleanValNum = cleanFloat(val);
-                const status = itemVal.status || evalParamStatus(null, val, ref);
+                const rawName = itemVal.displayName || itemVal.name || itemVal.label || String(itemKey);
+                const cleanName = sanitizeClinicalSpanish(rawName);
+                const ref = itemVal.reference ?? itemVal.ref ?? 'Informativo';
+                const val = itemVal.value ?? itemVal.val ?? itemVal.raw_value ?? '';
+                const cleanValNum = itemVal.numeric_value !== undefined ? itemVal.numeric_value : cleanFloat(val);
+                const status = itemVal.status || evalParamStatus(itemVal.iconCode || null, val, ref);
 
-                const normItemKey = normalizeKey(name);
+                const normItemKey = itemVal.key || normalizeKey(cleanName);
                 const itemObj = {
-                    name,
+                    name: cleanName,
+                    displayName: cleanName,
                     key: normItemKey,
+                    slot: itemVal.slot || null,
+                    unit: itemVal.unit || '',
                     value: String(val),
                     val: String(val),
-                    raw_value: String(val),
+                    raw_value: String(itemVal.raw_value ?? val),
                     numeric_value: cleanValNum,
                     reference: String(ref),
                     ref: String(ref),
-                    status
+                    iconCode: itemVal.iconCode || null,
+                    status,
+                    inSynthesisReport: Boolean(itemVal.inSynthesisReport)
                 };
 
-                resultCategories[normCatKey].itemsDict[normItemKey] = itemObj;
-                resultCategories[normCatKey].items.push(itemObj);
-                resultCategories[normCatKey].total += 1;
-                totalParams += 1;
+                if (!resultCategories[normCatKey].itemsDict[normItemKey]) {
+                    resultCategories[normCatKey].itemsDict[normItemKey] = itemObj;
+                    resultCategories[normCatKey].items.push(itemObj);
+                    resultCategories[normCatKey].total += 1;
+                    totalParams += 1;
 
-                if (status !== 'NORMAL' && status !== 'NORMAL (-)' && status !== '-') {
-                    resultCategories[normCatKey].abnormalCount += 1;
-                    abnormalCount += 1;
+                    if (!String(status).startsWith('NORMAL') && status !== '-') {
+                        resultCategories[normCatKey].abnormalCount += 1;
+                        abnormalCount += 1;
+                    }
                 }
             }
         }
     });
 
     return {
-        success: true,
+        success: Object.keys(resultCategories).length > 0,
         categories: resultCategories,
         totalParameters: totalParams,
-        abnormalCount: abnormalCount,
+        abnormalCount,
         parsedAt: new Date().toISOString()
     };
 }

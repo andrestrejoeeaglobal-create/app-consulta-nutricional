@@ -11,7 +11,13 @@ const symptomOptions = [
 ];
 
 export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPhaseComplete, registerInputHandler, messages, setMessages, setIsGlobalTyping, onStateChange }) {
-    const { patientName: pName, isMinor, isLactante, isPediatrico, isGeriatric, patientGender } = usePatientLinguistics(patientData);
+    const { patientAge, patientName: pName, isMinor, isLactante, isPediatrico, isGeriatric, patientGender } = usePatientLinguistics(patientData);
+    const hasConfirmedPediatricEvidence = Boolean(
+        patientData?.profile?.pediatric_profile?.is_minor === true ||
+        ((patientData?.profile?.birthdate || patientData?.identificacion?.fechanac) && Number.isFinite(Number(patientAge)) && Number(patientAge) < 13)
+    );
+    const safeIsLactante = Boolean(isLactante && hasConfirmedPediatricEvidence && patientAge < 2);
+    const safeIsMinor = Boolean(isMinor && hasConfirmedPediatricEvidence && patientAge < 12);
 
     const [step, setStep] = useState(() => {
         const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content?.includes("salud digestiva en nuestro núcleo de datos"));
@@ -26,6 +32,27 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
     const hasGreeted = useRef(false);
 
     useEffect(() => {
+        const adultDigestiveGreeting = {
+            role: 'assistant',
+            content: "He registrado y sellado su perfil de sensibilidades inmunológicas de manera exitosa.\n\nPasemos a su salud digestiva. En los últimos 30 días, ¿ha padecido inflamación, gases, acidez, o estreñimiento recurrente?",
+            options: [
+                { label: "✅ Sí", value: "Sí" },
+                { label: "❌ No", value: "No" }
+            ]
+        };
+
+        // Auto-saneamiento defensivo: si por hidratación incompleta previa se emitió burbuja de lactante en un adulto, sustituir en sitio
+        if (!safeIsLactante && Array.isArray(messages) && messages.some(m => m?.role === 'assistant' && (m.content?.includes('(su bebé)') || m.content?.includes('Desencadenantes de Disbiosis e Inmunidad Mucosa')))) {
+            hasGreeted.current = true;
+            setMessages(prev => (prev || []).map(m => {
+                if (m?.role === 'assistant' && (m.content?.includes('(su bebé)') || m.content?.includes('Desencadenantes de Disbiosis e Inmunidad Mucosa'))) {
+                    return adultDigestiveGreeting;
+                }
+                return m;
+            }));
+            return;
+        }
+
         if (hasGreeted.current) return;
 
         if (step === 'correct_menu') {
@@ -51,16 +78,16 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
             return;
         }
 
-        const alreadyGreeted = (messages || []).some(msg => msg.role === 'assistant' && msg.content.includes("salud digestiva"));
+        const alreadyGreeted = (messages || []).some(msg => msg.role === 'assistant' && (msg.content.includes("salud digestiva") || msg.content.includes("Desencadenantes de Disbiosis e Inmunidad Mucosa")));
         if (!alreadyGreeted) {
             hasGreeted.current = true;
-            const initialMsg = isLactante
+            const initialMsg = safeIsLactante
                 ? `He registrado y sellado el perfil de sensibilidades inmunológicas de **${pName}** (su bebé).\n\nPara evaluar los **Desencadenantes de Disbiosis e Inmunidad Mucosa** (ATM 3): ¿Ha presentado **${pName}** alguno de los siguientes antecedentes o molestias recurrentes?`
-                : (isMinor
+                : (safeIsMinor
                     ? `He registrado y sellado el perfil de sensibilidades inmunológicas de **${pName}** de manera exitosa.\n\nPasemos a la salud digestiva. En los últimos 30 días, ¿ha padecido **${pName}** inflamación, gases, acidez, o estreñimiento recurrente?`
-                    : "He registrado y sellado su perfil de sensibilidades inmunológicas de manera exitosa.\n\nPasemos a su salud digestiva. En los últimos 30 días, ¿ha padecido inflamación, gases, acidez, o estreñimiento recurrente?");
+                    : adultDigestiveGreeting.content);
             
-            const initialOptions = isLactante
+            const initialOptions = safeIsLactante
                 ? [
                     { label: "🟢 Sin molestias / Microbioma estable", value: "ATM_DIGEST_STABLE" },
                     { label: "💊 Exposición a Antibióticos en primeros meses", value: "ATM_DIGEST_ANTIBIOTICS" },
@@ -68,10 +95,7 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
                     { label: "🔴 Reflujo / Regurgitación constante", value: "ATM_DIGEST_REFLUX" },
                     { label: "🌸 Eczema / Dermatitis atópica en piel", value: "ATM_DIGEST_ECZEMA" }
                 ]
-                : [
-                    { label: "✅ Sí", value: "Sí" },
-                    { label: "❌ No", value: "No" },
-                ];
+                : adultDigestiveGreeting.options;
 
             setMessages(prev => [
                 ...prev,
@@ -82,7 +106,7 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
                 }
             ]);
         }
-    }, [messages, isMinor, isLactante, pName, setMessages, step]);
+    }, [messages, safeIsMinor, safeIsLactante, pName, setMessages, step]);
 
     const processStepRef = useRef(null);
     useEffect(() => {

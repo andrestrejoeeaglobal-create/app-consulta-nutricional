@@ -618,6 +618,18 @@ app.patch('/api/citations/:id/progress', (req, res) => {
             if (resetInt === 0 && existingRow && existingRow.patient_data_snapshot) {
                 const decPrev = cryptoVault.decryptClinicalData(existingRow.patient_data_snapshot);
                 const parsedPrev = typeof decPrev === 'string' ? JSON.parse(decPrev || '{}') : (decPrev || {});
+
+                if (parsedPrev._server_rewind_nonce && parsedData._server_rewind_nonce !== parsedPrev._server_rewind_nonce) {
+                    console.log(`🛡️ [NOM-004 REWIND GUARD] Ignorando PATCH con estado previo al rebobinado (${parsedPrev._server_rewind_nonce}) para Cita #${cleanId}.`);
+                    return res.json({
+                        success: true,
+                        ignored_stale_before_rewind: true,
+                        citationId: cleanId,
+                        userId: validUserId,
+                        patientData: parsedPrev
+                    });
+                }
+
                 if (parsedPrev.clinical_dossier && !parsedData.clinical_dossier) {
                     parsedData.clinical_dossier = parsedPrev.clinical_dossier;
                 }
@@ -627,23 +639,26 @@ app.patch('/api/citations/:id/progress', (req, res) => {
                         parsedData.clinical_dossier = parsedPrev.clinical_dossier;
                     }
                 }
-                if (parsedPrev.electretTelemetry && !parsedData.electretTelemetry) {
-                    parsedData.electretTelemetry = parsedPrev.electretTelemetry;
-                }
+                const { isSyntheticElectretPayload } = require('./utils/electretParser');
                 const prevElectret = parsedPrev.scan_data?.electret_metrics;
                 const currElectret = parsedData.scan_data?.electret_metrics;
-                if (
-                    prevElectret &&
-                    Object.keys(prevElectret).length > 0 &&
-                    (!currElectret || Object.keys(currElectret).length === 0) &&
-                    parsedData.scan_data?.electret_skipped !== true
-                ) {
+                const prevIsReal = prevElectret && Object.keys(prevElectret).length > 0 && !isSyntheticElectretPayload(prevElectret);
+                const currIsMissingOrSynthetic = !currElectret || Object.keys(currElectret).length === 0 || isSyntheticElectretPayload(currElectret);
+
+                if (prevIsReal && currIsMissingOrSynthetic && parsedData.scan_data?.electret_skipped !== true) {
                     parsedData.scan_data = {
                         ...(parsedData.scan_data || {}),
                         electret_metrics: prevElectret,
                         electret_scanned: true,
-                        electret_patient_name: parsedPrev.scan_data?.electret_patient_name || parsedPrev.profile?.name
+                        electret_patient_name: parsedPrev.scan_data?.electret_patient_name || parsedPrev.profile?.name,
+                        electret_metadata: parsedPrev.scan_data?.electret_metadata || null,
+                        electret_synthesis: parsedPrev.scan_data?.electret_synthesis || []
                     };
+                    if (parsedPrev.electretTelemetry) {
+                        parsedData.electretTelemetry = parsedPrev.electretTelemetry;
+                    }
+                } else if (parsedPrev.electretTelemetry && !parsedData.electretTelemetry && !isSyntheticElectretPayload(parsedPrev.electretTelemetry?.categories)) {
+                    parsedData.electretTelemetry = parsedPrev.electretTelemetry;
                 }
             }
         } catch (_) {}

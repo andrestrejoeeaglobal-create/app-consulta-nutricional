@@ -59,7 +59,7 @@ const ProgressRing = ({ score, label }) => {
                 />
             </svg>
             <div className="flex flex-col text-left">
-                <span className={`text-xs font-black ${textColor} leading-none`}>
+                <span className={`text-xs font-black tabular-nums ${textColor} leading-none`}>
                     {isEvaluated ? `${displayScore}` : "--"}{" "}
                     <span className="text-[8px] font-normal text-tilo-text-muted">pts</span>
                 </span>
@@ -104,15 +104,25 @@ export const TabLogistics = ({
     const hasExercise = patientData.lifestyle_profile?.activity?.has_scheduled_exercise || 
                         patientData.clinical_context?.activity?.exercise?.has_scheduled_exercise;
     
-    // Contexto Pediátrico / Lactante para mapeo NEAT
-    const ageStr = patientData?.profile?.pediatric_profile?.age || patientData?.identificacion?.edad || "0";
-    const age = parseInt(ageStr, 10) || 0;
+    // Contexto Pediátrico / Lactante blindado (sin centinela "0" en adultos)
+    const rawAgeCandidate =
+        patientData?.profile?.age ??
+        patientData?.identificacion?.edad ??
+        patientData?.profile?.pediatric_profile?.age ??
+        null;
+    const parsedAge = (rawAgeCandidate !== null && rawAgeCandidate !== undefined && rawAgeCandidate !== "")
+        ? parseInt(rawAgeCandidate, 10)
+        : null;
     const babyMonths = patientData?.profile?.baby_age_months !== undefined ? patientData.profile.baby_age_months : (patientData?.identificacion?.baby_age_months !== undefined ? patientData.identificacion.baby_age_months : null);
-    const isLactante = age === 0 || (babyMonths !== null && babyMonths < 24);
+    const isLactante = Boolean(
+        patientData?.profile?.pediatric_profile?.is_lactante ||
+        (babyMonths !== null && babyMonths < 24) ||
+        (parsedAge !== null && !isNaN(parsedAge) && parsedAge > 0 && parsedAge < 2)
+    );
 
     const neatMap = isLactante
         ? { SEDENTARY: 'Tranquilo', LIGHT: 'Gateo Inicial', MODERATE: 'Gateo Activo', HEAVY: 'Explorador' }
-        : { SEDENTARY: 'Sedentario', LIGHT: 'Ligero', MODERATE: 'Moderado', HEAVY: 'Pesado' };
+        : { SEDENTARY: 'Sedentario', LIGHT: 'Ligero', MODERATE: 'Moderado', HEAVY: 'Intenso' };
 
     const neatDescMap = isLactante
         ? {
@@ -122,14 +132,18 @@ export const TabLogistics = ({
             HEAVY: 'Explora activamente / Corre / Salta'
           }
         : {
-            SEDENTARY: 'Principalmente sentado / Oficina',
-            LIGHT: 'De pie o caminando poco',
-            MODERATE: 'Movimiento constante / Trabajo activo',
-            HEAVY: 'Trabajo físico demandante'
+            SEDENTARY: 'Jornada en escritorio o traslados mínimos',
+            LIGHT: 'Caminatas breves o actividad de pie intermitente',
+            MODERATE: 'Movimiento activo constante en jornada diaria',
+            HEAVY: 'Actividad física ocupacional continua de alta demanda'
           };
 
     const neatLevelRaw = patientData.lifestyle_profile?.activity?.neat_level ||
                          patientData.clinical_context?.activity?.exercise?.neat_level;
+    const isPreviewNeatPending = Boolean(
+        patientData.lifestyle_profile?.activity?.preview_neat_pending ||
+        patientData.clinical_context?.activity?.exercise?.preview_neat_pending
+    );
     const neatLevel = neatLevelRaw ? (neatMap[neatLevelRaw] || neatLevelRaw) : 'Sin evaluar';
     const neatDesc = neatLevelRaw ? (neatDescMap[neatLevelRaw] || '--') : 'Sin evaluar';
     
@@ -204,51 +218,127 @@ export const TabLogistics = ({
 
                                 {/* Telemetry Metadata Card */}
                                 {telemetryMetadata ? (
-                                    <div className="mt-3 p-3 bg-tilo-bg/50 rounded-xl border border-tilo-border text-xs space-y-2">
-                                        <div className="font-bold text-tilo-primary flex items-center gap-1.5 border-b border-tilo-border pb-1.5">
-                                            <span>📊</span>
-                                            <span>Resumen Metabólico Consolidado</span>
-                                            <span className="ml-auto text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/20">
-                                                {telemetryMetadata.total_parsed_sessions || 1} {telemetryMetadata.total_parsed_sessions === 1 ? 'sesión' : 'sesiones'} (.TCX)
+                                    <div className="mt-3 p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-2.5">
+                                        <div className="font-bold text-[#1C75BC] dark:text-sky-400 flex flex-wrap items-center gap-1.5 border-b border-slate-200 dark:border-slate-700 pb-2">
+                                            <span>⌚</span>
+                                            <span className="text-[#0F172A] dark:text-[#F8FAFC]">
+                                                {telemetryMetadata.device_name && telemetryMetadata.device_name !== 'Wearable Device'
+                                                    ? telemetryMetadata.device_name
+                                                    : 'Telemetría .TCX'}
                                             </span>
+                                            {telemetryMetadata.preview_pending_confirm ? (
+                                                <span className="ml-auto text-[10px] bg-[#FFCC00] text-[#0F172A] font-bold px-2 py-0.5 rounded-full border border-[#0F172A]/20 tabular-nums">
+                                                    Vista previa • Por confirmar
+                                                </span>
+                                            ) : (
+                                                <span className="ml-auto text-[10px] bg-[#3AAA35]/15 text-[#0F172A] dark:text-[#F8FAFC] font-bold px-2 py-0.5 rounded-full border border-[#3AAA35]/40 tabular-nums">
+                                                    {telemetryMetadata.unique_days_count || telemetryMetadata.total_parsed_sessions || 1}{' '}
+                                                    {(telemetryMetadata.unique_days_count || telemetryMetadata.total_parsed_sessions || 1) === 1 ? 'jornada' : 'jornadas'}
+                                                    {telemetryMetadata.total_blocks_count > 1 ? ` • ${telemetryMetadata.total_blocks_count} bloques` : ''}
+                                                    {telemetryMetadata.weekly_days ? ` • ${telemetryMetadata.weekly_days} d/sem` : ''}
+                                                </span>
+                                            )}
                                         </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 py-1 text-tilo-text-main">
-                                            <div className="flex items-center gap-1.5 bg-white/60 dark:bg-slate-800/60 p-2 rounded-lg border border-tilo-border/60">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 py-1 text-[#0F172A] dark:text-[#F8FAFC]">
+                                            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
                                                 <span className="text-base">🔥</span>
                                                 <div>
-                                                    <div className="text-[10px] text-tilo-text-muted leading-none">Gasto Calórico</div>
-                                                    <div className="font-bold text-tilo-text-main mt-0.5">{telemetryMetadata.total_calories ? Math.round(telemetryMetadata.total_calories) : '--'} kcal</div>
+                                                    <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] leading-none">Gasto Calórico</div>
+                                                    <div className="font-bold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 tabular-nums">
+                                                        {(telemetryMetadata.daily_calories || telemetryMetadata.total_calories) ? `${Math.round(telemetryMetadata.daily_calories || telemetryMetadata.total_calories)} kcal/día` : '--'}
+                                                    </div>
+                                                    {telemetryMetadata.weekly_calories > 0 && (
+                                                        <div className="text-[10px] font-semibold text-[#1C75BC] dark:text-sky-400 tabular-nums">
+                                                            {Math.round(telemetryMetadata.weekly_calories)} kcal/sem
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5 bg-white/60 dark:bg-slate-800/60 p-2 rounded-lg border border-tilo-border/60">
+                                            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
                                                 <span className="text-base">⏱️</span>
                                                 <div>
-                                                    <div className="text-[10px] text-tilo-text-muted leading-none">Tiempo Total</div>
-                                                    <div className="font-bold text-tilo-text-main mt-0.5">{telemetryMetadata.total_minutes || '--'} min</div>
+                                                    <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] leading-none">Tiempo Activo</div>
+                                                    <div className="font-bold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 tabular-nums">
+                                                        {(telemetryMetadata.daily_minutes || telemetryMetadata.total_minutes) ? `${telemetryMetadata.daily_minutes || telemetryMetadata.total_minutes} min/día` : '--'}
+                                                    </div>
+                                                    {telemetryMetadata.weekly_minutes > 0 && (
+                                                        <div className="text-[10px] font-semibold text-[#1C75BC] dark:text-sky-400 tabular-nums">
+                                                            {telemetryMetadata.weekly_minutes} min/sem
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5 bg-white/60 dark:bg-slate-800/60 p-2 rounded-lg border border-tilo-border/60">
-                                                <span className="text-base">📈</span>
+                                            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                                                <span className="text-base">📏</span>
                                                 <div>
-                                                    <div className="text-[10px] text-tilo-text-muted leading-none">FC Ponderada</div>
-                                                    <div className="font-bold text-tilo-text-main mt-0.5">
-                                                        {telemetryMetadata.average_hr ? `${telemetryMetadata.average_hr} BPM` : '--'}
-                                                        {telemetryMetadata.max_hr ? ` (Pico ${telemetryMetadata.max_hr})` : ''}
+                                                    <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] leading-none">Distancia</div>
+                                                    <div className="font-bold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 tabular-nums">
+                                                        {telemetryMetadata.total_distance > 0
+                                                            ? (telemetryMetadata.total_distance >= 1000
+                                                                ? `${(Math.round(telemetryMetadata.total_distance / 10) / 100).toFixed(2)} km`
+                                                                : `${Math.round(telemetryMetadata.total_distance)} m`)
+                                                            : 'Indoor / Sin GPS'}
                                                     </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900/60 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                                                <span className="text-base">❤️</span>
+                                                <div>
+                                                    <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] leading-none">FC Ponderada</div>
+                                                    <div className="font-bold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 tabular-nums">
+                                                        {telemetryMetadata.average_hr ? `${telemetryMetadata.average_hr} BPM` : '--'}
+                                                    </div>
+                                                    {telemetryMetadata.max_hr > 0 && (
+                                                        <div className="text-[10px] font-semibold text-[#334155] dark:text-[#CBD5E1] tabular-nums">
+                                                            Pico {telemetryMetadata.max_hr} BPM
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {Array.isArray(telemetryMetadata.sessions) && telemetryMetadata.sessions.length > 0 && (
-                                            <div className="space-y-1.5 pt-1 border-t border-tilo-border/60">
-                                                <div className="text-[10px] font-bold text-tilo-text-muted uppercase">Sesiones Detectadas:</div>
+                                        {Array.isArray(telemetryMetadata.disciplines) && telemetryMetadata.disciplines.length > 0 ? (
+                                            <div className="space-y-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                                                <div className="text-[10px] font-bold text-[#334155] dark:text-[#CBD5E1] uppercase">
+                                                    Disciplinas Desglosadas{telemetryMetadata.dates_display?.[0] ? ` (${telemetryMetadata.dates_display[0]})` : ''}:
+                                                </div>
+                                                {telemetryMetadata.disciplines.map((disc, dIdx) => {
+                                                    const lowerSp = String(disc.sport || '').toLowerCase();
+                                                    const icon = lowerSp.includes('cicl') ? '🚴'
+                                                        : lowerSp.includes('nat') ? '🏊'
+                                                        : lowerSp.includes('caminadora') || lowerSp.includes('run') || lowerSp.includes('carr') || lowerSp.includes('elípt') || lowerSp.includes('elipt') ? '🏃'
+                                                        : lowerSp.includes('caminat') ? '🚶'
+                                                        : '🧘';
+                                                    return (
+                                                        <div key={dIdx} className="flex justify-between items-center bg-white dark:bg-slate-900/60 px-2.5 py-1.5 rounded-md border border-slate-200/80 dark:border-slate-700 text-[11px] text-[#0F172A] dark:text-[#F8FAFC]">
+                                                            <span className="font-semibold flex items-center gap-1.5">
+                                                                <span>{icon}</span>
+                                                                <span>{disc.sport || 'Entrenamiento'}</span>
+                                                                {disc.blocksCount > 1 && (
+                                                                    <span className="text-[10px] text-[#334155] dark:text-[#CBD5E1] tabular-nums">({disc.blocksCount} bloques)</span>
+                                                                )}
+                                                            </span>
+                                                            <span className="text-[#334155] dark:text-[#CBD5E1] font-medium tabular-nums">
+                                                                {disc.distanceMeters > 0 ? `${(Math.round(disc.distanceMeters / 10) / 100).toFixed(2)} km | ` : ''}
+                                                                {disc.durationMinutesExact || disc.durationMinutes} min
+                                                                {disc.calories > 0 ? ` | ${Math.round(disc.calories)} kcal` : ''}
+                                                                {disc.averageHeartRate > 0 ? ` | FC ${disc.averageHeartRate}` : ''}
+                                                                {disc.maximumHeartRate > 0 ? `/${disc.maximumHeartRate} BPM` : (disc.averageHeartRate > 0 ? ' BPM' : '')}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : Array.isArray(telemetryMetadata.sessions) && telemetryMetadata.sessions.length > 0 && (
+                                            <div className="space-y-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                                                <div className="text-[10px] font-bold text-[#334155] dark:text-[#CBD5E1] uppercase">Bloques Detectados:</div>
                                                 {telemetryMetadata.sessions.map((sess, sIdx) => (
-                                                    <div key={sIdx} className="flex justify-between items-center bg-white/40 dark:bg-slate-800/40 px-2.5 py-1.5 rounded-md text-[11px] text-tilo-text-main">
+                                                    <div key={sIdx} className="flex justify-between items-center bg-white dark:bg-slate-900/60 px-2.5 py-1.5 rounded-md border border-slate-200/80 dark:border-slate-700 text-[11px] text-[#0F172A] dark:text-[#F8FAFC]">
                                                         <span className="font-semibold flex items-center gap-1">
-                                                            <span>{sess.sport?.toLowerCase().includes('cicl') ? '🚴' : sess.sport?.toLowerCase().includes('nat') ? '🏊' : sess.sport?.toLowerCase().includes('run') || sess.sport?.toLowerCase().includes('carr') ? '🏃' : '🏋️'}</span>
+                                                            <span>{sess.sport?.toLowerCase().includes('cicl') ? '🚴' : sess.sport?.toLowerCase().includes('nat') ? '🏊' : sess.sport?.toLowerCase().includes('run') || sess.sport?.toLowerCase().includes('carr') || sess.sport?.toLowerCase().includes('caminadora') || sess.sport?.toLowerCase().includes('elípt') ? '🏃' : '🏋️'}</span>
                                                             {sess.sport || 'Entrenamiento'}
                                                         </span>
-                                                        <span className="text-tilo-text-muted font-medium">
+                                                        <span className="text-[#334155] dark:text-[#CBD5E1] font-medium tabular-nums">
                                                             {sess.distanceMeters > 0 ? `${(sess.distanceMeters / 1000).toFixed(2)} km | ` : ''}
                                                             {sess.durationMinutes} min
                                                             {sess.calories > 0 ? ` | ${Math.round(sess.calories)} kcal` : ''}
@@ -287,13 +377,23 @@ export const TabLogistics = ({
                                     <div className="flex items-center gap-2">
                                         <Briefcase className="w-5 h-5 text-tilo-text-muted" />
                                         <div>
-                                            <div className="text-sm font-bold text-tilo-text-main">Actividad Diaria (NEAT)</div>
+                                            <div className="text-sm font-bold text-tilo-text-main flex items-center gap-2">
+                                                <span>Actividad Diaria (NEAT)</span>
+                                                {isPreviewNeatPending && (
+                                                    <span className="text-[10px] bg-[#FFCC00] text-[#0F172A] font-bold px-2 py-0.5 rounded-full border border-[#0F172A]/20">
+                                                        Vista previa
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div className="text-xs text-tilo-text-muted font-medium">
                                                 {neatDesc}
                                             </div>
                                         </div>
                                     </div>
-                                    <ProgressRing score={scores?.neat?.score} label={scores?.neat?.label} />
+                                    <ProgressRing
+                                        score={isPreviewNeatPending ? null : scores?.neat?.score}
+                                        label={isPreviewNeatPending ? "Por confirmar" : scores?.neat?.label}
+                                    />
                                 </div>
                             </div>
 
@@ -304,7 +404,7 @@ export const TabLogistics = ({
                                         <Moon className="w-5 h-5 text-tilo-text-muted" />
                                         <div>
                                             <div className="text-sm font-bold text-tilo-text-main">Sueño y Descanso</div>
-                                            <div className="text-xs text-tilo-text-muted">
+                                            <div className="text-xs text-tilo-text-muted tabular-nums">
                                                 {sleepHours > 0 ? `${sleepHours} horas/noche` : '--'}
                                             </div>
                                         </div>
@@ -330,12 +430,14 @@ export const TabLogistics = ({
                                 <div className="flex items-center gap-2">
                                     <Brain className="w-5 h-5 text-tilo-text-muted" />
                                     <div>
-                                        <div className="text-sm font-bold text-tilo-text-main font-prototype">Nivel de Estrés</div>
-                                        {!(stressLevel === 'BAJO' && (!stressOrigin || stressOrigin === 'NONE' || stressOrigin === 'N/A')) && (
+                                        <div className="text-sm font-bold text-tilo-text-main">Nivel de Estrés</div>
+                                        {stressLevel === 'SIN DATO' ? (
+                                            <div className="text-xs text-tilo-text-muted">Sin evaluar</div>
+                                        ) : !(stressLevel === 'BAJO' && (!stressOrigin || stressOrigin === 'NONE' || stressOrigin === 'N/A')) ? (
                                             <div className="text-xs text-tilo-text-muted font-medium">
                                                 Origen: {!stressOrigin || stressOrigin === 'NONE' || stressOrigin === 'N/A' ? 'No refiere' : stressOrigin}
                                             </div>
-                                        )}
+                                        ) : null}
                                     </div>
                                 </div>
                                 <ProgressRing score={scores?.stress?.score} label={scores?.stress?.label} />

@@ -1011,7 +1011,14 @@ const Fase6_Farmacologia = ({
                     setStep('supp_name');
                     break;
                 }
-                const cleanName = toSentenceCase(input.trim());
+                const rawSupName = input.trim();
+                const cleanName = /^33\s*plus®?$/i.test(rawSupName)
+                    ? '33Plus®'
+                    : /^34\s*plus®?$/i.test(rawSupName)
+                        ? '34Plus®'
+                        : toSentenceCase(rawSupName)
+                            .replace(/\b33\s*plus®?\b/gi, '33Plus®')
+                            .replace(/\b34\s*plus®?\b/gi, '34Plus®');
                 const suppExample = getContextualSupplementExample(cleanName);
                 setTempItem(prev => ({ ...prev, name: cleanName, type: 'SUPP' }));
                 setMessages(prev => [...prev, {
@@ -1047,6 +1054,11 @@ const Fase6_Farmacologia = ({
                 setPatientData(prev => ({
                     ...prev,
                     pharmacology_edit_mode: false,
+                    pharmacology: {
+                        ...(prev?.pharmacology || {}),
+                        medications: cleanExistingMeds,
+                        supplements: updatedSupps
+                    },
                     history: {
                         ...(prev.history || {}),
                         medications: cleanExistingMeds,

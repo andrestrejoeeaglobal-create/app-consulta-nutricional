@@ -60,6 +60,8 @@ export const useClinicalGenome = create((set, get) => ({
         scannedAt: null,
         citationId: null,
         patientName: null,
+        patientMetadata: null,
+        synthesisItems: [],
         categories: {},
         abnormalCount: 0,
         totalParameters: 0
@@ -75,9 +77,11 @@ export const useClinicalGenome = create((set, get) => ({
     setElectretTelemetry: (telemetryData) => set({
         electretTelemetry: {
             isScanned: true,
-            scannedAt: telemetryData?.parsedAt || new Date().toISOString(),
+            scannedAt: telemetryData?.parsedAt || telemetryData?.patientMetadata?.parsedLocalDate || new Date().toISOString(),
             citationId: telemetryData?.citationId || null,
             patientName: telemetryData?.patientName || null,
+            patientMetadata: telemetryData?.patientMetadata || null,
+            synthesisItems: Array.isArray(telemetryData?.synthesisItems) ? telemetryData.synthesisItems : [],
             categories: telemetryData?.categories || {},
             abnormalCount: telemetryData?.abnormalCount || 0,
             totalParameters: telemetryData?.totalParameters || 0
@@ -91,6 +95,8 @@ export const useClinicalGenome = create((set, get) => ({
             scannedAt: null,
             citationId: null,
             patientName: null,
+            patientMetadata: null,
+            synthesisItems: [],
             categories: {},
             abnormalCount: 0,
             totalParameters: 0

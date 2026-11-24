@@ -8,8 +8,433 @@
  */
 
 import { enforcePatientGenderConcordance, resolvePatientSex } from './genderConcordance.js';
+import { FORMULA_33PLUS, FORMULA_34PLUS, formatScaledActives } from './pharmacopeiaCatalogSSoT.js';
 
 export { enforcePatientGenderConcordance };
+
+export function translateLogisticsProfile(patientData = {}) {
+    const rawVenue = String(
+        patientData?.logistics_profile?.environment?.venue ||
+        patientData?.logistics?.environment?.venue ||
+        patientData?.clinical_dossier?.logistics_summary?.venueCode ||
+        'HOME'
+    ).trim().toUpperCase();
+    const rawCook = String(
+        patientData?.logistics_profile?.cook_type ||
+        patientData?.logistics?.cook_type ||
+        patientData?.clinical_dossier?.logistics_summary?.cookCode ||
+        'SELF'
+    ).trim().toUpperCase();
+
+    const venueMap = {
+        HOME: 'Casa',
+        WORK: 'Oficina',
+        STREET: 'Calle / Restaurante'
+    };
+    const cookMap = {
+        STAFF: 'Personal de apoyo en casa',
+        FAMILY: 'Familiar',
+        SELF: 'Preparación propia',
+        BUYING: 'Alimentos preparados externos'
+    };
+
+    return {
+        venueCode: rawVenue,
+        venueLabel: venueMap[rawVenue] || 'Casa',
+        cookCode: rawCook,
+        cookLabel: cookMap[rawCook] || 'Preparación propia',
+        dinersCount: Number(patientData?.logistics_profile?.sharing_diners_count || 0) || null
+    };
+}
+
+function resolveClientAltitudeMsnm(patientData = {}) {
+    try {
+        const dom = patientData?.domicilio || patientData?.address || {};
+        const ident = patientData?.identificacion || patientData?.profile || {};
+        const explicitCandidates = [
+            dom.altitud_msnm,
+            dom.altitude_msnm,
+            dom.altitud,
+            dom.altitude,
+            dom.elevation_m,
+            dom.msnm,
+            ident.altitud_msnm,
+            ident.altitude_msnm,
+            patientData?.vitals?.altitude_msnm,
+            patientData?.profile?.altitude_msnm,
+            patientData?.altitude_msnm
+        ];
+        for (const cand of explicitCandidates) {
+            if (cand !== null && cand !== undefined && String(cand).trim() !== '') {
+                const n = parseFloat(String(cand).replace(/[^0-9.-]/g, ''));
+                if (Number.isFinite(n) && n >= -100 && n <= 5500) {
+                    const m = Math.round(n);
+                    return { msnm: Math.max(0, m), spo2Floor: m >= 2400 ? 92 : (m >= 1500 ? 94 : 95), label: `${m} msnm` };
+                }
+            }
+        }
+        const lat = parseFloat(dom?.coordinates?.lat ?? dom?.lat ?? ident?.lat ?? NaN);
+        const lng = parseFloat(dom?.coordinates?.lng ?? dom?.lng ?? ident?.lng ?? NaN);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            if (lat >= 19.12 && lat <= 19.46 && lng >= -99.85 && lng <= -99.42) return { msnm: 2660, spo2Floor: 92, label: 'Valle de Toluca • 2660 msnm' };
+            if (lat >= 19.20 && lat <= 19.65 && lng >= -99.36 && lng <= -98.88) return { msnm: 2240, spo2Floor: 94, label: 'Valle de México • 2240 msnm' };
+            if (lat >= 20.02 && lat <= 20.22 && lng >= -98.85 && lng <= -98.60) return { msnm: 2420, spo2Floor: 92, label: 'Pachuca • 2420 msnm' };
+        }
+        const cp = String(dom.cp || dom.codigoPostal || ident.cp || ident.codigoPostal || '').trim();
+        if (/^(50\d{3}|520\d{2}|521\d{2})$/.test(cp)) return { msnm: 2660, spo2Floor: 92, label: 'Valle de Toluca • 2660 msnm' };
+        if (/^(0[1-9]\d{3}|1[0-6]\d{3})$/.test(cp)) return { msnm: 2240, spo2Floor: 94, label: 'Ciudad de México • 2240 msnm' };
+        const geo = `${dom.municipio || ''} ${dom.ciudad || ''} ${dom.estado || ''} ${dom.direccion_capturada_usuario || ''} ${ident.municipio || ''} ${ident.ciudad || ''} ${ident.estado || ''}`
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        if (/\b(?:toluca|metepec|zinacantepec|lerma|bogota|quito|zacatecas|pachuca|tlaxcala)\b/.test(geo)) {
+            return { msnm: 2600, spo2Floor: 92, label: 'Alta montaña (>= 2,400 msnm)' };
+        }
+        if (/\b(?:ciudad de mexico|cdmx|puebla|queretaro|tasquillo|morelia|leon|guanajuato|san luis potosi|aguascalientes|guadalajara|zapopan)\b/.test(geo)) {
+            return { msnm: 1850, spo2Floor: 94, label: 'Altitud media (>= 1,500 msnm)' };
+        }
+    } catch (_) {
+        // Fallback seguro
+    }
+    return { msnm: 0, spo2Floor: 95, label: 'Nivel basal (< 1,500 msnm)' };
+}
+
+/**
+ * Selector Resiliente SSoTT del Estudio de Edad Metabólica (`EGM-51` v2).
+ * Prioriza el objeto sellado en `clinical_dossier.metabolic_age_study` y provee
+ * respaldo determinista idéntico (17 rutas, altitud, composición deportiva y metas 28d/90d)
+ * para expedientes históricos previos a la re-síntesis.
+ */
+export function resolveMetabolicAgeStudySSoT(patientData = {}) {
+    const dossier = patientData?.clinical_dossier || {};
+    const persisted =
+        dossier?.metabolic_age_study ||
+        dossier?.canonical_clinical_plan?.metabolicAgeStudy ||
+        dossier?.therapeutic_contract?.metabolicAgeStudy ||
+        dossier?.patient_friendly_guide?.metabolic_age_study ||
+        null;
+
+    if (persisted && typeof persisted === 'object' && persisted.engineVersion) {
+        if (persisted.isSuppressedBySafetyGate && !persisted.suppressionReasonText) {
+            return {
+                ...persisted,
+                suppressionReasonCode: persisted.suppressionReasonCode || persisted.safetyGateReasonCode,
+                suppressionReasonText: persisted.safetyGatePatientExplanation || persisted.patientSummary || persisted.safetyGateClinicalExplanation
+            };
+        }
+        return persisted;
+    }
+
+    const verified = resolveVerifiedPatientAge(patientData, 35);
+    const chronoAge = Number(verified.ageYears) || 35;
+    const { isFemale } = resolvePatientSex(patientData);
+
+    try {
+        const rawTokens = [
+            patientData?.clinical_context?.primary_route,
+            ...(Array.isArray(patientData?.clinical_context?.routes) ? patientData.clinical_context.routes : []),
+            ...(Array.isArray(patientData?.activeRoutes) ? patientData.activeRoutes : [patientData?.activeRoutes]),
+            patientData?.history?.primaryRoute,
+            patientData?.route,
+            patientData?.profile?.goal,
+            patientData?.motivo_consulta,
+            patientData?.motivo,
+            patientData?.reason_for_consultation,
+            ...(Array.isArray(patientData?.history?.pathologies)
+                ? patientData.history.pathologies.map((p) => (typeof p === 'object' ? (p.name || p.patologia) : p))
+                : []),
+            JSON.stringify(patientData?.history?.special_context || '')
+        ]
+            .filter(Boolean)
+            .map((x) => String(x).toUpperCase())
+            .join(' | ');
+
+        const isPedGate = chronoAge < 18 || verified.isLactanteVerified || verified.isPediatricVerified || /GOAL_PEDIATRICS|PEDIATR/.test(rawTokens);
+        const isPregGate = Boolean(patientData?.physio?.is_pregnant || patientData?.physio?.is_lactating) || /GOAL_PREGNANCY|EMBARAZ|GESTACI[ÓO]N|LACTANCIA\s+MATERNA/.test(rawTokens);
+        const isTcaGate = /GOAL_MENTAL_HEALTH|\bTCA\b|ANOREXIA|BULIMIA|ATRAC[ÓO]N|ORTOREXIA|VIGOREXIA|DISMORFIA|CONDUCTA\s+ALIMENTARIA/.test(rawTokens);
+        const isPalGate = /GOAL_PALLIATIVE|CUIDADOS?\s+PALIATIV|TERMINAL/.test(rawTokens);
+        const isSportRoute = /GOAL_MUSCLE|GANAR\s+M[ÚU]SCULO|HIPERTROFIA|ATLETA|DEPORTE\s+DE\s+FUERZA/.test(rawTokens);
+
+        const extMetrics = patientData?.scan_data?.external_metrics || {};
+        const hasLabs = Boolean(
+            patientData?.lab_results ||
+            (extMetrics?.sections && Object.keys(extMetrics.sections).length > 0) ||
+            (extMetrics?.biomarkers && Object.keys(extMetrics.biomarkers).length > 0) ||
+            (Array.isArray(extMetrics?.external_studies?.clinical_imaging_and_cabinet) && extMetrics.external_studies.clinical_imaging_and_cabinet.length > 0)
+        );
+        const hasBio = Boolean(patientData?.scan_data?.electret_metrics || patientData?.scan_data?.ocular_metrics || patientData?.scan_data?.lingual_metrics);
+        const evidenceTier = hasLabs ? 'BIOQUIMICO_INTEGRAL' : (hasBio ? 'BIOFISICO_MULTIMODAL' : 'CLINICO_ANTROPOMETRICO');
+        const evidenceTierBadge = evidenceTier === 'BIOQUIMICO_INTEGRAL'
+            ? 'Certeza Bioquímica y Clínica Integral'
+            : evidenceTier === 'BIOFISICO_MULTIMODAL'
+                ? 'Certeza Biofísica y Clínica Multimodal'
+                : 'Certeza Clínica y Antropométrica Basal';
+
+        if (isPedGate || isPregGate || isTcaGate || isPalGate) {
+            const reasonCode = isPedGate
+                ? 'PEDIATRICS_GROWTH_PERCENTILES'
+                : isPregGate
+                    ? 'PREGNANCY_LACTATION_PROTECTION'
+                    : isTcaGate
+                        ? 'TCA_BEHAVIORAL_SAFETY'
+                        : 'PALLIATIVE_COMFORT_CARE';
+            const badge = isPedGate
+                ? 'Protección Pediátrica Activa • Desarrollo Longitudinal'
+                : isPregGate
+                    ? 'Protección Materno-Infantil • Embarazo y Lactancia'
+                    : isTcaGate
+                        ? 'Seguridad Conductual Activa • Bienestar Integral'
+                        : 'Cuidado Compasivo Integral • Confort y Calidad de Vida';
+            const title = isPedGate
+                ? 'Seguimiento por Curvas de Crecimiento y Desarrollo (Sin Edad Metabólica Comparativa)'
+                : isPregGate
+                    ? 'Acompañamiento Fisiológico Gestacional y de Lactancia (Edad Metabólica Desactivada)'
+                    : isTcaGate
+                        ? 'Acompañamiento Nutricional Centrado en Vitalidad y Relación Saludable con la Alimentación'
+                        : 'Soporte Nutricional Enfocado en Confort Digestivo, Hidratación y Bienestar Diario';
+            const msg = isPedGate
+                ? 'En menores de 18 años acompañamos el crecimiento saludable mediante curvas pediátricas de talla, peso y vitalidad diaria, sin aplicar comparaciones de edad metabólica de adultos.'
+                : isPregGate
+                    ? 'Durante el embarazo y la lactancia evaluamos su bienestar materno e hidratación sin comparaciones punitivas de edad metabólica.'
+                    : isTcaGate
+                        ? 'Su plan prioriza su energía diaria, descanso reparador y paz nutricional, prescindiendo deliberadamente de marcadores comparativos de edad corporal.'
+                        : 'Nuestro acompañamiento se centra plenamente en su confort diario, hidratación suave y aprovechamiento amable de sus alimentos.';
+            return {
+                engineVersion: '3.3.0-EGM51-CLIENT-SSOTT',
+                isSuppressedBySafetyGate: true,
+                safetyGateReasonCode: reasonCode,
+                suppressionReasonCode: reasonCode,
+                safetyGateBadge: badge,
+                safetyGateTitle: title,
+                safetyGatePatientExplanation: msg,
+                safetyGateClinicalExplanation: msg,
+                suppressionReasonText: msg,
+                chronologicalAge: chronoAge,
+                metabolicAge: null,
+                metabolicAgeExact: null,
+                deltaYears: null,
+                deltaYearsRounded: null,
+                cycle1TargetAge28d: null,
+                cycle1Delta28d: null,
+                cycle3ProjectionAge90d: null,
+                cycle3Delta90d: null,
+                evidenceTier,
+                evidenceTierBadge,
+                evidenceConfidencePct: hasLabs ? 95 : 80,
+                patientSummary: msg,
+                clinicalSummary: msg
+            };
+        }
+
+        const vitals = patientData?.vitals || {};
+        const bio = dossier?.bioenergetics || {};
+        const alt = resolveClientAltitudeMsnm(patientData);
+        const weightKg = parseFloat(vitals.weight ?? bio.weightKg ?? patientData?.peso ?? NaN);
+        const rawH = parseFloat(vitals.height ?? bio.heightCm ?? patientData?.talla ?? NaN);
+        const heightCm = Number.isFinite(rawH) ? (rawH < 3 ? rawH * 100 : rawH) : NaN;
+        const waistCm = parseFloat(vitals.waist ?? patientData?.biometria?.cintura ?? patientData?.cintura ?? NaN);
+        const hipCm = parseFloat(vitals.hip ?? patientData?.biometria?.cadera ?? patientData?.cadera ?? NaN);
+        const bodyFat = parseFloat(vitals.body_fat ?? bio.bodyFatPct ?? patientData?.biometria?.grasa_corporal ?? NaN);
+        const bmi = Number.isFinite(weightKg) && Number.isFinite(heightCm) && heightCm > 0
+            ? Number((weightKg / Math.pow(heightCm / 100, 2)).toFixed(1))
+            : (Number.isFinite(parseFloat(vitals.bmi ?? bio.bmi)) ? Number(parseFloat(vitals.bmi ?? bio.bmi).toFixed(1)) : null);
+        const ica = Number.isFinite(waistCm) && Number.isFinite(heightCm) && heightCm > 0 ? Number((waistCm / heightCm).toFixed(2)) : null;
+        const icc = Number.isFinite(waistCm) && Number.isFinite(hipCm) && hipCm > 0
+            ? Number((waistCm / hipCm).toFixed(2))
+            : (Number.isFinite(parseFloat(vitals.whr ?? patientData?.icc)) ? Number(parseFloat(vitals.whr ?? patientData?.icc).toFixed(2)) : null);
+
+        const iccLimit = isFemale ? 0.85 : 0.90;
+        const isAthletic = Boolean(
+            isSportRoute ||
+            (Number.isFinite(bodyFat) && bodyFat <= (isFemale ? 25 : 18) && (ica === null || ica < 0.52) && (icc === null || icc < iccLimit))
+        );
+
+        let weightedSum = 0;
+        let weightTotal = 0;
+        if (bmi !== null || ica !== null || icc !== null || Number.isFinite(bodyFat)) {
+            let s1 = 0;
+            if (isAthletic) {
+                s1 = Number.isFinite(bodyFat) && bodyFat <= (isFemale ? 22 : 15) ? -3.2 : -2.0;
+                if (ica !== null && ica < 0.49) s1 -= 1.0;
+            } else {
+                if (ica !== null) s1 += ica < 0.50 ? -1.6 : (ica <= 0.54 ? 0.6 : (ica <= 0.60 ? 2.2 : 4.2));
+                else if (bmi !== null) s1 += bmi < 25 ? -1.2 : (bmi < 30 ? 1.6 : 3.8);
+                if (icc !== null) s1 += icc < iccLimit ? -0.6 : 1.0;
+                const optFat = (isFemale ? 28 : 20) + (chronoAge >= 60 ? 2 : 0);
+                if (Number.isFinite(bodyFat)) s1 += bodyFat <= optFat ? -0.8 : (bodyFat <= optFat + 5 ? 0.8 : 2.2);
+            }
+            weightedSum += 0.30 * Math.max(-6, Math.min(9, s1));
+            weightTotal += 0.30;
+        }
+
+        const bp = vitals.blood_pressure || vitals.bloodPressure || {};
+        const sys = parseInt(bp.systolic || 0, 10);
+        const dia = parseInt(bp.diastolic || 0, 10);
+        const spo2 = parseFloat(vitals.spo2 || 0);
+        const hasEx = Boolean(patientData?.lifestyle_profile?.activity?.source_type === 'TELEMETRY_TCX' || Number(patientData?.lifestyle_profile?.activity?.weekly_minutes) >= 120);
+        if (sys > 0 || spo2 > 0 || hasEx) {
+            let s2 = 0;
+            if (sys > 0 && dia > 0) s2 += (sys < 122 && dia < 80) ? -1.2 : (sys >= 140 || dia >= 90 ? 4.8 : (sys >= 130 || dia >= 85 ? 2.0 : -0.3));
+            if (spo2 > 0) s2 += spo2 >= alt.spo2Floor ? -0.5 : 1.8;
+            if (hasEx) s2 -= 1.8;
+            weightedSum += 0.20 * Math.max(-5.5, Math.min(8.5, s2));
+            weightTotal += 0.20;
+        }
+
+        const gluRaw = parseFloat(vitals.glucose || 0);
+        if (gluRaw > 0) {
+            const s3 = gluRaw >= 126 ? 6.5 : (gluRaw >= 100 ? 3.2 : -1.5);
+            weightedSum += 0.20 * s3;
+            weightTotal += 0.20;
+        }
+
+        const rawDelta = weightTotal > 0 ? weightedSum / weightTotal : 0;
+        const clampedDelta = Number(Math.max(-8.0, Math.min(12.0, rawDelta)).toFixed(1));
+        const metaExact = Number(Math.max(18.0, chronoAge + clampedDelta).toFixed(1));
+        const c1Delta = clampedDelta > 0.4
+            ? -Number(Math.min(clampedDelta, clampedDelta >= 3.0 ? 1.5 : (clampedDelta >= 1.2 ? 1.2 : Math.max(0.5, clampedDelta))).toFixed(1))
+            : -0.5;
+        const c3Delta = clampedDelta > 0.4
+            ? -Number(Math.min(clampedDelta, Math.max(Math.abs(c1Delta), Math.min(4.5, Number((clampedDelta * 0.6).toFixed(1))))).toFixed(1))
+            : -1.0;
+        const c1Age = Number((metaExact + c1Delta).toFixed(1));
+        const c3Age = Number((metaExact + c3Delta).toFixed(1));
+
+        return {
+            engineVersion: '3.3.0-EGM51-CLIENT-SSOTT',
+            isSuppressedBySafetyGate: false,
+            safetyGateReasonCode: null,
+            chronologicalAge: chronoAge,
+            metabolicAge: Math.round(metaExact),
+            metabolicAgeExact: metaExact,
+            deltaYears: clampedDelta,
+            deltaYearsRounded: Math.round(metaExact) - chronoAge,
+            cycle1TargetAge28d: c1Age,
+            cycle1Delta28d: c1Delta,
+            cycle3ProjectionAge90d: c3Age,
+            cycle3Delta90d: c3Delta,
+            evidenceTier,
+            evidenceTierBadge,
+            evidenceConfidencePct: hasLabs ? 95 : (hasBio ? 82 : 72),
+            altitudeMsnm: alt.msnm,
+            altitudeLabel: alt.label,
+            isAthleticHighLeanMass: isAthletic,
+            patientSummary: `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica estimada es de ${metaExact} años (${clampedDelta >= 0 ? `+${clampedDelta}` : clampedDelta} años • ${evidenceTierBadge}). Meta Ciclo 1 (28 días): ${c1Age} años | Proyección a 90 días: ${c3Age} años.`,
+            clinicalSummary: `Estudio Multivariable EGM-51 v2 (${evidenceTier}): Edad Cronológica ${chronoAge} a vs Edad Metabólica ${metaExact} a (Delta ${clampedDelta >= 0 ? `+${clampedDelta}` : clampedDelta} a). Meta 28d: ${c1Age} a | Proyección 90d: ${c3Age} a.`
+        };
+    } catch (_) {
+        return {
+            engineVersion: '3.3.0-EGM51-CLIENT-SAFE',
+            isSuppressedBySafetyGate: false,
+            safetyGateReasonCode: null,
+            chronologicalAge: chronoAge,
+            metabolicAge: chronoAge,
+            metabolicAgeExact: chronoAge,
+            deltaYears: 0,
+            deltaYearsRounded: 0,
+            cycle1TargetAge28d: chronoAge,
+            cycle1Delta28d: 0,
+            cycle3ProjectionAge90d: chronoAge,
+            cycle3Delta90d: 0,
+            evidenceTier: 'CLINICO_ANTROPOMETRICO',
+            evidenceTierBadge: 'Certeza Clínica y Antropométrica Basal',
+            evidenceConfidencePct: 72,
+            patientSummary: `Su Edad Cronológica (${chronoAge} años) guarda equilibrio con su referencia metabólica actual.`,
+            clinicalSummary: `Referencia basal segura: ${chronoAge} años.`
+        };
+    }
+}
+
+const SPANISH_ACCENT_PROPER_TOKENS = {
+    andres: 'Andrés',
+    jesus: 'Jesús',
+    jose: 'José',
+    maria: 'María',
+    angel: 'Ángel',
+    oscar: 'Óscar',
+    cesar: 'César',
+    hector: 'Héctor',
+    victor: 'Víctor',
+    raul: 'Raúl',
+    ruben: 'Rubén',
+    ivan: 'Iván',
+    adrian: 'Adrián',
+    fabiola: 'Fabiola',
+    sofia: 'Sofía',
+    lucia: 'Lucía',
+    monica: 'Mónica',
+    veronica: 'Verónica',
+    hernandez: 'Hernández',
+    garcia: 'García',
+    martinez: 'Martínez',
+    lopez: 'López',
+    gonzalez: 'González',
+    perez: 'Pérez',
+    rodriguez: 'Rodríguez',
+    sanchez: 'Sánchez',
+    ramirez: 'Ramírez',
+    gomez: 'Gómez',
+    diaz: 'Díaz',
+    vazquez: 'Vázquez',
+    jimenez: 'Jiménez',
+    gutierrez: 'Gutiérrez',
+    ruiz: 'Ruiz',
+    mendez: 'Méndez'
+};
+
+function composeDeduplicatedFullName(givenRaw, patRaw, matRaw) {
+    const given = String(givenRaw || '').replace(/\s+/g, ' ').trim();
+    const pat = String(patRaw || '').replace(/\s+/g, ' ').trim();
+    const mat = String(matRaw || '').replace(/\s+/g, ' ').trim();
+    const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const parts = [];
+    if (given) parts.push(given);
+    if (pat && !norm(parts.join(' ')).includes(norm(pat))) parts.push(pat);
+    if (mat && !norm(parts.join(' ')).includes(norm(mat))) parts.push(mat);
+    return parts.join(' ').trim();
+}
+
+export function formatInstitutionalFullName(patientData, fallback = 'Paciente') {
+    const pInfo = patientData?.identityLock?.patientInfo || {};
+    const composedIdent = composeDeduplicatedFullName(
+        patientData?.identificacion?.nombres || patientData?.identificacion?.nombre_pila || patientData?.identificacion?.nombre,
+        patientData?.identificacion?.apellidoPaterno,
+        patientData?.identificacion?.apellidoMaterno
+    );
+    const composedProfile = composeDeduplicatedFullName(
+        patientData?.profile?.first_name || patientData?.profile?.firstName || patientData?.profile?.nombre,
+        patientData?.profile?.last_name || patientData?.profile?.lastName || patientData?.profile?.apellidos,
+        patientData?.profile?.second_last_name
+    );
+
+    const candidates = [
+        pInfo.full_name,
+        pInfo.name,
+        patientData?.identificacion?.nombreCompleto,
+        composedIdent,
+        patientData?.profile?.fullName,
+        patientData?.profile?.name,
+        composedProfile,
+        patientData?.fullName,
+        patientData?.name
+    ]
+        .map((x) => String(x || '').replace(/\s+/g, ' ').trim())
+        .filter((x) => x && !/^(paciente|usuario|invitado|su\s+beb[ée]|el\s+menor|la\s+menor|null|undefined|s\/n|---)$/i.test(x));
+
+    const bestRaw = candidates.sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length)[0] || fallback;
+    const lowercaseConnectors = new Set(['de', 'del', 'la', 'las', 'los', 'y']);
+    return bestRaw
+        .split(/\s+/)
+        .map((tok, idx) => {
+            const lowerPlain = tok
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase();
+            if (idx > 0 && lowercaseConnectors.has(lowerPlain)) return lowerPlain;
+            if (SPANISH_ACCENT_PROPER_TOKENS[lowerPlain]) return SPANISH_ACCENT_PROPER_TOKENS[lowerPlain];
+            const low = tok.toLocaleLowerCase('es-MX');
+            return low.charAt(0).toLocaleUpperCase('es-MX') + low.slice(1);
+        })
+        .join(' ');
+}
 
 function matchCase(sourceWord, targetLower, targetCapitalized) {
     if (!sourceWord) return targetLower;
@@ -145,9 +570,15 @@ export function sanitizeClinicalSpanish(rawText) {
     for (const [pattern, replacement] of UNICODE_WORD_FIXES) {
         text = text.replace(pattern, replacement);
     }
+    text = text
+        .replace(/\[\s*⚠️?\s*REQUIERE_REVISI[ÓO]N\s*\]/giu, '')
+        .replace(/\bNOM-028\b/giu, 'NOM-004')
+        .replace(/\(\s*Variante\s+(?:Suave\s+)?(?:Libre|Sin)\s+de\s+Estimulantes\s*\)/giu, '(Energía Celular y Circulación)')
+        .replace(/\(\s*Variante\s+Suave\s+Sin\s+Estimulantes\s*\)/giu, '(Energía Celular y Circulación)')
+        .replace(/\s*&\s*/gu, ' y ');
     text = text.replace(/\(Ref:\s*([^)]+)\)/giu, (_, inner) => `(Ref: ${inner.replace(/(\d),(\d)/g, '$1.$2')})`);
     text = deduplicateRepeatedClauseVerbs(text);
-    return text;
+    return text.replace(/\s{2,}/g, ' ').trim();
 }
 
 function polishPatientEditorialPhrasing(rawText) {
@@ -266,50 +697,171 @@ function classifyLegacyBiomarkerToSystemId(rawLabel) {
     return 'huesos_musculos';
 }
 
-export function extractPatientAge(patientData, fallback = 35) {
-    const candidates = [
-        patientData?.clinical_dossier?.bioenergetics?.age,
-        patientData?.profile?.age,
-        patientData?.identificacion?.edad,
-        patientData?.identityLock?.patientInfo?.age,
-        patientData?.vitals?.age,
-        patientData?.age,
-        patientData?.edad
-    ];
-    for (const c of candidates) {
-        if (c !== undefined && c !== null && String(c).trim() !== '') {
-            const n = Number(c);
-            if (Number.isFinite(n) && n >= 0 && n <= 125) return n;
-        }
-    }
+/**
+ * Resolutor SSoTT Canónico e Inmutable de Edad y Etapa Vital (Fail-Closed Anti-Falso-Lactante).
+ * Prioridad 1: Fecha de nacimiento verificada (DD/MM/YYYY, YYYY-MM-DD o CURP oficial).
+ * Prioridad 2: Entero positivo estricto (> 0 y <= 125) en rutas clínicas conocidas.
+ * PROHIBIDO evaluar Number(null)/Number('') === 0 o activar lactante (< 2 años) / MODO_TUTOR (< 13 años)
+ * cuando la edad es null, undefined, NaN o 0 sin fecha de nacimiento verificada.
+ */
+export function resolveVerifiedPatientAge(patientData, fallback = 35) {
+    const safeFallback = Number.isInteger(fallback) && fallback > 0 ? fallback : 35;
+    const baseResult = {
+        ageYears: safeFallback,
+        ageMonths: null,
+        hasVerifiedBirthDate: false,
+        hasExplicitPositiveAge: false,
+        isLactanteVerified: false,
+        isTutorModeVerified: false,
+        isPediatricVerified: false
+    };
+    if (!patientData || typeof patientData !== 'object') return baseResult;
 
-    const rawDob =
-        patientData?.profile?.birthdate ||
-        patientData?.identificacion?.fechanac ||
-        patientData?.identificacion?.fechaNacimiento ||
-        patientData?.identityLock?.patientInfo?.birthdate;
-    if (rawDob) {
-        const s = String(rawDob).trim();
-        let birthDate = null;
-        const ddmmyyyy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-        const yyyymmdd = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
-        if (ddmmyyyy) {
-            birthDate = new Date(Number(ddmmyyyy[3]), Number(ddmmyyyy[2]) - 1, Number(ddmmyyyy[1]));
-        } else if (yyyymmdd) {
-            birthDate = new Date(Number(yyyymmdd[1]), Number(yyyymmdd[2]) - 1, Number(yyyymmdd[3]));
+    try {
+        const pInfo = patientData.identityLock?.patientInfo;
+        let parsedDob = null;
+
+        if (pInfo?.dob_year && pInfo?.dob_month && pInfo?.dob_day) {
+            const y = parseInt(String(pInfo.dob_year).trim(), 10);
+            const m = parseInt(String(pInfo.dob_month).trim(), 10);
+            const d = parseInt(String(pInfo.dob_day).trim(), 10);
+            if (Number.isInteger(y) && y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+                const dt = new Date(y, m - 1, d);
+                if (!Number.isNaN(dt.getTime())) parsedDob = dt;
+            }
         }
-        if (birthDate && !Number.isNaN(birthDate.getTime())) {
+
+        if (!parsedDob) {
+            const rawDobCandidates = [
+                patientData.birthDate,
+                patientData.birthdate,
+                patientData.fecha_nacimiento,
+                patientData.dob,
+                patientData.profile?.birthDate,
+                patientData.profile?.birthdate,
+                patientData.profile?.dob,
+                patientData.identificacion?.fechaNacimiento,
+                patientData.identificacion?.fechanac,
+                patientData.demographics?.birthdate,
+                patientData.demographics?.birthDate,
+                pInfo?.birthdate
+            ];
+            for (const raw of rawDobCandidates) {
+                if (typeof raw !== 'string' || !raw.trim()) continue;
+                const s = raw.trim();
+                const ddmmyyyy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+                const yyyymmdd = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+                let candidateDate = null;
+                if (ddmmyyyy) {
+                    const dd = parseInt(ddmmyyyy[1], 10);
+                    const mm = parseInt(ddmmyyyy[2], 10);
+                    const yyyy = parseInt(ddmmyyyy[3], 10);
+                    if (yyyy >= 1900 && yyyy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+                        candidateDate = new Date(yyyy, mm - 1, dd);
+                    }
+                } else if (yyyymmdd) {
+                    const yyyy = parseInt(yyyymmdd[1], 10);
+                    const mm = parseInt(yyyymmdd[2], 10);
+                    const dd = parseInt(yyyymmdd[3], 10);
+                    if (yyyy >= 1900 && yyyy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+                        candidateDate = new Date(yyyy, mm - 1, dd);
+                    }
+                }
+                if (candidateDate && !Number.isNaN(candidateDate.getTime())) {
+                    parsedDob = candidateDate;
+                    break;
+                }
+            }
+        }
+
+        if (!parsedDob) {
+            const rawCurp = String(
+                patientData.profile?.curp ||
+                patientData.identificacion?.curp ||
+                patientData.demographics?.curp ||
+                pInfo?.curp ||
+                ''
+            ).trim().toUpperCase();
+            const curpMatch = rawCurp.match(/^[A-Z]{4}(\d{2})(\d{2})(\d{2})[HMX][A-Z]{5}([A-Z0-9])\d$/);
+            if (curpMatch) {
+                const yy = parseInt(curpMatch[1], 10);
+                const mm = parseInt(curpMatch[2], 10);
+                const dd = parseInt(curpMatch[3], 10);
+                const fullYear = /[0-9]/.test(curpMatch[4]) ? (1900 + yy) : (2000 + yy);
+                if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+                    const dt = new Date(fullYear, mm - 1, dd);
+                    if (!Number.isNaN(dt.getTime())) parsedDob = dt;
+                }
+            }
+        }
+
+        if (parsedDob && !Number.isNaN(parsedDob.getTime())) {
             const now = new Date();
-            let years = now.getFullYear() - birthDate.getFullYear();
-            const mDiff = now.getMonth() - birthDate.getMonth();
-            if (mDiff < 0 || (mDiff === 0 && now.getDate() < birthDate.getDate())) {
+            let years = now.getFullYear() - parsedDob.getFullYear();
+            const mDiff = now.getMonth() - parsedDob.getMonth();
+            if (mDiff < 0 || (mDiff === 0 && now.getDate() < parsedDob.getDate())) {
                 years -= 1;
             }
-            if (Number.isFinite(years) && years >= 0 && years <= 125) return years;
+            let months = (now.getFullYear() - parsedDob.getFullYear()) * 12 + (now.getMonth() - parsedDob.getMonth());
+            if (now.getDate() < parsedDob.getDate()) {
+                months -= 1;
+            }
+            if (years >= 0 && years <= 125) {
+                return {
+                    ageYears: years,
+                    ageMonths: Math.max(0, months),
+                    hasVerifiedBirthDate: true,
+                    hasExplicitPositiveAge: years > 0,
+                    isLactanteVerified: months >= 0 && months < 24,
+                    isTutorModeVerified: years >= 0 && years < 13,
+                    isPediatricVerified: years >= 0 && years < 18
+                };
+            }
         }
+
+        const positiveIntCandidates = [
+            patientData.profile?.age,
+            patientData.identificacion?.edad,
+            patientData.demographics?.age,
+            patientData.anthropometrics?.age,
+            patientData.scan_data?.electret_metrics?.patientInfo?.age,
+            patientData.scan_data?.electret_metadata?.age,
+            patientData.electretTelemetry?.patientMetadata?.age,
+            patientData.clinical_dossier?.bioenergetics?.age,
+            patientData.vitals?.age,
+            pInfo?.age,
+            patientData.age,
+            patientData.edad
+        ];
+        for (const c of positiveIntCandidates) {
+            if (c === null || c === undefined || typeof c === 'boolean') continue;
+            const trimmed = String(c).trim();
+            if (!trimmed) continue;
+            const parsed = parseInt(trimmed, 10);
+            if (Number.isInteger(parsed) && parsed > 0 && parsed <= 125) {
+                const isExplicitAdultCat = String(patientData.profile?.pediatric_profile?.category || '').toUpperCase() === 'ADULTO';
+                const babyMonths = parseInt(String(patientData.profile?.baby_age_months ?? ''), 10);
+                const hasVerifiedBabyMonths = Number.isInteger(babyMonths) && babyMonths > 0 && babyMonths < 24 && !isExplicitAdultCat;
+                return {
+                    ageYears: parsed,
+                    ageMonths: hasVerifiedBabyMonths ? babyMonths : (parsed * 12),
+                    hasVerifiedBirthDate: false,
+                    hasExplicitPositiveAge: true,
+                    isLactanteVerified: parsed < 2 && hasVerifiedBabyMonths,
+                    isTutorModeVerified: !isExplicitAdultCat && parsed < 13 && Boolean(patientData.profile?.pediatric_profile?.is_minor === true),
+                    isPediatricVerified: !isExplicitAdultCat && parsed < 18
+                };
+            }
+        }
+    } catch (_) {
+        // Fail-closed seguro a modo adulto ("Usted Global")
     }
 
-    return fallback;
+    return baseResult;
+}
+
+export function extractPatientAge(patientData, fallback = 35) {
+    return resolveVerifiedPatientAge(patientData, fallback).ageYears;
 }
 
 function humanizeLegacyTimeSlot(rawSlot, idx) {
@@ -390,14 +942,29 @@ export function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     if (/vitamina|zinc|selenio|hierro|magnesio|potasio|calcio|coenzima|treonina|histidina|lisina|valina|leucina|isoleucina|tript[óo]fano|metionina|fenilalanina|arginina|amino[áa]cido|inmunoglobulina|linf[áa]tic|am[íi]gdala|bazo|m[ée]dula|respiratori|mucosa/i.test(base)) {
         return 'reservas de vitaminas, minerales y defensas naturales';
     }
+    if (/ecg|electrocardiog|bradicard|qrs|rama\s+derecha|qtc/i.test(base)) {
+        return 'ritmo y conducción eléctrica del corazón en reposo';
+    }
+    if (/rx\s+t[óo]rax|arco\s+a[óo]rtic|ict|cardiotor[áa]c/i.test(base)) {
+        return 'elasticidad de sus grandes arterias y función pulmonar';
+    }
+    if (/ultrasonido|inguinal|doppler\s+femoral|valsalva/i.test(base)) {
+        return 'firmeza de la pared abdominal/inguinal y flujo vascular';
+    }
+    if (/bas[óo]fil|histam[íi]n/i.test(base)) {
+        return 'equilibrio de sensibilidad inmunológica e histamínica';
+    }
     if (/mioc[áa]rdic|coronari|latido|bombeo|viscosidad|elasticidad|vascular|arteri|venos|microcirculaci|ox[íi]geno|pulmonar|riesgo\s+cerebrovascular|stroke|presi[óo]n|impedancia|volumen\s+de\s+perfusi/i.test(base)) {
         return 'fluidez de la circulación y oxigenación del corazón';
     }
-    if (/araquid[óo]nico|omega|colesterol|triglic[ée]ridos?|lipoprote[íi]na|grasa\s+en\s+sangre|adiposo|obesidad|l[íi]pido/i.test(base)) {
-        return 'equilibrio de grasas saludables en sangre';
+    if (/sd\s*ldl|ldl|colesterol|aterog[ée]n|araquid[óo]nico|omega|triglic[ée]ridos?|lipoprote[íi]na|grasa\s+en\s+sangre|adiposo|obesidad|l[íi]pido/i.test(base)) {
+        return 'transporte saludable de colesterol y lípidos en sus arterias';
     }
-    if (/insulina|glucosa|az[úu]car|gluc[óo]geno|energ[íi]a|mitocondri|metabolismo|cuerpo\s+[áa]cido|ph/i.test(base)) {
-        return 'aprovechamiento diario de azúcares y energía celular';
+    if (/insulina|glucosa|az[úu]car|gluc[óo]geno|hba1c/i.test(base)) {
+        return 'aprovechamiento diario de glucosa';
+    }
+    if (/energ[íi]a|mitocondri|metabolismo|cuerpo\s+[áa]cido|ph/i.test(base)) {
+        return 'producción de energía celular diaria';
     }
     if (/peristalsis|intestin|col[óo]nic|colon|flora|microbiota|estre[ñn]imiento|evacuaci/i.test(base)) {
         return 'ritmo de movimiento del estómago e intestino';
@@ -440,15 +1007,20 @@ export function hasLegacyTuteo(rawValue) {
     return false;
 }
 
+export const PEDIATRIC_CONTAMINATION_RE = /(madre,\s*padre\s+o\s+tutor|\(su\s+beb[ée]\)|\bsu\s+beb[ée]\b|lactancia|f[óo]rmula\s+(?:indicada\s+por\s+su\s+)?pediatr|pediatra|primeros\s+1000\s+d[íi]as|PAUSA_PREVENTIVA_PEDIATRICA|prioridad\s+pedi[áa]trica|sin\s+suplementos\s+adultos|no\s+suplementos\s+adultos|menores\s+de\s+2\s+a[ñn]os|organismo\s+infantil|juego\s+sensorial|gateo\s+libre)/i;
+
 export function resolveClinicalAddressing({
     patientName = '',
     ageYears = 35,
     isFemale = false,
     isLactanteExplicit = false
 } = {}) {
-    const safeAge = Number.isFinite(Number(ageYears)) && Number(ageYears) >= 0 ? Number(ageYears) : 35;
-    const isLactante = Boolean(isLactanteExplicit || safeAge < 2);
-    const isTutorChild = !isLactante && safeAge < 13;
+    const parsedAge = Number(ageYears);
+    const safeAge = Number.isFinite(parsedAge) && parsedAge > 0
+        ? parsedAge
+        : (isLactanteExplicit && parsedAge === 0 ? 0 : 35);
+    const isLactante = Boolean(safeAge < 2 && isLactanteExplicit);
+    const isTutorChild = !isLactante && safeAge > 0 && safeAge < 13;
     const isTutorMode = isLactante || isTutorChild;
     const isAdolescent = safeAge >= 13 && safeAge < 18;
     const isSenior = safeAge >= 65;
@@ -578,17 +1150,16 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     const dossier = patientData?.clinical_dossier || {};
     const ortho = dossier?.orthomolecular_prescription || {};
     const bioenergetics = dossier?.bioenergetics || ortho?.bioenergetics_summary || {};
-    const ageYears = extractPatientAge(patientData);
+    const verifiedAge = resolveVerifiedPatientAge(patientData, 35);
+    const ageYears = verifiedAge.ageYears;
     const { isFemale } = resolvePatientSex(patientData);
-    const isLactante = Boolean(patientData?.isLactante || patientData?.profile?.pediatric_profile?.is_lactante || ageYears < 2);
-    const isPediatric = Boolean(isLactante || patientData?.isPediatrico || patientData?.profile?.pediatric_profile?.is_minor || ageYears < 18);
+    const isLactante = Boolean(verifiedAge.isLactanteVerified);
+    const isPediatric = Boolean(verifiedAge.isPediatricVerified);
 
-    const rawName =
-        patientData?.profile?.name ||
-        patientData?.identificacion?.nombre ||
-        patientData?.identityLock?.patientInfo?.name ||
-        patientData?.name ||
-        (isLactante ? 'su bebé' : 'Paciente');
+    const rawName = formatInstitutionalFullName(
+        patientData,
+        isLactante ? 'su bebé' : 'Paciente'
+    );
 
     const addr = resolveClinicalAddressing({
         patientName: rawName,
@@ -599,6 +1170,13 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     const ref = addr.childShortRef;
     const fullName = addr.cleanFullName;
     const firstName = addr.firstName;
+
+    const rawVenousGlucose = Number(
+        patientData?.scan_data?.external_metrics?.biomarkers?.glucosa?.value ??
+        patientData?.scan_data?.external_metrics?.labs?.glucosa ??
+        patientData?.vitals?.glucose
+    );
+    const isNormoglycemicVenous = Number.isFinite(rawVenousGlucose) && rawVenousGlucose > 0 && rawVenousGlucose < 100;
 
     const existingGuide = dossier?.patient_friendly_guide || null;
     const rawIfmNodes = Array.isArray(dossier?.ifm_nodes_matrix) ? dossier.ifm_nodes_matrix : [];
@@ -753,6 +1331,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             return mapTutor[sysId] || mapTutor.huesos_musculos;
         }
 
+        const hasGlycemicTopic = Array.isArray(topics) && topics.some((t) => /glucosa|az[úu]car|insulina/i.test(String(t)));
         const mapUsted = {
             circulacion_energia: {
                 title: 'Su Circulación, Corazón y Energía Diaria',
@@ -761,7 +1340,9 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                     ? `Notamos que su sistema circulatorio y sus reservas de energía están haciendo un esfuerzo extra (especialmente en indicadores como ${listText}).`
                     : 'Sus indicadores principales de circulación, oxigenación y manejo de energía se mantienen estables.',
                 meaning: hasAny
-                    ? 'Imagine sus arterias como tuberías flexibles y a sus células como pequeñas baterías: cuando la sangre viaja un poco más espesa o hay exceso de grasas y azúcares circulando, el corazón trabaja más y usted puede sentir cansancio. Con hidratación, alimentación limpia y antioxidantes ayudaremos a que todo fluya con ligereza.'
+                    ? ((isNormoglycemicVenous || !hasGlycemicTopic)
+                        ? 'Imagine sus arterias como tuberías flexibles y a sus células como pequeñas baterías: cuando hay mayor carga de partículas de colesterol circulando o menor fluidez vascular, el corazón hace un esfuerzo extra. Con hidratación medida, grasas nobles y antioxidantes ayudaremos a que su circulación fluya con ligereza mientras mantenemos estable su nivel saludable de glucosa.'
+                        : 'Imagine sus arterias como tuberías flexibles y a sus células como pequeñas baterías: cuando la sangre viaja un poco más espesa o hay exceso de grasas y glucosa circulando, el corazón trabaja más y usted puede sentir cansancio. Con hidratación, alimentación limpia y antioxidantes ayudaremos a que todo fluya con ligereza.')
                     : 'Sus "tuberías" y "baterías celulares" responden adecuadamente; el objetivo será conservar esa vitalidad día con día.'
             },
             digestion_absorcion: {
@@ -846,10 +1427,34 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             };
         }
 
+        const rawHistorySups = patientData?.history?.supplements;
+        const historySupsText = Array.isArray(rawHistorySups)
+            ? rawHistorySups.map((s) => (typeof s === 'object' ? `${s.name || ''} ${s.brand || ''} ${s.duration || ''} ${s.notes || ''}` : String(s || ''))).join(' | ')
+            : String(rawHistorySups || '');
+        const hasPriorInstitutionalSups = /(?:33\s*plus|34\s*plus|multisinergix|aminosinergix|equipo\s+en\s+acci[óo]n)/i.test(historySupsText);
+
         if (levelHint === 'AMARILLO') {
+            if (hasPriorInstitutionalSups && !addr.isTutorMode) {
+                return {
+                    level: 'AMARILLO',
+                    modeCode: 'RECALIBRACION_PREVENTIVA_DOSIS',
+                    isRecalibrationMode: true,
+                    badgeLabel: 'Recalibración Preventiva de Dosis • Acompañamiento Continuo',
+                    title: 'Recalibramos preventivamente su pauta habitual para acompañar sus indicadores actuales',
+                    honestExplanation: 'Reconocemos su constancia previa con las fórmulas nutricionales de Equipo en Acción®. Para acompañar con total bioseguridad sus indicadores actuales, recalibramos preventivamente su posología los primeros 7 días (Semana 1) a media toma bien diluida en agua natural, optimizando su asimilación sin sobrecarga.',
+                    ethicalNote: `33Plus® y 34Plus® son aliados nutricionales complementarios a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico${addr.isAdolescent ? ', y se integran en conjunto con su madre, padre o tutor legal' : ''}).`,
+                    recommendedLabs: recommendedLabs.length > 0
+                        ? recommendedLabs
+                        : ['Química sanguínea (Creatinina, Ácido Úrico, BUN) y Examen General de Orina (EGO)'],
+                    isPaused: false,
+                    isMicroDose: true,
+                    titrationPlanText: `Recalibración preventiva de dosis (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en ${FORMULA_33PLUS.minWaterMl} ml de agua natural + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧. Valorar retorno gradual a su dosis habitual según control.`
+                };
+            }
             return {
                 level: 'AMARILLO',
                 modeCode: 'MICRO_DOSIS_GRADUAL_CALIBRADA',
+                isRecalibrationMode: false,
                 badgeLabel: 'Inicio Gradual Preventivo • Micro-Dosis Calibrada',
                 title: addr.isTutorMode
                     ? `Avanzamos paso a paso para cuidar los filtros naturales y la digestión de ${ref}`
@@ -865,7 +1470,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                     : ['Química sanguínea (Creatinina, Ácido Úrico, BUN) y Examen General de Orina (EGO)'],
                 isPaused: false,
                 isMicroDose: true,
-                titrationPlanText: 'Fase de adaptación (Días 1 al 7): 1/2 sobre (5 g) de 33Plus® al despertar + 1/2 sobre (5 g) de 34Plus® antes de dormir en 500 ml de agua simple 💧. Escalar gradualmente según tolerancia.'
+                titrationPlanText: `Fase de adaptación (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en ${FORMULA_33PLUS.minWaterMl} ml de agua natural + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧. Escalar gradualmente según tolerancia.`
             };
         }
 
@@ -885,11 +1490,23 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             recommendedLabs: [],
             isPaused: false,
             isMicroDose: false,
-            titrationPlanText: 'Protocolo estándar sincronizado a su día: 2 tomas matutinas de 33Plus® y 2 tomas vespertinas/nocturnas de 34Plus® en 500 ml de agua simple 💧.'
+            titrationPlanText: `Protocolo estándar sincronizado a su día: 2 tomas matutinas de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} c/u en ${FORMULA_33PLUS.minWaterMl} ml de agua) y 2 tomas vespertinas/nocturnas de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} c/u en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧).`
         };
     };
 
     let rawSem = existingGuide?.biosecurity_semaphore || dossier?.biosecurity_semaphore || ortho?.biosecurity_semaphore || null;
+    if (
+        !addr.isTutorMode &&
+        rawSem &&
+        (
+            rawSem.modeCode === 'PAUSA_PREVENTIVA_PEDIATRICA' ||
+            PEDIATRIC_CONTAMINATION_RE.test(
+                `${rawSem.badgeLabel || ''} ${rawSem.title || ''} ${rawSem.honestExplanation || ''} ${rawSem.ethicalNote || ''} ${rawSem.titrationPlanText || ''}`
+            )
+        )
+    ) {
+        rawSem = null;
+    }
     let semaphore = null;
 
     const repairLegacySemaphoreExplanation = (text) => {
@@ -917,7 +1534,9 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         const cleanedTitle = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(rawSem.title));
         const cleanedExplanation = repairLegacySemaphoreExplanation(sanitizeClinicalSpanish(rawSem.honestExplanation));
         const cleanedEthical = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(rawSem.ethicalNote));
-        const cleanedTitration = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(rawSem.titrationPlanText));
+        const cleanedTitration = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(rawSem.titrationPlanText))
+            .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+33Plus®/gi, `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus®`)
+            .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+34Plus®/gi, `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus®`);
         const mismatchTutorSem = addr.isTutorMode && /\b(su cuerpo|sus síntomas|usted requiere)\b/i.test(cleanedExplanation);
         const missingTeenTutorNote = addr.isAdolescent && !/tutor|madre|padre/i.test(`${cleanedExplanation} ${cleanedEthical}`);
 
@@ -944,7 +1563,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         const basePaused = buildCanonicalSemaphore('ROJO', []);
         semaphore = {
             ...basePaused,
-            modeCode: 'PAUSA_EXPEDIENTE_NO_SINTETIZADO',
+            modeCode: 'PAUSA_PREVENTIVA_MEDICA',
             badgeLabel: 'Pendiente de Síntesis Diagnóstica • 0 Sobres Activos',
             isPaused: true,
             isMicroDose: false
@@ -957,7 +1576,10 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         semaphore = buildCanonicalSemaphore((hasRenalOrHepatic || hasCalcLock || isPediatric) ? 'AMARILLO' : 'VERDE');
     }
 
-    // 3. Construir o normalizar las 5 Tarjetas de Sistemas Humanos (cero tuteo legado, cero etiquetas crudas alarmantes)
+    // 3. Construir o normalizar las 5 Tarjetas de Sistemas Humanos (cero tuteo legado, cero etiquetas crudas alarmantes y cero contaminación pediátrica en adultos)
+    const escapedFirst = firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const adultThirdPersonLeakRe = new RegExp(`\\bde\\s+${escapedFirst}\\b|\\bmientras\\s+${escapedFirst}\\b|\\ben\\s+${escapedFirst}\\b|en\\s+crecimiento|desarrollo\\s+y\\s+defensas`, 'i');
+
     let fiveSystems = [];
     if (Array.isArray(existingGuide?.five_systems) && existingGuide.five_systems.length > 0) {
         fiveSystems = existingGuide.five_systems.map((sys) => {
@@ -978,15 +1600,20 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             const hasAny = sys.status !== 'EN_EQUILIBRIO' && (countVal > 0 || finalHighlights.length > 0);
             const canonicalSys = getCanonicalSystemMeta(sys.id, finalHighlights, hasAny);
             const mismatchTutorSys = addr.isTutorMode && /^(su|sus)\s+(circulaci|digesti|filtros|descanso|huesos)/i.test(rawTitle);
+            const mismatchAdultSys = !addr.isTutorMode && (
+                PEDIATRIC_CONTAMINATION_RE.test(`${rawTitle} ${rawSub} ${rawObs} ${rawMean}`) ||
+                adultThirdPersonLeakRe.test(`${rawTitle} ${rawSub} ${rawObs} ${rawMean}`)
+            );
+            const mismatchNormoglycemicSugarClaim = sys.id === 'circulacion_energia' && isNormoglycemicVenous && /exceso\s+de\s+grasas\s+y\s+az[úu]cares/i.test(rawMean);
 
             return {
                 ...sys,
-                title: (!rawTitle || hasLegacyTuteo(rawTitle) || mismatchTutorSys) ? canonicalSys.title : rawTitle,
-                subtitle: (!rawSub || hasLegacyTuteo(rawSub) || mismatchTutorSys) ? canonicalSys.subtitle : rawSub,
-                whatWeObserved: (!rawObs || hasRawAlarmingLabel || hasLegacyTuteo(rawObs) || mismatchTutorSys)
+                title: (!rawTitle || hasLegacyTuteo(rawTitle) || mismatchTutorSys || mismatchAdultSys) ? canonicalSys.title : rawTitle,
+                subtitle: (!rawSub || hasLegacyTuteo(rawSub) || mismatchTutorSys || mismatchAdultSys) ? canonicalSys.subtitle : rawSub,
+                whatWeObserved: (!rawObs || hasRawAlarmingLabel || hasLegacyTuteo(rawObs) || mismatchTutorSys || mismatchAdultSys)
                     ? canonicalSys.observed
                     : rawObs,
-                whatItMeans: (!rawMean || hasLegacyTuteo(rawMean) || mismatchTutorSys)
+                whatItMeans: (!rawMean || hasLegacyTuteo(rawMean) || mismatchTutorSys || mismatchAdultSys || mismatchNormoglycemicSugarClaim)
                     ? canonicalSys.meaning
                     : rawMean,
                 cleanHighlights: finalHighlights,
@@ -1021,10 +1648,15 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         });
     }
 
-    // 4. Sincronizar Horario Circadiano y Tarjetas de Fórmulas (33Plus® y 34Plus®) con el Semáforo y Registro
+    // 4. Sincronizar Horario Circadiano y Tarjetas de Fórmulas (33Plus® y 34Plus®) con el Contrato SSoTT y Semáforo
+    const canonicalPlan = dossier?.canonical_clinical_plan || dossier?.therapeutic_contract || ortho?.therapeutic_contract || null;
     const rawSupplements = Array.isArray(ortho?.supplements) ? ortho.supplements : [];
     const raw33 = rawSupplements.find((s) => String(s?.id || s?.name || '').toLowerCase().includes('33')) || {};
     const raw34 = rawSupplements.find((s) => String(s?.id || s?.name || '').toLowerCase().includes('34')) || {};
+    const isSelective33Paused = Boolean(
+        (canonicalPlan?.isSelective33Paused || semaphore?.isSelective33Paused || raw33?.status === 'paused_by_biosecurity') &&
+        !semaphore.isPaused
+    );
 
     const buildCanonicalSchedule = () => {
         if (semaphore.isPaused) {
@@ -1057,28 +1689,30 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 }
             ];
         }
-        if (semaphore.isMicroDose) {
+        if (isSelective33Paused) {
             return [
                 {
                     tomaNumber: 1,
                     timeSlot: 'Al despertar en ayunas',
-                    phase: 'Mañana — Adaptación Suave de Energía y Circulación',
-                    formula: addr.isTutorMode ? '🔴 33Plus® (Variante Suave Sin Estimulantes)' : '🔴 33Plus® (Energía Celular y Circulación)',
-                    dosage: '1/2 sobre (5 g) disuelto en 300 ml de agua natural o tibia',
+                    phase: 'Mañana — Hidratación Protectora (33Plus® en Pausa Selectiva)',
+                    formula: '💧 Hidratación Preparatoria (33Plus® en pausa selectiva: 0 sobres activos)',
+                    dosage: '0 sobres activos de 33Plus® • Beber 300 ml de agua simple natural',
                     patientObjective: addr.isTutorMode
-                        ? `Apoyar la energía matutina y la circulación de ${ref} con una dosis gradual y amable.`
-                        : 'Encender su energía de la mañana y apoyar su circulación de forma suave y progresiva.',
+                        ? `Hidratar suavemente a ${ref} por la mañana manteniendo 33Plus® en pausa de seguridad.`
+                        : 'Hidratar suavemente su organismo al despertar manteniendo 33Plus® en pausa preventiva de seguridad.',
+                    isPaused: true,
                     isMicroDose: true
                 },
                 {
                     tomaNumber: 2,
-                    timeSlot: 'A media mañana (Días 8 en adelante, según tolerancia)',
-                    phase: 'Mañana — Escalamiento Gradual Opcional',
-                    formula: addr.isTutorMode ? '🔴 33Plus® (Variante Suave Sin Estimulantes)' : '🔴 33Plus® (Energía Celular y Circulación)',
-                    dosage: 'Iniciar solo con agua natural (Semana 1) • Valorar 1/2 sobre adicional en Semana 2',
+                    timeSlot: 'A media mañana',
+                    phase: 'Mañana — Hidratación Preparatoria Continua',
+                    formula: '💧 Hidratación Preparatoria (Agua Simple)',
+                    dosage: '300 ml de agua simple purificada a sorbos',
                     patientObjective: addr.isTutorMode
-                        ? `Permitir que el organismo de ${ref} se adapte primero antes de valorar una segunda toma matutina.`
-                        : 'Permitir que su organismo se adapte primero antes de sumar una segunda toma matutina.',
+                        ? `Mantener la hidratación natural de ${ref} a mitad de la mañana.`
+                        : 'Mantener su hidratación natural constante a mitad de la mañana.',
+                    isPaused: true,
                     isMicroDose: true
                 },
                 {
@@ -1097,7 +1731,55 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                     timeSlot: '30 a 60 min antes de dormir',
                     phase: 'Noche — Reparación Suave de Tejidos y Digestión',
                     formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
-                    dosage: '1/2 sobre (5 g) disuelto en MÍNIMO 500 ml de agua simple 💧',
+                    dosage: `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`,
+                    patientObjective: addr.isTutorMode
+                        ? `Nutrir articulaciones, piel y digestión mientras ${ref} duerme, siempre con medio litro de agua simple.`
+                        : 'Nutrir sus articulaciones, piel y digestión mientras usted duerme, siempre con suficiente agua simple.',
+                    isMicroDose: true
+                }
+            ];
+        }
+        if (semaphore.isMicroDose) {
+            return [
+                {
+                    tomaNumber: 1,
+                    timeSlot: 'Al despertar en ayunas (antes de las 2:00 PM)',
+                    phase: 'Mañana — Adaptación Suave de Energía y Circulación',
+                    formula: '🔴 33Plus® (Energía Celular y Circulación)',
+                    dosage: `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) disuelto en ${FORMULA_33PLUS.minWaterMl} ml de agua natural o tibia`,
+                    patientObjective: addr.isTutorMode
+                        ? `Apoyar la energía matutina y la circulación de ${ref} con una dosis gradual y amable.`
+                        : 'Encender su energía de la mañana y apoyar su circulación de forma suave y progresiva.',
+                    isMicroDose: true
+                },
+                {
+                    tomaNumber: 2,
+                    timeSlot: 'A media mañana (Semana 1: solo agua • Semana 2: valorar escalamiento)',
+                    phase: 'Mañana — Hidratación Preparatoria y Escalamiento Gradual',
+                    formula: '💧 Hidratación Preparatoria (Agua Simple en Semana 1)',
+                    dosage: `Iniciar solo con 300 ml de agua natural (Semana 1) • Valorar 1/2 sobre adicional (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® en Semana 2`,
+                    patientObjective: addr.isTutorMode
+                        ? `Hidratar a ${ref} con agua natural la primera semana antes de valorar una segunda toma matutina.`
+                        : 'Hidratar su organismo con agua simple la primera semana antes de valorar una segunda toma matutina.',
+                    isMicroDose: true
+                },
+                {
+                    tomaNumber: 3,
+                    timeSlot: 'A media tarde',
+                    phase: 'Tarde — Hidratación Preparatoria de Limpieza',
+                    formula: '💧 Hidratación Preparatoria (Agua Simple)',
+                    dosage: '500 ml de agua simple purificada a sorbos durante la tarde 💧',
+                    patientObjective: addr.isTutorMode
+                        ? `Ayudar a los riñones e intestino de ${ref} a limpiar desechos suavemente durante la tarde.`
+                        : 'Ayudar a sus riñones e intestino a limpiar desechos suavemente durante la tarde.',
+                    isMicroDose: true
+                },
+                {
+                    tomaNumber: 4,
+                    timeSlot: '30 a 60 min antes de dormir',
+                    phase: 'Noche — Reparación Suave de Tejidos y Digestión',
+                    formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
+                    dosage: `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`,
                     patientObjective: addr.isTutorMode
                         ? `Nutrir articulaciones, piel y digestión mientras ${ref} duerme, siempre con medio litro de agua simple.`
                         : 'Nutrir sus articulaciones, piel y digestión mientras usted duerme, siempre con suficiente agua simple.',
@@ -1110,8 +1792,8 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 tomaNumber: 1,
                 timeSlot: 'Al despertar en ayunas',
                 phase: 'Mañana — Energía Celular y Circulación',
-                formula: addr.isTutorMode ? '🔴 33Plus® (Variante Suave Sin Estimulantes)' : '🔴 33Plus® (Energía Celular y Circulación)',
-                dosage: '1 sobre (10 g) en 300 ml de agua natural o tibia',
+                formula: '🔴 33Plus® (Energía Celular y Circulación)',
+                dosage: `1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) en ${FORMULA_33PLUS.minWaterMl} ml de agua natural o tibia`,
                 patientObjective: addr.isTutorMode
                     ? `Impulsar la vitalidad y atención matutina de ${ref} desde temprano.`
                     : 'Despertar su vitalidad y apoyar su circulación desde temprano.'
@@ -1120,8 +1802,8 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 tomaNumber: 2,
                 timeSlot: 'A media mañana (aprox. 4 h después de despertar)',
                 phase: 'Mañana — Enfoque y Estabilidad',
-                formula: addr.isTutorMode ? '🔴 33Plus® (Variante Suave Sin Estimulantes)' : '🔴 33Plus® (Energía Celular y Circulación)',
-                dosage: '1 sobre (10 g) en 300 ml de agua natural',
+                formula: '🔴 33Plus® (Energía Celular y Circulación)',
+                dosage: `1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`,
                 patientObjective: addr.isTutorMode
                     ? `Mantener la energía de ${ref} estable sin bajones a mitad del día.`
                     : 'Mantener su energía estable sin bajones a mitad del día.'
@@ -1131,7 +1813,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 timeSlot: 'A media tarde',
                 phase: 'Tarde — Bienestar Digestivo',
                 formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
-                dosage: '1 sobre (10 g) en MÍNIMO 500 ml de agua simple 💧',
+                dosage: `1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`,
                 patientObjective: addr.isTutorMode
                     ? `Cuidar la digestión vespertina de ${ref} e hidratar profundamente sus tejidos.`
                     : 'Cuidar su digestión e hidratar profundamente sus tejidos.'
@@ -1141,7 +1823,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 timeSlot: '30 a 60 min antes de dormir',
                 phase: 'Noche — Reparación de Tejidos y Colágeno',
                 formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
-                dosage: '1 sobre (10 g) en MÍNIMO 500 ml de agua simple 💧',
+                dosage: `1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`,
                 patientObjective: addr.isTutorMode
                     ? `Aportar los bloques de reparación nocturna para articulaciones, músculos y piel mientras ${ref} duerme.`
                     : 'Aportar los bloques de reparación nocturna para articulaciones, músculos y piel mientras usted duerme.'
@@ -1151,19 +1833,41 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
 
     const canonicalSchedule = buildCanonicalSchedule();
     let schedule = [];
-    if (!addr.isLactante && Array.isArray(ortho?.circadianSchedule) && ortho.circadianSchedule.length > 0) {
+    const hasRawPediatricScheduleOnAdult = !addr.isTutorMode &&
+        Array.isArray(ortho?.circadianSchedule) &&
+        ortho.circadianSchedule.some((s) =>
+            PEDIATRIC_CONTAMINATION_RE.test(`${s?.phase || ''} ${s?.formula || ''} ${s?.dosage || ''} ${s?.patientObjective || ''} ${s?.clinicalObjective || ''}`)
+        );
+    if (!addr.isLactante && !hasRawPediatricScheduleOnAdult && Array.isArray(ortho?.circadianSchedule) && ortho.circadianSchedule.length > 0) {
         schedule = ortho.circadianSchedule.map((slot, idx) => {
             const fallbackSlot = canonicalSchedule[idx] || canonicalSchedule[canonicalSchedule.length - 1];
             const cleanPhase = sanitizeClinicalSpanish(slot.phase);
             const cleanObj = sanitizeClinicalSpanish(slot.patientObjective || slot.clinicalObjective || '');
             const mismatchTutorSlot = addr.isTutorMode && /\b(usted|sus órganos|sus articulaciones)\b/i.test(cleanObj);
+            const mismatchAdultSlot = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(cleanObj) || adultThirdPersonLeakRe.test(cleanObj));
+            let cleanFormulaStr = sanitizeClinicalSpanish(slot.formula || fallbackSlot.formula);
+            let normalizedDosage = sanitizeClinicalSpanish(slot.dosage || fallbackSlot.dosage).replace(/🍵/g, '💧');
+            if (/iniciar\s+solo\s+con\s+(?:300\s*ml\s+de\s+)?agua/i.test(normalizedDosage) && !/hidrataci[óo]n\s+preparatoria/i.test(cleanFormulaStr)) {
+                cleanFormulaStr = '💧 Hidratación Preparatoria (Agua Simple en Semana 1)';
+            }
+            const isSlot33 = /33/.test(cleanFormulaStr);
+            const isSlot34 = /34/.test(cleanFormulaStr);
+            if (isSlot33) {
+                normalizedDosage = normalizedDosage
+                    .replace(/1\/2\s+sobre\s*\(5\s*g\)/gi, `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay})`)
+                    .replace(/1\s+sobre\s*\(10\s*g\)/gi, `1 sobre (${FORMULA_33PLUS.sachetGramsDisplay})`);
+            } else if (isSlot34) {
+                normalizedDosage = normalizedDosage
+                    .replace(/1\/2\s+sobre\s*\(5\s*g\)/gi, `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay})`)
+                    .replace(/1\s+sobre\s*\(10\s*g\)/gi, `1 sobre (${FORMULA_34PLUS.sachetGramsDisplay})`);
+            }
             return {
                 ...slot,
                 timeSlot: humanizeLegacyTimeSlot(slot.timeSlot, idx),
                 phase: (!cleanPhase || hasLegacyTuteo(cleanPhase)) ? fallbackSlot.phase : cleanPhase,
-                formula: sanitizeClinicalSpanish(slot.formula || fallbackSlot.formula),
-                dosage: sanitizeClinicalSpanish(slot.dosage || fallbackSlot.dosage).replace(/🍵/g, '💧'),
-                patientObjective: (!cleanObj || hasLegacyTuteo(cleanObj) || mismatchTutorSlot)
+                formula: cleanFormulaStr,
+                dosage: normalizedDosage,
+                patientObjective: (!cleanObj || hasLegacyTuteo(cleanObj) || mismatchTutorSlot || mismatchAdultSlot)
                     ? fallbackSlot.patientObjective
                     : cleanObj
             };
@@ -1178,9 +1882,13 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             : (addr.isTutorMode
                 ? `Por cuidado a la salud de ${ref}, mantenemos 33Plus® en pausa temporal hasta revisar sus análisis de control.`
                 : 'Por cuidado a su salud, mantenemos 33Plus® en pausa temporal hasta revisar sus análisis de control.'))
-        : (addr.isTutorMode
-            ? `Acompaña a ${ref} por la mañana con antioxidantes suaves para apoyar su energía diaria y circulación${semaphore.isMicroDose ? ', iniciando con medio sobre para cuidar su adaptación' : ''}.`
-            : `${addr.directObjCap} acompaña por la mañana con antioxidantes de semilla de uva, Coenzima Q10, L-Teanina y cromo para apoyar su energía diaria y la flexibilidad de su circulación${semaphore.isMicroDose ? ', iniciando con medio sobre para cuidar su adaptación' : ''}.`);
+        : isSelective33Paused
+            ? (addr.isTutorMode
+                ? `Por seguridad y cuidado del sistema nervioso y cardiovascular de ${ref}, mantenemos 33Plus® en pausa selectiva preventiva (0 sobres activos) y priorizamos su hidratación natural por la mañana.`
+                : 'Por seguridad clínica ante su medicación o condición actual, mantenemos 33Plus® en pausa selectiva preventiva (0 sobres activos) y priorizamos su hidratación natural por la mañana.')
+            : (addr.isTutorMode
+                ? `Acompaña a ${ref} por la mañana con L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva, vitamina C y cromo para apoyar su energía diaria y circulación${semaphore.isMicroDose ? `, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre de ${FORMULA_33PLUS.sachetGramsDisplay}—) para cuidar su adaptación` : ''}.`
+                : `${addr.directObjCap} acompaña por la mañana con L-Taurina, L-Carnitina, Coenzima Q10, extracto de semilla de uva (95 % proantocianidinas), Vitamina C y Picolinato de Cromo para apoyar su energía celular diaria y la flexibilidad de su circulación${semaphore.isMicroDose ? `, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_33PLUS.sachetGramsDisplay}—, antes de las 14:00 h) para cuidar su adaptación` : ''}.`);
 
     const default34Explanation = semaphore.isPaused
         ? (addr.isLactante
@@ -1189,33 +1897,55 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 ? `Mantenemos 34Plus® en pausa preventiva mientras cuidamos la hidratación y alimentación diaria de ${ref} en casa.`
                 : 'Mantenemos 34Plus® en pausa preventiva mientras cuidamos su hidratación y alimentación diaria en casa.'))
         : (addr.isTutorMode
-            ? `Trabaja mientras ${ref} descansa aportando bloques de construcción (colágeno, fibra prebiótica y vitamina C) para su digestión, piel y tejidos en crecimiento. Disuélvalo siempre en medio litro de agua simple 💧.`
-            : 'Trabaja mientras usted descansa aportando bloques de construcción (colágeno, fibra prebiótica y vitamina C) para su digestión, piel y articulaciones. Tómelo siempre en medio litro de agua simple 💧.');
+            ? `Trabaja mientras ${ref} descansa aportando bloques de construcción (péptidos de colágeno, L-Glicina, L-Teanina, fibra prebiótica FOS-Inulina, Citrato de Magnesio y Vitamina C) para su digestión, piel y tejidos en crecimiento (${semaphore.isMicroDose ? `${FORMULA_34PLUS.halfSachetGramsDisplay} —50% del sobre de ${FORMULA_34PLUS.sachetGramsDisplay}— ` : ''}en medio litro de agua simple 💧).`
+            : `Trabaja mientras usted descansa aportando bloques de construcción (péptidos de colágeno, L-Glicina, L-Teanina, fibra prebiótica FOS-Inulina, Citrato de Magnesio, Vitamina C, Vitamina K2 MK-7 y Zinc Optizinc) para su digestión, piel y articulaciones (${semaphore.isMicroDose ? `1/2 sobre de ${FORMULA_34PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_34PLUS.sachetGramsDisplay}— ` : ''}en MÍNIMO 500 ml de agua simple 💧).`);
 
     const raw33Expl = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(raw33.patient_rationale || ''));
     const raw34Expl = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(raw34.patient_rationale || ''));
+    const hasForbiddenTheanineIn33 = /l-?teanina/i.test(raw33Expl);
+    const hasFictionalSkuIn33 = /libre\s+de\s+estimulantes|sin\s+estimulantes/i.test(raw33Expl);
     const mismatch33Tutor = addr.isTutorMode && /^(lo|la)\s+acompaña/i.test(raw33Expl);
     const mismatch34Tutor = addr.isTutorMode && /\bmientras\s+usted\s+descansa\b/i.test(raw34Expl);
+    const mismatch33Adult = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(raw33Expl) || adultThirdPersonLeakRe.test(raw33Expl) || hasForbiddenTheanineIn33 || hasFictionalSkuIn33);
+    const mismatch34Adult = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(raw34Expl) || adultThirdPersonLeakRe.test(raw34Expl));
+
+    const isRecalibrationActive = Boolean(
+        semaphore.isRecalibrationMode ||
+        semaphore.modeCode === 'RECALIBRACION_PREVENTIVA_DOSIS' ||
+        semaphore.modeCode === 'RECALIBRACION_DOSIS_PREVENTIVA' ||
+        raw33?.isRecalibrationMode ||
+        raw34?.isRecalibrationMode
+    );
 
     const formula33Card = {
         code: '33PLUS',
         brandTitle: '33Plus®',
-        subtitle: addr.isTutorMode
-            ? `Soporte matutino de energía celular y circulación para ${ref}`
-            : 'Su aliado matutino de energía celular y circulación',
+        isSelectivePaused: isSelective33Paused,
+        isRecalibrationMode: isRecalibrationActive,
+        subtitle: isSelective33Paused
+            ? 'En pausa selectiva preventiva de bioseguridad (0 sobres activos)'
+            : (addr.isTutorMode
+                ? `Soporte matutino de energía celular y circulación para ${ref}`
+                : 'Su aliado matutino de energía celular y circulación'),
         dosage: semaphore.isPaused
             ? (addr.isLactante
                 ? '0 sobres activos (etapa exclusiva de lactancia y pediatría)'
                 : '0 sobres activos por ahora (en pausa preventiva hasta revisar sus estudios de laboratorio)')
-            : (semaphore.isMicroDose
-                ? 'Inicio gradual (Días 1–7): 1/2 sobre (5 g) al despertar en ayunas en 300 ml de agua natural'
-                : '2 tomas por la mañana: 1 sobre al despertar en ayunas y 1 sobre a media mañana (en 300 ml de agua natural)'),
+            : isSelective33Paused
+                ? FORMULA_33PLUS.dosageByMode.PAUSED_SELECTIVE_33
+                : (semaphore.isMicroDose
+                    ? (isRecalibrationActive
+                        ? (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || `Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
+                        : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
+                    : `2 tomas por la mañana: 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) al despertar en ayunas y 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) a media mañana (en ${FORMULA_33PLUS.minWaterMl} ml de agua natural)`),
         timing: semaphore.isPaused
             ? (addr.isLactante ? 'No indicado en menores de 2 años' : 'En espera de validación médica')
-            : (addr.isTutorMode
-                ? `Sincronizado al despertar de ${ref} (evitar después de las 2:00 PM)`
-                : 'Sincronizado a su despertar real (evitar después de las 2:00 PM)'),
-        explanation: (!raw33Expl || hasLegacyTuteo(raw33Expl) || mismatch33Tutor || addr.isLactante)
+            : isSelective33Paused
+                ? 'En pausa selectiva (sustituir por 300 ml de agua natural al despertar)'
+                : (addr.isTutorMode
+                    ? `Sincronizado al despertar de ${ref} (evitar después de las 2:00 PM)`
+                    : 'Sincronizado a su despertar real (corte estricto antes de las 2:00 PM)'),
+        explanation: (!raw33Expl || hasLegacyTuteo(raw33Expl) || mismatch33Tutor || mismatch33Adult || hasFictionalSkuIn33 || addr.isLactante)
             ? default33Explanation
             : raw33Expl
     };
@@ -1223,6 +1953,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     const formula34Card = {
         code: '34PLUS',
         brandTitle: '34Plus®',
+        isRecalibrationMode: isRecalibrationActive,
         subtitle: addr.isTutorMode
             ? `Soporte vespertino y nocturno de reparación y digestión para ${ref}`
             : 'Su aliado vespertino y nocturno de reparación y digestión',
@@ -1231,12 +1962,14 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 ? '0 sobres activos (etapa exclusiva de lactancia y pediatría)'
                 : '0 sobres activos por ahora (en pausa preventiva hasta revisar sus estudios de laboratorio)')
             : (semaphore.isMicroDose
-                ? 'Inicio gradual (Días 1–7): 1/2 sobre (5 g) antes de dormir disuelto en MÍNIMO 500 ml de agua simple 💧'
-                : '2 tomas tarde/noche: 1 sobre a media tarde y 1 sobre 30–60 min antes de dormir, cada uno en MÍNIMO 500 ml de agua simple 💧'),
+                ? (isRecalibrationActive
+                    ? (FORMULA_34PLUS.dosageByMode.RECALIBRATION_DOSE || `Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
+                    : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
+                : `2 tomas tarde/noche: 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) a media tarde y 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) 30–60 min antes de dormir, cada uno en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`),
         timing: semaphore.isPaused
             ? (addr.isLactante ? 'No indicado en menores de 2 años' : 'En espera de validación médica')
             : 'Tarde y 30 a 60 min antes de dormir (siempre en medio litro de agua simple 💧)',
-        explanation: (!raw34Expl || hasLegacyTuteo(raw34Expl) || mismatch34Tutor || addr.isLactante)
+        explanation: (!raw34Expl || hasLegacyTuteo(raw34Expl) || mismatch34Tutor || mismatch34Adult || addr.isLactante)
             ? default34Explanation
             : raw34Expl
     };
@@ -1247,24 +1980,31 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         return !/^(ninguna?|ninguno|niega|negad[oa]s?|n\/a|na|sin\s+alergias?|sin\s+exclusiones?|sin\s+restricciones?|no|no\s+refiere|null|undefined|-+)$/i.test(clean);
     };
 
-    // 5. Plan de Acción en Casa (Cero tuteo, cero jerga NEAT / HIIT / RIR y cero icono infantil en 13+)
+    // 5. Plan de Acción en Casa (1:1 con canonicalClinicalPlan: kcal, macros, régimen, hidratación y exclusiones)
     const weightKg = Number(bioenergetics?.weightKg) > 0 ? Number(bioenergetics.weightKg) : 70;
-    const litersRecommended = Number(ortho?.hydrationTargetLiters) > 0
-        ? Number(ortho.hydrationTargetLiters)
+    const litersRecommended = Number(canonicalPlan?.hydrationTargetLiters || ortho?.hydrationTargetLiters) > 0
+        ? Number(canonicalPlan?.hydrationTargetLiters || ortho?.hydrationTargetLiters)
         : Math.min(3.2, Math.max(1.8, Number(((weightKg * 32) / 1000).toFixed(1))));
-    const personalExclusions = (ortho?.dietaryPlan?.patientSpecificExclusions || [])
+    const personalExclusions = (canonicalPlan?.patientSpecificExclusions || ortho?.dietaryPlan?.patientSpecificExclusions || [])
         .map((x) => capitalizeLeadingSpanish(sanitizeClinicalSpanish(x)))
         .filter(isMeaningfulExclusion);
+    const resolvedMacros = canonicalPlan?.macros || bioenergetics?.macros || { carbs: 40, protein: 30, fat: 30 };
+    const resolvedRegimen = sanitizeClinicalSpanish(canonicalPlan?.regimen || ortho?.dietaryPlan?.regimen || bioenergetics?.regimen || 'Alimentación Funcional Antiinflamatoria Personalizada');
+    const macroTail = !addr.isLactante
+        ? ` Distribución equilibrada: ${resolvedMacros.carbs}% carbohidratos integrales, ${resolvedMacros.protein}% proteínas limpias y ${resolvedMacros.fat}% grasas saludables.`
+        : '';
 
     const canonicalHomePlan = {
         protective_nutrition: {
             title: 'Alimentación Protectora en Casa',
-            targetKcal: bioenergetics?.targetKcal || null,
+            targetKcal: canonicalPlan?.targetKcal || bioenergetics?.targetKcal || null,
+            regimen: resolvedRegimen,
+            macros: resolvedMacros,
             summary: addr.isLactante
                 ? `Mantener lactancia materna o fórmula indicada por su pediatra e introducción gradual de alimentos naturales para ${ref}, sin sal añadida ni azúcares.`
                 : addr.isTutorChild
-                    ? `El plan alimentario de ${ref} (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'acorde a su crecimiento'}) prioriza verduras frescas, grasas nobles (aguacate, aceite de oliva), fruta natural y proteínas limpias como pescado, pollo o huevo.`
-                    : `Su plan está calculado a la medida de su organismo (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'personalizado'}), priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva, semillas), fibra suave y proteínas limpias como pescado, pollo o huevo.`,
+                    ? `El plan alimentario de ${ref} (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'acorde a su crecimiento'} • ${resolvedRegimen}) prioriza verduras frescas, grasas nobles (aguacate, aceite de oliva), fruta natural y proteínas limpias como pescado, pollo o huevo.${macroTail}`
+                    : `Su plan (${resolvedRegimen}) está calculado a la medida de su organismo (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'personalizado'}), priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva, semillas), fibra soluble y proteínas limpias como pescado, pollo o huevo.${macroTail}`,
             universalRules: addr.isTutorMode
                 ? [
                     '0 Picante (protege la mucosa digestiva)',
@@ -1324,16 +2064,19 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             .map(sanitizeClinicalSpanish);
         const rulesHaveTuteo = rawRules.some((r) => hasLegacyTuteo(r));
         const mismatchHomeTutor = addr.isTutorMode && /\bsu plan está calculado a la medida de su organismo\b/i.test(rawNutSummary);
+        const mismatchHomeAdultNut = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(rawNutSummary) || adultThirdPersonLeakRe.test(rawNutSummary));
+        const mismatchHomeAdultHyd = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(`${rawHydSummary} ${rawHydKeyRule}`) || adultThirdPersonLeakRe.test(rawHydSummary));
+        const mismatchHomeAdultMov = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(`${rawMovSummary} ${rawSleepHabit}`) || /juego activo diario acorde a su etapa/i.test(rawMovSummary) || adultThirdPersonLeakRe.test(`${rawMovSummary} ${rawSleepHabit}`));
 
         homeActionPlan = {
             protective_nutrition: {
                 ...canonicalHomePlan.protective_nutrition,
                 ...rawHome.protective_nutrition,
                 title: sanitizeClinicalSpanish(rawHome.protective_nutrition?.title) || canonicalHomePlan.protective_nutrition.title,
-                summary: (!rawNutSummary || hasLegacyTuteo(rawNutSummary) || mismatchHomeTutor)
+                summary: (!rawNutSummary || hasLegacyTuteo(rawNutSummary) || mismatchHomeTutor || mismatchHomeAdultNut)
                     ? canonicalHomePlan.protective_nutrition.summary
                     : rawNutSummary,
-                universalRules: rulesHaveTuteo ? canonicalHomePlan.protective_nutrition.universalRules : rawRules,
+                universalRules: (rulesHaveTuteo || mismatchHomeAdultNut) ? canonicalHomePlan.protective_nutrition.universalRules : rawRules,
                 personalExclusions: (rawHome.protective_nutrition?.personalExclusions || personalExclusions)
                     .map(sanitizeClinicalSpanish)
                     .filter(isMeaningfulExclusion)
@@ -1342,10 +2085,10 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 ...canonicalHomePlan.smart_hydration,
                 ...rawHome.smart_hydration,
                 litersPerDay: rawHome.smart_hydration?.litersPerDay || litersRecommended,
-                summary: (!rawHydSummary || hasLegacyTuteo(rawHydSummary) || mismatchHomeTutor)
+                summary: (!rawHydSummary || hasLegacyTuteo(rawHydSummary) || mismatchHomeTutor || mismatchHomeAdultHyd)
                     ? canonicalHomePlan.smart_hydration.summary
                     : rawHydSummary,
-                keyRule34Plus: (!rawHydKeyRule || hasLegacyTuteo(rawHydKeyRule))
+                keyRule34Plus: (!rawHydKeyRule || hasLegacyTuteo(rawHydKeyRule) || mismatchHomeAdultHyd)
                     ? canonicalHomePlan.smart_hydration.keyRule34Plus
                     : rawHydKeyRule
             },
@@ -1354,21 +2097,22 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 ...rawHome.gentle_movement,
                 title: canonicalHomePlan.gentle_movement.title,
                 isPediatric: Boolean(addr.isTutorMode),
-                summary: (!rawMovSummary || hasLegacyTuteo(rawMovSummary) || (!addr.isTutorMode && /juego activo diario acorde a su etapa/i.test(rawMovSummary)))
+                summary: (!rawMovSummary || hasLegacyTuteo(rawMovSummary) || mismatchHomeAdultMov)
                     ? canonicalHomePlan.gentle_movement.summary
                     : rawMovSummary,
-                sleepHabit: (!rawSleepHabit || hasLegacyTuteo(rawSleepHabit))
+                sleepHabit: (!rawSleepHabit || hasLegacyTuteo(rawSleepHabit) || mismatchHomeAdultMov)
                     ? canonicalHomePlan.gentle_movement.sleepHabit
                     : rawSleepHabit
             }
         };
     }
 
+    const vocativeAdultName = addr.hasSpecificName ? fullName : firstName;
     const canonicalGreeting = addr.isLactante
         ? `Estimada madre, padre o tutor: lectura clara del bienestar de ${ref}`
         : addr.isTutorChild
             ? `Estimada madre, padre o tutor: lectura clara de la salud de ${ref}`
-            : `${addr.estimadoLabel} ${firstName}: esta es la lectura clara de su salud hoy`;
+            : `${addr.estimadoLabel} ${vocativeAdultName}: esta es la lectura clara de su salud hoy`;
 
     const canonicalLead = addr.isLactante
         ? `Integramos con todo cuidado la valoración de crecimiento, tolerancia digestiva y desarrollo de ${addr.childSubjectWithKinship} para explicarle con claridad qué observamos y acompañarle paso a paso en casa.`
@@ -1381,7 +2125,11 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     const rawGreeting = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(existingGuide?.greetingTitle || ''));
     const rawLead = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(existingGuide?.empatheticLead || ''));
     const isLegacyHolaGreeting = /^hola\b/i.test(rawGreeting.trim());
+    const hasMultiWordFullName = fullName.trim().split(/\s+/).length >= 2;
+    const isTruncatedSingleNameGreeting = !addr.isTutorMode && hasMultiWordFullName && !rawGreeting.toLowerCase().includes(fullName.toLowerCase());
     const mismatchTutorGreeting = addr.isTutorMode && !/madre,\s*padre\s+o\s+tutor/i.test(rawGreeting);
+    const mismatchAdultGreeting = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(rawGreeting) || adultThirdPersonLeakRe.test(rawGreeting) || isTruncatedSingleNameGreeting);
+    const mismatchAdultLead = !addr.isTutorMode && !addr.isAdolescent && (PEDIATRIC_CONTAMINATION_RE.test(rawLead) || adultThirdPersonLeakRe.test(rawLead));
     const missingTeenLeadTutor = addr.isAdolescent && !/tutor|madre|padre/i.test(rawLead);
 
     const uiLabels = buildPatientUiLabels({
@@ -1411,6 +2159,9 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         return val;
     };
 
+    const metabolicAgeStudy = resolveMetabolicAgeStudySSoT(patientData);
+    const logisticsSummary = translateLogisticsProfile(patientData);
+
     return applyGenderDeep({
         patientFullName: fullName,
         patientFirstName: firstName,
@@ -1421,13 +2172,15 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         isAdolescent: addr.isAdolescent,
         isPediatric,
         uiLabels,
-        greetingTitle: (!rawGreeting || hasLegacyTuteo(rawGreeting) || isLegacyHolaGreeting || mismatchTutorGreeting)
+        greetingTitle: (!rawGreeting || hasLegacyTuteo(rawGreeting) || isLegacyHolaGreeting || mismatchTutorGreeting || mismatchAdultGreeting)
             ? canonicalGreeting
             : rawGreeting,
-        empatheticLead: (!rawLead || hasLegacyTuteo(rawLead) || mismatchTutorGreeting || missingTeenLeadTutor)
+        empatheticLead: (!rawLead || hasLegacyTuteo(rawLead) || mismatchTutorGreeting || mismatchAdultLead || missingTeenLeadTutor)
             ? canonicalLead
             : rawLead,
         biosecuritySemaphore: semaphore,
+        metabolicAgeStudy,
+        logisticsSummary,
         fiveSystems,
         formula33Card,
         formula34Card,

@@ -4,6 +4,72 @@ import { formatText } from '../../utils/utils';
 import { usePatientLinguistics } from '../../hooks/usePatientLinguistics';
 import { resolvePatientSex, filterOrphanTelemetryAnnexes, resolveActiveExerciseTelemetry } from '../../utils/genderConcordance';
 
+const normalizeTcxDisciplineLabel = (rawSport = "", rawNote = "") => {
+    const cleanNote = String(rawNote || "").trim();
+    const cleanSport = String(rawSport || "").trim();
+
+    if (cleanNote) {
+        const lowerNote = cleanNote
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+        if (lowerNote.includes("treadmill") || lowerNote.includes("indoor run") || lowerNote.includes("caminadora") || lowerNote.includes("cinta")) {
+            return "Caminadora";
+        }
+        if (lowerNote.includes("ellip") || lowerNote.includes("eliptic")) {
+            return "Elíptica";
+        }
+        if (lowerNote.includes("core") || lowerNote.includes("troncal") || lowerNote.includes("abdom")) {
+            return "Entrenamiento troncal";
+        }
+        if (lowerNote.includes("free") || lowerNote.includes("entrenamiento libre") || lowerNote === "libre") {
+            return "Entrenamiento libre";
+        }
+        if (lowerNote.includes("spin") || lowerNote.includes("indoor cyc") || lowerNote.includes("bici fija")) {
+            return "Ciclismo de interior";
+        }
+        if (lowerNote.includes("strength") || lowerNote.includes("weight") || lowerNote.includes("fuerza") || lowerNote.includes("pesas")) {
+            return "Entrenamiento de fuerza";
+        }
+        if (lowerNote.includes("row") || lowerNote.includes("remo")) {
+            return "Remo ergómetro";
+        }
+        if (lowerNote.includes("walk") || lowerNote.includes("caminata")) {
+            return "Caminata";
+        }
+        if (!["other", "workout", "training"].includes(lowerNote)) {
+            return cleanNote.charAt(0).toUpperCase() + cleanNote.slice(1);
+        }
+    }
+
+    const sportMap = {
+        "Running": "Carrera / Trote",
+        "Biking": "Ciclismo",
+        "Cycling": "Ciclismo",
+        "Swimming": "Natación",
+        "Walking": "Caminata",
+        "Other": "Entrenamiento"
+    };
+    return sportMap[cleanSport] || cleanSport || "Entrenamiento";
+};
+
+const extractLocalDateMetadata = (isoStr) => {
+    if (!isoStr) return { startTimeIso: null, startTimeMs: null, dateKey: null, dateDisplay: null };
+    const parsed = new Date(isoStr);
+    if (isNaN(parsed.getTime())) {
+        return { startTimeIso: null, startTimeMs: null, dateKey: null, dateDisplay: null };
+    }
+    const yyyy = parsed.getFullYear();
+    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+    const dd = String(parsed.getDate()).padStart(2, "0");
+    return {
+        startTimeIso: parsed.toISOString(),
+        startTimeMs: parsed.getTime(),
+        dateKey: `${yyyy}-${mm}-${dd}`,
+        dateDisplay: `${dd}/${mm}/${yyyy}`
+    };
+};
+
 const parseTcx = (xmlText) => {
     if (!xmlText || !xmlText.trim()) {
         throw new Error("El archivo está vacío.");
@@ -28,30 +94,56 @@ const parseTcx = (xmlText) => {
         throw new Error("El archivo no contiene telemetría legible de entrenamiento (.TCX / .GPX).");
     }
     
-    let mainSport = "Entrenamiento";
+    let rawSport = "Entrenamiento";
+    let rawNote = "";
+    let rawStartIso = null;
+    let deviceName = null;
+
     if (totalActivities > 0) {
-        mainSport = activities[0].getAttribute("Sport") || "Entrenamiento";
+        const act0 = activities[0];
+        rawSport = act0.getAttribute("Sport") || "Entrenamiento";
+        const notesNode = act0.getElementsByTagName("Notes")[0] || xmlDoc.getElementsByTagName("Notes")[0];
+        if (notesNode && notesNode.textContent) {
+            rawNote = notesNode.textContent.trim();
+        }
+        const idNode = act0.getElementsByTagName("Id")[0];
+        if (idNode && idNode.textContent) {
+            rawStartIso = idNode.textContent.trim();
+        }
+        const creatorNode = act0.getElementsByTagName("Creator")[0] || xmlDoc.getElementsByTagName("Creator")[0];
+        if (creatorNode) {
+            const creatorNameNode = creatorNode.getElementsByTagName("Name")[0];
+            if (creatorNameNode && creatorNameNode.textContent) {
+                deviceName = creatorNameNode.textContent.trim();
+            }
+        }
     } else if (trkElements.length > 0) {
         const typeEl = trkElements[0].getElementsByTagName("type")[0];
-        if (typeEl && typeEl.textContent) mainSport = typeEl.textContent;
+        if (typeEl && typeEl.textContent) rawSport = typeEl.textContent.trim();
+        const nameEl = trkElements[0].getElementsByTagName("name")[0];
+        if (nameEl && nameEl.textContent) rawNote = nameEl.textContent.trim();
     }
-    
-    const sportMap = {
-        "Running": "Carrera / Trote",
-        "Biking": "Ciclismo",
-        "Cycling": "Ciclismo",
-        "Swimming": "Natación",
-        "Walking": "Caminata",
-        "Other": "Entrenamiento"
-    };
-    if (sportMap[mainSport]) {
-        mainSport = sportMap[mainSport];
+
+    if (!deviceName) {
+        const authorNode = xmlDoc.getElementsByTagName("Author")[0];
+        const authorName = authorNode?.getElementsByTagName("Name")[0]?.textContent?.trim();
+        if (authorName && !authorName.toLowerCase().includes("zepp app")) {
+            deviceName = authorName;
+        }
     }
+
+    if (!rawStartIso && laps.length > 0) {
+        rawStartIso = laps[0].getAttribute("StartTime") || null;
+    }
+
+    const mainSport = normalizeTcxDisciplineLabel(rawSport, rawNote);
     
     let totalSeconds = 0;
     let totalDistance = 0;
     let totalCalories = 0;
     
+    let hrWeightedSum = 0;
+    let hrWeightSeconds = 0;
     let hrSum = 0;
     let hrCount = 0;
     let maxHr = 0;
@@ -61,20 +153,27 @@ const parseTcx = (xmlText) => {
             const lap = laps[i];
             
             const timeEl = lap.getElementsByTagName("TotalTimeSeconds")[0];
-            if (timeEl) totalSeconds += parseFloat(timeEl.textContent || "0");
+            const lapSeconds = timeEl ? (parseFloat(timeEl.textContent || "0") || 0) : 0;
+            totalSeconds += lapSeconds;
             
             const distEl = lap.getElementsByTagName("DistanceMeters")[0];
-            if (distEl) totalDistance += parseFloat(distEl.textContent || "0");
+            if (distEl) totalDistance += parseFloat(distEl.textContent || "0") || 0;
             
             const calEl = lap.getElementsByTagName("Calories")[0];
-            if (calEl) totalCalories += parseFloat(calEl.textContent || "0");
+            if (calEl) totalCalories += parseFloat(calEl.textContent || "0") || 0;
             
             const avgHrEl = lap.getElementsByTagName("AverageHeartRateBpm")[0];
             if (avgHrEl) {
                 const valEl = avgHrEl.getElementsByTagName("Value")[0];
                 if (valEl) {
-                    hrSum += parseFloat(valEl.textContent || "0");
-                    hrCount++;
+                    const lapHr = parseFloat(valEl.textContent || "0") || 0;
+                    if (lapHr > 0) {
+                        const weightSec = lapSeconds > 0 ? lapSeconds : 1;
+                        hrWeightedSum += lapHr * weightSec;
+                        hrWeightSeconds += weightSec;
+                        hrSum += lapHr;
+                        hrCount++;
+                    }
                 }
             }
             
@@ -82,8 +181,8 @@ const parseTcx = (xmlText) => {
             if (maxHrEl) {
                 const valEl = maxHrEl.getElementsByTagName("Value")[0];
                 if (valEl) {
-                    const lapMax = parseFloat(valEl.textContent || "0");
-                    if (lapMax > maxHr) maxHr = lapMax;
+                    const lapMax = parseFloat(valEl.textContent || "0") || 0;
+                    if (lapMax > maxHr) maxHr = Math.round(lapMax);
                 }
             }
         }
@@ -94,17 +193,18 @@ const parseTcx = (xmlText) => {
             const pt = trkPoints[i];
             const timeNode = pt.getElementsByTagName("time")[0];
             if (timeNode) {
+                if (!rawStartIso) rawStartIso = timeNode.textContent.trim();
                 const t = new Date(timeNode.textContent).getTime();
                 if (!firstTime) firstTime = t;
                 lastTime = t;
             }
             const hrNode = pt.getElementsByTagName("hr")[0] || pt.getElementsByTagName("gpxtpx:hr")[0];
             if (hrNode) {
-                const val = parseFloat(hrNode.textContent || "0");
+                const val = parseFloat(hrNode.textContent || "0") || 0;
                 if (val > 0) {
                     hrSum += val;
                     hrCount++;
-                    if (val > maxHr) maxHr = val;
+                    if (val > maxHr) maxHr = Math.round(val);
                 }
             }
         }
@@ -113,22 +213,34 @@ const parseTcx = (xmlText) => {
         }
     }
     
-    const avgHr = hrCount > 0 ? Math.round(hrSum / hrCount) : 0;
-    const durationMinutes = Math.max(1, Math.round(totalSeconds / 60));
+    const avgHr = hrWeightSeconds > 0
+        ? Math.round(hrWeightedSum / hrWeightSeconds)
+        : (hrCount > 0 ? Math.round(hrSum / hrCount) : 0);
+    const exactSeconds = Math.max(1, Math.round(totalSeconds));
+    const durationMinutesExact = Number((exactSeconds / 60).toFixed(1));
+    const durationMinutes = Math.max(1, Math.round(exactSeconds / 60));
     
     if (totalCalories === 0 && durationMinutes > 0) {
-        const calPerMin = mainSport.includes("Ciclismo") || mainSport.includes("Carrera") ? 9 : 6;
+        const calPerMin = mainSport.includes("Ciclismo") || mainSport.includes("Carrera") || mainSport.includes("Caminadora") ? 9 : 6;
         totalCalories = Math.round(durationMinutes * calPerMin);
     }
+
+    const dateMeta = extractLocalDateMetadata(rawStartIso);
     
     return {
         sport: mainSport,
+        rawSport,
+        note: rawNote || null,
+        deviceName: deviceName || null,
         activitiesCount: totalActivities || 1,
+        totalSeconds: exactSeconds,
+        durationMinutesExact,
         durationMinutes,
-        calories: totalCalories,
-        distanceMeters: totalDistance,
+        calories: Math.round(totalCalories),
+        distanceMeters: Math.round(totalDistance),
         averageHeartRate: avgHr,
-        maximumHeartRate: maxHr
+        maximumHeartRate: maxHr,
+        ...dateMeta
     };
 };
 
@@ -153,7 +265,15 @@ const Fase11_ActividadSueno = ({
     // Hook de lingüística para unificar nombres y contextos
     const { patientName: pName, patientSex, isMinor, isLactante, isPreescolar, isEscolar, isPediatrico, patientAge: age } = usePatientLinguistics(patientData);
     const { isFemale: isFemalePatient } = resolvePatientSex(patientData);
-    const sedentaryAdultLabel = isFemalePatient ? 'Sedentaria (Todo el día sentada)' : 'Sedentario (Todo el día sentado)';
+    const sedentaryAdultLabel = isFemalePatient
+        ? 'Sedentaria (Jornada en escritorio o traslados mínimos)'
+        : 'Sedentario (Jornada en escritorio o traslados mínimos)';
+    const adultNeatOptions = [
+        { label: sedentaryAdultLabel, value: 'SEDENTARY' },
+        { label: 'Ligero (Caminatas breves o actividad de pie intermitente)', value: 'LIGHT' },
+        { label: 'Moderado (Movimiento activo constante en jornada diaria)', value: 'MODERATE' },
+        { label: 'Intenso (Actividad física ocupacional continua de alta demanda)', value: 'HEAVY' }
+    ];
 
     console.log("🔍 Fase11_ActividadSueno Mount/Render. Props:", {
         hasMessages: !!messages,
@@ -200,13 +320,16 @@ const Fase11_ActividadSueno = ({
                 lastPeriod: lp.hormonal?.lastPeriod || "" 
             },
             stress: { 
-                level: lp.stress?.level || cc.habits?.stress || "", 
+                level: ['LOW', 'MODERATE', 'HIGH'].includes(String(lp.stress?.level || '').toUpperCase())
+                    ? String(lp.stress.level).toUpperCase()
+                    : (cc.habits?.stress === 'alto' ? 'HIGH' : cc.habits?.stress === 'bajo' ? 'LOW' : ''), 
                 origin: lp.stress?.origin || cc.habits?.stress_origin || null, 
-                cortisol_management_needed: lp.stress?.cortisol_management_needed || (cc.habits?.stress === "alto")
+                cortisol_management_needed: Boolean(lp.stress?.cortisol_management_needed || (cc.habits?.stress === "alto"))
             },
             activity: { 
                 has_scheduled_exercise: lp.activity?.has_scheduled_exercise ?? cc.activity?.exercise?.has_scheduled_exercise ?? null, 
-                neat_level: lp.activity?.neat_level ?? cc.activity?.exercise?.neat_level ?? null, 
+                neat_level: lp.activity?.neat_level ?? cc.activity?.exercise?.neat_level ?? null,
+                preview_neat_pending: Boolean(lp.activity?.preview_neat_pending ?? cc.activity?.exercise?.preview_neat_pending ?? false),
                 source_type: lp.activity?.source_type || cc.activity?.exercise?.source_type || "MANUAL",
                 telemetry_metadata: resolveActiveExerciseTelemetry(patientData),
                 log: lp.activity?.log || cc.activity?.exercise?.log || [], 
@@ -221,9 +344,33 @@ const Fase11_ActividadSueno = ({
     const isProcessingInputRef = useRef(false);
     const [tempNeatTelemetry, setTempNeatTelemetry] = useState(null);
     const [currentStep, setCurrentStep] = useState(() => {
-        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("evaluación de estilo de vida, actividad y sueño"));
+        if (Array.isArray(messages) && messages.length > 0) {
+            const lastAssistant = [...messages].reverse().find(m => m && m.role === 'assistant');
+            if (lastAssistant) {
+                const optVals = Array.isArray(lastAssistant.options)
+                    ? lastAssistant.options.map(o => String(o?.value || ''))
+                    : [];
+                const txt = String(lastAssistant.content || '');
+                if (optVals.includes('CONFIRM_TELEMETRY') || optVals.includes('CORRECT_TELEMETRY')) return 'TELEMETRY_CONFIRM';
+                if (txt.includes('cuántos días por semana realiza habitualmente esta rutina')) return 'TELEMETRY_WEEKLY_DAYS';
+                if (optVals.some(v => v.startsWith('CONFIRM_NEAT_TELEMETRY_')) || optVals.includes('CORRECT_NEAT_TELEMETRY')) return 'NEAT_TELEMETRY_CONFIRM';
+                if (optVals.includes('CONFIRM_SLEEP_TELEMETRY') || optVals.includes('CORRECT_SLEEP_TELEMETRY')) return 'SLEEP_TELEMETRY_CONFIRM';
+                if (optVals.includes('CONFIRM_DATA') && txt.includes('síntesis consolidada')) return 'REVIEW_SUMMARY';
+                if (txt.includes('¿Qué línea específica desea modificar')) return 'correct_menu';
+                if (optVals.includes('SEDENTARY') && optVals.includes('MODERATE')) return 'NEAT';
+                if (optVals.includes('NEAT_TCX_LOAD') || optVals.includes('NEAT_MANUAL')) return 'NEAT_GATE';
+                if (txt.includes('seleccione su archivo de entrenamiento') || txt.includes('seleccione el archivo `.tcx` utilizando')) return 'AWAITING_TCX_FILE';
+                if (optVals.includes('SLEEP_TCX_LOAD') || optVals.includes('SLEEP_MANUAL')) return 'SLEEP_GATE';
+                if (txt.includes('¿Cuántas horas duerme')) return 'SLEEP_HOURS';
+                if (optVals.includes('Buena') && optVals.includes('Mala')) return 'SLEEP_QUALITY';
+                if (optVals.includes('INSOMNIA') || optVals.includes('FRAGMENTED')) return 'SLEEP_ISSUE';
+                if (txt.includes('nivel actual de estrés') || txt.includes('nivel de estrés diario') || txt.includes('nivel de irritabilidad')) return 'STRESS_LEVEL';
+                if (optVals.includes('EMOTIONAL') && optVals.includes('PHYSICAL')) return 'STRESS_ORIGIN';
+            }
+        }
+        const hasSummary = messages && messages.some(msg => msg.role === 'assistant' && msg.content.includes("síntesis consolidada de su entorno y estilo de vida"));
         const lp = patientData?.lifestyle_profile || patientData?.lifeStyleInfo;
-        const hasLife = lp && (lp.circadian?.sleepHours > 0 || lp.activity?.neat_level);
+        const hasLife = lp && (lp.sleep?.hours_avg > 0 || lp.circadian?.sleepHours > 0) && Boolean(lp.activity?.neat_level);
         if (hasSummary || hasLife) {
             return 'correct_menu';
         }
@@ -371,9 +518,9 @@ const Fase11_ActividadSueno = ({
                 { label: "❌ No realiza", value: "No" }
             ]
             : [
-                { label: "🏋️ Cargar Archivo Device (.TCX)", value: "TCX_LOAD" },
-                { label: "📝 Declaración Manual", value: "Sí" },
-                { label: "❌ No realizo", value: "No" }
+                { label: "⌚ Cargar archivo de dispositivo (.TCX)", value: "TCX_LOAD" },
+                { label: "📝 Declaración manual", value: "Sí" },
+                { label: "❌ No realizo ejercicio", value: "No" }
             ];
 
         const greetingMsg = {
@@ -417,28 +564,111 @@ const Fase11_ActividadSueno = ({
                 const isManualExercise = (lifeStyle.activity.source_type || "MANUAL") !== "TELEMETRY_TCX";
                 const activeTelemetryMetadata = isManualExercise ? null : (lifeStyle.activity.telemetry_metadata || null);
 
+                const normalizedLog = lifeStyle.activity.log.map(item => {
+                    if (typeof item === 'object' && item !== null) {
+                        return item;
+                    }
+                    const match = item.match(/^([^(]+)\((\d+)\s*días\/sem,\s*(\d+)\s*min\)$/);
+                    if (match) {
+                        return {
+                            type: match[1].trim(),
+                            frequency: parseInt(match[2], 10),
+                            duration: parseInt(match[3], 10)
+                        };
+                    }
+                    return { type: item, frequency: 3, duration: 30 };
+                });
+
+                const weeklyMinutesResolved = (() => {
+                    if (!lifeStyle.activity.has_scheduled_exercise) return 0;
+                    if (!isManualExercise && activeTelemetryMetadata) {
+                        if (Number(activeTelemetryMetadata.weekly_minutes) > 0) {
+                            return Number(activeTelemetryMetadata.weekly_minutes);
+                        }
+                        if (Number(activeTelemetryMetadata.daily_minutes) > 0 && Number(activeTelemetryMetadata.weekly_days) > 0) {
+                            return Math.round(Number(activeTelemetryMetadata.daily_minutes) * Number(activeTelemetryMetadata.weekly_days));
+                        }
+                    }
+                    let sum = 0;
+                    normalizedLog.forEach(entry => {
+                        if (entry && typeof entry === 'object') {
+                            const dur = Number(entry.duration || entry.durationMinutes || 0);
+                            const freq = Number(entry.weekly_days || entry.frequency || 0);
+                            if (Number(entry.weekly_minutes) > 0) {
+                                sum += Number(entry.weekly_minutes);
+                            } else if (freq > 0 && dur > 0) {
+                                sum += Math.round(dur * freq);
+                            }
+                        }
+                    });
+                    return sum;
+                })();
+
+                const weeklyCaloriesResolved = (() => {
+                    if (isManualExercise || !activeTelemetryMetadata) return 0;
+                    if (Number(activeTelemetryMetadata.weekly_calories) > 0) {
+                        return Math.round(Number(activeTelemetryMetadata.weekly_calories));
+                    }
+                    if (Number(activeTelemetryMetadata.daily_calories) > 0 && Number(activeTelemetryMetadata.weekly_days) > 0) {
+                        return Math.round(Number(activeTelemetryMetadata.daily_calories) * Number(activeTelemetryMetadata.weekly_days));
+                    }
+                    return 0;
+                })();
+
+                const hasEvaluatedActivityOrNeat =
+                    lifeStyle.activity.has_scheduled_exercise !== null && lifeStyle.activity.has_scheduled_exercise !== undefined ||
+                    Boolean(lifeStyle.activity.neat_level);
+
+                let derivedActivityLevel = prev.activity_level || null;
+                let derivedPal = prev.profile?.factor_pal ?? prev.identificacion?.factor_pal ?? null;
+                if (hasEvaluatedActivityOrNeat) {
+                    const neatUpper = String(lifeStyle.activity.neat_level || '').toUpperCase();
+                    let basePal = 1.2;
+                    if (neatUpper === 'HEAVY') basePal = 1.725;
+                    else if (neatUpper === 'MODERATE') basePal = 1.55;
+                    else if (neatUpper === 'LIGHT') basePal = 1.375;
+
+                    if (weeklyMinutesResolved >= 300 || weeklyCaloriesResolved >= 1800) {
+                        derivedPal = Math.max(basePal, 1.725);
+                        derivedActivityLevel = 'INTENSO';
+                    } else if (weeklyMinutesResolved >= 150 || weeklyCaloriesResolved >= 900) {
+                        derivedPal = Math.max(basePal, 1.55);
+                        derivedActivityLevel = derivedPal >= 1.725 ? 'INTENSO' : 'MODERADO';
+                    } else if (weeklyMinutesResolved >= 60 || lifeStyle.activity.has_scheduled_exercise === true) {
+                        derivedPal = Math.max(basePal, 1.375);
+                        derivedActivityLevel = derivedPal >= 1.55 ? 'MODERADO' : 'LIGERO';
+                    } else {
+                        derivedPal = basePal;
+                        derivedActivityLevel =
+                            basePal >= 1.725 ? 'INTENSO' :
+                            basePal >= 1.55 ? 'MODERADO' :
+                            basePal >= 1.375 ? 'LIGERO' : 'SEDENTARIO';
+                    }
+                }
+
+                const mappedStressLegacy =
+                    lifeStyle.stress.level === 'HIGH' ? 'alto' :
+                    lifeStyle.stress.level === 'LOW' ? 'bajo' :
+                    (lifeStyle.stress.level === 'MODERATE' ? 'moderado' : '');
+
+                const mappedSleepQualityLegacy =
+                    lifeStyle.circadian.quality === 'GOOD' ? 'Buena' :
+                    lifeStyle.circadian.quality === 'POOR' ? 'Mala' :
+                    (lifeStyle.circadian.quality ? 'Regular' : '');
+
                 const nextLifestyleProfile = {
                     ...prev.lifestyle_profile,
                     activity: {
                         ...prev.lifestyle_profile?.activity,
                         has_scheduled_exercise: lifeStyle.activity.has_scheduled_exercise,
                         neat_level: lifeStyle.activity.neat_level,
+                        preview_neat_pending: Boolean(lifeStyle.activity.preview_neat_pending),
                         source_type: isManualExercise ? "MANUAL" : "TELEMETRY_TCX",
                         telemetry_metadata: activeTelemetryMetadata,
-                        log: lifeStyle.activity.log.map(item => {
-                            if (typeof item === 'object' && item !== null) {
-                                return item;
-                            }
-                            const match = item.match(/^([^(]+)\((\d+)\s*días\/sem,\s*(\d+)\s*min\)$/);
-                            if (match) {
-                                return {
-                                    type: match[1].trim(),
-                                    frequency: parseInt(match[2], 10),
-                                    duration: parseInt(match[3], 10)
-                                };
-                            }
-                            return { type: item, frequency: 3, duration: 30 };
-                        })
+                        weekly_minutes: weeklyMinutesResolved > 0 ? weeklyMinutesResolved : null,
+                        weekly_calories: weeklyCaloriesResolved > 0 ? weeklyCaloriesResolved : null,
+                        duration_history: lifeStyle.activity.duration_history || "",
+                        log: normalizedLog
                     },
                     sleep: {
                         hours_avg: lifeStyle.circadian.sleepHours,
@@ -461,6 +691,8 @@ const Fase11_ActividadSueno = ({
                             neat_level: lifeStyle.activity.neat_level,
                             source_type: isManualExercise ? "MANUAL" : "TELEMETRY_TCX",
                             telemetry_metadata: activeTelemetryMetadata,
+                            weekly_minutes: weeklyMinutesResolved > 0 ? weeklyMinutesResolved : null,
+                            weekly_calories: weeklyCaloriesResolved > 0 ? weeklyCaloriesResolved : null,
                             log: nextLifestyleProfile.activity.log
                         }
                     }
@@ -473,24 +705,38 @@ const Fase11_ActividadSueno = ({
                 // Comparar para evitar ciclos infinitos de renderizado
                 const legacyTelemetryDirty = isManualExercise && Boolean(prev.lifestyle?.activity?.telemetry_metadata);
                 const annexesDirty = nextAnnexes.length !== (prev.clinical_context?.annexes || []).length;
-                if (JSON.stringify(prev.lifestyle_profile) === JSON.stringify(nextLifestyleProfile) && !legacyTelemetryDirty && !annexesDirty) {
+                const stalePrematureStress = !lifeStyle.stress.level && (prev.habits?.stress === 'moderado' || prev.clinical_context?.habits?.stress === 'moderado');
+                const palChanged = derivedActivityLevel && (prev.activity_level !== derivedActivityLevel || prev.profile?.factor_pal !== derivedPal);
+                if (JSON.stringify(prev.lifestyle_profile) === JSON.stringify(nextLifestyleProfile) && !legacyTelemetryDirty && !annexesDirty && !stalePrematureStress && !palChanged) {
                     return prev;
                 }
 
                 return {
                     ...prev,
+                    ...(derivedActivityLevel ? {
+                        activity_level: derivedActivityLevel,
+                        physical_activity: derivedActivityLevel
+                    } : {}),
+                    profile: {
+                        ...(prev.profile || {}),
+                        ...(derivedActivityLevel ? { activity_level: derivedActivityLevel } : {}),
+                        ...(derivedPal !== null ? { factor_pal: derivedPal } : {})
+                    },
+                    identificacion: {
+                        ...(prev.identificacion || {}),
+                        ...(derivedPal !== null ? { factor_pal: derivedPal } : {})
+                    },
                     ...(nextLegacyLifestyle ? { lifestyle: nextLegacyLifestyle } : {}),
                     lifestyle_profile: nextLifestyleProfile,
                     habits: {
                         ...prev.habits,
+                        ...(derivedActivityLevel ? { activity_level: derivedActivityLevel } : {}),
                         sleep: {
                             hours: lifeStyle.circadian.sleepHours,
-                            quality: lifeStyle.circadian.quality === 'GOOD' ? 'Buena' : 
-                                     lifeStyle.circadian.quality === 'POOR' ? 'Mala' : 'Regular',
+                            quality: mappedSleepQualityLegacy,
                             issue_type: lifeStyle.circadian.issue_type
                         },
-                        stress: lifeStyle.stress.level === 'HIGH' ? 'alto' : 
-                                lifeStyle.stress.level === 'LOW' ? 'bajo' : 'moderado',
+                        stress: mappedStressLegacy,
                         stress_origin: lifeStyle.stress.origin
                     },
                     clinical_context: {
@@ -504,12 +750,10 @@ const Fase11_ActividadSueno = ({
                             ...prev.clinical_context?.habits,
                             sleep: {
                                 hours: lifeStyle.circadian.sleepHours,
-                                quality: lifeStyle.circadian.quality === 'GOOD' ? 'Buena' : 
-                                         lifeStyle.circadian.quality === 'POOR' ? 'Mala' : 'Regular',
+                                quality: mappedSleepQualityLegacy,
                                 issue_type: lifeStyle.circadian.issue_type
                             },
-                            stress: lifeStyle.stress.level === 'HIGH' ? 'alto' : 
-                                    lifeStyle.stress.level === 'LOW' ? 'bajo' : 'moderado',
+                            stress: mappedStressLegacy,
                             stress_origin: lifeStyle.stress.origin
                         },
                         activity: {
@@ -518,7 +762,9 @@ const Fase11_ActividadSueno = ({
                                 has_scheduled_exercise: lifeStyle.activity.has_scheduled_exercise,
                                 source_type: isManualExercise ? "MANUAL" : "TELEMETRY_TCX",
                                 telemetry_metadata: activeTelemetryMetadata,
-                                log: lifeStyle.activity.log,
+                                weekly_minutes: weeklyMinutesResolved > 0 ? weeklyMinutesResolved : null,
+                                weekly_calories: weeklyCaloriesResolved > 0 ? weeklyCaloriesResolved : null,
+                                log: normalizedLog,
                                 neat_level: lifeStyle.activity.neat_level,
                                 duration_history: lifeStyle.activity.duration_history || ""
                             }
@@ -658,60 +904,114 @@ const Fase11_ActividadSueno = ({
             };
 
             try {
-                const results = await Promise.all(files.map(f => readAndParseFile(f)));
+                const rawResults = await Promise.all(files.map(f => readAndParseFile(f)));
+                const results = [...rawResults].sort((a, b) => (a.startTimeMs || 0) - (b.startTimeMs || 0));
                 console.log("🔥 [Fase11] Successfully parsed all files:", results);
 
-                // Combinador Clínico Telemétrico
+                // Combinador Clínico Telemétrico Cronobiológico (ponderación exacta en segundos)
                 let totalActivities = 0;
-                let totalMinutes = 0;
+                let totalSecondsAll = 0;
                 let totalCalories = 0;
                 let totalDistance = 0;
                 
-                let hrWeightedSum = 0;
-                let hrDurationSum = 0;
+                let hrWeightedSumSec = 0;
+                let hrSecondsSum = 0;
                 let maxHrAbsolute = 0;
+                let detectedDeviceName = null;
                 
-                const sportsDetected = new Set();
-                const durationBySport = {};
+                const uniqueDatesMap = new Map();
+                const disciplineMap = new Map();
 
                 results.forEach(res => {
-                    totalActivities += res.activitiesCount;
-                    totalMinutes += res.durationMinutes;
-                    totalCalories += res.calories;
-                    totalDistance += res.distanceMeters;
+                    totalActivities += (res.activitiesCount || 1);
+                    const sec = Number(res.totalSeconds) > 0 ? Number(res.totalSeconds) : ((res.durationMinutes || 1) * 60);
+                    totalSecondsAll += sec;
+                    totalCalories += (res.calories || 0);
+                    totalDistance += (res.distanceMeters || 0);
 
-                    if (res.averageHeartRate > 0 && res.durationMinutes > 0) {
-                        hrWeightedSum += res.averageHeartRate * res.durationMinutes;
-                        hrDurationSum += res.durationMinutes;
+                    if (!detectedDeviceName && res.deviceName) {
+                        detectedDeviceName = res.deviceName;
+                    }
+                    if (res.dateKey && !uniqueDatesMap.has(res.dateKey)) {
+                        uniqueDatesMap.set(res.dateKey, res.dateDisplay || res.dateKey);
+                    }
+
+                    if (res.averageHeartRate > 0 && sec > 0) {
+                        hrWeightedSumSec += res.averageHeartRate * sec;
+                        hrSecondsSum += sec;
                     }
                     if (res.maximumHeartRate > maxHrAbsolute) {
                         maxHrAbsolute = res.maximumHeartRate;
                     }
 
-                    if (res.sport) {
-                        sportsDetected.add(res.sport);
-                        durationBySport[res.sport] = (durationBySport[res.sport] || 0) + res.durationMinutes;
+                    const spName = res.sport || "Entrenamiento";
+                    const existingDisc = disciplineMap.get(spName) || {
+                        sport: spName,
+                        blocksCount: 0,
+                        totalSeconds: 0,
+                        calories: 0,
+                        distanceMeters: 0,
+                        hrWeightedSumSec: 0,
+                        hrSecondsSum: 0,
+                        maximumHeartRate: 0
+                    };
+                    existingDisc.blocksCount += 1;
+                    existingDisc.totalSeconds += sec;
+                    existingDisc.calories += (res.calories || 0);
+                    existingDisc.distanceMeters += (res.distanceMeters || 0);
+                    if (res.averageHeartRate > 0 && sec > 0) {
+                        existingDisc.hrWeightedSumSec += res.averageHeartRate * sec;
+                        existingDisc.hrSecondsSum += sec;
                     }
+                    if ((res.maximumHeartRate || 0) > existingDisc.maximumHeartRate) {
+                        existingDisc.maximumHeartRate = res.maximumHeartRate;
+                    }
+                    disciplineMap.set(spName, existingDisc);
                 });
 
-                const finalAvgHr = hrDurationSum > 0 ? Math.round(hrWeightedSum / hrDurationSum) : 0;
-                
-                // Determinar deporte predominante basado en la duración
-                let primarySport = "Entrenamiento";
-                let maxSportDuration = -1;
-                Object.keys(durationBySport).forEach(sp => {
-                    if (durationBySport[sp] > maxSportDuration) {
-                        maxSportDuration = durationBySport[sp];
-                        primarySport = sp;
-                    }
-                });
+                const totalMinutes = Math.max(1, Math.round(totalSecondsAll / 60));
+                const finalAvgHr = hrSecondsSum > 0 ? Math.round(hrWeightedSumSec / hrSecondsSum) : 0;
+                const uniqueDaysCount = uniqueDatesMap.size > 0 ? uniqueDatesMap.size : 1;
+                const blocksCount = results.length;
+                const datesDisplayList = Array.from(uniqueDatesMap.values());
+
+                const disciplinesList = Array.from(disciplineMap.values())
+                    .map(d => ({
+                        sport: d.sport,
+                        blocksCount: d.blocksCount,
+                        totalSeconds: d.totalSeconds,
+                        durationMinutesExact: Number((d.totalSeconds / 60).toFixed(1)),
+                        durationMinutes: Math.max(1, Math.round(d.totalSeconds / 60)),
+                        calories: Math.round(d.calories),
+                        distanceMeters: Math.round(d.distanceMeters),
+                        averageHeartRate: d.hrSecondsSum > 0 ? Math.round(d.hrWeightedSumSec / d.hrSecondsSum) : 0,
+                        maximumHeartRate: d.maximumHeartRate
+                    }))
+                    .sort((a, b) => b.totalSeconds - a.totalSeconds);
+
+                const primarySport = disciplinesList.length > 0 ? disciplinesList[0].sport : "Entrenamiento";
+                const combinedDisciplinesTitle = disciplinesList.length > 1
+                    ? disciplinesList.map(d => d.sport).join(" + ")
+                    : primarySport;
+
+                const dailyMinutes = Math.max(1, Math.round(totalMinutes / uniqueDaysCount));
+                const dailyCalories = Math.round(totalCalories / uniqueDaysCount);
+                const dailyDistanceMeters = Math.round(totalDistance / uniqueDaysCount);
 
                 const consolidatedData = {
-                    sport: primarySport,
-                    activitiesCount: totalActivities,
+                    sport: combinedDisciplinesTitle,
+                    primarySport,
+                    deviceName: detectedDeviceName || "Dispositivo Wearable (.TCX)",
+                    uniqueDaysCount,
+                    blocksCount,
+                    activitiesCount: uniqueDaysCount,
+                    totalSeconds: totalSecondsAll,
                     durationMinutes: totalMinutes,
-                    calories: totalCalories,
-                    distanceMeters: totalDistance,
+                    dailyMinutes,
+                    calories: Math.round(totalCalories),
+                    dailyCalories,
+                    distanceMeters: Math.round(totalDistance),
+                    dailyDistanceMeters,
                     averageHeartRate: finalAvgHr,
                     maximumHeartRate: maxHrAbsolute
                 };
@@ -764,6 +1064,24 @@ const Fase11_ActividadSueno = ({
                 }
 
                 if (currentStep === 'AWAITING_NEAT_TCX_FILE') {
+                    const existingExSessions = Array.isArray(lifeStyle.activity?.telemetry_metadata?.sessions)
+                        ? lifeStyle.activity.telemetry_metadata.sessions
+                        : [];
+                    const existingStartIsos = new Set(existingExSessions.map(s => s?.startTimeIso).filter(Boolean));
+                    const isDuplicateExerciseFile = existingStartIsos.size > 0 && results.some(r => r.startTimeIso && existingStartIsos.has(r.startTimeIso));
+
+                    if (isDuplicateExerciseFile || lifeStyle.activity?.source_type === 'TELEMETRY_TCX') {
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: `Los archivos \`.tcx\` seleccionados corresponden a sesiones de **ejercicio programado (EAT)** que ya están integradas en su expediente. Para evitar duplicar esas **${Math.round(totalCalories)} kcal** en su cálculo metabólico, por favor **seleccione su nivel de movimiento ocupacional habitual fuera del ejercicio (NEAT)**:`,
+                            inputType: 'strict_select',
+                            options: adultNeatOptions
+                        }]);
+                        setCurrentStep('NEAT');
+                        setIsAnalyzing(false);
+                        return;
+                    }
+
                     setTempNeatTelemetry(consolidatedData);
 
                     let parsedNeatLevel = "SEDENTARY";
@@ -772,25 +1090,35 @@ const Fase11_ActividadSueno = ({
                     else if (totalCalories >= 80 || totalMinutes >= 20) parsedNeatLevel = "LIGHT";
 
                     const neatLabelMap = {
-                        HEAVY: "Pesado (Construcción / Trabajo físico duro)",
-                        MODERATE: "Moderado (Mesero / Movimiento constante)",
-                        LIGHT: "Ligero (De pie o caminando poco)",
-                        SEDENTARY: "Sedentario (Todo el día sentado)"
+                        HEAVY: "Intenso (Actividad física ocupacional continua de alta demanda)",
+                        MODERATE: "Moderado (Movimiento activo constante en jornada diaria)",
+                        LIGHT: "Ligero (Caminatas breves o actividad de pie intermitente)",
+                        SEDENTARY: sedentaryAdultLabel
                     };
+
+                    // Sincronizar vista previa SSoTT inmediata en NEAT para TabLogistics
+                    setLifeStyle(prev => ({
+                        ...prev,
+                        activity: {
+                            ...prev.activity,
+                            neat_level: parsedNeatLevel,
+                            preview_neat_pending: true
+                        }
+                    }));
 
                     const summaryMetabolic = `
 ---
 ### 📊 Ingesta Telemétrica de Actividad Diaria (NEAT)
-*   🔋 **Gasto Calórico de Wearable**: **${totalCalories.toFixed(0)} kcal**.
-*   ⏱️ **Tiempo Activo Registrado**: **${totalMinutes} minutos**.
-*   📈 **Nivel Calculado de NEAT**: **${neatLabelMap[parsedNeatLevel]}**.`;
+*   🔋 **Gasto Calórico Registrado:** ${Math.round(totalCalories)} kcal
+*   ⏱️ **Tiempo Activo Registrado:** ${totalMinutes} min
+*   📈 **Nivel Calculado de NEAT:** ${neatLabelMap[parsedNeatLevel]}`;
 
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: `Se ha analizado la telemetría diaria de su dispositivo portátil.\n${summaryMetabolic}\n\n¿Confirma que este nivel clasifica adecuadamente su movimiento diario habitual?`,
+                        content: `Se ha analizado el registro de movimiento diario de su dispositivo portátil.\n${summaryMetabolic}\n\n¿Confirma que este nivel clasifica adecuadamente su movimiento diario habitual?`,
                         options: [
-                            { label: "Sí, es correcto", value: `CONFIRM_NEAT_TELEMETRY_${parsedNeatLevel}` },
-                            { label: "No, prefiero declarar manualmente", value: "CORRECT_NEAT_TELEMETRY" }
+                            { label: "✅ Sí, es correcto", value: `CONFIRM_NEAT_TELEMETRY_${parsedNeatLevel}` },
+                            { label: "❌ No, prefiero declarar manualmente", value: "CORRECT_NEAT_TELEMETRY" }
                         ]
                     }]);
 
@@ -799,16 +1127,38 @@ const Fase11_ActividadSueno = ({
                     return;
                 }
 
+                const inferredWeeklyDays = uniqueDaysCount >= 3 ? Math.min(7, uniqueDaysCount) : null;
                 const telemetryMetadata = {
-                    device_name: "Wearable Device",
-                    total_parsed_sessions: results.length,
-                    total_calories: totalCalories,
+                    device_name: detectedDeviceName || "Dispositivo Wearable (.TCX)",
+                    preview_pending_confirm: true,
+                    unique_days_count: uniqueDaysCount,
+                    total_blocks_count: blocksCount,
+                    dates_detected: Array.from(uniqueDatesMap.keys()),
+                    dates_display: datesDisplayList,
+                    weekly_days: inferredWeeklyDays,
+                    total_parsed_sessions: uniqueDaysCount,
+                    daily_minutes: dailyMinutes,
+                    daily_calories: dailyCalories,
+                    daily_distance_meters: dailyDistanceMeters,
+                    weekly_minutes: inferredWeeklyDays ? Math.round(dailyMinutes * inferredWeeklyDays) : null,
+                    weekly_calories: inferredWeeklyDays ? Math.round(dailyCalories * inferredWeeklyDays) : null,
+                    total_calories: Math.round(totalCalories),
                     total_minutes: totalMinutes,
-                    total_distance: totalDistance,
+                    total_seconds: totalSecondsAll,
+                    total_distance: Math.round(totalDistance),
                     average_hr: finalAvgHr,
                     max_hr: maxHrAbsolute,
+                    disciplines: disciplinesList,
                     sessions: results.map(r => ({
                         sport: r.sport,
+                        rawSport: r.rawSport || null,
+                        note: r.note || null,
+                        deviceName: r.deviceName || detectedDeviceName || null,
+                        dateKey: r.dateKey || null,
+                        dateDisplay: r.dateDisplay || null,
+                        startTimeIso: r.startTimeIso || null,
+                        totalSeconds: r.totalSeconds,
+                        durationMinutesExact: r.durationMinutesExact,
                         durationMinutes: r.durationMinutes,
                         calories: r.calories,
                         distanceMeters: r.distanceMeters,
@@ -817,15 +1167,59 @@ const Fase11_ActividadSueno = ({
                     }))
                 };
 
-                // Mantener en estado efímero hasta confirmación explícita (NOM-004)
+                const previewIntensity = finalAvgHr > 140 ? "VIGOROUS" : (finalAvgHr > 110 ? "MODERATE" : "LOW");
+                const previewLogItem = {
+                    type: combinedDisciplinesTitle,
+                    frequency: inferredWeeklyDays || uniqueDaysCount,
+                    weekly_days: inferredWeeklyDays,
+                    duration: dailyMinutes,
+                    daily_minutes: dailyMinutes,
+                    weekly_minutes: inferredWeeklyDays ? Math.round(dailyMinutes * inferredWeeklyDays) : null,
+                    intensity: previewIntensity,
+                    heart_rate_avg: finalAvgHr,
+                    heart_rate_max: maxHrAbsolute,
+                    distance_meters: Math.round(totalDistance),
+                    calories_device: dailyCalories,
+                    weekly_calories: inferredWeeklyDays ? Math.round(dailyCalories * inferredWeeklyDays) : null
+                };
+
                 setTempTelemetry({ ...consolidatedData, telemetryMetadata });
+
+                // Sincronizar vista previa SSoTT inmediata en el Espejo Clínico (marcada como preview_pending_confirm)
+                setLifeStyle(prev => ({
+                    ...prev,
+                    activity: {
+                        ...prev.activity,
+                        has_scheduled_exercise: true,
+                        source_type: "TELEMETRY_TCX",
+                        telemetry_metadata: telemetryMetadata,
+                        log: [previewLogItem]
+                    }
+                }));
+
+                const groupingText = uniqueDaysCount === 1
+                    ? (blocksCount > 1
+                        ? `1 jornada diaria continua (${blocksCount} bloques${datesDisplayList[0] ? ` • ${datesDisplayList[0]}` : ''})`
+                        : `1 sesión registrada${datesDisplayList[0] ? ` (${datesDisplayList[0]})` : ''}`)
+                    : `${uniqueDaysCount} jornadas registradas (${blocksCount} bloques)`;
+
+                const disciplinesSummaryLines = disciplinesList.map(d => {
+                    const distTag = d.distanceMeters > 0
+                        ? ` • ${d.distanceMeters >= 1000 ? `${(Math.round(d.distanceMeters / 10) / 100).toFixed(2)} km` : `${d.distanceMeters} m`}`
+                        : '';
+                    return `  • **${d.sport}**: ${d.durationMinutesExact} min (${d.calories} kcal${distTag} • FC ${d.averageHeartRate || '--'}/${d.maximumHeartRate || '--'} BPM)`;
+                }).join("\n");
+
+                const totalDistanceLine = totalDistance > 0
+                    ? `\n- 📏 **Distancia Acumulada:** ${totalDistance >= 1000 ? `${(Math.round(totalDistance / 10) / 100).toFixed(2)} km` : `${Math.round(totalDistance)} m`}`
+                    : '';
 
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: `He analizado los registros de su dispositivo:\n\n- 🏃 **Actividad principal:** ${primarySport || 'Entrenamiento'} (${results.length} ${results.length === 1 ? 'sesión' : 'sesiones'})\n- 🔥 **Gasto Calórico:** ${Math.round(totalCalories)} kcal\n- ⏱️ **Duración Total:** ${totalMinutes} min\n- ❤️ **FC Promedio:** ${finalAvgHr > 0 ? `${finalAvgHr} BPM` : 'N/A'}\n\nPara dar cumplimiento a la NOM-004, ¿confirma que esta información describe fielmente su esfuerzo físico?`,
+                    content: `He analizado los registros telemétricos de su dispositivo:\n\n- ⌚ **Dispositivo:** ${telemetryMetadata.device_name}\n- 📅 **Agrupación cronobiológica:** ${groupingText}\n- 🏋️ **Disciplinas detectadas:**\n${disciplinesSummaryLines}\n- 🔥 **Gasto Calórico (${uniqueDaysCount === 1 ? 'por jornada' : 'total'}):** ${Math.round(totalCalories)} kcal\n- ⏱️ **Duración Activa (${uniqueDaysCount === 1 ? 'por jornada' : 'total'}):** ${totalMinutes} min${totalDistanceLine}\n- ❤️ **Respuesta Cardíaca:** FC Promedio ${finalAvgHr > 0 ? `${finalAvgHr} BPM` : 'N/A'}${maxHrAbsolute > 0 ? ` • FC Máxima ${maxHrAbsolute} BPM` : ''}\n\nPara dar cumplimiento a la NOM-004, ¿confirma que esta información describe fielmente su esfuerzo físico?`,
                     options: [
-                        { label: "Sí, es correcto", value: "CONFIRM_TELEMETRY" },
-                        { label: "No, quiero corregir algo", value: "CORRECT_TELEMETRY" }
+                        { label: "✅ Sí, es correcto", value: "CONFIRM_TELEMETRY" },
+                        { label: "❌ No, quiero corregir algo", value: "CORRECT_TELEMETRY" }
                     ]
                 }]);
 
@@ -915,10 +1309,10 @@ const Fase11_ActividadSueno = ({
         if (textToProcess.startsWith("CONFIRM_SLEEP_TELEMETRY")) userLabel = "Sí, es correcto";
         if (textToProcess === "CORRECT_SLEEP_TELEMETRY") userLabel = "No, prefiero declarar manualmente";
         if (currentStep === 'NEAT' || currentStep === 'NEAT_MANUAL_SELECT') {
-            if (textToProcess === "SEDENTARY") userLabel = isLactante ? "Tranquilo / Acostado la mayor parte del tiempo" : (isPreescolar || isEscolar || isMinor ? "Sedentario (Juego tranquilo / Sentado la mayor parte del tiempo)" : "Sedentario (Todo el día sentado)");
-            if (textToProcess === "LIGHT") userLabel = isLactante ? "Gateo inicial / Juego sentado" : (isPreescolar || isEscolar || isMinor ? "Ligero (Caminata tranquila / Juego suave en casa o escuela)" : "Ligero (De pie o caminando poco)");
-            if (textToProcess === "MODERATE") userLabel = isLactante ? "Gateo activo / Ya camina con apoyo" : (isPreescolar || isEscolar || isMinor ? "Moderado (Juego activo / Recreo / Corre en parque o jardín)" : "Moderado (Mesero / Movimiento constante)");
-            if (textToProcess === "HEAVY") userLabel = isLactante ? "Explora activamente / Corre / Salta" : (isPreescolar || isEscolar || isMinor ? "Intenso / Muy Activo (Juego dinámico constante / Corre y salta todo el día)" : "Pesado (Construcción / Trabajo físico duro)");
+            if (textToProcess === "SEDENTARY") userLabel = isLactante ? "Tranquilo / Acostado la mayor parte del tiempo" : (isPreescolar || isEscolar || isMinor ? "Sedentario (Juego tranquilo / Sentado la mayor parte del tiempo)" : sedentaryAdultLabel);
+            if (textToProcess === "LIGHT") userLabel = isLactante ? "Gateo inicial / Juego sentado" : (isPreescolar || isEscolar || isMinor ? "Ligero (Caminata tranquila / Juego suave en casa o escuela)" : "Ligero (Caminatas breves o actividad de pie intermitente)");
+            if (textToProcess === "MODERATE") userLabel = isLactante ? "Gateo activo / Ya camina con apoyo" : (isPreescolar || isEscolar || isMinor ? "Moderado (Juego activo / Recreo / Corre en parque o jardín)" : "Moderado (Movimiento activo constante en jornada diaria)");
+            if (textToProcess === "HEAVY") userLabel = isLactante ? "Explora activamente / Corre / Salta" : (isPreescolar || isEscolar || isMinor ? "Intenso / Muy Activo (Juego dinámico constante / Corre y salta todo el día)" : "Intenso (Actividad física ocupacional continua de alta demanda)");
         } else if (currentStep === 'SLEEP_HOURS') {
             if (textToProcess === "14") userLabel = "14 horas o más (Adecuado para lactantes)";
             if (textToProcess === "11") userLabel = "Entre 11 y 13 horas";
@@ -953,8 +1347,13 @@ const Fase11_ActividadSueno = ({
             if (textToProcess === "Sí" || textToProcess === "Si") userLabel = "Sí, declaración manual";
             if (textToProcess === "No") userLabel = "No";
         } else if (currentStep === 'TELEMETRY_CONFIRM') {
-            if (textToProcess === "CONFIRM_TELEMETRY") userLabel = "Sí, es correcto";
-            if (textToProcess === "CORRECT_TELEMETRY") userLabel = "No, quiero corregir algo";
+            if (textToProcess === "CONFIRM_TELEMETRY") userLabel = "✅ Sí, es correcto";
+            if (textToProcess === "CORRECT_TELEMETRY") userLabel = "❌ No, quiero corregir algo";
+        } else if (currentStep === 'TELEMETRY_WEEKLY_DAYS') {
+            const matchedDays = String(textToProcess || "").match(/\d+/)?.[0];
+            if (matchedDays) {
+                userLabel = `${matchedDays} ${matchedDays === "1" ? "día por semana" : "días por semana"}`;
+            }
         }
 
         setMessages(prev => {
@@ -975,7 +1374,41 @@ const Fase11_ActividadSueno = ({
             const lower = textToProcess.toLowerCase();
             const cleanText = textToProcess.trim();
 
-            switch (currentStep) {
+            // Interceptor blindado de corrección en Ejercicio: cualquier variante negativa regresa SIEMPRE a ACTIVITY_GATE limpio (Sin evaluar)
+            const isExerciseCorrectionSignal =
+                textToProcess === "CORRECT_TELEMETRY" ||
+                textToProcess === "NO_CORRECT" ||
+                (
+                    ['ACTIVITY_GATE', 'AWAITING_TCX_FILE', 'TELEMETRY_CONFIRM', 'TELEMETRY_WEEKLY_DAYS'].includes(currentStep) &&
+                    (lower.includes("corregir") || lower.includes("no, quiero"))
+                );
+
+            if (isExerciseCorrectionSignal) {
+                purgeExerciseTelemetry(lifeStyle, { has_scheduled_exercise: null, log: [] });
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "Entendido. Se ha restablecido el registro de ejercicio programado. ¿Cómo desea registrar su actividad física?",
+                    options: isMinor
+                        ? [
+                            { label: "✅ Sí, realiza", value: "Sí" },
+                            { label: "❌ No realiza", value: "No" }
+                        ]
+                        : [
+                            { label: "⌚ Cargar archivo de dispositivo (.TCX)", value: "TCX_LOAD" },
+                            { label: "📝 Declaración manual", value: "Sí" },
+                            { label: "❌ No realizo ejercicio", value: "No" }
+                        ]
+                }]);
+                setCurrentStep('ACTIVITY_GATE');
+                setIsAnalyzing(false);
+                return;
+            }
+
+            const effectiveStep = (textToProcess === "CONFIRM_TELEMETRY" && currentStep !== 'TELEMETRY_CONFIRM')
+                ? 'TELEMETRY_CONFIRM'
+                : currentStep;
+
+            switch (effectiveStep) {
                 case 'correct_menu': {
                     const lowerText = textToProcess.toLowerCase();
                     if (textToProcess === "MODIFY_EXERCISE" || lowerText.includes("ejercicio")) {
@@ -1073,7 +1506,28 @@ const Fase11_ActividadSueno = ({
                         break;
                     }
 
-                    const hasExercise = lower === 'sí' || lower === 'si';
+                    const isExplicitYes = lower === 'sí' || lower === 'si' || lower.includes('declaración manual') || lower.includes('declaracion manual') || lower.includes('sí, realiza');
+                    const isExplicitNo = lower === 'no' || lower.includes('no realizo') || lower.includes('no realiza');
+
+                    if (!isExplicitYes && !isExplicitNo) {
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "Por favor, seleccione una opción válida para continuar con su registro de actividad física:",
+                            options: isMinor
+                                ? [
+                                    { label: "✅ Sí, realiza", value: "Sí" },
+                                    { label: "❌ No realiza", value: "No" }
+                                ]
+                                : [
+                                    { label: "⌚ Cargar archivo de dispositivo (.TCX)", value: "TCX_LOAD" },
+                                    { label: "📝 Declaración manual", value: "Sí" },
+                                    { label: "❌ No realizo ejercicio", value: "No" }
+                                ]
+                        }]);
+                        break;
+                    }
+
+                    const hasExercise = isExplicitYes;
                     const updatedLife = purgeExerciseTelemetry(lifeStyle, {
                         has_scheduled_exercise: hasExercise,
                         log: [],
@@ -1105,7 +1559,20 @@ const Fase11_ActividadSueno = ({
                         }]);
                         break;
                     }
-                    const hasExercise = lower === 'sí' || lower === 'si';
+                    const isExplicitYes = lower === 'sí' || lower === 'si' || lower.includes('manual');
+                    const isExplicitNo = lower === 'no' || lower.includes('no realizo');
+                    if (!isExplicitYes && !isExplicitNo) {
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "Por favor, utilice el botón de adjuntar (clip 📎) para cargar sus archivos `.tcx` o elija una opción:",
+                            options: [
+                                { label: "📝 Declaración manual", value: "Sí" },
+                                { label: "❌ No realizo ejercicio", value: "No" }
+                            ]
+                        }]);
+                        break;
+                    }
+                    const hasExercise = isExplicitYes;
                     const updatedLife = purgeExerciseTelemetry(lifeStyle, {
                         has_scheduled_exercise: hasExercise,
                         log: [],
@@ -1125,26 +1592,54 @@ const Fase11_ActividadSueno = ({
 
                 case 'TELEMETRY_CONFIRM': {
                     if (textToProcess === "CONFIRM_TELEMETRY") {
-                        const intensityMapeada = tempTelemetry.averageHeartRate > 140 ? "VIGOROUS" : (tempTelemetry.averageHeartRate > 110 ? "MODERATE" : "LOW");
-                        const newLogItem = {
-                            type: tempTelemetry.sport,
-                            frequency: tempTelemetry.activitiesCount,
-                            duration: tempTelemetry.durationMinutes,
-                            intensity: intensityMapeada,
-                            heart_rate_avg: tempTelemetry.averageHeartRate,
-                            heart_rate_max: tempTelemetry.maximumHeartRate,
-                            distance_meters: tempTelemetry.distanceMeters,
-                            calories_device: tempTelemetry.calories
+                        const baseTelemetry = tempTelemetry || {};
+                        const rawMeta = baseTelemetry.telemetryMetadata || lifeStyle.activity?.telemetry_metadata || {};
+                        const uniqueDays = Number(rawMeta.unique_days_count) > 0 ? Number(rawMeta.unique_days_count) : 1;
+                        const dailyMin = Number(rawMeta.daily_minutes || baseTelemetry.dailyMinutes || baseTelemetry.durationMinutes || 0);
+                        const dailyCal = Math.round(Number(rawMeta.daily_calories || baseTelemetry.dailyCalories || baseTelemetry.calories || 0));
+                        const avgHrVal = Number(rawMeta.average_hr || baseTelemetry.averageHeartRate || 0);
+                        const maxHrVal = Number(rawMeta.max_hr || baseTelemetry.maximumHeartRate || 0);
+                        const totalDistVal = Math.round(Number(rawMeta.total_distance || baseTelemetry.distanceMeters || 0));
+                        const existingWeeklyDays = Number(rawMeta.weekly_days) > 0 ? Number(rawMeta.weekly_days) : (uniqueDays >= 3 ? Math.min(7, uniqueDays) : null);
+
+                        const intensityMapeada = avgHrVal > 140 ? "VIGOROUS" : (avgHrVal > 110 ? "MODERATE" : "LOW");
+                        const confirmedMetadata = {
+                            device_name: rawMeta.device_name || baseTelemetry.deviceName || "Dispositivo Wearable (.TCX)",
+                            preview_pending_confirm: false,
+                            unique_days_count: uniqueDays,
+                            total_blocks_count: Number(rawMeta.total_blocks_count) > 0 ? Number(rawMeta.total_blocks_count) : (Array.isArray(rawMeta.sessions) ? rawMeta.sessions.length : 1),
+                            dates_detected: rawMeta.dates_detected || [],
+                            dates_display: rawMeta.dates_display || [],
+                            weekly_days: existingWeeklyDays,
+                            total_parsed_sessions: uniqueDays,
+                            daily_minutes: dailyMin,
+                            daily_calories: dailyCal,
+                            daily_distance_meters: Number(rawMeta.daily_distance_meters || totalDistVal || 0),
+                            weekly_minutes: existingWeeklyDays ? Math.round(dailyMin * existingWeeklyDays) : null,
+                            weekly_calories: existingWeeklyDays ? Math.round(dailyCal * existingWeeklyDays) : null,
+                            total_calories: Number(rawMeta.total_calories || dailyCal || 0),
+                            total_minutes: Number(rawMeta.total_minutes || dailyMin || 0),
+                            total_seconds: Number(rawMeta.total_seconds || (dailyMin * 60) || 0),
+                            total_distance: totalDistVal,
+                            average_hr: avgHrVal,
+                            max_hr: maxHrVal,
+                            disciplines: Array.isArray(rawMeta.disciplines) ? rawMeta.disciplines : [],
+                            sessions: Array.isArray(rawMeta.sessions) ? rawMeta.sessions : []
                         };
 
-                        const confirmedMetadata = tempTelemetry.telemetryMetadata || {
-                            device_name: "Wearable Device",
-                            total_parsed_sessions: tempTelemetry.activitiesCount,
-                            total_calories: tempTelemetry.calories,
-                            total_minutes: tempTelemetry.durationMinutes,
-                            total_distance: tempTelemetry.distanceMeters,
-                            average_hr: tempTelemetry.averageHeartRate,
-                            max_hr: tempTelemetry.maximumHeartRate
+                        const newLogItem = {
+                            type: baseTelemetry.sport || "Entrenamiento Multicomponente",
+                            frequency: existingWeeklyDays || uniqueDays,
+                            weekly_days: existingWeeklyDays,
+                            duration: dailyMin,
+                            daily_minutes: dailyMin,
+                            weekly_minutes: existingWeeklyDays ? Math.round(dailyMin * existingWeeklyDays) : null,
+                            intensity: intensityMapeada,
+                            heart_rate_avg: avgHrVal,
+                            heart_rate_max: maxHrVal,
+                            distance_meters: totalDistVal,
+                            calories_device: dailyCal,
+                            weekly_calories: existingWeeklyDays ? Math.round(dailyCal * existingWeeklyDays) : null
                         };
 
                         const updatedLife = {
@@ -1158,6 +1653,26 @@ const Fase11_ActividadSueno = ({
                             }
                         };
                         setLifeStyle(updatedLife);
+
+                        // Si los archivos corresponden a < 3 jornadas distintas, solicitar frecuencia semanal real para TDEE exacto
+                        if (!existingWeeklyDays) {
+                            setMessages(prev => [...prev, {
+                                role: 'assistant',
+                                content: `Métricas telemétricas validadas (**${confirmedMetadata.device_name}**). Dado que los archivos cargados corresponden a **${uniqueDays === 1 ? '1 jornada diaria' : `${uniqueDays} jornadas`}** (**${dailyMin} min/día** • **${dailyCal} kcal/día**), por favor **seleccione cuántos días por semana realiza habitualmente esta rutina** para calibrar con exactitud su Gasto Energético Total (**TDEE**):`,
+                                inputType: 'strict_select',
+                                options: [
+                                    { label: "7 días por semana (Todos los días)", value: "7" },
+                                    { label: "6 días por semana", value: "6" },
+                                    { label: "5 días por semana", value: "5" },
+                                    { label: "4 días por semana", value: "4" },
+                                    { label: "3 días por semana", value: "3" },
+                                    { label: "2 días por semana", value: "2" },
+                                    { label: "1 día por semana", value: "1" }
+                                ]
+                            }]);
+                            setCurrentStep('TELEMETRY_WEEKLY_DAYS');
+                            break;
+                        }
                         
                         setMessages(prev => [...prev, {
                             role: 'assistant',
@@ -1178,16 +1693,96 @@ const Fase11_ActividadSueno = ({
                         purgeExerciseTelemetry(lifeStyle, { has_scheduled_exercise: null, log: [] });
                         setMessages(prev => [...prev, {
                             role: 'assistant',
-                            content: "Entendido. Se ha descartado el archivo telemétrico. ¿Cómo desea proceder con su actividad física?",
+                            content: "Entendido. Se ha descartado la vista previa telemétrica. ¿Cómo desea proceder con su actividad física?",
                             options: [
-                                { label: "📝 Declarar Actividad Manualmente", value: "Sí" },
                                 { label: "🏋️ Reintentar Cargar Archivo .TCX", value: "TCX_LOAD" },
+                                { label: "📝 Declarar Actividad Manualmente", value: "Sí" },
                                 { label: "❌ No realizo ejercicio", value: "No" }
                             ]
                         }]);
                         setCurrentStep('ACTIVITY_GATE');
                     } else {
                         setMessages(prev => [...prev, { role: 'assistant', content: "Por favor use los botones para confirmar o corregir." }]);
+                    }
+                    break;
+                }
+
+                case 'TELEMETRY_WEEKLY_DAYS': {
+                    const days = parseInt(String(textToProcess || "").match(/\d+/)?.[0] || "", 10);
+                    if (isNaN(days) || days < 1 || days > 7) {
+                        setMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "Por favor, seleccione un número válido de días por semana (del 1 al 7):",
+                            inputType: 'strict_select',
+                            options: [
+                                { label: "7 días por semana (Todos los días)", value: "7" },
+                                { label: "6 días por semana", value: "6" },
+                                { label: "5 días por semana", value: "5" },
+                                { label: "4 días por semana", value: "4" },
+                                { label: "3 días por semana", value: "3" },
+                                { label: "2 días por semana", value: "2" },
+                                { label: "1 día por semana", value: "1" }
+                            ]
+                        }]);
+                        break;
+                    }
+
+                    const currentMeta = lifeStyle.activity?.telemetry_metadata || tempTelemetry?.telemetryMetadata || {};
+                    const dailyMin = Number(currentMeta.daily_minutes || currentMeta.total_minutes || 0);
+                    const dailyCal = Math.round(Number(currentMeta.daily_calories || currentMeta.total_calories || 0));
+                    const weeklyMin = Math.round(dailyMin * days);
+                    const weeklyCal = Math.round(dailyCal * days);
+
+                    const updatedMetadata = {
+                        ...currentMeta,
+                        preview_pending_confirm: false,
+                        weekly_days: days,
+                        weekly_minutes: weeklyMin,
+                        weekly_calories: weeklyCal
+                    };
+
+                    const updatedLog = (lifeStyle.activity?.log || []).map((entry, idx) => {
+                        if (idx === 0 && entry && typeof entry === 'object') {
+                            return {
+                                ...entry,
+                                frequency: days,
+                                weekly_days: days,
+                                duration: dailyMin,
+                                daily_minutes: dailyMin,
+                                weekly_minutes: weeklyMin,
+                                calories_device: dailyCal,
+                                weekly_calories: weeklyCal
+                            };
+                        }
+                        return entry;
+                    });
+
+                    const updatedLife = {
+                        ...lifeStyle,
+                        activity: {
+                            ...lifeStyle.activity,
+                            has_scheduled_exercise: true,
+                            source_type: "TELEMETRY_TCX",
+                            telemetry_metadata: updatedMetadata,
+                            log: updatedLog
+                        }
+                    };
+                    setLifeStyle(updatedLife);
+
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: `Frecuencia semanal registrada (**${days} ${days === 1 ? 'día/semana' : 'días/semana'}** → **${weeklyMin} min/semana** • **${weeklyCal} kcal/semana**). Métricas telemétricas selladas en su expediente clínico.`
+                    }]);
+
+                    if (isSingleLineEdit && updatedLife.activity.neat_level) {
+                        setIsSingleLineEdit(false);
+                        setTimeout(() => {
+                            buildAndShowSummary(updatedLife);
+                        }, 400);
+                    } else {
+                        setTimeout(() => {
+                            askNeatQuestion(updatedLife);
+                        }, 500);
                     }
                     break;
                 }
@@ -1317,17 +1912,12 @@ const Fase11_ActividadSueno = ({
                         }]);
                         setCurrentStep('AWAITING_NEAT_TCX_FILE');
                     } else {
-                        const neatMsg = `Independientemente del ejercicio programado, ¿cómo describiría su actividad diaria habitual (trabajo, oficina o casa)?`;
-                        const neatOptions = [
-                            { label: sedentaryAdultLabel, value: 'SEDENTARY' },
-                            { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
-                            { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
-                            { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
-                        ];
+                        const neatMsg = `Independientemente del ejercicio programado, **¿cómo describiría su nivel de movimiento ocupacional y cotidiano habitual (NEAT)?**`;
                         setMessages(prev => [...prev, {
                             role: 'assistant',
                             content: neatMsg,
-                            options: neatOptions
+                            inputType: 'strict_select',
+                            options: adultNeatOptions
                         }]);
                         setCurrentStep('NEAT_MANUAL_SELECT');
                     }
@@ -1341,17 +1931,12 @@ const Fase11_ActividadSueno = ({
                             content: "Por favor, seleccione el archivo `.tcx` de actividad diaria habitual utilizando el botón de clip 📎."
                         }]);
                     } else if (textToProcess === "NEAT_MANUAL" || lower.includes("manual")) {
-                        const neatMsg = `Independientemente del ejercicio programado, ¿cómo describiría su actividad diaria habitual (trabajo, oficina o casa)?`;
-                        const neatOptions = [
-                            { label: sedentaryAdultLabel, value: 'SEDENTARY' },
-                            { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
-                            { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
-                            { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
-                        ];
+                        const neatMsg = `Independientemente del ejercicio programado, **¿cómo describiría su nivel de movimiento ocupacional y cotidiano habitual (NEAT)?**`;
                         setMessages(prev => [...prev, {
                             role: 'assistant',
                             content: neatMsg,
-                            options: neatOptions
+                            inputType: 'strict_select',
+                            options: adultNeatOptions
                         }]);
                         setCurrentStep('NEAT_MANUAL_SELECT');
                     }
@@ -1363,7 +1948,7 @@ const Fase11_ActividadSueno = ({
                         const level = textToProcess.replace("CONFIRM_NEAT_TELEMETRY_", "");
                         const updatedLife = { 
                             ...lifeStyle, 
-                            activity: { ...lifeStyle.activity, neat_level: level } 
+                            activity: { ...lifeStyle.activity, neat_level: level, preview_neat_pending: false } 
                         };
                         setLifeStyle(updatedLife);
                         setMessages(prev => [...prev, {
@@ -1381,17 +1966,16 @@ const Fase11_ActividadSueno = ({
                             }, 500);
                         }
                     } else if (textToProcess === "CORRECT_NEAT_TELEMETRY") {
-                        const neatMsg = `Entendido. Vamos a registrar su nivel de actividad de forma manual: ¿cómo describiría su actividad diaria habitual?`;
-                        const neatOptions = [
-                            { label: sedentaryAdultLabel, value: 'SEDENTARY' },
-                            { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
-                            { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
-                            { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
-                        ];
+                        setLifeStyle(prev => ({
+                            ...prev,
+                            activity: { ...prev.activity, neat_level: null, preview_neat_pending: false }
+                        }));
+                        const neatMsg = `Entendido. Por favor **seleccione su nivel de movimiento ocupacional y cotidiano habitual (NEAT)**:`;
                         setMessages(prev => [...prev, {
                             role: 'assistant',
                             content: neatMsg,
-                            options: neatOptions
+                            inputType: 'strict_select',
+                            options: adultNeatOptions
                         }]);
                         setCurrentStep('NEAT_MANUAL_SELECT');
                     }
@@ -1405,6 +1989,7 @@ const Fase11_ActividadSueno = ({
                         setMessages(prev => [...prev, {
                             role: 'assistant',
                             content: 'Por favor seleccione una opción válida de la lista:',
+                            inputType: 'strict_select',
                             options: isLactante
                                 ? [
                                     { label: 'Tranquilo / Acostado la mayor parte del tiempo', value: 'SEDENTARY' },
@@ -1419,19 +2004,14 @@ const Fase11_ActividadSueno = ({
                                         { label: 'Moderado (Juego activo / Recreo / Corre en parque o jardín)', value: 'MODERATE' },
                                         { label: 'Intenso / Muy Activo (Juego dinámico constante / Corre y salta todo el día)', value: 'HEAVY' }
                                     ]
-                                    : [
-                                        { label: sedentaryAdultLabel, value: 'SEDENTARY' },
-                                        { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
-                                        { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
-                                        { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
-                                    ])
+                                    : adultNeatOptions)
                         }]);
                         return;
                     }
 
                     const updatedLife = { 
                         ...lifeStyle, 
-                        activity: { ...lifeStyle.activity, neat_level: cleanText } 
+                        activity: { ...lifeStyle.activity, neat_level: cleanText, preview_neat_pending: false } 
                     };
                     setLifeStyle(updatedLife);
                     if (isSingleLineEdit && updatedLife.circadian.sleepHours > 0) {
@@ -1708,7 +2288,7 @@ const Fase11_ActividadSueno = ({
         }, 600);
     };
 
-    const askNeatQuestion = () => {
+    const askNeatQuestion = (stateOverride = null) => {
         if (isMinor) {
             const neatMsg = isLactante
                 ? `Independientemente de la estimulación programada, ¿cómo describiría el nivel de movimiento o actividad espontánea diaria de **${pName}**?`
@@ -1730,33 +2310,28 @@ const Fase11_ActividadSueno = ({
                         { label: 'Moderado (Juego activo / Recreo / Corre en parque o jardín)', value: 'MODERATE' },
                         { label: 'Intenso / Muy Activo (Juego dinámico constante / Corre y salta todo el día)', value: 'HEAVY' }
                     ]
-                    : [
-                        { label: sedentaryAdultLabel, value: 'SEDENTARY' },
-                        { label: 'Ligero (De pie o caminando poco)', value: 'LIGHT' },
-                        { label: 'Moderado (Mesero / Movimiento constante)', value: 'MODERATE' },
-                        { label: 'Pesado (Construcción / Trabajo físico duro)', value: 'HEAVY' }
-                    ]);
+                    : adultNeatOptions);
 
             setMessages(prev => [...prev, {
                 role: 'assistant', 
-                content: neatMsg, 
+                content: neatMsg,
+                inputType: 'strict_select',
                 options: neatOptions
             }]);
             setCurrentStep('NEAT');
         } else {
-            // Compuerta Binaria Restringida para Adultos (NEAT es fisiológicamente obligatorio)
-            const neatMsg = `Independientemente del ejercicio programado: **¿Cómo registrará su actividad o movimiento diario habitual (NEAT)?**`;
-            const neatOptions = [
-                { label: "🏋️ Cargar Archivo Device (.TCX)", value: "NEAT_TCX_LOAD" },
-                { label: "📝 Declaración Manual", value: "NEAT_MANUAL" }
-            ];
-
+            // Evaluación clínica directa del movimiento ocupacional/cotidiano fuera del entrenamiento (NEAT)
+            const neatMsg = `Independientemente de su ejercicio programado, **¿cómo describiría su nivel de movimiento ocupacional y cotidiano habitual (NEAT)?**`;
             setMessages(prev => [...prev, {
                 role: 'assistant', 
-                content: neatMsg, 
-                options: neatOptions
+                content: neatMsg,
+                inputType: 'strict_select',
+                options: adultNeatOptions
             }]);
-            setCurrentStep('NEAT_GATE');
+            setCurrentStep('NEAT');
+        }
+        if (stateOverride) {
+            syncLifeData(stateOverride);
         }
     };
 
@@ -1791,6 +2366,7 @@ const Fase11_ActividadSueno = ({
         setMessages(prev => [...prev, {
             role: 'assistant',
             content: sleepMsg,
+            inputType: 'strict_select',
             options: sleepOptions
         }]);
         setCurrentStep('SLEEP_HOURS');
@@ -1801,28 +2377,7 @@ const Fase11_ActividadSueno = ({
     };
 
     const askSleepQuestion = (state) => {
-        if (isMinor) {
-            triggerManualSleepQuestions(state);
-            return;
-        }
-
-        // Compuerta Binaria Restringida para Adultos (El sueño es metabólicamente obligatorio)
-        const sleepMsg = `Entendido. Pasemos al descanso. **¿Desea registrar su patrón de sueño cargando un archivo de su dispositivo wearable (.TCX / .GPX) o prefiere una declaración manual?**`;
-        const sleepOptions = [
-            { label: "🏋️ Cargar Archivo Device (.TCX)", value: "SLEEP_TCX_LOAD" },
-            { label: "📝 Declaración Manual", value: "SLEEP_MANUAL" }
-        ];
-
-        setMessages(prev => [...prev, {
-            role: 'assistant',
-            content: sleepMsg,
-            options: sleepOptions
-        }]);
-        setCurrentStep('SLEEP_GATE');
-        
-        if (state) {
-            syncLifeData(state);
-        }
+        triggerManualSleepQuestions(state);
     };
 
     const askStressQuestion = (state) => {
@@ -1864,10 +2419,30 @@ const Fase11_ActividadSueno = ({
         
         // 1. Actividad Física / Ejercicio
         let activityStr = "";
+        const activeMeta = state.activity.source_type === "TELEMETRY_TCX" ? state.activity.telemetry_metadata : null;
         if (state.activity.has_scheduled_exercise) {
-            activityStr = "Sí";
-            if (state.activity.log && state.activity.log.length > 0) {
-                const formattedActivities = state.activity.log.map((item, idx) => {
+            activityStr = activeMeta?.device_name
+                ? `Sí (Vía Telemetría • ${activeMeta.device_name})`
+                : "Sí";
+            if (activeMeta && Array.isArray(activeMeta.disciplines) && activeMeta.disciplines.length > 0) {
+                const freqTag = activeMeta.weekly_days
+                    ? `\n  - 📅 **Frecuencia Habitual:** ${activeMeta.weekly_days} ${activeMeta.weekly_days === 1 ? 'día/semana' : 'días/semana'} (${activeMeta.weekly_minutes || (activeMeta.daily_minutes * activeMeta.weekly_days)} min/semana • ${activeMeta.weekly_calories || (activeMeta.daily_calories * activeMeta.weekly_days)} kcal/semana)`
+                    : '';
+                const discLines = activeMeta.disciplines.map(d => {
+                    const lowerSport = String(d.sport || '').toLowerCase();
+                    const emoji = lowerSport.includes('cicl') ? '🚴'
+                        : lowerSport.includes('nat') ? '🏊'
+                        : lowerSport.includes('caminadora') || lowerSport.includes('carr') || lowerSport.includes('elípt') || lowerSport.includes('elipt') ? '🏃'
+                        : lowerSport.includes('caminat') ? '🚶'
+                        : '🧘';
+                    const distChunk = d.distanceMeters > 0
+                        ? `Distancia: ${d.distanceMeters >= 1000 ? `${(d.distanceMeters / 1000).toFixed(2)} km` : `${Math.round(d.distanceMeters)} m`}, `
+                        : '';
+                    return `\n  - ${emoji} **${d.sport}**: ${distChunk}Duración: ${d.durationMinutesExact || d.durationMinutes} min, Calorías: ${Math.round(d.calories || 0)} kcal, FC Promedio: ${d.averageHeartRate || '--'} BPM, FC Máxima: ${d.maximumHeartRate || '--'} BPM`;
+                }).join("");
+                activityStr += freqTag + discLines;
+            } else if (state.activity.log && state.activity.log.length > 0) {
+                const formattedActivities = state.activity.log.map((item) => {
                     if (typeof item === 'object' && item !== null) {
                         let sportEmoji = "🏋️";
                         let sportName = item.type || "Entrenamiento";
@@ -1878,6 +2453,9 @@ const Fase11_ActividadSueno = ({
                         } else if (lowerSport.includes("ciclismo") || lowerSport.includes("bike") || lowerSport.includes("cycl")) {
                             sportEmoji = "🚴";
                             sportName = lowerSport.includes("interior") || lowerSport.includes("indoor") ? "Ciclismo de Interior" : "Ciclismo de Exterior";
+                        } else if (lowerSport.includes("caminadora")) {
+                            sportEmoji = "🏃";
+                            sportName = "Caminadora";
                         } else if (lowerSport.includes("carrera") || lowerSport.includes("run") || lowerSport.includes("trote")) {
                             sportEmoji = "🏃";
                             sportName = lowerSport.includes("interior") || lowerSport.includes("cinta") ? "Carrera en Cinta" : "Carrera / Trote";
@@ -1887,22 +2465,28 @@ const Fase11_ActividadSueno = ({
                         } else if (lowerSport.includes("elíptica") || lowerSport.includes("ellip")) {
                             sportEmoji = "🏃";
                             sportName = "Elíptica";
+                        } else if (lowerSport.includes("troncal")) {
+                            sportEmoji = "🧘";
+                            sportName = "Entrenamiento troncal";
                         } else if (lowerSport.includes("libre") || lowerSport.includes("other") || lowerSport.includes("fuerza") || lowerSport.includes("fitness")) {
                             sportEmoji = "🧘";
                             sportName = "Entrenamiento Libre";
                         }
 
                         const parts = [];
+                        if (item.weekly_days > 0) {
+                            parts.push(`Frecuencia: ${item.weekly_days} días/sem`);
+                        }
                         if (item.distance_meters > 0) {
                             const distFormatted = item.distance_meters >= 1000 
-                                ? `${(item.distance_meters / 1000).toFixed(2).replace('.', ',')} km` 
+                                ? `${(item.distance_meters / 1000).toFixed(2)} km` 
                                 : `${Math.round(item.distance_meters)} m`;
                             parts.push(`Distancia: ${distFormatted}`);
                         }
-                        parts.push(`Duración: ${item.duration || item.durationMinutes || 0} min`);
+                        parts.push(`Duración: ${item.duration || item.durationMinutes || 0} min/día`);
                         if (item.calories_device > 0 || item.calories > 0) {
                             const cal = item.calories_device || item.calories;
-                            parts.push(`Calorías: ${Math.round(cal)} kcal`);
+                            parts.push(`Calorías: ${Math.round(cal)} kcal/día`);
                         }
                         if (item.heart_rate_avg > 0) {
                             parts.push(`FC Promedio: ${item.heart_rate_avg} BPM`);
@@ -1916,10 +2500,10 @@ const Fase11_ActividadSueno = ({
                         const lowerItem = String(item).toLowerCase();
                         if (lowerItem.includes("natacion") || lowerItem.includes("swim")) sportEmoji = "🏊";
                         else if (lowerItem.includes("ciclismo") || lowerItem.includes("bici") || lowerItem.includes("cycl")) sportEmoji = "🚴";
-                        else if (lowerItem.includes("correr") || lowerItem.includes("run") || lowerItem.includes("trote") || lowerItem.includes("carrera")) sportEmoji = "🏃";
+                        else if (lowerItem.includes("correr") || lowerItem.includes("run") || lowerItem.includes("trote") || lowerItem.includes("carrera") || lowerItem.includes("caminadora")) sportEmoji = "🏃";
                         else if (lowerItem.includes("caminar") || lowerItem.includes("walk") || lowerItem.includes("caminata")) sportEmoji = "🚶";
                         else if (lowerItem.includes("eliptica") || lowerItem.includes("ellip")) sportEmoji = "🏃";
-                        else if (lowerItem.includes("libre") || lowerItem.includes("fuerza") || lowerItem.includes("flexibilidad") || lowerItem.includes("gimnasio")) sportEmoji = "🧘";
+                        else if (lowerItem.includes("libre") || lowerItem.includes("fuerza") || lowerItem.includes("flexibilidad") || lowerItem.includes("gimnasio") || lowerItem.includes("troncal")) sportEmoji = "🧘";
                         return `\n  - ${sportEmoji} ${item}`;
                     }
                 });
@@ -1994,24 +2578,21 @@ const Fase11_ActividadSueno = ({
         // 6. Resumen de Carga Física / Metabólica Dinámica
         let metabolicSummary = "";
         if (state.activity.source_type === "TELEMETRY_TCX" && state.activity.telemetry_metadata) {
-            let totalCal = 0;
-            let totalMin = 0;
-            let maxHr = 0;
-            let sumHr = 0;
-            let countHr = 0;
-            state.activity.log.forEach(item => {
-                if (typeof item === 'object' && item !== null) {
-                    totalCal += (item.calories_device || item.calories || 0);
-                    totalMin += (item.duration || item.durationMinutes || 0);
-                    if ((item.heart_rate_max || 0) > maxHr) maxHr = item.heart_rate_max;
-                    if (item.heart_rate_avg > 0) {
-                        sumHr += item.heart_rate_avg * (item.duration || item.durationMinutes || 0);
-                        countHr += (item.duration || item.durationMinutes || 0);
-                    }
-                }
-            });
-            const avgHr = countHr > 0 ? Math.round(sumHr / countHr) : 0;
-            metabolicSummary = `\n📊 **Resumen de Carga Física (Vía Telemetría):**\n- 🔥 **Gasto Calórico Total:** ${totalCal.toFixed(0)} kcal\n- ⏱️ **Tiempo de Ejercicio Total:** ${totalMin} minutos\n- 📈 **Carga Cardiovascular:** Promedio de ${avgHr} BPM (Máx: ${maxHr} BPM)`;
+            const meta = state.activity.telemetry_metadata;
+            const dailyCal = Math.round(Number(meta.daily_calories || meta.total_calories || 0));
+            const dailyMin = Math.round(Number(meta.daily_minutes || meta.total_minutes || 0));
+            const weeklyDays = Number(meta.weekly_days) > 0 ? Number(meta.weekly_days) : null;
+            const weeklyCal = Number(meta.weekly_calories) > 0 ? Math.round(Number(meta.weekly_calories)) : (weeklyDays ? Math.round(dailyCal * weeklyDays) : dailyCal);
+            const weeklyMin = Number(meta.weekly_minutes) > 0 ? Math.round(Number(meta.weekly_minutes)) : (weeklyDays ? Math.round(dailyMin * weeklyDays) : dailyMin);
+            const avgHr = Number(meta.average_hr || 0);
+            const maxHr = Number(meta.max_hr || 0);
+            const distLine = Number(meta.total_distance) > 0
+                ? `\n- 📏 **Distancia por Jornada:** ${meta.total_distance >= 1000 ? `${(meta.total_distance / 1000).toFixed(2)} km` : `${Math.round(meta.total_distance)} m`}`
+                : '';
+            const omsLine = weeklyDays
+                ? `\n- ⚡ **Adherencia Semanal OMS:** ${weeklyMin >= 150 ? 'Cumple recomendación OMS (>=150 min/sem)' : 'En progresión hacia meta OMS (150 min/sem)'}`
+                : '';
+            metabolicSummary = `\n📊 **Resumen de Carga Física (Vía Telemetría • ${meta.device_name || 'Wearable'}):**\n- 🔥 **Gasto Calórico:** ${dailyCal} kcal/día${weeklyDays ? ` (${weeklyCal} kcal/semana)` : ''}\n- ⏱️ **Tiempo de Ejercicio:** ${dailyMin} min/día${weeklyDays ? ` × ${weeklyDays} d/sem = ${weeklyMin} min/semana` : ''}${distLine}\n- 📈 **Carga Cardiovascular:** Promedio de ${avgHr} BPM (Máx: ${maxHr} BPM)${omsLine}`;
         } else if (state.activity.has_scheduled_exercise) {
             let totalWeeklyMin = 0;
             state.activity.log.forEach(item => {

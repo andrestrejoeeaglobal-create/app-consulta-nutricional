@@ -5,7 +5,9 @@ import {
     Zap,
     Droplets,
     CheckCircle2,
-    AlertTriangle
+    AlertTriangle,
+    Clock,
+    ShieldCheck
 } from 'lucide-react';
 import tiloImg from '../../assets/tilo.png';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
@@ -15,7 +17,8 @@ import {
     normalizeMetricDecimals,
     capitalizeLeadingSpanish,
     isPhysiologicallyNormal,
-    isBiomarkerStringActuallyNormal
+    isBiomarkerStringActuallyNormal,
+    resolveVerifiedPatientAge
 } from '../../utils/patientGuideAdapter';
 
 const IFM_NODE_CLINICAL_DESCRIPTIONS = {
@@ -70,12 +73,15 @@ function pruneTelemetryPayloadForNetwork(rawPatientData, electretTelemetry, iden
             const items = Array.isArray(secObj?.items) ? secObj.items : (Array.isArray(secObj) ? secObj : []);
             // Preservar todos los analitos de laboratorio con sus valores numéricos íntegros (para cálculo de índices funcionales TG/HDL, HOMA-IR, etc.)
             const cleanItems = items.map(it => ({
+                analyte_uid: it.analyte_uid,
                 name: it.name || it.label || it.parameter,
                 val: it.val ?? it.value,
                 value: it.value ?? it.val,
                 unit: it.unit,
                 ref: it.ref || it.reference,
-                status: it.status || 'NORMAL'
+                status: it.status || 'NORMAL',
+                studyDate: it.studyDate,
+                studyDateIso: it.studyDateIso
             }));
             if (cleanItems.length > 0) {
                 prunedSections[secKey] = { items: cleanItems };
@@ -83,7 +89,11 @@ function pruneTelemetryPayloadForNetwork(rawPatientData, electretTelemetry, iden
         });
         prunedExt = {
             abnormalCount: rawExt.abnormalCount,
+            totalParameters: rawExt.totalParameters,
+            vigencia: rawExt.vigencia || null,
             sections: prunedSections,
+            external_studies: rawExt.external_studies || null,
+            imaging: rawExt.imaging || null,
             labs: rawExt.labs || null,
             biomarkers: rawExt.biomarkers || null
         };
@@ -122,6 +132,8 @@ function pruneTelemetryPayloadForNetwork(rawPatientData, electretTelemetry, iden
     } : null;
 
     delete base._session_meta;
+    const verifiedAge = resolveVerifiedPatientAge({ ...base, identityLock }, 35);
+    const safeAge = verifiedAge.ageYears;
     return {
         ...base,
         scan_data: {
@@ -136,9 +148,9 @@ function pruneTelemetryPayloadForNetwork(rawPatientData, electretTelemetry, iden
         body_zones: base.body_zones || null,
         VisualBodyMap: base.VisualBodyMap || null,
         identityLock,
-        isLactante: isLactante || base.isLactante || (identityLock?.patientInfo?.age < 2),
-        isPediatrico: isPediatrico || base.isPediatrico || (identityLock?.patientInfo?.age < 18),
-        age: patientAge !== undefined ? patientAge : (identityLock?.patientInfo?.age ?? base.age)
+        isLactante: Boolean(safeAge < 2 && (verifiedAge.isLactanteVerified || isLactante === true)),
+        isPediatrico: Boolean(safeAge < 18 && (verifiedAge.isPediatricVerified || isPediatrico === true)),
+        age: safeAge
     };
 }
 
@@ -350,7 +362,8 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
         sistemas,
         bioenergetics,
         orthomolecularPrescription,
-        biosecuritySemaphore
+        biosecuritySemaphore,
+        metabolicAgeStudy
     } = useMemo(() => {
         if (!data) {
             return {
@@ -371,7 +384,8 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                 sistemas: [],
                 bioenergetics: null,
                 orthomolecularPrescription: null,
-                biosecuritySemaphore: null
+                biosecuritySemaphore: null,
+                metabolicAgeStudy: null
             };
         }
 
@@ -380,10 +394,11 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
             // Filtrar falsos positivos legados como NORMAL (-) en tiempo de lectura
             const safeBiomarkers = (Array.isArray(node.key_biomarkers) ? node.key_biomarkers : [])
                 .filter(b => !isBiomarkerStringActuallyNormal(b));
-            const isHomeostasis = (node.status === 'HOMEOSTASIS' || safeBiomarkers.length === 0) && node.cie10 === 'Z00.0';
+            const isHomeostasis = node.status === 'HOMEOSTASIS' || (safeBiomarkers.length === 0 && !['CRÍTICO', 'PRIORIDAD_ALTA', 'ALERTA_MODERADA'].includes(node.status));
             const anomalyCount = safeBiomarkers.length > 0 ? safeBiomarkers.length : (isHomeostasis ? 0 : 1);
             const isHighPriority = !isHomeostasis && (node.status === 'CRÍTICO' || node.status === 'PRIORIDAD_ALTA' || anomalyCount >= 2);
-            const needsReview = node.validation_status === 'REQUIERE_REVISIÓN';
+            const needsReview = Boolean(node.requires_clinical_review || node.validation_status === 'REQUIERE_REVISIÓN');
+            const axisBadgeCode = node.accredited_cie10 || node.functionalCode || `IFM-0${idx + 1}`;
 
             // Cálculo termodinámico de posición en la barra tripartita (0% - 100%)
             let positionPct = 50;
@@ -423,6 +438,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
 
             return {
                 ...node,
+                axisBadgeCode,
                 therapeutic_focus: safeTherapeuticFocus,
                 indexOrder: idx + 1,
                 shortName: cleanName,
@@ -460,7 +476,8 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
             sistemas: Array.isArray(data.sistemas_afectados) ? data.sistemas_afectados : (data.sistemas_afectados ? [data.sistemas_afectados] : ["Sistema Inmune", "Metabolismo Energético", "Biotensegridad Fascial"]),
             bioenergetics: data.bioenergetics || null,
             orthomolecularPrescription: data.orthomolecular_prescription || null,
-            biosecuritySemaphore: data.biosecurity_semaphore || data.orthomolecular_prescription?.biosecurity_semaphore || null
+            biosecuritySemaphore: data.biosecurity_semaphore || data.orthomolecular_prescription?.biosecurity_semaphore || null,
+            metabolicAgeStudy: data.metabolic_age_study || data.canonical_clinical_plan?.metabolicAgeStudy || null
         };
     }, [data]);
 
@@ -593,15 +610,15 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
             )}
 
             {/* 2. CABECERA DE TRIAGE SISTÉMICO (ESTADO CLÍNICO GLOBAL) */}
-            <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
+            <div className="bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200/90 dark:border-[#334155] p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] space-y-2">
+                <div className="flex flex-wrap items-center gap-2 tabular-nums">
                     <span className="px-2.5 py-0.5 rounded-md bg-[#1C75BC]/10 text-[#1C75BC] text-[10px] font-extrabold tracking-wider">
                         {activeNodeMeta ? `NODO IFM 0${activeNodeMeta.indexOrder}` : 'DOCTRINA CORTEX SSoTT v2.7'}
                     </span>
-                    <span className="text-xs font-bold text-slate-400">
+                    <span className="text-xs font-bold text-[#334155] dark:text-[#CBD5E1]">
                         #IFM-{activeNodeMeta ? `700${activeNodeMeta.indexOrder}` : '7000'}
                     </span>
-                    <span className="text-[11px] font-semibold text-slate-500">
+                    <span className="text-[11px] font-semibold text-[#334155] dark:text-[#CBD5E1]">
                         • {totalNodesCount} Nodos IFM: <strong className="text-[#3AAA35]">{normalNodesCount} Normales</strong> / <strong className="text-[#B70E0C]">{alertNodesCount} Con Hallazgos</strong>
                     </span>
 
@@ -612,9 +629,9 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                             : 'bg-[#3AAA35]/10 text-[#3AAA35] border-[#3AAA35]/30'
                     }`}>
                         {alertNodesCount > 0 ? <AlertTriangle className="w-3 h-3 shrink-0" /> : <CheckCircle2 className="w-3 h-3 shrink-0" />}
-                        <span className="text-[9.5px] uppercase tracking-wider text-slate-500 font-bold">Estado Global:</span>
+                        <span className="text-[9.5px] uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] font-bold">Estado Global:</span>
                         <span>{alertNodesCount > 0 ? `Alerta Prioritaria (${globalAlertPct}%)` : 'Homeostasis Óptima'}</span>
-                        <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] ${
+                        <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] tabular-nums ${
                             alertNodesCount > 0 ? 'bg-[#B70E0C] text-white' : 'bg-[#3AAA35] text-white'
                         }`}>
                             {alertNodesCount}/{totalNodesCount}
@@ -622,21 +639,130 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                     </span>
 
                     {bioenergetics && (
-                        <span className="px-2.5 py-0.5 rounded-md bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30 text-[10px] font-extrabold">
+                        <span className="px-2.5 py-0.5 rounded-md bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30 text-[10px] font-extrabold tabular-nums">
                             {bioenergetics.equationUsed}: TMB {bioenergetics.bmr} kcal | Meta {bioenergetics.targetKcal} kcal
                         </span>
                     )}
                 </div>
 
-                <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                <h3 className="text-lg font-extrabold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
                     {activeNodeMeta ? `${activeNodeMeta.indexOrder}. ${activeNodeMeta.cleanName}` : formatClinicalText(rutaActiva)}
                 </h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
+                <p className="text-xs text-[#334155] dark:text-[#CBD5E1] leading-relaxed">
                     {activeNodeMeta
                         ? activeNodeMeta.clinicalDescription
                         : 'Evaluación funcional integrativa de los 7 Nodos del Institute for Functional Medicine (IFM) con cobertura ontológica completa y dosificación de precisión.'}
                 </p>
             </div>
+
+            {/* 2.5 ESTUDIO MULTIVARIABLE DE EDAD METABÓLICA (EGM-51 v2 — SSoTT) */}
+            {metabolicAgeStudy && selectedNodeId === 'ALL' && (
+                metabolicAgeStudy.isSuppressedBySafetyGate ? (
+                    <div className="bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200/90 dark:border-[#334155] border-l-4 border-l-[#1C75BC] p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-[#1C75BC]/10 border border-[#1C75BC]/25 flex items-center justify-center shrink-0">
+                                    <ShieldCheck className="w-4 h-4 text-[#1C75BC]" strokeWidth={2} />
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
+                                        ESTUDIO DE EDAD METABÓLICA • COMPUERTA PROTECTORA ACTIVA
+                                    </span>
+                                    <h4 className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+                                        Enfoque Clínico No Punitivo Activado por Seguridad de Ruta
+                                    </h4>
+                                </div>
+                            </div>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/30">
+                                <ShieldCheck className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                <span>Protección Clínica Activa</span>
+                            </span>
+                        </div>
+                        <p className="text-xs text-[#334155] dark:text-[#CBD5E1] leading-relaxed font-medium">
+                            {sanitizeClinicalSpanish(metabolicAgeStudy.suppressionReasonText || 'Por protocolo de seguridad clínica, se omite la comparación punitiva de Edad Metabólica y se prioriza el acompañamiento funcional integral.')}
+                        </p>
+                    </div>
+                ) : (metabolicAgeStudy.metabolicAge !== null && metabolicAgeStudy.metabolicAge !== undefined) && (
+                    <div className={`bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200/90 dark:border-[#334155] border-l-4 ${
+                        Number(metabolicAgeStudy.deltaYears) > 1.5
+                            ? 'border-l-[#B70E0C]'
+                            : Number(metabolicAgeStudy.deltaYears) > 0.4
+                                ? 'border-l-[#FFCC00]'
+                                : 'border-l-[#3AAA35]'
+                    } p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] space-y-4 tabular-nums`}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-[#334155]">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-[#1C75BC]/10 border border-[#1C75BC]/25 flex items-center justify-center shrink-0">
+                                    <Clock className="w-4 h-4 text-[#1C75BC]" strokeWidth={2} />
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
+                                        ESTUDIO MULTIVARIABLE DE EDAD METABÓLICA • EGM-51 v2
+                                    </span>
+                                    <h4 className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+                                        Ponderación por Evidencia, Sexo Biológico y Altitud ({metabolicAgeStudy.altitudeMsnm || 2240} msnm)
+                                    </h4>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/25">
+                                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                    <span>{metabolicAgeStudy.evidenceTierBadge || 'Certeza Clínica Integral'} ({metabolicAgeStudy.evidenceConfidencePct || 85}%)</span>
+                                </span>
+                                {Number(metabolicAgeStudy.deltaYears) > 1.5 ? (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#B70E0C]/10 text-[#B70E0C] border border-[#B70E0C]/30">
+                                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                        <span>Sobrecarga Reversible: +{metabolicAgeStudy.deltaYears} años</span>
+                                    </span>
+                                ) : Number(metabolicAgeStudy.deltaYears) > 0.4 ? (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/15">
+                                        <Activity className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                        <span>Ajuste Leve: +{metabolicAgeStudy.deltaYears} años</span>
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30">
+                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                        <span>{Number(metabolicAgeStudy.deltaYears) < -0.4 ? `Reserva Joven (${metabolicAgeStudy.deltaYears} años)` : 'Homeostasis Conservada'}</span>
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-200/80 dark:border-[#334155] rounded-xl p-3 text-center">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Edad Cronológica</span>
+                                <span className="text-xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 block">{metabolicAgeStudy.chronologicalAge} años</span>
+                            </div>
+                            <div className={`border rounded-xl p-3 text-center ${
+                                Number(metabolicAgeStudy.deltaYears) > 1.5
+                                    ? 'bg-[#B70E0C]/5 border-[#B70E0C]/25'
+                                    : 'bg-[#3AAA35]/5 border-[#3AAA35]/25'
+                            }`}>
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Edad Metabólica</span>
+                                <span className={`text-xl font-extrabold mt-0.5 block ${
+                                    Number(metabolicAgeStudy.deltaYears) > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'
+                                }`}>
+                                    {metabolicAgeStudy.metabolicAgeExact ?? metabolicAgeStudy.metabolicAge} años
+                                </span>
+                            </div>
+                            <div className="bg-[#3AAA35]/5 border border-[#3AAA35]/25 rounded-xl p-3 text-center">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Meta Ciclo 1 (28d)</span>
+                                <span className="text-xl font-extrabold text-[#3AAA35] mt-0.5 block">{metabolicAgeStudy.cycle1TargetAge28d} años</span>
+                            </div>
+                            <div className="bg-[#1C75BC]/5 border border-[#1C75BC]/25 rounded-xl p-3 text-center">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Proyección 90 Días</span>
+                                <span className="text-xl font-extrabold text-[#1C75BC] mt-0.5 block">{metabolicAgeStudy.cycle3ProjectionAge90d} años</span>
+                            </div>
+                        </div>
+
+                        {metabolicAgeStudy.clinicalSummary && (
+                            <p className="text-xs text-[#334155] dark:text-[#CBD5E1] leading-relaxed font-medium">
+                                {sanitizeClinicalSpanish(metabolicAgeStudy.clinicalSummary)}
+                            </p>
+                        )}
+                    </div>
+                )
+            )}
 
             {/* 3. BENTO CARDS TERMODINÁMICAS DE LOS NODOS IFM */}
             {visibleNodes.length > 0 && (
@@ -667,36 +793,36 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                         return (
                             <div
                                 key={node.nodeId}
-                                className={`bg-white rounded-2xl border border-slate-200/90 border-l-4 ${borderLeftClass} p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] hover:shadow-[0_6px_18px_rgba(15,23,42,0.06)] transition-all`}
+                                className={`bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200/90 dark:border-[#334155] border-l-4 ${borderLeftClass} p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] hover:shadow-[0_6px_18px_rgba(15,23,42,0.06)] transition-all`}
                             >
                                 {/* Cabecera de la Bento Card */}
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-[#334155]">
                                     <div>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 dark:bg-[#0F172A] text-[#334155] dark:text-[#CBD5E1] tabular-nums">
                                                 NODO 0{node.indexOrder}
                                             </span>
-                                            <h4 className="text-sm font-extrabold text-slate-900">
+                                            <h4 className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
                                                 {node.cleanName}
                                             </h4>
                                         </div>
-                                        <p className="text-[11px] text-slate-500 mt-1">
+                                        <p className="text-[11px] text-[#334155] dark:text-[#CBD5E1] mt-1">
                                             {node.clinicalDescription}
                                         </p>
                                     </div>
 
-                                    <div className="flex flex-wrap items-center gap-3 self-start sm:self-center shrink-0">
+                                    <div className="flex flex-wrap items-center gap-3 self-start sm:self-center shrink-0 tabular-nums">
                                         <div className="text-right">
-                                            <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                                                Código CIE-10 • Hallazgos
+                                            <span className="text-[10px] uppercase font-bold text-[#334155] dark:text-[#CBD5E1] block">
+                                                {node.accredited_cie10 ? 'CIE-10 Acreditado • Hallazgos' : 'Eje Funcional • Hallazgos'}
                                             </span>
-                                            <span className="text-xl font-extrabold text-slate-900 tracking-tight font-mono">
-                                                {node.cie10}
+                                            <span className="text-xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight font-mono tabular-nums">
+                                                {node.axisBadgeCode}
                                             </span>
-                                            <span className="text-xs font-bold text-slate-400 mx-1.5" aria-hidden="true">
+                                            <span className="text-xs font-bold text-[#334155] dark:text-[#CBD5E1] mx-1.5" aria-hidden="true">
                                                 {' • '}
                                             </span>
-                                            <span className="text-xs font-bold text-slate-500">
+                                            <span className="text-xs font-bold text-[#334155] dark:text-[#CBD5E1] tabular-nums">
                                                 ({node.anomalyCount} {node.anomalyCount === 1 ? 'parámetro' : 'parámetros'})
                                             </span>
                                         </div>
@@ -709,24 +835,24 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
 
                                         {node.needsReview && (
                                             <span className="px-2.5 py-1 rounded-lg text-[10px] font-extrabold bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/15 dark:bg-[#FFCC00]/15 dark:text-[#FEF9C3] dark:border-[#FFCC00]/50">
-                                                REVISIÓN CLÍNICA
+                                                CORRELACIÓN MÉDICA SUGERIDA
                                             </span>
                                         )}
                                     </div>
                                 </div>
 
                                 {/* Barra de Progreso Termodinámica Tripartita con Callout Flotante */}
-                                <div className="my-4 bg-slate-50/90 border border-slate-200/70 rounded-xl p-3.5">
-                                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 mb-2">
+                                <div className="my-4 bg-slate-50/90 dark:bg-[#0F172A]/70 border border-slate-200/70 dark:border-[#334155] rounded-xl p-3.5">
+                                    <div className="flex items-center justify-between text-[10px] font-bold text-[#334155] dark:text-[#CBD5E1] mb-2">
                                         <span>DEFICIENCIA / RIESGO</span>
                                         <span className="text-[#3AAA35] font-extrabold">
-                                            ZONA ÓPTIMA FISIOLÓGICA (Z00.0)
+                                            ZONA ÓPTIMA FISIOLÓGICA (HOMEOSTASIS)
                                         </span>
                                         <span>EXCESO / DISFUNCIÓN ACTIVA</span>
                                     </div>
 
                                     <div className="relative h-6 rounded-lg overflow-visible flex items-center">
-                                        <div className="w-full h-3 rounded-full overflow-hidden flex bg-slate-200/80 border border-slate-300/60">
+                                        <div className="w-full h-3 rounded-full overflow-hidden flex bg-slate-200/80 dark:bg-[#1E293B] border border-slate-300/60 dark:border-[#334155]">
                                             <div className="w-1/3 h-full bg-gradient-to-r from-red-200/70 via-amber-200/70 to-emerald-200/50 border-r border-slate-300/80" />
                                             <div className="w-1/3 h-full bg-[#3AAA35]/25 flex items-center justify-center">
                                                 <span className="text-[8px] font-extrabold text-[#3AAA35] uppercase tracking-widest select-none">
@@ -740,10 +866,10 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                             className="absolute -top-1.5 transform -translate-x-1/2 flex flex-col items-center transition-all duration-300"
                                             style={{ left: `${node.positionPct}%` }}
                                         >
-                                            <div className={`px-2 py-0.5 rounded shadow-sm text-[10px] font-extrabold text-white whitespace-nowrap ${markerBg}`}>
+                                            <div className={`px-2 py-0.5 rounded shadow-sm text-[10px] font-extrabold text-white whitespace-nowrap tabular-nums ${markerBg}`}>
                                                 {node.isHomeostasis
-                                                    ? `${node.cie10} (Óptimo)`
-                                                    : `${node.cie10} (${node.anomalyCount} ${node.anomalyCount === 1 ? 'Alerta' : 'Alertas'})`}
+                                                    ? 'Equilibrio Funcional (Óptimo)'
+                                                    : `${node.axisBadgeCode} (${node.anomalyCount} ${node.anomalyCount === 1 ? 'Hallazgo' : 'Hallazgos'})`}
                                             </div>
                                             <div className={`w-2.5 h-2.5 rotate-45 -mt-1 ${markerBg} border border-white`} />
                                         </div>
@@ -880,7 +1006,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                 )}
 
                 {/* Bento Card 2: Bioseguridad y Salvaguardas Clínicas (Homologación Lineal Desaturada) */}
-                <div className={`bg-white dark:bg-[#1A1A1A] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] border-l-4 ${
+                <div className={`bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-[#334155] rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] border-l-4 ${
                     (biosecuritySemaphore?.level === 'ROJO' || biosecuritySemaphore?.isPaused)
                         ? 'border-l-[#B70E0C]'
                         : (criticalSafeguards.length > 0 || biosecuritySemaphore?.level === 'AMARILLO' || biosecuritySemaphore?.isMicroDose)
@@ -986,20 +1112,20 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                     )}
 
                     {/* Pie de Tarjeta Estándar */}
-                    <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 mt-3 flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400 font-medium">ⓘ Salvaguarda biomecánica, renal y hemodinámica de prescripción</span>
+                    <div className="pt-2.5 border-t border-slate-100 dark:border-[#334155] mt-3 flex items-center justify-between text-[10px]">
+                        <span className="text-[#334155] dark:text-[#CBD5E1] font-medium">ⓘ Salvaguarda biomecánica, renal y hemodinámica de prescripción</span>
                     </div>
                 </div>
 
                 {/* Bento Card 3: Estrategia Terapéutica Integral (Homologación Lineal Desaturada) */}
-                <div className="bg-white dark:bg-[#1A1A1A] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] border-l-4 border-l-[#3AAA35] transition-all">
+                <div className="bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-[#334155] rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] border-l-4 border-l-[#3AAA35] transition-all">
                     {/* Cabecera en 3 flex-items */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800 mb-3 select-none">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-[#334155] mb-3 select-none">
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30">
                                 PRESCRIPCIÓN ORTOMOLECULAR INTEGRAL
                             </span>
-                            <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                            <h3 className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-1.5">
                                 <Activity className="w-4 h-4 text-[#3AAA35]" />
                                 <span>Estrategia Terapéutica Integral</span>
                             </h3>
@@ -1011,38 +1137,38 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
 
                     {/* Metas Bioenergéticas Aplanadas (Inline desaturado sin micro-píldoras gruesas) */}
                     {bioenergetics && (
-                        <div className="my-2.5 text-[10.5px] text-slate-500 font-medium flex flex-wrap items-center gap-x-2 gap-y-1 pb-3 border-b border-slate-100/80 dark:border-slate-800">
-                            <span className="font-extrabold text-slate-400 uppercase tracking-wider text-[9.5px]">Metas Bioenergéticas:</span>
+                        <div className="my-2.5 text-[10.5px] text-[#334155] dark:text-[#CBD5E1] font-medium flex flex-wrap items-center gap-x-2 gap-y-1 pb-3 border-b border-slate-100/80 dark:border-[#334155] tabular-nums">
+                            <span className="font-extrabold text-[#334155] dark:text-[#CBD5E1] uppercase tracking-wider text-[9.5px]">Metas Bioenergéticas:</span>
                             {bioenergetics.tdee && (
-                                <span className="inline-flex items-center gap-1">
-                                    <span className="text-slate-400">Gasto Total (TDEE):</span>
-                                    <strong className="text-slate-700 dark:text-slate-200 font-bold">{bioenergetics.tdee} kcal</strong>
+                                <span className="inline-flex items-center gap-1 tabular-nums">
+                                    <span className="text-[#334155] dark:text-[#CBD5E1]">Gasto Total (TDEE):</span>
+                                    <strong className="text-[#0F172A] dark:text-[#F8FAFC] font-bold tabular-nums">{bioenergetics.tdee} kcal</strong>
                                 </span>
                             )}
                             {bioenergetics.targetKcal && (
                                 <>
                                     <span className="text-slate-300">•</span>
-                                    <span className="inline-flex items-center gap-1">
-                                        <span className="text-slate-400">Meta Calórica:</span>
-                                        <strong className="text-slate-700 dark:text-slate-200 font-bold">{bioenergetics.targetKcal} kcal/día</strong>
+                                    <span className="inline-flex items-center gap-1 tabular-nums">
+                                        <span className="text-[#334155] dark:text-[#CBD5E1]">Meta Calórica:</span>
+                                        <strong className="text-[#0F172A] dark:text-[#F8FAFC] font-bold tabular-nums">{bioenergetics.targetKcal} kcal/día</strong>
                                     </span>
                                 </>
                             )}
                             {bioenergetics.bmr && (
                                 <>
                                     <span className="text-slate-300">•</span>
-                                    <span className="inline-flex items-center gap-1">
-                                        <span className="text-slate-400">TMB:</span>
-                                        <strong className="text-slate-700 dark:text-slate-200 font-bold">{bioenergetics.bmr} kcal</strong>
+                                    <span className="inline-flex items-center gap-1 tabular-nums">
+                                        <span className="text-[#334155] dark:text-[#CBD5E1]">TMB:</span>
+                                        <strong className="text-[#0F172A] dark:text-[#F8FAFC] font-bold tabular-nums">{bioenergetics.bmr} kcal</strong>
                                     </span>
                                 </>
                             )}
                             {(orthomolecularPrescription?.hydrationTargetLiters || bioenergetics.weightKg) && (
                                 <>
                                     <span className="text-slate-300">•</span>
-                                    <span className="inline-flex items-center gap-1">
-                                        <span className="text-slate-400">Hidratación Meta:</span>
-                                        <strong className="text-[#1C75BC] dark:text-[#93C5FD] font-bold">
+                                    <span className="inline-flex items-center gap-1 tabular-nums">
+                                        <span className="text-[#334155] dark:text-[#CBD5E1]">Hidratación Meta:</span>
+                                        <strong className="text-[#1C75BC] dark:text-[#93C5FD] font-bold tabular-nums">
                                             {orthomolecularPrescription?.hydrationTargetLiters || Math.min(3.2, Math.max(1.8, Number((((Number(bioenergetics.weightKg) || 70) * 32) / 1000).toFixed(1))))} L/día
                                         </strong>
                                     </span>
@@ -1051,7 +1177,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                             {bioenergetics.equationUsed && (
                                 <>
                                     <span className="text-slate-300">•</span>
-                                    <span className="text-slate-400 text-[10px]">Fórmula: {bioenergetics.equationUsed}</span>
+                                    <span className="text-[#334155] dark:text-[#CBD5E1] text-[10px]">Fórmula: {bioenergetics.equationUsed}</span>
                                 </>
                             )}
                         </div>
@@ -1146,28 +1272,28 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                             tomaNumber: 1,
                                             timeSlot: 'Al despertar en ayunas',
                                             formula: '33Plus®',
-                                            dosage: '1 sobre (10 g) disuelto en 300 ml de agua natural o tibia',
+                                            dosage: '1 sobre (10.6 g) disuelto en 300 ml de agua natural o tibia',
                                             clinicalObjective: 'Ignición mitocondrial, oxigenación microvascular y producción limpia de ATP.'
                                         },
                                         {
                                             tomaNumber: 2,
                                             timeSlot: 'A media mañana',
                                             formula: '33Plus®',
-                                            dosage: '1 sobre (10 g) disuelto en 300 ml de agua natural',
+                                            dosage: '1 sobre (10.6 g) disuelto en 300 ml de agua natural',
                                             clinicalObjective: 'Enfoque cognitivo, sensibilidad metabólica y sostén energético diurno.'
                                         },
                                         {
                                             tomaNumber: 3,
                                             timeSlot: 'A media tarde',
                                             formula: '34Plus®',
-                                            dosage: '1 sobre (10 g) disuelto en MÍNIMO 500 ml de agua simple 💧',
+                                            dosage: '1 sobre (11.4 g) disuelto en MÍNIMO 500 ml de agua simple 💧',
                                             clinicalObjective: 'Reparación de barrera mucosa intestinal y equilibrio electrolítico.'
                                         },
                                         {
                                             tomaNumber: 4,
                                             timeSlot: '30 a 60 min antes de dormir',
                                             formula: '34Plus®',
-                                            dosage: '1 sobre (10 g) disuelto en MÍNIMO 500 ml de agua simple 💧',
+                                            dosage: '1 sobre (11.4 g) disuelto en MÍNIMO 500 ml de agua simple 💧',
                                             clinicalObjective: 'Regeneración estructural nocturna y síntesis de colágeno.'
                                         }
                                     ]
@@ -1233,8 +1359,8 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                     </div>
 
                     {/* Pie de Tarjeta Estándar */}
-                    <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 mt-3 flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400 font-medium">ⓘ Prescripción nutricional adaptativa acoplada al Semáforo Clínico de Bioseguridad</span>
+                    <div className="pt-2.5 border-t border-slate-100 dark:border-[#334155] mt-3 flex items-center justify-between text-[10px]">
+                        <span className="text-[#334155] dark:text-[#CBD5E1] font-medium">ⓘ Prescripción nutricional adaptativa acoplada al Semáforo Clínico de Bioseguridad</span>
                     </div>
                 </div>
             </div>

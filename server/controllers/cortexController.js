@@ -1,5 +1,112 @@
 const { db } = require('../db');
 const cryptoVault = require('../utils/cryptoVault');
+const { FORMULA_33PLUS, FORMULA_34PLUS, formatScaledActives } = require('../utils/pharmacopeiaCatalogSSoT');
+
+const SPANISH_LOWER_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e']);
+const COMMON_SPANISH_NAME_ACCENTS = {
+    andres: 'Andrés',
+    jesus: 'Jesús',
+    jose: 'José',
+    maria: 'María',
+    angel: 'Ángel',
+    oscar: 'Óscar',
+    hector: 'Héctor',
+    victor: 'Víctor',
+    cesar: 'César',
+    raul: 'Raúl',
+    ruben: 'Rubén',
+    ivan: 'Iván',
+    adrian: 'Adrián',
+    fabiola: 'Fabiola',
+    monica: 'Mónica',
+    veronica: 'Verónica',
+    sofia: 'Sofía',
+    lucia: 'Lucía',
+    martinez: 'Martínez',
+    gonzalez: 'González',
+    rodriguez: 'Rodríguez',
+    fernandez: 'Fernández',
+    lopez: 'López',
+    perez: 'Pérez',
+    gomez: 'Gómez',
+    sanchez: 'Sánchez',
+    ramirez: 'Ramírez',
+    hernandez: 'Hernández',
+    jimenez: 'Jiménez',
+    gutierrez: 'Gutiérrez',
+    vazquez: 'Vázquez',
+    garcia: 'García',
+    diaz: 'Díaz'
+};
+
+function toSpanishTitleCaseFullName(rawStr) {
+    const clean = String(rawStr || '').replace(/\s+/g, ' ').trim();
+    if (!clean) return '';
+    return clean
+        .split(' ')
+        .map((word, idx) => {
+            const lower = word.toLowerCase();
+            if (idx > 0 && SPANISH_LOWER_PARTICLES.has(lower)) return lower;
+            const plainAscii = lower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (COMMON_SPANISH_NAME_ACCENTS[plainAscii]) {
+                return COMMON_SPANISH_NAME_ACCENTS[plainAscii];
+            }
+            return lower.charAt(0).toUpperCase() + lower.slice(1);
+        })
+        .join(' ');
+}
+
+function composeDeduplicatedFullName(givenRaw, patRaw, matRaw) {
+    const given = String(givenRaw || '').replace(/\s+/g, ' ').trim();
+    const pat = String(patRaw || '').replace(/\s+/g, ' ').trim();
+    const mat = String(matRaw || '').replace(/\s+/g, ' ').trim();
+    const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const parts = [];
+    if (given) parts.push(given);
+    if (pat && !norm(parts.join(' ')).includes(norm(pat))) parts.push(pat);
+    if (mat && !norm(parts.join(' ')).includes(norm(mat))) parts.push(mat);
+    return parts.join(' ').trim();
+}
+
+function formatInstitutionalFullName(patientData) {
+    if (!patientData || typeof patientData !== 'object') return 'Paciente';
+    try {
+        const composedIdent = composeDeduplicatedFullName(
+            patientData.identificacion?.nombres || patientData.identificacion?.nombre_pila || patientData.identificacion?.nombre,
+            patientData.identificacion?.apellidoPaterno,
+            patientData.identificacion?.apellidoMaterno
+        );
+
+        const composedProfile = composeDeduplicatedFullName(
+            patientData.profile?.first_name || patientData.profile?.firstName || patientData.profile?.nombre,
+            patientData.profile?.last_name || patientData.profile?.lastName || patientData.profile?.apellidos,
+            patientData.profile?.second_last_name
+        );
+
+        const validCandidates = [
+            composedIdent,
+            composedProfile,
+            patientData.identificacion?.nombreCompleto,
+            patientData.profile?.fullName,
+            patientData.profile?.name,
+            patientData.identificacion?.nombre,
+            patientData.identityLock?.patientInfo?.full_name,
+            patientData.identityLock?.patientInfo?.name,
+            patientData.fullName,
+            patientData.name
+        ]
+            .map((c) => String(c || '').replace(/\s+/g, ' ').trim())
+            .filter((trimmed) => trimmed && !/^(paciente|usuario|invitado|su\s+beb[ée]|tu\s+beb[ée]|el\s+menor|la\s+menor|lactante|null|undefined|s\/n|---)$/i.test(trimmed));
+
+        if (validCandidates.length > 0) {
+            validCandidates.sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length);
+            return toSpanishTitleCaseFullName(validCandidates[0]);
+        }
+    } catch (_) {
+        // Fallback seguro
+    }
+    return 'Paciente';
+}
 
 const ASSIGNED_CITATION_USER_MAP = {
     '21161': '32071'
@@ -51,6 +158,440 @@ function resolveBackendPatientIsFemale(patientData) {
         '';
     const norm = String(raw ?? '').trim().toUpperCase();
     return norm === '2' || norm === 'F' || norm === 'FEMENINO' || norm === 'FEMALE' || norm === 'MUJER' || norm.startsWith('FEM');
+}
+
+// ============================================================================
+// UTILITARIOS UNIVERSALES SSoTT (EGM-50 + EGM-51 v2): LOGÍSTICA, ADHERENCIA, ALTITUD, 17 RUTAS Y UNIDADES SI
+// ============================================================================
+function translateLogisticsProfile(patientData = {}) {
+    const rawVenue = String(
+        patientData?.logistics_profile?.environment?.venue ||
+        patientData?.logistics?.environment?.venue ||
+        'HOME'
+    ).trim().toUpperCase();
+    const rawCook = String(
+        patientData?.logistics_profile?.cook_type ||
+        patientData?.logistics?.cook_type ||
+        'SELF'
+    ).trim().toUpperCase();
+
+    const venueMap = {
+        HOME: 'Casa',
+        WORK: 'Oficina',
+        STREET: 'Calle / Restaurante'
+    };
+    const cookMap = {
+        STAFF: 'Personal de apoyo en casa',
+        FAMILY: 'Familiar',
+        SELF: 'Preparación propia',
+        BUYING: 'Alimentos preparados externos'
+    };
+
+    return {
+        venueCode: rawVenue,
+        venueLabel: venueMap[rawVenue] || sanitizeClinicalSpanish(rawVenue || 'Casa'),
+        cookCode: rawCook,
+        cookLabel: cookMap[rawCook] || sanitizeClinicalSpanish(rawCook || 'Preparación propia'),
+        dinersCount: Number(patientData?.logistics_profile?.sharing_diners_count || 0) || null
+    };
+}
+
+function detectPriorInstitutionalAdherence(patientData = {}) {
+    try {
+        if (patientData?.history?.supplements_negated === true && !Array.isArray(patientData?.history?.supplements)) {
+            return { hasPriorAdherence: false, matchedFormulas: [], publicSafeLabel: '', durationText: '' };
+        }
+        const rawList = [
+            ...(Array.isArray(patientData?.history?.supplements) ? patientData.history.supplements : []),
+            ...(Array.isArray(patientData?.advanced_supplementation) ? patientData.advanced_supplementation : [])
+        ];
+        if (rawList.length === 0) {
+            return { hasPriorAdherence: false, matchedFormulas: [], publicSafeLabel: '', durationText: '' };
+        }
+
+        const matchedCodes = new Set();
+        const safePublicBrands = new Set();
+        let bestDuration = '';
+        const priorPosologyNotes = [];
+
+        rawList.forEach((entry) => {
+            const rawName = typeof entry === 'object' ? (entry?.name || entry?.supplement || entry?.title || '') : String(entry || '');
+            const normName = String(rawName).toUpperCase();
+            if (!normName || /^(NINGUN[OA]?|NIEGA|NO|N\/A|NULL|UNDEFINED)$/i.test(normName.trim())) return;
+
+            let isInstitutional = false;
+            if (/33\s*PLUS/i.test(normName)) {
+                matchedCodes.add('33PLUS');
+                safePublicBrands.add('33Plus®');
+                isInstitutional = true;
+            }
+            if (/34\s*PLUS/i.test(normName)) {
+                matchedCodes.add('34PLUS');
+                safePublicBrands.add('34Plus®');
+                isInstitutional = true;
+            }
+            if (/MULTISINERGIX/i.test(normName)) {
+                matchedCodes.add('MULTISINERGIX');
+                isInstitutional = true;
+            }
+            if (/AMINOSINERGIX/i.test(normName)) {
+                matchedCodes.add('AMINOSINERGIX');
+                isInstitutional = true;
+            }
+
+            if (isInstitutional && typeof entry === 'object') {
+                const dur = sanitizeClinicalSpanish(String(entry.duration || entry.tiempo || '').trim());
+                if (dur && dur.length > bestDuration.length) bestDuration = dur;
+                const freq = sanitizeClinicalSpanish(String(entry.frequency || entry.dosis || '').trim());
+                if (freq) priorPosologyNotes.push(`${ /33/i.test(normName) ? '33Plus®' : /34/i.test(normName) ? '34Plus®' : 'fórmula institucional' }: ${freq}`);
+            }
+        });
+
+        if (matchedCodes.size === 0) {
+            return { hasPriorAdherence: false, matchedFormulas: [], publicSafeLabel: '', durationText: '' };
+        }
+
+        // Candado Temporal 18-dic-2026: Jamás exponer marcas embargadas en copy visible/exportable
+        const safeBrandsArr = Array.from(safePublicBrands);
+        const publicSafeLabel = safeBrandsArr.length > 0
+            ? joinSpanishList(safeBrandsArr)
+            : 'sus fórmulas nutricionales institucionales';
+
+        return {
+            hasPriorAdherence: true,
+            hasPriorInstitutionalSupplements: true,
+            matchedFormulas: Array.from(matchedCodes),
+            publicSafeLabel,
+            durationText: bestDuration,
+            priorPosologyNotes
+        };
+    } catch (_) {
+        return { hasPriorAdherence: false, hasPriorInstitutionalSupplements: false, matchedFormulas: [], publicSafeLabel: '', durationText: '' };
+    }
+}
+
+function resolvePatientAltitudeMsnm(patientData = {}) {
+    try {
+        const dom = patientData?.domicilio || patientData?.address || {};
+        const ident = patientData?.identificacion || patientData?.profile || {};
+        const explicitCandidates = [
+            dom.altitud_msnm,
+            dom.altitude_msnm,
+            dom.altitud,
+            dom.altitude,
+            dom.elevation_m,
+            dom.msnm,
+            ident.altitud_msnm,
+            ident.altitude_msnm,
+            patientData?.vitals?.altitude_msnm,
+            patientData?.vitals?.altitud_msnm,
+            patientData?.profile?.altitude_msnm,
+            patientData?.profile?.altitud_msnm,
+            patientData?.altitude_msnm,
+            patientData?.msnm
+        ];
+        for (const cand of explicitCandidates) {
+            if (cand !== null && cand !== undefined && String(cand).trim() !== '') {
+                const n = parseFloat(String(cand).replace(/[^0-9.-]/g, ''));
+                if (Number.isFinite(n) && n >= -100 && n <= 5500) {
+                    const msnm = Math.round(n);
+                    return buildAltitudeDescriptor(msnm, dom.municipio || dom.ciudad || ident.municipio || 'Altitud declarada');
+                }
+            }
+        }
+
+        const lat = parseFloat(dom?.coordinates?.lat ?? dom?.lat ?? ident?.lat ?? NaN);
+        const lng = parseFloat(dom?.coordinates?.lng ?? dom?.lng ?? ident?.lng ?? NaN);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            if (lat >= 19.12 && lat <= 19.46 && lng >= -99.85 && lng <= -99.42) {
+                return buildAltitudeDescriptor(2660, 'Valle de Toluca');
+            }
+            if (lat >= 19.20 && lat <= 19.65 && lng >= -99.36 && lng <= -98.88) {
+                return buildAltitudeDescriptor(2240, 'Valle de México');
+            }
+            if (lat >= 20.02 && lat <= 20.22 && lng >= -98.85 && lng <= -98.60) {
+                return buildAltitudeDescriptor(2420, 'Pachuca / Comarca Minera');
+            }
+            if (lat >= 18.95 && lat <= 19.15 && lng >= -98.35 && lng <= -98.10) {
+                return buildAltitudeDescriptor(2135, 'Valle de Puebla');
+            }
+            if (lat >= 20.50 && lat <= 20.70 && lng >= -100.52 && lng <= -100.28) {
+                return buildAltitudeDescriptor(1820, 'Querétaro');
+            }
+            if (lat >= 20.55 && lat <= 20.80 && lng >= -103.50 && lng <= -103.20) {
+                return buildAltitudeDescriptor(1566, 'Guadalajara');
+            }
+        }
+
+        const cp = String(dom.cp || dom.codigoPostal || dom.postal_code || ident.cp || ident.codigoPostal || ident.postal_code || '').trim();
+        if (/^(50\d{3}|520\d{2}|521\d{2})$/.test(cp)) return buildAltitudeDescriptor(2660, 'Valle de Toluca');
+        if (/^(0[1-9]\d{3}|1[0-6]\d{3})$/.test(cp)) return buildAltitudeDescriptor(2240, 'Ciudad de México');
+        if (/^42[01]\d{2}$/.test(cp)) return buildAltitudeDescriptor(2420, 'Pachuca');
+        if (/^423\d{2}$/.test(cp)) return buildAltitudeDescriptor(1640, 'Tasquillo, Hidalgo');
+        if (/^980\d{2}$/.test(cp)) return buildAltitudeDescriptor(2490, 'Zacatecas');
+        if (/^72\d{3}$/.test(cp)) return buildAltitudeDescriptor(2135, 'Puebla');
+        if (/^76[0-2]\d{2}$/.test(cp)) return buildAltitudeDescriptor(1820, 'Querétaro');
+
+        const geoText = normalizeForMatch(
+            `${dom.municipio || ''} ${dom.ciudad || ''} ${dom.estado || ''} ${dom.direccion_capturada_usuario || ''} ${dom.direccion_googlemaps || ''} ${ident.municipio || ''} ${ident.ciudad || ''} ${ident.estado || ''}`
+        );
+        if (/\b(?:toluca|metepec|zinacantepec|lerma|calimaya|almoloya)\b/.test(geoText)) return buildAltitudeDescriptor(2660, 'Valle de Toluca');
+        if (/\b(?:el_alto|la_paz_bolivia)\b/.test(geoText)) return buildAltitudeDescriptor(3640, 'Altiplano Andino');
+        if (/\b(?:cusco|cuzco)\b/.test(geoText)) return buildAltitudeDescriptor(3399, 'Cusco');
+        if (/\b(?:quito)\b/.test(geoText)) return buildAltitudeDescriptor(2850, 'Quito');
+        if (/\b(?:bogota)\b/.test(geoText)) return buildAltitudeDescriptor(2640, 'Sabana de Bogotá');
+        if (/\b(?:zacatecas)\b/.test(geoText)) return buildAltitudeDescriptor(2490, 'Zacatecas');
+        if (/\b(?:pachuca|mineral_de_la_reforma|real_del_monte|tlaxcala|apizaco)\b/.test(geoText)) return buildAltitudeDescriptor(2420, 'Altiplano Central');
+        if (/\b(?:ciudad_de_mexico|cdmx|naucalpan|tlalnepantla|huixquilucan|ecatepec|nezahualcoyotl|texcoco)\b/.test(geoText)) return buildAltitudeDescriptor(2240, 'Valle de México');
+        if (/\b(?:puebla|cholula|atlixco)\b/.test(geoText)) return buildAltitudeDescriptor(2135, 'Valle de Puebla');
+        if (/\b(?:morelia|patzcuaro|aguascalientes|san_luis_potosi|durango|leon|guanajuato|queretaro|tasquillo|ixmiquilpan|saltillo|guadalajara|zapopan|oaxaca)\b/.test(geoText)) {
+            return buildAltitudeDescriptor(1820, 'Altiplano Medio');
+        }
+    } catch (_) {
+        // Fallback seguro a nivel bajo
+    }
+    return buildAltitudeDescriptor(0, 'Nivel basal (< 1,500 msnm)');
+}
+
+function buildAltitudeDescriptor(msnm, regionHint = '') {
+    const safeMsnm = Number.isFinite(msnm) ? Math.max(0, Math.round(msnm)) : 0;
+    if (safeMsnm >= 2400) {
+        return {
+            msnm: safeMsnm,
+            tier: 'ALTA_MONTANA_2400',
+            spo2NormalFloor: 92,
+            hbAltitudeOffset: 1.3,
+            label: `${regionHint ? `${regionHint} • ` : ''}${safeMsnm} msnm (ajuste de altitud >= 2,400 msnm)`
+        };
+    }
+    if (safeMsnm >= 1500) {
+        return {
+            msnm: safeMsnm,
+            tier: 'ALTITUD_MEDIA_1500',
+            spo2NormalFloor: 94,
+            hbAltitudeOffset: 0.5,
+            label: `${regionHint ? `${regionHint} • ` : ''}${safeMsnm} msnm (ajuste de altitud >= 1,500 msnm)`
+        };
+    }
+    return {
+        msnm: safeMsnm,
+        tier: 'NIVEL_MAR_BAJO',
+        spo2NormalFloor: 95,
+        hbAltitudeOffset: 0.0,
+        label: safeMsnm > 0 ? `${regionHint ? `${regionHint} • ` : ''}${safeMsnm} msnm` : 'Nivel basal (< 1,500 msnm)'
+    };
+}
+
+function calculateCkdEpi2021Egfr(creatinineMgDl, ageYears, isFemale) {
+    const scr = Number(creatinineMgDl);
+    const age = Number(ageYears);
+    if (!Number.isFinite(scr) || scr <= 0 || !Number.isFinite(age) || age < 18) return null;
+    const kappa = isFemale ? 0.7 : 0.9;
+    const alpha = isFemale ? -0.241 : -0.302;
+    const sexFactor = isFemale ? 1.012 : 1.0;
+    const minRatio = Math.min(scr / kappa, 1);
+    const maxRatio = Math.max(scr / kappa, 1);
+    const egfr = 142 * Math.pow(minRatio, alpha) * Math.pow(maxRatio, -1.200) * Math.pow(0.9938, age) * sexFactor;
+    return Number(egfr.toFixed(1));
+}
+
+function normalizeInternationalLabUnit(rawNormKey, rawNum, rawUnit = '', itemObj = null) {
+    if (!Number.isFinite(rawNum)) return { value: rawNum, canonicalUnit: rawUnit, converted: false, conversionNote: null };
+    const normKey = normalizeForMatch(rawNormKey || '');
+    const u = String(rawUnit || itemObj?.unit || '')
+        .trim()
+        .toLowerCase()
+        .replace(/μ/g, 'µ')
+        .replace(/\s+/g, '');
+
+    // 1. Glucosa: mmol/L -> mg/dL (* 18.0156), g/L -> mg/dL (* 100)
+    if ((normKey.includes('glucosa') || normKey.includes('glucose')) && !normKey.includes('orina') && !normKey.includes('urine')) {
+        if (u.includes('mmol/l') || u === 'mmol') {
+            const conv = Number((rawNum * 18.0156).toFixed(1));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Glucosa ${rawNum} mmol/L -> ${conv} mg/dL` };
+        }
+        if (u === 'g/l') {
+            const conv = Number((rawNum * 100).toFixed(1));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Glucosa ${rawNum} g/L -> ${conv} mg/dL` };
+        }
+    }
+
+    // 2. Triglicéridos: mmol/L -> mg/dL (* 88.57)
+    if (normKey.includes('triglic') || normKey.includes('triglycer')) {
+        if (u.includes('mmol/l') || u === 'mmol') {
+            const conv = Number((rawNum * 88.57).toFixed(1));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Triglicéridos ${rawNum} mmol/L -> ${conv} mg/dL` };
+        }
+        if (u === 'g/l') {
+            const conv = Number((rawNum * 100).toFixed(1));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Triglicéridos ${rawNum} g/L -> ${conv} mg/dL` };
+        }
+    }
+
+    // 3. Colesterol Total / LDL / HDL / no-HDL: mmol/L -> mg/dL (* 38.67)
+    if (
+        !normKey.includes('relacion') &&
+        !normKey.includes('indice') &&
+        !normKey.includes('ratio') &&
+        (normKey.includes('colesterol') || normKey.includes('cholesterol') || normKey.includes('ldl') || normKey.includes('hdl'))
+    ) {
+        if (u.includes('mmol/l') || u === 'mmol') {
+            const conv = Number((rawNum * 38.67).toFixed(1));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Lípido (${normKey}) ${rawNum} mmol/L -> ${conv} mg/dL` };
+        }
+        if (u === 'g/l') {
+            const conv = Number((rawNum * 100).toFixed(1));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Lípido (${normKey}) ${rawNum} g/L -> ${conv} mg/dL` };
+        }
+    }
+
+    // 4. Creatinina: µmol/L -> mg/dL (/ 88.42)
+    if ((normKey.includes('creatinina') || normKey.includes('creatinine')) && !normKey.includes('relacion') && !normKey.includes('depuracion') && !normKey.includes('clearance')) {
+        if (u.includes('µmol/l') || u.includes('umol/l') || u.includes('mcmol/l') || u === 'µmol' || u === 'umol') {
+            const conv = Number((rawNum / 88.42).toFixed(2));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Creatinina ${rawNum} µmol/L -> ${conv} mg/dL` };
+        }
+        if (u.includes('mmol/l')) {
+            const conv = Number(((rawNum * 1000) / 88.42).toFixed(2));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Creatinina ${rawNum} mmol/L -> ${conv} mg/dL` };
+        }
+    }
+
+    // 5. Ácido úrico: µmol/L -> mg/dL (/ 59.48)
+    if (normKey.includes('urico') || normKey.includes('uric')) {
+        if (u.includes('µmol/l') || u.includes('umol/l') || u.includes('mcmol/l') || u === 'µmol' || u === 'umol') {
+            const conv = Number((rawNum / 59.48).toFixed(2));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Ácido úrico ${rawNum} µmol/L -> ${conv} mg/dL` };
+        }
+        if (u.includes('mmol/l')) {
+            const conv = Number(((rawNum * 1000) / 59.48).toFixed(2));
+            return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Ácido úrico ${rawNum} mmol/L -> ${conv} mg/dL` };
+        }
+    }
+
+    // 6. Urea / BUN: mmol/L -> mg/dL
+    if (normKey === 'urea' && (u.includes('mmol/l') || u === 'mmol')) {
+        const conv = Number((rawNum * 6.006).toFixed(1));
+        return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Urea ${rawNum} mmol/L -> ${conv} mg/dL` };
+    }
+    if (normKey.includes('bun') && !normKey.includes('relacion') && (u.includes('mmol/l') || u === 'mmol')) {
+        const conv = Number((rawNum * 2.801).toFixed(1));
+        return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `BUN ${rawNum} mmol/L -> ${conv} mg/dL` };
+    }
+
+    // 7. Bilirrubina: µmol/L -> mg/dL (/ 17.104)
+    if ((normKey.includes('bilirrubina') || normKey.includes('bilirubin')) && (u.includes('µmol/l') || u.includes('umol/l') || u === 'µmol' || u === 'umol')) {
+        const conv = Number((rawNum / 17.104).toFixed(2));
+        return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Bilirrubina ${rawNum} µmol/L -> ${conv} mg/dL` };
+    }
+
+    // 8. Calcio y Magnesio: mmol/L -> mg/dL
+    if ((normKey.includes('calcio') || normKey.includes('calcium')) && (u.includes('mmol/l') || u === 'mmol')) {
+        const conv = Number((rawNum * 4.008).toFixed(2));
+        return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Calcio ${rawNum} mmol/L -> ${conv} mg/dL` };
+    }
+    if ((normKey.includes('magnesio') || normKey.includes('magnesium')) && (u.includes('mmol/l') || u === 'mmol')) {
+        const conv = Number((rawNum * 2.431).toFixed(2));
+        return { value: conv, canonicalUnit: 'mg/dL', converted: true, conversionNote: `Magnesio ${rawNum} mmol/L -> ${conv} mg/dL` };
+    }
+
+    // 9. Hemoglobina: g/L -> g/dL (/ 10), mmol/L -> g/dL (* 1.611)
+    if ((normKey.includes('hemoglobina') || normKey.includes('hemoglobin')) && !normKey.includes('corp') && !normKey.includes('a1c')) {
+        if (u === 'g/l') {
+            const conv = Number((rawNum / 10).toFixed(2));
+            return { value: conv, canonicalUnit: 'g/dL', converted: true, conversionNote: `Hemoglobina ${rawNum} g/L -> ${conv} g/dL` };
+        }
+        if (u.includes('mmol/l')) {
+            const conv = Number((rawNum * 1.611).toFixed(2));
+            return { value: conv, canonicalUnit: 'g/dL', converted: true, conversionNote: `Hemoglobina ${rawNum} mmol/L -> ${conv} g/dL` };
+        }
+    }
+
+    // 10. Vitamina D (25-OH): nmol/L -> ng/mL (/ 2.496)
+    if ((normKey.includes('vitamina_d') || normKey.includes('vitamin_d') || normKey.includes('25_oh') || normKey.includes('calcidiol')) && u.includes('nmol/l')) {
+        const conv = Number((rawNum / 2.496).toFixed(1));
+        return { value: conv, canonicalUnit: 'ng/mL', converted: true, conversionNote: `Vitamina D ${rawNum} nmol/L -> ${conv} ng/mL` };
+    }
+
+    // 11. PCR-us: mg/dL -> mg/L (* 10)
+    if (normKey.includes('pcr') || normKey.includes('proteina_c_reactiva') || normKey.includes('crp')) {
+        if (u === 'mg/dl') {
+            const conv = Number((rawNum * 10).toFixed(2));
+            return { value: conv, canonicalUnit: 'mg/L', converted: true, conversionNote: `PCR ${rawNum} mg/dL -> ${conv} mg/L` };
+        }
+        return { value: rawNum, canonicalUnit: 'mg/L', converted: false, conversionNote: null };
+    }
+
+    return { value: rawNum, canonicalUnit: rawUnit, converted: false, conversionNote: null };
+}
+
+function resolveActiveClinicalRoutes(patientData = {}, ageYears = 35, isLactanteExplicit = false, isPediatricExplicit = false) {
+    const rawTokens = [
+        patientData?.clinical_context?.primary_route,
+        ...(Array.isArray(patientData?.clinical_context?.routes) ? patientData.clinical_context.routes : []),
+        ...(Array.isArray(patientData?.activeRoutes) ? patientData.activeRoutes : [patientData?.activeRoutes]),
+        ...(Array.isArray(patientData?.clinical_routes) ? patientData.clinical_routes : [patientData?.clinical_routes]),
+        patientData?.history?.primaryRoute,
+        patientData?.route,
+        patientData?.profile?.goal,
+        patientData?.motivo_consulta,
+        patientData?.motivo,
+        patientData?.reason_for_consultation,
+        patientData?.clinical_context?.patient_quote,
+        patientData?.clinical_context?.specific_ailment,
+        ...(Array.isArray(patientData?.history?.pathologies)
+            ? patientData.history.pathologies.map((p) => (typeof p === 'object' ? (p.name || p.patologia) : p))
+            : []),
+        JSON.stringify(patientData?.history?.special_context || '')
+    ]
+        .filter(Boolean)
+        .map((x) => String(x).toUpperCase())
+        .join(' | ');
+
+    const routes = new Set();
+    if (ageYears < 18 || isLactanteExplicit || isPediatricExplicit || /GOAL_PEDIATRICS|PEDIATR|CRECIMIENTO\s+Y\s+DESARROLLO/.test(rawTokens)) {
+        routes.add('GOAL_PEDIATRICS'); // Ruta 5
+    }
+    if (
+        Boolean(patientData?.physio?.is_pregnant || patientData?.physio?.is_lactating || patientData?.clinical_context?.isPregnant) ||
+        /GOAL_PREGNANCY|EMBARAZ|GESTACI[ÓO]N|LACTANCIA\s+MATERNA|PUERPERIO/.test(rawTokens)
+    ) {
+        routes.add('GOAL_PREGNANCY'); // Ruta 6
+    }
+    if (/GOAL_MENTAL_HEALTH|\bTCA\b|ANOREXIA|BULIMIA|ATRAC[ÓO]N|ORTOREXIA|VIGOREXIA|DISMORFIA|TRASTORNO\s+(?:DE\s+LA\s+)?CONDUCTA\s+ALIMENTARIA|SEGURIDAD\s+CONDUCTUAL/.test(rawTokens)) {
+        routes.add('GOAL_MENTAL_HEALTH'); // Ruta 9
+    }
+    if (/GOAL_PALLIATIVE|CUIDADOS?\s+PALIATIV|SOPORTE\s+PALIATIV|TERMINAL/.test(rawTokens)) {
+        routes.add('GOAL_PALLIATIVE'); // Ruta 14
+    }
+    if (/GOAL_MUSCLE|GANAR\s+M[ÚU]SCULO|HIPERTROFIA|ATLETA|ALTO\s+RENDIMIENTO|DEPORTE\s+DE\s+FUERZA|FISICOCULTUR|HALTEROFILIA|CROSSFIT/.test(rawTokens)) {
+        routes.add('GOAL_MUSCLE'); // Ruta 3
+    }
+    if (ageYears >= 65 || /GOAL_GERIATRICS|GERIATR/.test(rawTokens)) routes.add('GOAL_GERIATRICS');
+    if (/GOAL_WEIGHT_LOSS|BAJAR\s+DE\s+PESO|SOBREPESO/.test(rawTokens)) routes.add('GOAL_WEIGHT_LOSS');
+    if (/GOAL_LONGEVITY|LONGEVIDAD|BIOHACKING/.test(rawTokens)) routes.add('GOAL_LONGEVITY');
+    if (/GOAL_MENOPAUSE|CLIMATERIO|MENOPAUSIA/.test(rawTokens)) routes.add('GOAL_MENOPAUSE');
+    if (/GOAL_BARIATRIC|BARI[ÁA]TRIC/.test(rawTokens)) routes.add('GOAL_BARIATRIC');
+    if (/GOAL_RENAL|NEFROPAT|SALUD\s+RENAL/.test(rawTokens)) routes.add('GOAL_RENAL');
+    if (/GOAL_ONCOLOGY|ONCOLOG/.test(rawTokens)) routes.add('GOAL_ONCOLOGY');
+    if (/GOAL_IMMUNE|INMUNODEFICIENCIA|\bVIH\b/.test(rawTokens)) routes.add('GOAL_IMMUNE');
+    if (/GOAL_ALLERGIES|ANAFILAXIA|ALERGIAS\s+GRAVES/.test(rawTokens)) routes.add('GOAL_ALLERGIES');
+    if (/GOAL_ADDICTIONS|ADICCIONES/.test(rawTokens)) routes.add('GOAL_ADDICTIONS');
+    if (/GOAL_DISABILITY|DISCAPACIDAD|REHABILITACI[ÓO]N/.test(rawTokens)) routes.add('GOAL_DISABILITY');
+    if (routes.size === 0) routes.add('GOAL_CLINICAL');
+
+    let safetyGateReasonCode = null;
+    if (routes.has('GOAL_PEDIATRICS')) safetyGateReasonCode = 'PEDIATRICS_GROWTH_PERCENTILES';
+    else if (routes.has('GOAL_PREGNANCY')) safetyGateReasonCode = 'PREGNANCY_LACTATION_PROTECTION';
+    else if (routes.has('GOAL_MENTAL_HEALTH')) safetyGateReasonCode = 'TCA_BEHAVIORAL_SAFETY';
+    else if (routes.has('GOAL_PALLIATIVE')) safetyGateReasonCode = 'PALLIATIVE_COMFORT_CARE';
+
+    return {
+        activeRoutes: Array.from(routes),
+        isSensitiveSafetyRoute: Boolean(safetyGateReasonCode),
+        safetyGateReasonCode,
+        isMuscleOrSportRoute: routes.has('GOAL_MUSCLE')
+    };
 }
 
 function sanitizeLegacyTelemetryInPatientData(rawPatientData) {
@@ -371,119 +912,65 @@ const CIE10_CLINICAL_DICTIONARY = {
     R89_9: { code: 'R89.9', label: 'Hallazgo anormal no especificado en muestras de otros órganos, sistemas y tejidos' }
 };
 
+const IFM_FUNCTIONAL_AXIS_DESCRIPTORS = Object.freeze({
+    NODO_1_ASIMILACION: { code: 'IFM-01', label: 'Eje Funcional de Asimilación, Digestión y Barrera Mucosa' },
+    NODO_2_BIOTRANSFORMACION: { code: 'IFM-02', label: 'Eje Funcional de Biotransformación y Depuración Hepatorrenal' },
+    NODO_3_ENERGIA: { code: 'IFM-03', label: 'Eje Funcional Bioenergético Mitocondrial y Transporte Lipídico-Glucémico' },
+    NODO_4_COMUNICACION: { code: 'IFM-04', label: 'Eje Funcional de Comunicación Neuroendocrina y Ritmo Circadiano' },
+    NODO_5_TRANSPORTE: { code: 'IFM-05', label: 'Eje Funcional de Transporte Cardiovascular y Reología Microvascular' },
+    NODO_6_DEFENSA: { code: 'IFM-06', label: 'Eje Funcional de Defensa Inmunológica y Reparación Celular' },
+    NODO_7_ESTRUCTURAL: { code: 'IFM-07', label: 'Eje Funcional de Integridad Estructural, Colágeno y Soporte Osteomuscular' }
+});
+
 /**
- * Asigna el código CIE-10 determinista según las anomalías del Nodo IFM.
- * Si existen anomalías pero ninguna coincide con una regla exacta, aplica el fallback
- * R79.9 (Química Sanguínea/OCR) o R89.9 (Electret/Somatoscopía) con estado REQUIERE_REVISIÓN.
+ * Extrae exclusivamente códigos CIE-10 formalmente acreditados por diagnóstico médico previo en la anamnesis.
+ * PROHIBIDO estampar códigos CIE-10 patológicos automáticos (NOM-004 / COFEPRIS).
  */
-function resolveCie10ForNode(nodeId, anomalies, isLactanteExplicit = false) {
+function extractAccreditedMedicalCie10(patientData, nodeId) {
+    try {
+        const rawPathologies = patientData?.history?.pathologies || patientData?.antecedentesPersonales || [];
+        if (!Array.isArray(rawPathologies) || rawPathologies.length === 0) return null;
+        for (const p of rawPathologies) {
+            if (!p || typeof p !== 'object') continue;
+            const explicitCie = String(p.accredited_cie10 || p.cie10_acreditado || '').trim().toUpperCase();
+            if (/^[A-Z]\d{2}(?:\.\d{1,2})?$/.test(explicitCie) && p.nodeId === nodeId) {
+                return explicitCie;
+            }
+        }
+    } catch (_) {
+        // Sin CIE-10 acreditado
+    }
+    return null;
+}
+
+function resolveFunctionalAxisForNode(nodeId, anomalies, patientData = null, isLactanteExplicit = false) {
+    const baseAxis = IFM_FUNCTIONAL_AXIS_DESCRIPTORS[nodeId] || {
+        code: 'IFM-00',
+        label: 'Eje Funcional Sistémico Integrado'
+    };
+    const accreditedCie10 = extractAccreditedMedicalCie10(patientData, nodeId);
+
     if (!Array.isArray(anomalies) || anomalies.length === 0) {
-        if (isLactanteExplicit && nodeId === 'NODO_1_ASIMILACION') {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.Z00_1.code, label: CIE10_CLINICAL_DICTIONARY.Z00_1.label, validation_status: 'VALIDADO' };
-        }
-        return { cie10: CIE10_CLINICAL_DICTIONARY.Z00_0.code, label: CIE10_CLINICAL_DICTIONARY.Z00_0.label, validation_status: 'VALIDADO' };
-    }
-
-    const joined = anomalies.map(a => `${a.label || ''} ${a.detail || ''} ${a.code || ''}`).join(' ').toUpperCase();
-
-    if (nodeId === 'NODO_1_ASIMILACION') {
-        if (joined.includes('ESTREÑIMIENTO') || joined.includes('BRISTOL 1') || joined.includes('BRISTOL 2')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.K59_0.code, label: CIE10_CLINICAL_DICTIONARY.K59_0.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('PEPSINA') || joined.includes('REFLUJO') || joined.includes('ACIDEZ') || joined.includes('GÁSTRIC')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.K30.code, label: CIE10_CLINICAL_DICTIONARY.K30.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('SABURRA') || joined.includes('DISBIOSIS') || joined.includes('DISTENSIÓN') || joined.includes('COLITIS') || joined.includes('ABSORCIÓN') || joined.includes('INTESTIN')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.K90_9.code, label: CIE10_CLINICAL_DICTIONARY.K90_9.label, validation_status: 'VALIDADO' };
-        }
-    }
-
-    if (nodeId === 'NODO_2_BIOTRANSFORMACION') {
-        if (joined.includes('HEPÁT') || joined.includes('HIGADO') || joined.includes('HÍGADO') || joined.includes('TRANSAMINASA') || joined.includes('ALT') || joined.includes('AST') || joined.includes('GGT') || joined.includes('BILIRRUBINA') || joined.includes('METALES')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.K76_0.code, label: CIE10_CLINICAL_DICTIONARY.K76_0.label, validation_status: 'VALIDADO' };
-        }
-    }
-
-    if (nodeId === 'NODO_3_ENERGIA') {
-        if ((joined.includes('COLESTEROL') || joined.includes('LDL')) && joined.includes('TRIGLIC')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.E78_2.code, label: CIE10_CLINICAL_DICTIONARY.E78_2.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('SDLDL') || joined.includes('ATEROGÉNIC') || joined.includes('ATEROGENIC') || joined.includes('NO-HDL') || joined.includes('CRISTAL DE COLESTEROL')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.E78_5.code, label: CIE10_CLINICAL_DICTIONARY.E78_5.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('COLESTEROL') || joined.includes('LDL')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.E78_0.code, label: CIE10_CLINICAL_DICTIONARY.E78_0.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('GLUCOSA') || joined.includes('INSULINA') || joined.includes('HBA1C')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.R73_0.code, label: CIE10_CLINICAL_DICTIONARY.R73_0.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('COENZIMA') || joined.includes('ATP') || joined.includes('MITOCONDR')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.E78_5.code, label: CIE10_CLINICAL_DICTIONARY.E78_5.label, validation_status: 'VALIDADO' };
-        }
-    }
-
-    if (nodeId === 'NODO_4_COMUNICACION') {
-        if (joined.includes('TIROID') || joined.includes('TSH') || joined.includes('T3') || joined.includes('T4')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.E03_9.code, label: CIE10_CLINICAL_DICTIONARY.E03_9.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('SUEÑO') || joined.includes('INSOMNIO') || joined.includes('DESPERTAR')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.G47_0.code, label: CIE10_CLINICAL_DICTIONARY.G47_0.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('ESTRÉS') || joined.includes('CORTISOL') || joined.includes('ANSIEDAD') || joined.includes('HORMON')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.E07_9.code, label: CIE10_CLINICAL_DICTIONARY.E07_9.label, validation_status: 'VALIDADO' };
-        }
-    }
-
-    if (nodeId === 'NODO_5_TRANSPORTE') {
-        if (joined.includes('VISCOSIDAD') || joined.includes('REOLÓGIC') || joined.includes('RANINAS') || joined.includes('ESTASIS') || joined.includes('TORTUOSIDAD')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.R70_1.code, label: CIE10_CLINICAL_DICTIONARY.R70_1.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('PRESIÓN') || joined.includes('HIPERTENSIÓN') || joined.includes('RESISTENCIA VASCULAR') || joined.includes('TPR')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.I10.code, label: CIE10_CLINICAL_DICTIONARY.I10.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('PALIDEZ') || joined.includes('HEMOGLOBINA') || joined.includes('HIERRO') || joined.includes('FERRITINA')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.D50_9.code, label: CIE10_CLINICAL_DICTIONARY.D50_9.label, validation_status: 'VALIDADO' };
-        }
-    }
-
-    if (nodeId === 'NODO_6_DEFENSA') {
-        if (joined.includes('ERITEMA') || joined.includes('MICROPAPULAR') || joined.includes('MÁCULA') || joined.includes('MACULA') || joined.includes('CUTÁNEO') || joined.includes('PERIFOLICULAR') || joined.includes('EDEMA CUTÁNEO')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.L53_9.code, label: CIE10_CLINICAL_DICTIONARY.L53_9.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('BASÓFILO') || joined.includes('BASOFILO') || joined.includes('EOSINÓFILO') || joined.includes('LEUCOCITO') || joined.includes('LINFOCITO')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.D72_8.code, label: CIE10_CLINICAL_DICTIONARY.D72_8.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('ALERGIA') || joined.includes('HISTAMIN') || joined.includes('IGE')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.T78_4.code, label: CIE10_CLINICAL_DICTIONARY.T78_4.label, validation_status: 'VALIDADO' };
-        }
-    }
-
-    if (nodeId === 'NODO_7_ESTRUCTURAL') {
-        if (joined.includes('OSTEOCALCINA') || joined.includes('CALCIFICACIÓN') || joined.includes('CALCIO') || joined.includes('ÓSEA') || joined.includes('COLÁGENO')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.M81_8.code, label: CIE10_CLINICAL_DICTIONARY.M81_8.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('IMC') || joined.includes('GRASA') || joined.includes('OBESIDAD') || joined.includes('SOBREPESO')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.E66_9.code, label: CIE10_CLINICAL_DICTIONARY.E66_9.label, validation_status: 'VALIDADO' };
-        }
-        if (joined.includes('DOLOR') || joined.includes('FASCIA') || joined.includes('MÚSCULO') || joined.includes('ARTICULAR')) {
-            return { cie10: CIE10_CLINICAL_DICTIONARY.M79_1.code, label: CIE10_CLINICAL_DICTIONARY.M79_1.label, validation_status: 'VALIDADO' };
-        }
-    }
-
-    // REGLA DE FALLBACK DETERMINISTA PARA CASOS BORDE (Cero pérdida silenciosa)
-    const hasLabOcrAnomaly = anomalies.some(a => a.source === 'OCR_LAB');
-    if (hasLabOcrAnomaly) {
         return {
-            cie10: CIE10_CLINICAL_DICTIONARY.R79_9.code,
-            label: CIE10_CLINICAL_DICTIONARY.R79_9.label,
-            validation_status: 'REQUIERE_REVISIÓN'
+            cie10: accreditedCie10,
+            accredited_cie10: accreditedCie10,
+            functionalCode: baseAxis.code,
+            label: isLactanteExplicit && nodeId === 'NODO_1_ASIMILACION'
+                ? 'Seguimiento Funcional de Crecimiento y Maduración Digestiva Pediátrica'
+                : 'Equilibrio Funcional Conservado (Homeostasis)',
+            validation_status: 'VALIDADO',
+            requires_clinical_review: false
         };
     }
 
+    const hasUnmappedSource = anomalies.some((a) => Boolean(a.requiresOntologyReview));
     return {
-        cie10: CIE10_CLINICAL_DICTIONARY.R89_9.code,
-        label: CIE10_CLINICAL_DICTIONARY.R89_9.label,
-        validation_status: 'REQUIERE_REVISIÓN'
+        cie10: accreditedCie10,
+        accredited_cie10: accreditedCie10,
+        functionalCode: baseAxis.code,
+        label: baseAxis.label,
+        validation_status: 'VALIDADO',
+        requires_clinical_review: hasUnmappedSource
     };
 }
 
@@ -599,22 +1086,67 @@ function calculatePrecisionBioenergetics(rawPatientData, ageYears, ageMonths, is
 
     bmr = Math.max(isLactanteExplicit ? 450 : 950, Math.round(bmr));
 
-    // Factor de Actividad Física (PAL) cruzando Fase 1 y Fase 11
+    // Factor de Actividad Física (PAL) y Gasto por Ejercicio (EAT) cruzando Fase 11 SSoTT (.TCX + NEAT) y Fase 1
+    const lpAct = patientData?.lifestyle_profile?.activity || patientData?.clinical_context?.activity?.exercise || {};
+    const tcxMeta = lpAct?.source_type === 'TELEMETRY_TCX' ? (lpAct?.telemetry_metadata || null) : null;
+    const neatUpper = String(lpAct?.neat_level || '').toUpperCase();
+
     const actStr = String(
         patientData?.activity_level ||
         patientData?.physical_activity ||
         patientData?.habits?.activity_level ||
         patientData?.profile?.activity_level ||
-        'LIGERO'
+        (neatUpper === 'HEAVY' ? 'INTENSO' : neatUpper === 'MODERATE' ? 'MODERADO' : neatUpper === 'SEDENTARY' ? 'SEDENTARIO' : 'LIGERO')
     ).toUpperCase();
 
     let pal = 1.375;
-    if (isLactanteExplicit) pal = 1.25;
-    else if (actStr.includes('SEDENTARIO') || actStr.includes('NULA')) pal = 1.2;
-    else if (actStr.includes('MODERAD') || actStr.includes('ACTIVO')) pal = 1.55;
-    else if (actStr.includes('INTENS') || actStr.includes('ATLETA') || actStr.includes('ALTO')) pal = 1.725;
+    if (isLactanteExplicit) {
+        pal = 1.25;
+    } else if (neatUpper) {
+        if (neatUpper === 'SEDENTARY') pal = 1.2;
+        else if (neatUpper === 'LIGHT') pal = 1.375;
+        else if (neatUpper === 'MODERATE') pal = 1.55;
+        else if (neatUpper === 'HEAVY') pal = 1.725;
+    } else {
+        if (actStr.includes('SEDENTARIO') || actStr.includes('NULA')) pal = 1.2;
+        else if (actStr.includes('MODERAD') || actStr.includes('ACTIVO')) pal = 1.55;
+        else if (actStr.includes('INTENS') || actStr.includes('ATLETA') || actStr.includes('ALTO')) pal = 1.725;
+    }
 
-    const tdee = Math.round(bmr * pal);
+    let dailyTelemetryEatKcal = 0;
+    let weeklyExerciseMinutes = Number(lpAct?.weekly_minutes || 0);
+    if (!isLactanteExplicit && tcxMeta && !tcxMeta.preview_pending_confirm) {
+        const wkDays = Number(tcxMeta.weekly_days) > 0 ? Number(tcxMeta.weekly_days) : (Number(tcxMeta.unique_days_count) >= 3 ? Math.min(7, Number(tcxMeta.unique_days_count)) : 0);
+        const wkCal = Number(tcxMeta.weekly_calories) > 0
+            ? Number(tcxMeta.weekly_calories)
+            : (wkDays > 0 ? Number(tcxMeta.daily_calories || tcxMeta.total_calories || 0) * wkDays : 0);
+        if (wkCal > 0) {
+            dailyTelemetryEatKcal = Math.round(wkCal / 7);
+        }
+        if (weeklyExerciseMinutes === 0 && wkDays > 0) {
+            weeklyExerciseMinutes = Math.round(Number(tcxMeta.daily_minutes || tcxMeta.total_minutes || 0) * wkDays);
+        }
+    } else if (!isLactanteExplicit && weeklyExerciseMinutes === 0 && Array.isArray(lpAct?.log)) {
+        lpAct.log.forEach(item => {
+            if (item && typeof item === 'object') {
+                const dur = Number(item.duration || item.durationMinutes || 0);
+                const freq = Number(item.weekly_days || item.frequency || 0);
+                if (Number(item.weekly_minutes) > 0) weeklyExerciseMinutes += Number(item.weekly_minutes);
+                else if (dur > 0 && freq > 0) weeklyExerciseMinutes += Math.round(dur * freq);
+            }
+        });
+    }
+
+    if (!isLactanteExplicit && dailyTelemetryEatKcal === 0 && weeklyExerciseMinutes > 0) {
+        if (weeklyExerciseMinutes >= 300) pal = Math.max(pal, 1.725);
+        else if (weeklyExerciseMinutes >= 150) pal = Math.max(pal, 1.55);
+        else if (weeklyExerciseMinutes >= 60) pal = Math.max(pal, 1.375);
+    }
+
+    const tdee = Math.round((bmr * pal) + dailyTelemetryEatKcal);
+    if (dailyTelemetryEatKcal > 0 && bmr > 0) {
+        pal = Number((tdee / bmr).toFixed(3));
+    }
 
     // Determinación del Objetivo Calórico (Target)
     let targetKcal = tdee;
@@ -645,6 +1177,7 @@ function calculatePrecisionBioenergetics(rawPatientData, ageYears, ageMonths, is
     }
 
     return {
+        age: ageYears,
         bmr,
         tdee,
         targetKcal,
@@ -754,21 +1287,39 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
             `Voz del Paciente: "${patientQuote}". Afección específica: ${specificAilment}. Ancla emocional: ${emotionalAnchor}`, 'MODERADA');
     }
 
-    // B. INGESTA DE FASE 4: ANTECEDENTES HEREDOFAMILIARES (AHF - Carga Genética)
+    // B. INGESTA DE FASE 4: ANTECEDENTES HEREDOFAMILIARES (AHF - Vigilancia Epigenética Deduplicada)
     const rawFamily = patientData?.history?.family_structured || patientData?.history?.family_history || [];
     const familyHistory = Array.isArray(rawFamily) ? rawFamily : [];
-    familyHistory.forEach(item => {
-        const disease = (typeof item === 'object' ? item.disease || item.condicion : item) || '';
-        const kin = (typeof item === 'object' ? item.relationship || item.parentesco : 'Familiar') || '';
-        if (disease) {
-            const upper = String(disease).toUpperCase();
-            if (upper.includes('DIABET') || upper.includes('GLUCOSA') || upper.includes('METABOL')) {
-                pushAnomaly('NODO_3_ENERGIA', 'AHF', `Carga Familiar: ${disease} (${kin})`, 'Riesgo genético metabólico y disglucemia', 'ALTA');
-            } else if (upper.includes('HIPERTENSI') || upper.includes('INFARTO') || upper.includes('CARDIO')) {
-                pushAnomaly('NODO_5_TRANSPORTE', 'AHF', `Carga Familiar: ${disease} (${kin})`, 'Predisposición a rigidez endotelial y riesgo cardiovascular', 'ALTA');
-            } else if (upper.includes('CANCER') || upper.includes('AUTOINMUNE') || upper.includes('TIROID')) {
-                pushAnomaly('NODO_6_DEFENSA', 'AHF', `Carga Familiar: ${disease} (${kin})`, 'Vulnerabilidad inflamatoria / inmunológica', 'MODERADA');
-            }
+    const familyByCondition = new Map();
+    familyHistory.forEach((item) => {
+        const disease = sanitizeClinicalSpanish(
+            (typeof item === 'object' ? (item?.condition || item?.disease || item?.condicion || item?.detail) : item) || ''
+        ).trim();
+        const kin = sanitizeClinicalSpanish(
+            (typeof item === 'object' ? (item?.relative || item?.relationship || item?.parentesco) : 'Familiar') || 'Familiar'
+        ).trim();
+        if (!disease || /^(ningun[oa]?|niega|negad[oa]s?|no|n\/a|null|undefined)$/i.test(disease)) return;
+        const normDiseaseKey = normalizeForMatch(disease);
+        if (!familyByCondition.has(normDiseaseKey)) {
+            familyByCondition.set(normDiseaseKey, { label: disease, relatives: new Set() });
+        }
+        if (kin) familyByCondition.get(normDiseaseKey).relatives.add(kin);
+    });
+
+    const epigeneticSurveillance = [];
+    familyByCondition.forEach(({ label: disease, relatives }) => {
+        const kinList = Array.from(relatives).join(', ') || 'Familiar';
+        const upper = disease.toUpperCase();
+        const entrySummary = `${disease} (${kinList})`;
+        epigeneticSurveillance.push(entrySummary);
+        if (upper.includes('DIABET') || upper.includes('GLUCOSA') || upper.includes('METABOL') || upper.includes('OBESIDAD') || upper.includes('SOBREPESO') || upper.includes('DISLIPIDEMIA') || upper.includes('COLESTEROL')) {
+            pushAnomaly('NODO_3_ENERGIA', 'AHF_EPIGENETIC', `Vigilancia Epigenética Heredo-Familiar: ${disease} (${kinList})`, 'Antecedente familiar preventivo sin equivalencia a patología activa; guía prevención nutricional', 'LEVE');
+        } else if (upper.includes('HIPERTENSI') || upper.includes('INFARTO') || upper.includes('CARDIO') || upper.includes('EMBOLIA') || upper.includes('VASCULAR')) {
+            pushAnomaly('NODO_5_TRANSPORTE', 'AHF_EPIGENETIC', `Vigilancia Epigenética Heredo-Familiar: ${disease} (${kinList})`, 'Antecedente familiar cardiovascular en seguimiento preventivo endotelial', 'LEVE');
+        } else if (upper.includes('RENAL') || upper.includes('RIÑÓN') || upper.includes('RINON') || upper.includes('HEPÁT') || upper.includes('HEPAT')) {
+            pushAnomaly('NODO_2_BIOTRANSFORMACION', 'AHF_EPIGENETIC', `Vigilancia Epigenética Heredo-Familiar: ${disease} (${kinList})`, 'Antecedente familiar hepatorrenal en vigilancia preventiva de hidratación', 'LEVE');
+        } else if (upper.includes('CANCER') || upper.includes('CÁNCER') || upper.includes('AUTOINMUNE') || upper.includes('TIROID')) {
+            pushAnomaly('NODO_6_DEFENSA', 'AHF_EPIGENETIC', `Vigilancia Epigenética Heredo-Familiar: ${disease} (${kinList})`, 'Antecedente familiar inmunológico/endocrino en vigilancia preventiva antioxidante', 'LEVE');
         }
     });
 
@@ -826,14 +1377,36 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
             `Tabaco: ${toxic.smoking ? 'Activo' : 'No'}. Alcohol: ${toxic.alcohol_frequency || 'Ocasional'}`, 'MODERADA');
     }
 
-    // F. INGESTA DE FASES 12 Y 13: PREFERENCIAS, AVERSIÓN Y RESTRICCIONES ALIMENTARIAS
+    // F. INGESTA DE FASES 7, 8, 12, 13 Y 14: ALERGIAS, INTOLERANCIAS, AVERSIÓN Y PREFERENCIAS ALIMENTARIAS
     const nutritionPrefs = patientData?.nutrition?.preferences || {};
-    const dietEval = patientData?.evaluacionDietetica?.preferencias || {};
-    const rawExcluded = Array.isArray(nutritionPrefs.excluded_ingredients)
-        ? nutritionPrefs.excluded_ingredients
-        : (Array.isArray(nutritionPrefs.dislikes) ? nutritionPrefs.dislikes : []);
-    const textAversions = dietEval.aversiones ? String(dietEval.aversiones).split(/[,;]/).map(s => s.trim()) : [];
-    const combinedExclusions = Array.from(new Set([...rawExcluded, ...textAversions])).filter(Boolean);
+    const altDietaryPrefs = patientData?.dietary_preferences || patientData?.preferencias_alimentarias || patientData?.clinical_context?.nutrition?.preferences || {};
+    const dietEval = patientData?.evaluacionDietetica?.preferencias || patientData?.evaluacionDietetica || {};
+    const digIntol = patientData?.digestive_profile?.intolerances || patientData?.history?.intolerances || [];
+    const digTriggers = patientData?.digestive_profile?.trigger_foods || [];
+    const foodAllergyItems = (patientData?.history?.allergies?.food || []).map((a) =>
+        typeof a === 'object' ? (a.agent || a.name || '') : String(a || '')
+    );
+    const splitCsvList = (raw) => {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw.map((x) => String(typeof x === 'object' ? (x.name || x.label || '') : x || '').trim());
+        return String(raw).split(/[,;|•\n]/).map((s) => s.trim());
+    };
+    const combinedExclusions = Array.from(new Set([
+        ...foodAllergyItems,
+        ...splitCsvList(digIntol),
+        ...splitCsvList(digTriggers),
+        ...splitCsvList(nutritionPrefs.excluded_ingredients),
+        ...splitCsvList(nutritionPrefs.dislikes),
+        ...splitCsvList(nutritionPrefs.aversions),
+        ...splitCsvList(altDietaryPrefs.excluded_ingredients),
+        ...splitCsvList(altDietaryPrefs.dislikes),
+        ...splitCsvList(altDietaryPrefs.aversions),
+        ...splitCsvList(dietEval.aversiones),
+        ...splitCsvList(dietEval.intolerancias),
+        ...splitCsvList(patientData?.r24h?.aversions)
+    ]))
+        .map((s) => cleanClinicalLabel(s))
+        .filter((clean) => clean && !/^(ninguna?|ninguno|niega|negad[oa]s?|n\/a|na|sin\s+alergias?|sin\s+exclusiones?|sin\s+restricciones?|no|no\s+refiere|null|undefined|-+)$/i.test(clean));
 
     // G. INGESTA DE FASE 14: CRONONUTRICIÓN R24H (Ventanas de Ayuno y Horarios Nocturnos)
     const crono = patientData?.nutrition?.crononutricion || patientData?.crononutricion || patientData?.r24h || {};
@@ -862,28 +1435,60 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
             'Frecuencia elevada de azúcares simples; riesgo de esteatosis hepática y resistencia periférica a la insulina', 'ALTA');
     }
 
-    // I. INGESTA DE FASES 16 Y 17: ANTROPOMETRÍA, PRESIÓN ARTERIAL Y GLUCOSA CAPILAR
+    // I. INGESTA DE FASES 16 Y 17: ANTROPOMETRÍA FÍSICA PREFERENTE, ALTITUD (MSNM), PRESIÓN ARTERIAL Y GLUCOSA CAPILAR
+    const isFemaleSerum = resolveBackendPatientIsFemale(patientData);
+    const verifiedSerumAge = resolveVerifiedPatientAge(patientData, 35);
+    const altitudeInfo = resolvePatientAltitudeMsnm(patientData);
+    const routeContext = resolveActiveClinicalRoutes(patientData, verifiedSerumAge.ageYears, isLactanteExplicit, verifiedSerumAge.isPediatricVerified);
     const vitals = patientData?.vitals || patientData?.signosVitales || {};
     const biometria = patientData?.biometria || {};
-    const bp = vitals.bloodPressure || {};
+    const bp = vitals.blood_pressure || vitals.bloodPressure || {};
     const sys = parseInt(bp.systolic || vitals.ta_sistolica || vitals.ta?.split('/')[0] || 0, 10);
     const dia = parseInt(bp.diastolic || vitals.ta_diastolica || vitals.ta?.split('/')[1] || 0, 10);
-    const glu = parseFloat(vitals.glucose || vitals.glucosa || 0);
-    const waist = parseFloat(biometria.cintura || patientData?.cintura || 0);
-    const hip = parseFloat(biometria.cadera || patientData?.cadera || 0);
-    const icc = (waist > 0 && hip > 0) ? parseFloat((waist / hip).toFixed(2)) : null;
+    const gluRaw = parseFloat(vitals.glucose || vitals.glucosa || 0);
+    const gluUnit = String(vitals.glucose_unit || vitals.unidad_glucosa || '').toLowerCase();
+    const glu = gluRaw > 0 && gluUnit.includes('mmol') ? Number((gluRaw * 18.0156).toFixed(1)) : gluRaw;
+    const spo2 = parseFloat(vitals.spo2 || vitals.saturacion || 0);
+    const waist = parseFloat(vitals.waist || biometria.cintura || patientData?.cintura || 0);
+    const hip = parseFloat(vitals.hip || biometria.cadera || patientData?.cadera || 0);
+    const weightPhys = parseFloat(vitals.weight || biometria.peso || patientData?.peso || patientData?.profile?.weight || 0);
+    const heightRawPhys = parseFloat(vitals.height || biometria.talla || patientData?.talla || patientData?.profile?.height || 0);
+    const heightCmPhys = heightRawPhys > 0 && heightRawPhys < 3 ? heightRawPhys * 100 : heightRawPhys;
+    const bodyFatPhys = parseFloat(vitals.body_fat || biometria.grasa_corporal || biometria.porcentaje_grasa || 0);
+    const icc = (waist > 0 && hip > 0)
+        ? parseFloat((waist / hip).toFixed(2))
+        : (parseFloat(vitals.whr || patientData?.icc || 0) > 0 ? parseFloat(Number(vitals.whr || patientData?.icc).toFixed(2)) : null);
+    const ica = (waist > 0 && heightCmPhys > 0) ? parseFloat((waist / heightCmPhys).toFixed(2)) : null;
+    const bmiPhys = (weightPhys > 0 && heightCmPhys > 0)
+        ? parseFloat((weightPhys / Math.pow(heightCmPhys / 100, 2)).toFixed(1))
+        : (parseFloat(vitals.bmi || patientData?.imc || 0) > 0 ? parseFloat(Number(vitals.bmi || patientData?.imc).toFixed(1)) : null);
+    const hasPhysicalTapeIcc = Boolean(waist > 0 && hip > 0 && icc);
+    const hasPhysicalScaleBmi = Boolean(weightPhys > 0 && heightCmPhys > 0 && bmiPhys);
+    const isAthleticHighLeanMass = Boolean(
+        !isLactanteExplicit &&
+        !verifiedSerumAge.isPediatricVerified &&
+        (
+            routeContext.isMuscleOrSportRoute ||
+            (bodyFatPhys > 0 && (isFemaleSerum ? bodyFatPhys <= 25.0 : bodyFatPhys <= 18.0) && (!ica || ica < 0.52) && (!icc || (isFemaleSerum ? icc < 0.85 : icc < 0.90)))
+        )
+    );
 
     if (sys >= 130 || dia >= 85) {
         pushAnomaly('NODO_5_TRANSPORTE', 'VITALS_BP', `Tensión Arterial Elevada (${sys}/${dia} mmHg)`, 
             'Riesgo de sobrecarga vascular y disfunción endotelial', sys >= 140 || dia >= 90 ? 'CRÍTICA' : 'ALTA');
     }
+    if (spo2 > 0 && spo2 < altitudeInfo.spo2NormalFloor) {
+        pushAnomaly('NODO_5_TRANSPORTE', 'VITALS_SPO2', `Saturación Periférica de Oxígeno Disminuida (${spo2} %)`,
+            `Inferior al umbral fisiológico ajustado por altitud (${altitudeInfo.spo2NormalFloor} % en ${altitudeInfo.label})`, spo2 < 89 ? 'CRÍTICA' : 'ALTA');
+    }
     if (glu >= 100) {
         pushAnomaly('NODO_3_ENERGIA', 'VITALS_GLUCOSE', `Glucosa Capilar Alterada (${glu} mg/dL)`, 
             glu >= 126 ? 'Glucemia en rango compatible con diabetes' : 'Disglucemia basal en ayuno', 'CRÍTICA');
     }
-    if (icc && ((patientData?.sexo === 'F' && icc > 0.85) || (patientData?.sexo !== 'F' && icc > 0.90))) {
-        pushAnomaly('NODO_3_ENERGIA', 'ANTHRO_ICC', `Riesgo Cardiometabólico Visceral (ICC: ${icc})`, 
-            `Cintura: ${waist} cm, Cadera: ${hip} cm. Adiposidad troncular profunda`, 'ALTA');
+    const iccCutoff = isFemaleSerum ? 0.85 : 0.90;
+    if (icc && icc > iccCutoff && !isLactanteExplicit && verifiedSerumAge.ageYears >= 18) {
+        pushAnomaly('NODO_7_ESTRUCTURAL', 'ANTHRO_ICC', `Relación Cintura-Cadera Física (ICC: ${icc})`,
+            `Medición física con cinta (Fase 16): Cintura ${waist} cm / Cadera ${hip} cm (Ref ${isFemaleSerum ? '< 0.85' : '< 0.90'})${ica ? ` • ICA: ${ica}` : ''}`, 'ALTA');
     }
 
     // J. Anomalías de Entrevista Clínica (Fases 7 y 8)
@@ -905,43 +1510,82 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         if (agent) pushAnomaly('NODO_6_DEFENSA', 'INTERVIEW', `Alergia Farmacológica: ${agent}`, 'Hipersensibilidad medicamentosa declarada en Fase 7', 'CRÍTICA');
     });
 
-    // B. Anomalías de Laboratorio Clínico OCR e Índices Funcionales (Paso 4 de Fase 18)
+    // B. Anomalías de Laboratorio Clínico OCR, Índices Funcionales y Gabinete Multimodal (Paso 4 de Fase 18)
     const extMetrics = patientData?.scan_data?.external_metrics || {};
-    const labSections = extMetrics.sections || {};
+    const rawLabSections = extMetrics.sections || {};
+    const labSectionEntries = Array.isArray(rawLabSections)
+        ? rawLabSections.map((s, idx) => [s?.id || s?.title || `sec_${idx}`, s])
+        : Object.entries(rawLabSections);
     const flatLabs = extMetrics.biomarkers || extMetrics.labs || patientData?.lab_results || patientData?.ocr_labs || {};
     const seenLabKeys = new Set();
+    const labVigencia = extMetrics.vigencia || null;
 
-    // Diccionario de valores numéricos extraídos para cálculo de índices funcionales
+    // Diccionario de valores numéricos extraídos con normalización estricta de unidades internacionales (SI -> Clínica)
     const labValues = {};
+    const unitConversionsApplied = [];
 
-    function registerLabNumeric(name, rawVal) {
+    function registerLabNumeric(name, rawVal, rawUnit = '', itemObj = null) {
         if (rawVal === undefined || rawVal === null) return;
-        const num = parseFloat(String(rawVal).replace(/[^0-9.]/g, ''));
-        if (isNaN(num)) return;
+        const rawNum = parseFloat(String(rawVal).replace(',', '.').replace(/[^0-9.-]/g, ''));
+        if (isNaN(rawNum)) return;
         const normKey = String(name).toLowerCase()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
             .replace(/[^a-z0-9]/g, '_');
+        const unitNorm = String(rawUnit || itemObj?.unit || '').toLowerCase().trim();
+        const convInfo = normalizeInternationalLabUnit(normKey, rawNum, unitNorm, itemObj);
+        const num = convInfo.value;
+        if (convInfo.converted && convInfo.conversionNote && !unitConversionsApplied.includes(convInfo.conversionNote)) {
+            unitConversionsApplied.push(convInfo.conversionNote);
+        }
 
         if (normKey.includes('triglic')) labValues.triglycerides = num;
-        else if (normKey.includes('hdl') && !normKey.includes('no_hdl')) labValues.hdl = num;
-        else if (normKey.includes('ldl')) labValues.ldl = num;
-        else if (normKey.includes('colesterol') && !normKey.includes('ldl') && !normKey.includes('hdl')) labValues.totalCholesterol = num;
-        else if (normKey.includes('glucosa') || normKey.includes('glucose')) labValues.glucose = num;
+        else if (normKey.includes('no_hdl')) labValues.nonHdl = num;
+        else if (normKey.includes('sd_ldl') || normKey.includes('sdldl')) labValues.sdLdl = num;
+        else if (normKey.includes('apo_b') || normKey === 'apob' || normKey.includes('apolipoproteina_b')) labValues.apoB = num;
+        else if (normKey.includes('indice_aterogenico')) labValues.atherogenicIndex = num;
+        else if (normKey.includes('relacion_ldl_hdl')) labValues.ldlHdlRatio = num;
+        else if (normKey.includes('hdl') && !normKey.includes('no_hdl') && !normKey.includes('relacion')) labValues.hdl = num;
+        else if (normKey.includes('ldl') && !normKey.includes('vldl') && !normKey.includes('relacion')) labValues.ldl = num;
+        else if (normKey.includes('colesterol') && !normKey.includes('ldl') && !normKey.includes('hdl') && !normKey.includes('vldl')) labValues.totalCholesterol = num;
+        else if ((normKey.includes('glucosa') || normKey.includes('glucose')) && !normKey.includes('orina')) labValues.glucose = num;
         else if (normKey.includes('insulina') || normKey.includes('insulin')) labValues.insulin = num;
         else if (normKey.includes('hba1c') || normKey.includes('glicosilada') || normKey.includes('hemoglobina_a1c')) labValues.hba1c = num;
         else if (normKey.includes('calcio') || normKey.includes('calcium')) labValues.serumCalcium = num;
+        else if (normKey.includes('magnesio')) labValues.magnesium = num;
         else if (normKey.includes('vitamina_d') || normKey.includes('25_oh') || normKey.includes('calcidiol')) labValues.vitaminD = num;
-        else if (normKey.includes('creatinina')) labValues.creatinine = num;
+        else if (normKey.includes('creatinina') && !normKey.includes('relacion') && !normKey.includes('depuracion')) labValues.creatinine = num;
         else if (normKey.includes('filtrado') || normKey.includes('tfg') || normKey.includes('egfr')) labValues.gfr = num;
-        else if (normKey.includes('bun') || normKey.includes('urea')) labValues.bun = num;
-        else if (normKey.includes('urico')) labValues.uricAcid = num;
-        else if (normKey.includes('alt') || normKey.includes('tgp')) labValues.alt = num;
-        else if (normKey.includes('ast') || normKey.includes('tgo')) labValues.ast = num;
-        else if (normKey.includes('ggt')) labValues.ggt = num;
-        else if (normKey.includes('bilirrubina') || normKey.includes('bilirubin')) labValues.bilirubin = num;
-        else if (normKey.includes('pcr') || normKey.includes('proteina_c_reactiva')) labValues.hscrp = num;
+        else if (normKey.includes('bun') && !normKey.includes('relacion')) labValues.bun = num;
+        else if (normKey === 'urea') {
+            labValues.urea = num;
+            if (!labValues.bun && num > 0) labValues.bun = Number((num / 2.14).toFixed(1));
+        }
+        else if (normKey.includes('urico') || normKey.includes('uric')) labValues.uricAcid = num;
+        else if ((normKey.includes('alt') || normKey.includes('tgp')) && !normKey.includes('relacion')) labValues.alt = num;
+        else if ((normKey.includes('ast') || normKey.includes('tgo')) && !normKey.includes('relacion')) labValues.ast = num;
+        else if (normKey.includes('ggt') || normKey.includes('glutamil')) labValues.ggt = num;
+        else if (normKey.includes('bilirrubina_total') || (normKey.includes('bilirrubina') && !normKey.includes('directa') && !normKey.includes('indirecta'))) labValues.bilirubin = num;
+        else if (normKey.includes('pcr') || normKey.includes('proteina_c_reactiva')) {
+            labValues.hscrpRaw = rawNum;
+            if (itemObj?.value_mg_l !== undefined) {
+                labValues.hscrpMgL = Number(itemObj.value_mg_l);
+            } else {
+                labValues.hscrpMgL = num;
+            }
+        }
         else if (normKey.includes('homocisteina')) labValues.homocysteine = num;
-        else if (normKey.includes('leucocito') || normKey.includes('white_blood')) labValues.leukocytes = num;
+        else if ((normKey.includes('leucocito') || normKey.includes('white_blood')) && !normKey.includes('orina')) {
+            if (itemObj?.value_cells_per_ul !== undefined) {
+                labValues.leukocytes = Number(itemObj.value_cells_per_ul);
+            } else if (/miles|10\^3|x10\^9/i.test(unitNorm) || (rawNum > 0 && rawNum < 50)) {
+                labValues.leukocytes = Math.round(rawNum * 1000);
+            } else {
+                labValues.leukocytes = rawNum;
+            }
+        }
+        else if (normKey.includes('basofilos') && (unitNorm === '%' || normKey.includes('pct'))) labValues.basophilsPct = rawNum;
+        else if (normKey.includes('basofilos') && /miles|10\^3/i.test(unitNorm)) labValues.basophilsAbs = rawNum;
+        else if (normKey.includes('hemoglobina') && !normKey.includes('corp') && !normKey.includes('a1c')) labValues.hemoglobin = num;
         else if (normKey.includes('vsg') || normKey.includes('sedimentacion')) labValues.vsg = num;
         else if (normKey.includes('ferritina')) labValues.ferritin = num;
         else if (normKey.includes('tsh')) labValues.tsh = num;
@@ -951,18 +1595,23 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         else if (normKey.includes('potasio') || normKey === 'k' || normKey.startsWith('k_')) labValues.potassium = num;
     }
 
-    Object.entries(labSections).forEach(([secKey, secObj]) => {
+    labSectionEntries.forEach(([secKey, secObj]) => {
         const items = Array.isArray(secObj?.items) ? secObj.items : (Array.isArray(secObj) ? secObj : []);
         items.forEach(item => {
             const name = cleanClinicalLabel(item.name || item.label || item.parameter || 'Biomarcador');
-            registerLabNumeric(name, item.val ?? item.value);
+            const unitStr = item.unit || '';
+            registerLabNumeric(name, item.val ?? item.value, unitStr, item);
 
             const st = String(item.status || '').toUpperCase().trim();
             if (st && !isPhysiologicallyNormal(st)) {
-                seenLabKeys.add(name.toUpperCase());
+                const dedupeKey = item.analyte_uid || `${name.toUpperCase()}::${unitStr.toUpperCase()}`;
+                seenLabKeys.add(dedupeKey);
                 const normLabVal = normalizeMetricDecimals(item.val ?? item.value ?? '');
                 const normLabRef = normalizeMetricDecimals(item.ref || item.reference || 'N/A');
-                const detail = `${normLabVal} ${item.unit || ''} (Ref: ${normLabRef} | Estado: ${st})`.trim();
+                const vigTag = labVigencia?.study_date_display ? ` • Toma ${labVigencia.study_date_display}` : '';
+                const cleanUnitStr = String(unitStr || '').trim();
+                const nonRedundantUnit = /^[íi]ndice$/i.test(cleanUnitStr) ? '' : cleanUnitStr;
+                const detail = `${normLabVal}${nonRedundantUnit ? ` ${nonRedundantUnit}` : ''} (Ref: ${normLabRef} | Estado: ${st}${vigTag})`.trim();
                 const upperName = `${secKey} ${name}`.toUpperCase();
 
                 if (upperName.includes('COLESTEROL') || upperName.includes('LDL') || upperName.includes('HDL') || upperName.includes('TRIGLIC') || upperName.includes('ATEROG') || upperName.includes('GLUCOSA') || upperName.includes('INSULINA') || upperName.includes('HBA1C')) {
@@ -988,11 +1637,15 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         if (!v) return;
         const name = cleanClinicalLabel(typeof v === 'object' ? (v.name || v.label || k) : k);
         const rawVal = typeof v === 'object' ? (v.value ?? v.val) : v;
-        registerLabNumeric(name, rawVal);
+        const unitStr = typeof v === 'object' ? (v.unit || '') : '';
+        registerLabNumeric(name, rawVal, unitStr, typeof v === 'object' ? v : null);
 
         const st = typeof v === 'object' ? String(v.status || '').toUpperCase().trim() : '';
-        if (st && !isPhysiologicallyNormal(st) && !seenLabKeys.has(name.toUpperCase())) {
-            const detail = `${normalizeMetricDecimals(rawVal ?? '')} ${typeof v === 'object' ? (v.unit || '') : ''} (${st})`.trim();
+        const dedupeKey = (typeof v === 'object' && v.analyte_uid) ? v.analyte_uid : `${name.toUpperCase()}::${unitStr.toUpperCase()}`;
+        if (st && !isPhysiologicallyNormal(st) && !seenLabKeys.has(dedupeKey)) {
+            const cleanUnitStr = String(unitStr || '').trim();
+            const nonRedundantUnit = /^[íi]ndice$/i.test(cleanUnitStr) ? '' : cleanUnitStr;
+            const detail = `${normalizeMetricDecimals(rawVal ?? '')}${nonRedundantUnit ? ` ${nonRedundantUnit}` : ''} (${st})`.trim();
             const upperName = name.toUpperCase();
             if (upperName.includes('COLESTEROL') || upperName.includes('LDL') || upperName.includes('ATEROG') || upperName.includes('GLUCOSA') || upperName.includes('TRIGLIC')) {
                 pushAnomaly('NODO_3_ENERGIA', 'OCR_LAB', name, detail, 'ALTA');
@@ -1004,72 +1657,109 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         }
     });
 
-    // EVALUACIÓN DE ÍNDICES FUNCIONALES Y CORTE BIOLÓGICO CLÍNICO
-    // 1. Ratio Triglicéridos / HDL (> 2.0)
+    // EVALUACIÓN DE ÍNDICES FUNCIONALES, CKD-EPI 2021 Y CORTES POR SEXO/ALTITUD (CON NORMALIZACIÓN ESTRICTA SI)
+    if (labValues.creatinine > 0 && !(labValues.gfr > 0)) {
+        const computedEgfr = calculateCkdEpi2021Egfr(labValues.creatinine, verifiedSerumAge.ageYears, isFemaleSerum);
+        if (computedEgfr !== null) {
+            labValues.gfr = computedEgfr;
+            labValues.gfrCalculatedCkdEpi = true;
+        }
+    }
+    labValues.unitConversionsApplied = unitConversionsApplied;
+
+    // 1. Ratio Triglicéridos / HDL (> 2.0) o HDL bajo ajustado por sexo (< 40 H / < 50 M)
+    const hdlFloorBySex = isFemaleSerum ? 50 : 40;
     if (labValues.triglycerides > 0 && labValues.hdl > 0) {
         const tgHdl = labValues.triglycerides / labValues.hdl;
         if (tgHdl > 2.0) {
             pushAnomaly('NODO_3_ENERGIA', 'FUNCTIONAL_INDEX', 'Ratio Triglicéridos/HDL Elevado',
-                `TG: ${labValues.triglycerides} mg/dL, HDL: ${labValues.hdl} mg/dL | Ratio = ${tgHdl.toFixed(2)} (> 2.0). Marcador subrogado de aterogenicidad y resistencia a la insulina`, 'ALTA');
+                `TG: ${labValues.triglycerides} mg/dL, HDL: ${labValues.hdl} mg/dL | Ratio = ${tgHdl.toFixed(2)} (> 2.0). Marcador subrogado de resistencia a la insulina`, 'ALTA');
         }
     }
+    if (labValues.hdl > 0 && labValues.hdl < hdlFloorBySex) {
+        pushAnomaly('NODO_5_TRANSPORTE', 'OCR_LAB', `Colesterol HDL Disminuido (${labValues.hdl} mg/dL)`,
+            `Inferior al corte cardioprotector ajustado por sexo (${isFemaleSerum ? '>= 50 mg/dL' : '>= 40 mg/dL'})`, 'MODERADA');
+    }
 
-    // 2. Índice HOMA-IR (> 2.5) o Glucosa / HbA1c
+    // 2. Índice HOMA-IR (> 2.5) o Glucosa Venosa / HbA1c
+    let homaIrCalc = null;
     if (labValues.glucose > 0 && labValues.insulin > 0) {
-        const homa = (labValues.glucose * labValues.insulin) / 405;
-        if (homa > 2.5) {
+        homaIrCalc = (labValues.glucose * labValues.insulin) / 405;
+        labValues.homaIr = Number(homaIrCalc.toFixed(2));
+        if (homaIrCalc > 2.5) {
             pushAnomaly('NODO_3_ENERGIA', 'FUNCTIONAL_INDEX', 'Índice HOMA-IR Elevado',
-                `Glucosa: ${labValues.glucose} mg/dL, Insulina: ${labValues.insulin} µUI/mL | HOMA-IR = ${homa.toFixed(2)} (> 2.5). Resistencia periférica a la insulina`, 'ALTA');
+                `Glucosa: ${labValues.glucose} mg/dL, Insulina: ${labValues.insulin} µUI/mL | HOMA-IR = ${homaIrCalc.toFixed(2)} (> 2.5). Resistencia periférica a la insulina`, 'ALTA');
         }
-    } else if (labValues.hba1c >= 5.7) {
+    }
+    if (labValues.glucose >= 100) {
+        pushAnomaly('NODO_3_ENERGIA', 'OCR_LAB', `Glucosa Sérica en Ayuno Alterada (${labValues.glucose} mg/dL)`,
+            labValues.glucose >= 126 ? 'Glucemia venosa en rango compatible con diabetes' : 'Disglucemia venosa basal en ayuno', labValues.glucose >= 126 ? 'CRÍTICA' : 'ALTA');
+    }
+    if (labValues.hba1c >= 5.7) {
         pushAnomaly('NODO_3_ENERGIA', 'OCR_LAB', `Hemoglobina Glucosilada Alterada (${labValues.hba1c}%)`,
             `HbA1c = ${labValues.hba1c}%. Glicación proteica tisular fuera de rango óptimo`, labValues.hba1c >= 6.5 ? 'CRÍTICA' : 'ALTA');
+    }
+
+    // 2B. Hemoglobina ajustada por Sexo y Altitud (msnm)
+    if (labValues.hemoglobin > 0) {
+        const hbFloor = Number(((isFemaleSerum ? 12.0 : 13.5) + altitudeInfo.hbAltitudeOffset).toFixed(1));
+        const hbCeil = Number(((isFemaleSerum ? 16.0 : 17.5) + altitudeInfo.hbAltitudeOffset).toFixed(1));
+        if (labValues.hemoglobin < hbFloor) {
+            pushAnomaly('NODO_5_TRANSPORTE', 'OCR_LAB', `Hemoglobina Disminuida para Altitud (${labValues.hemoglobin} g/dL)`,
+                `Inferior al corte ajustado por sexo y altitud (${hbFloor} – ${hbCeil} g/dL en ${altitudeInfo.label})`, 'ALTA');
+        }
     }
 
     // 3. Calcio Sérico (> 10.2 mg/dL) y Vitamina D
     if (labValues.serumCalcium > 10.2) {
         hasHighSerumCalciumOrCalcification = true;
         pushAnomaly('NODO_7_ESTRUCTURAL', 'OCR_LAB', 'Calcio Sérico Elevado (Hipercalcemia Funcional)',
-            `Calcio sérico: ${labValues.serumCalcium} mg/dL (> 10.2 mg/dL). Alerta de desregulación mineral y riesgo de calcificación vascular`, 'ALTA');
+            `Calcio sérico: ${labValues.serumCalcium} mg/dL (> 10.2 mg/dL). Alerta de desregulación mineral`, 'ALTA');
     }
     if (labValues.vitaminD > 0 && labValues.vitaminD < 30) {
         pushAnomaly('NODO_7_ESTRUCTURAL', 'OCR_LAB', 'Hipovitaminosis D (25-OH)',
             `Vitamina D (25-OH): ${labValues.vitaminD} ng/mL (< 30 ng/mL). Deficiencia de mineralización esquelética`, 'MODERADA');
     }
 
-    // 4. Biotransformación Hepatorrenal (Creatinina, TFG, BUN, Ácido Úrico, Potasio, TGO/AST, TGP/ALT, GGT, Bilirrubinas)
-    if (labValues.alt > 35 || labValues.ast > 35 || labValues.ggt > 50 || labValues.bilirubin > 1.2 || labValues.uricAcid > 6.5 || labValues.creatinine > 1.2 || (labValues.gfr > 0 && labValues.gfr < 60) || labValues.potassium > 5.0) {
+    // 4. Biotransformación Hepatorrenal (cortes reales de laboratorio venoso)
+    if (labValues.alt > 61 || labValues.ast > 40 || labValues.ggt > 61 || labValues.bilirubin > 1.2 || labValues.uricAcid > 7.0 || labValues.creatinine > 1.2 || (labValues.gfr > 0 && labValues.gfr < 60) || labValues.potassium > 5.1) {
         pushAnomaly('NODO_2_BIOTRANSFORMACION', 'OCR_LAB', 'Sobrecarga de Biotransformación Hepatorrenal',
             `Parámetros alterados: ${[
-                labValues.alt > 35 ? `ALT/TGP: ${labValues.alt} U/L` : null,
-                labValues.ast > 35 ? `AST/TGO: ${labValues.ast} U/L` : null,
-                labValues.ggt > 50 ? `GGT: ${labValues.ggt} U/L` : null,
+                labValues.alt > 61 ? `ALT/TGP: ${labValues.alt} U/L` : null,
+                labValues.ast > 40 ? `AST/TGO: ${labValues.ast} U/L` : null,
+                labValues.ggt > 61 ? `GGT: ${labValues.ggt} U/L` : null,
                 labValues.bilirubin > 1.2 ? `Bilirrubina: ${labValues.bilirubin} mg/dL` : null,
-                labValues.uricAcid > 6.5 ? `Ácido Úrico: ${labValues.uricAcid} mg/dL` : null,
+                labValues.uricAcid > 7.0 ? `Ácido Úrico: ${labValues.uricAcid} mg/dL` : null,
                 labValues.creatinine > 1.2 ? `Creatinina: ${labValues.creatinine} mg/dL` : null,
                 (labValues.gfr > 0 && labValues.gfr < 60) ? `TFG: ${labValues.gfr} mL/min` : null,
-                labValues.potassium > 5.0 ? `Potasio: ${labValues.potassium} mEq/L` : null
+                labValues.potassium > 5.1 ? `Potasio: ${labValues.potassium} mEq/L` : null
             ].filter(Boolean).join(' • ')}`, 'ALTA');
     }
 
-    // 5. Transporte Vascular (Colesterol Total, LDL, PCR-us, Homocisteína)
-    if (labValues.totalCholesterol > 200 || labValues.ldl > 130 || labValues.hscrp > 1.0 || labValues.homocysteine > 12) {
-        pushAnomaly('NODO_5_TRANSPORTE', 'OCR_LAB', 'Sobrecarga Aterogénica e Inflamación Vascular',
+    // 5. Transporte Vascular (Colesterol Total, LDL, sdLDL, PCR-us normalizada en mg/L > 3.0 mg/L, Homocisteína)
+    const isHscrpAcuteElevated = Number(labValues.hscrpMgL) > 3.0;
+    if (labValues.totalCholesterol > 200 || labValues.ldl > 130 || labValues.sdLdl > 1.35 || isHscrpAcuteElevated || labValues.homocysteine > 12) {
+        pushAnomaly('NODO_5_TRANSPORTE', 'OCR_LAB', 'Dislipidemia Aterogénica y Transporte Lipoproteico',
             `Marcadores vasculares: ${[
                 labValues.totalCholesterol > 200 ? `Colesterol Total: ${labValues.totalCholesterol} mg/dL` : null,
-                labValues.ldl > 130 ? `LDL: ${labValues.ldl} mg/dL` : null,
-                labValues.hscrp > 1.0 ? `PCR-us: ${labValues.hscrp} mg/L` : null,
+                labValues.ldl > 130 ? `Colesterol LDL directo: ${labValues.ldl} mg/dL` : null,
+                labValues.nonHdl > 130 ? `Colesterol no-HDL: ${labValues.nonHdl} mg/dL` : null,
+                labValues.sdLdl > 1.35 ? `sdLDL: ${labValues.sdLdl}` : null,
+                isHscrpAcuteElevated ? `PCR-us: ${labValues.hscrpMgL} mg/L (> 3.0 mg/L)` : null,
                 labValues.homocysteine > 12 ? `Homocisteína: ${labValues.homocysteine} µmol/L` : null
             ].filter(Boolean).join(' • ')}`, 'ALTA');
     }
 
-    // 6. Defensa e Inmunología (Leucocitos, VSG, Ferritina)
-    if (labValues.leukocytes > 10000 || (labValues.leukocytes > 0 && labValues.leukocytes < 4000) || labValues.vsg > 20 || labValues.ferritin > 300) {
-        pushAnomaly('NODO_6_DEFENSA', 'OCR_LAB', 'Reactividad Inmunológica / Reactantes de Fase Aguda',
+    // 6. Defensa e Inmunología (Leucocitos escalados a células/µL: < 3800 o > 11600; Reactantes de Fase Aguda reales)
+    const hasLeukopeniaOrLeukocytosis = labValues.leukocytes > 11600 || (labValues.leukocytes > 0 && labValues.leukocytes < 3800);
+    const hasTrueAcutePhaseReactants = isHscrpAcuteElevated || labValues.vsg > 20 || labValues.ferritin > 300;
+    if (hasLeukopeniaOrLeukocytosis || hasTrueAcutePhaseReactants) {
+        pushAnomaly('NODO_6_DEFENSA', 'OCR_LAB', hasTrueAcutePhaseReactants ? 'Reactantes de Fase Aguda Elevados' : 'Alteración Cuantitativa de Serie Blanca',
             `Analitos: ${[
-                labValues.leukocytes ? `Leucocitos: ${labValues.leukocytes} /µL` : null,
-                labValues.vsg ? `VSG: ${labValues.vsg} mm/h` : null,
-                labValues.ferritin ? `Ferritina: ${labValues.ferritin} ng/mL` : null
+                hasLeukopeniaOrLeukocytosis ? `Leucocitos: ${labValues.leukocytes} /µL` : null,
+                isHscrpAcuteElevated ? `PCR-us: ${labValues.hscrpMgL} mg/L` : null,
+                labValues.vsg > 20 ? `VSG: ${labValues.vsg} mm/h` : null,
+                labValues.ferritin > 300 ? `Ferritina: ${labValues.ferritin} ng/mL` : null
             ].filter(Boolean).join(' • ')}`, 'MODERADA');
     }
 
@@ -1083,6 +1773,101 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
                 labValues.tsh ? `TSH: ${labValues.tsh} µUI/mL` : null,
                 labValues.cortisol ? `Cortisol: ${labValues.cortisol} µg/dL` : null
             ].filter(Boolean).join(' • ')}`, 'MODERADA');
+    }
+
+    // B2. Puente Universal de Gabinete e Imagenología (ECG_CARDIOLOGY y RADIOLOGY_ULTRASOUND_IMAGING -> NODO_5 y NODO_7)
+    const cabinetSignals = {
+        hasCabinetStudies: false,
+        studiesCount: 0,
+        hasCardiacConductionOrBradycardia: false,
+        hasRbbbBlock: false,
+        ecgHrBpm: null,
+        ecgQrsMs: null,
+        recommendsEchocardiogram: false,
+        hasAorticOrThoracicRemodeling: false,
+        hasPostsurgicalInguinalOrAbdominalWall: false,
+        hasNoActiveHerniaAtValsalva: false,
+        hasAxialLoadRestriction: false,
+        summaries: []
+    };
+    try {
+        const cabinetStudies =
+            extMetrics?.external_studies?.clinical_imaging_and_cabinet ||
+            extMetrics?.imaging?.studies ||
+            [];
+        if (Array.isArray(cabinetStudies) && cabinetStudies.length > 0) {
+            cabinetSignals.hasCabinetStudies = true;
+            cabinetSignals.studiesCount = cabinetStudies.length;
+            cabinetStudies.forEach(st => {
+                if (!st || typeof st !== 'object') return;
+                const flags = Array.isArray(st.clinical_flags) ? st.clinical_flags : [];
+                const m = st.metrics || {};
+                const dateLabel = st.study_date_display ? ` (${st.study_date_display})` : '';
+
+                if (st.domain === 'ECG_CARDIOLOGY' || st.modality === 'ECG') {
+                    if (m.hr_bpm) cabinetSignals.ecgHrBpm = Number(m.hr_bpm);
+                    if (m.qrs_ms) cabinetSignals.ecgQrsMs = Number(m.qrs_ms);
+                    if (flags.includes('ECG_RBBB_CONDUCTION') || (m.qrs_ms && m.qrs_ms >= 120)) {
+                        cabinetSignals.hasRbbbBlock = true;
+                        cabinetSignals.hasCardiacConductionOrBradycardia = true;
+                    }
+                    if (flags.includes('ECG_SINUS_BRADYCARDIA') || (m.hr_bpm && m.hr_bpm < 60)) {
+                        cabinetSignals.hasCardiacConductionOrBradycardia = true;
+                    }
+                    if (flags.includes('RECOMMENDS_ECHOCARDIOGRAM')) {
+                        cabinetSignals.recommendsEchocardiogram = true;
+                    }
+                    if (flags.includes('ECG_TACHYARRHYTHMIA') || (m.hr_bpm && Number(m.hr_bpm) >= 110) || /taquiarritmia|fibrilaci[óo]n\s+auricular|taquicardia\s+(?:supraventricular|ventricular)|flutter/i.test(String(st.impression || ''))) {
+                        cabinetSignals.hasActiveTachyarrhythmia = true;
+                    }
+                    const metricParts = [
+                        m.hr_bpm !== undefined ? `FC ${m.hr_bpm} lpm` : null,
+                        m.pr_ms !== undefined ? `PR ${m.pr_ms} ms` : null,
+                        m.qrs_ms !== undefined ? `QRS ${m.qrs_ms} ms` : null,
+                        m.qt_ms !== undefined ? `QT ${m.qt_ms} ms` : null,
+                        m.qtc_ms !== undefined ? `QTc ${m.qtc_ms} ms` : null,
+                        m.p_axis_deg !== undefined ? `Eje P ${m.p_axis_deg}°` : null,
+                        m.qrs_axis_deg !== undefined ? `Eje QRS ${m.qrs_axis_deg}°` : null,
+                        m.t_axis_deg !== undefined ? `Eje T ${m.t_axis_deg}°` : null,
+                        m.rr_ms !== undefined ? `RR ${m.rr_ms} ms` : null
+                    ].filter(Boolean).join(', ');
+                    const detail = `${metricParts ? `${metricParts} • ` : ''}${st.impression || 'Evaluación electrocardiográfica en reposo'}`;
+                    pushAnomaly('NODO_5_TRANSPORTE', 'CABINET_ECG', `Electrocardiograma en Reposo${dateLabel}`, detail, 'ALTA');
+                    cabinetSignals.summaries.push(`ECG${dateLabel}: ${detail}`);
+                } else if (st.modality === 'RX' && String(st.anatomical_region || '').includes('torax')) {
+                    if (flags.includes('RX_PROMINENT_AORTIC_ARCH_HILA')) {
+                        cabinetSignals.hasAorticOrThoracicRemodeling = true;
+                    }
+                    const ictStr = m.ict !== undefined ? `ICT ${m.ict} • ` : '';
+                    const detail = `${ictStr}${st.impression || 'Radiografía postero-anterior de tórax'}`;
+                    pushAnomaly('NODO_5_TRANSPORTE', 'CABINET_RX', `Radiografía de Tórax PA${dateLabel}`, detail, 'MODERADA');
+                    cabinetSignals.summaries.push(`RX Tórax${dateLabel}: ${detail}`);
+                } else {
+                    if (flags.includes('US_POSTSURGICAL_INGUINAL_WALL')) {
+                        cabinetSignals.hasPostsurgicalInguinalOrAbdominalWall = true;
+                    }
+                    if (flags.includes('US_NO_ACTIVE_HERNIA_AT_VALSALVA')) {
+                        cabinetSignals.hasNoActiveHerniaAtValsalva = true;
+                    }
+                    if (st.modality === 'RM' || st.modality === 'TAC' || st.modality === 'DMO' || String(st.anatomical_region || '').includes('columna')) {
+                        cabinetSignals.hasAxialLoadRestriction = true;
+                    }
+                    const extraMetrics = Object.entries(m)
+                        .filter(([mk]) => !['transducer_mhz'].includes(mk))
+                        .map(([mk, mv]) => `${mk}: ${mv}`)
+                        .join(', ');
+                    const platesTag = st.attached_plate_pages > 0 ? ` • Informe + ${st.attached_plate_pages} láminas Doppler` : '';
+                    const detail = `${extraMetrics ? `${extraMetrics} • ` : ''}${st.impression || 'Estudio estructural de gabinete'}${platesTag}`;
+                    const targetNodeId = /h[íi]gado|hep[áa]t|biliar|ves[íi]cula|renal|ri[ñn][óo]n/i.test(`${st.anatomical_region || ''} ${st.title || ''}`)
+                        ? 'NODO_2_BIOTRANSFORMACION'
+                        : 'NODO_7_ESTRUCTURAL';
+                    pushAnomaly(targetNodeId, 'CABINET_IMAGING', `${st.title || st.modality}${dateLabel}`, detail, 'MODERADA');
+                    cabinetSignals.summaries.push(`${st.modality}${dateLabel}: ${detail}`);
+                }
+            });
+        }
+    } catch (cabErr) {
+        console.warn('⚠️ [Cabinet Bridge Safe Catch]:', cabErr.message);
     }
 
     // C. Anomalías de Bioimpedancia Cuántica Electret (Paso 1 de Fase 18 - Cobertura Ontológica de 37 Categorías)
@@ -1184,36 +1969,51 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
 
     // D. Hallazgos de Auditoría Ocular Binocular (Paso 2 de Fase 18)
     const ocular = patientData?.scan_data?.ocular_metrics || patientData?.ocular_metrics || patientData?.oculomics;
+    const hasAffirmativeOpticalSign = (rawStr, posRe, negRe) => {
+        const s = String(rawStr || '');
+        if (!s || !posRe.test(s)) return false;
+        const clauses = s.split(/[.;|•\n]+/);
+        return clauses.some((cl) => posRe.test(cl) && !negRe.test(cl));
+    };
+
     if (ocular && ocular.status !== 'SKIPPED') {
         const ocSeverity = String(ocular.severity || 'LOW').toUpperCase();
         const ocFindings = ocular.findings || ocular.summary || '';
         const ocFlags = Array.isArray(ocular.clinical_flags) ? ocular.clinical_flags.join(', ') : '';
-        const fullOcText = `${ocFindings} ${ocFlags} ${JSON.stringify(ocular.pilares || {})}`.toUpperCase();
+        const ocPilaresValues = ocular.pilares && typeof ocular.pilares === 'object'
+            ? Object.values(ocular.pilares).map((p) => (typeof p === 'object' ? Object.values(p || {}).join(' ') : String(p || ''))).join(' . ')
+            : '';
+        const fullOcText = `${ocFindings} . ${ocFlags} . ${ocPilaresValues}`;
+        const negOpticalRe = /\b(?:sin\s+|no\s+se\s+observa|no\s+evaluable|falta\s+de\s+eversi[óo]n|ausente|normal|transparente|conservad[oa]|descartad[oa]|libre\s+de)\b/i;
 
-        // 1. Palidez conjuntival -> Nodo 5 (Transporte) y Nodo 1 (Déficit de hierro/B12)
-        if (fullOcText.includes('PALIDEZ') || fullOcText.includes('CONJUNCTIVAL_PALLOR') || fullOcText.includes('ANEMIA')) {
-            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Palidez Conjuntival / Hipoperfusión Tisular',
-                'Signo de hipoperfusión microvascular detectable en lecho conjuntival tarsal', ocSeverity === 'HIGH' ? 'ALTA' : 'MODERADA');
-            pushAnomaly('NODO_1_ASIMILACION', 'OCULAR_VISION', 'Sospecha de Déficit Malabsortivo (Hierro / B12)',
-                'La palidez conjuntival sugiere compromiso en la asimilación y reserva de micronutrientes hematopoyéticos', 'MODERADA');
+        // 1. Palidez conjuntival real (excluyendo "No evaluable" o "Sin palidez") -> Nodo 5 y Nodo 1
+        const hasTruePallor = hasAffirmativeOpticalSign(fullOcText, /\b(?:palidez\s+conjuntival|conjunctival_pallor|hipocrom[íi]a\s+marcada|anemia\s+moderada)\b/i, negOpticalRe);
+        if (hasTruePallor && !(Number(labValues.hemoglobin) >= 13.5)) {
+            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Hipoperfusión Mucosa Conjuntival',
+                'Signo de hipocromía microvascular detectable en lecho conjuntival evaluado', ocSeverity === 'HIGH' ? 'ALTA' : 'MODERADA');
+            pushAnomaly('NODO_1_ASIMILACION', 'OCULAR_VISION', 'Vigilancia de Absorción de Micronutrientes Hematopoyéticos',
+                'Hipocromía conjuntival sugestiva de demanda en reserva de hierro y cofactores hematopoyéticos', 'MODERADA');
         }
 
-        // 2. Esclera ictérica o congestión -> Nodo 2 (Sobrecarga hepatobiliar)
-        if (fullOcText.includes('ICTER') || fullOcText.includes('SUBICTER') || fullOcText.includes('CONGESTION') || fullOcText.includes('HIPEREMIA ESCLERAL')) {
-            pushAnomaly('NODO_2_BIOTRANSFORMACION', 'OCULAR_VISION', 'Cromatismo Escleral / Congestión Hepatobiliar',
-                'Tinte subictérico o congestión vascular en esclera compatible con sobrecarga en vías de eliminación hepatobiliar', 'ALTA');
+        // 2. Esclera ictérica real (excluyendo "Sin ictericia" o "Esclera blanca") -> Nodo 2
+        const hasTrueScleralIcterus = hasAffirmativeOpticalSign(fullOcText, /\b(?:ictericia|subictericia|tinte\s+ict[ée]rico|scleral_icterus)\b/i, negOpticalRe);
+        if (hasTrueScleralIcterus) {
+            pushAnomaly('NODO_2_BIOTRANSFORMACION', 'OCULAR_VISION', 'Cromatismo Escleral Hepatobiliar',
+                'Tinte subictérico escleral compatible con demanda funcional en vías de conjugación hepatobiliar', 'ALTA');
         }
 
-        // 3. Arco corneal / Xantelasmas -> Nodo 3 (Metabolismo lipídico) y Nodo 5 (Riesgo vascular)
-        if (fullOcText.includes('ARCO SENIL') || fullOcText.includes('ARCO CORNEAL') || fullOcText.includes('GERONTOXON') || fullOcText.includes('XANTELASMA')) {
-            pushAnomaly('NODO_3_ENERGIA', 'OCULAR_VISION', 'Depósito Lipídico Corneal (Arco Senil / Xantelasma)',
-                'Extravasación lipídica periférica corneal indicativa de dislipidemia y desregulación del metabolismo lipídico', 'ALTA');
-            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Riesgo Microvascular por Aterogénesis Ocular',
-                'Signo oftalmológico de depósito perivascular con correlación de riesgo aterosclerótico sistémico', 'ALTA');
+        // 3. Arco corneal / Xantelasmas reales (excluyendo "Ausente") -> Nodo 3 y Nodo 5
+        const hasTrueCornealArcus = hasAffirmativeOpticalSign(fullOcText, /\b(?:arco\s+senil|arco\s+corneal|gerontoxon|xantelasma|grado\s+i+)\b/i, negOpticalRe);
+        if (hasTrueCornealArcus) {
+            pushAnomaly('NODO_3_ENERGIA', 'OCULAR_VISION', 'Halo Lipídico Limbar Corneal',
+                'Depósito lipídico periférico en limbo corneal correlacionable con transporte lipoproteico', 'MODERADA');
+            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Correlación Microvascular Limbar Ocular',
+                'Hallazgo óptico de halo limbar con correlación endotelial y reológica', 'MODERADA');
         }
 
-        if (ocFindings && !fullOcText.includes('PALIDEZ') && !fullOcText.includes('ICTER') && !fullOcText.includes('ARCO')) {
-            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Trofismo Microvascular Escleral/Conjuntival', `${ocFindings} ${ocFlags ? `[${ocFlags}]` : ''}`.trim(), ocSeverity === 'HIGH' ? 'ALTA' : 'MODERADA');
+        const hasMicrovascularHyperemia = hasAffirmativeOpticalSign(fullOcText, /\b(?:tortuosidad|hiperemia|congesti[óo]n\s+epiescleral|microvascular)\b/i, negOpticalRe);
+        if (ocFindings && !isPhysiologicallyNormal(ocSeverity) && (hasMicrovascularHyperemia || (!hasTruePallor && !hasTrueScleralIcterus && !hasTrueCornealArcus && ocFlags))) {
+            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Trofismo Microvascular Epiescleral y Bulbar', `${ocFindings} ${ocFlags ? `[${ocFlags}]` : ''}`.trim(), ocSeverity === 'HIGH' ? 'ALTA' : 'MODERADA');
         }
     }
 
@@ -1222,34 +2022,34 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
     if (lingual && lingual.status !== 'SKIPPED') {
         const lgFindings = lingual.findings || lingual.summary || '';
         const lgFlags = Array.isArray(lingual.clinical_flags) ? lingual.clinical_flags.join(', ') : '';
-        const fullLgText = `${lgFindings} ${lgFlags} ${JSON.stringify(lingual.pilares || {})}`.toUpperCase();
+        const lgPilaresValues = lingual.pilares && typeof lingual.pilares === 'object'
+            ? Object.values(lingual.pilares).map((p) => (typeof p === 'object' ? Object.values(p || {}).join(' ') : String(p || ''))).join(' . ')
+            : '';
+        const fullLgText = `${lgFindings} . ${lgFlags} . ${lgPilaresValues}`;
+        const negLingualRe = /\b(?:sin\s+|no\s+se\s+observa|ausente|normal|fisiol[óo]gic[oa]|conservad[oa]|adecuad[oa]|libre\s+de)\b/i;
 
-        // 1. Saburra espesa / amarilla / blanca y marcas dentales -> Nodo 1 (Asimilación y Disbiosis)
-        if (fullLgText.includes('SABURRA') || fullLgText.includes('MARCAS DENTALES') || fullLgText.includes('SCALLOPED') || fullLgText.includes('FESTONEADA') || fullLgText.includes('INDENTACION') || fullLgText.includes('BLANCA') || fullLgText.includes('AMARILLA')) {
-            pushAnomaly('NODO_1_ASIMILACION', 'LINGUAL_VISION', 'Saburra Patológica y/o Marcas Dentales (Disbiosis)',
-                `Glosodiagnóstico: Saburra alterada o bordes festoneados por edema mucoso. Compatible con permeabilidad intestinal y disbiosis`, 'ALTA');
+        // 1. Saburra espesa / amarilla / blanca moderada-marcada y marcas dentales -> Nodo 1
+        if (hasAffirmativeOpticalSign(fullLgText, /\b(?:saburra\s+(?:espesa|moderada|blanquecina|amarillenta)|marcas\s+dentales|scalloped|festonead[oa]|indentaci[óo]n)\b/i, negLingualRe)) {
+            pushAnomaly('NODO_1_ASIMILACION', 'LINGUAL_VISION', 'Saburra Lingual o Indentación Marginal Mucosa',
+                'Topografía lingual con capa saburral o bordes festoneados sugestivos de tránsito digestivo lento y demanda prebiótica', 'MODERADA');
         }
 
-        // 2. Bordes rojizos / sobrecarga hepática -> Nodo 2 (Biotransformación)
-        if (fullLgText.includes('BORDES ROJ') || fullLgText.includes('BORDES ERITEMATOSOS') || fullLgText.includes('HEPATOBILIAR') || fullLgText.includes('FUEGO HEPATICO')) {
-            pushAnomaly('NODO_2_BIOTRANSFORMACION', 'LINGUAL_VISION', 'Eritema Lateral Lingual (Sobrecarga Hepatobiliar)',
-                'Hiperemia marcada en bordes laterales de la lengua correspondiente al territorio reflexológico hepatobiliar', 'ALTA');
+        // 2. Bordes eritematosos reales -> Nodo 2
+        if (hasAffirmativeOpticalSign(fullLgText, /\b(?:bordes\s+rojizos|bordes\s+eritematosos|hiperemia\s+lateral)\b/i, negLingualRe)) {
+            pushAnomaly('NODO_2_BIOTRANSFORMACION', 'LINGUAL_VISION', 'Hiperemia Marginal Lingual',
+                'Eritema en bordes laterales linguales compatible con demanda funcional digestivo-biliar', 'MODERADA');
         }
 
-        // 3. Punta roja -> Nodo 4 (Estrés / HPA / Comunicación Neuroendocrina)
-        if (fullLgText.includes('PUNTA ROJA') || fullLgText.includes('RED TIP') || fullLgText.includes('ERITEMA APICAL') || fullLgText.includes('ESTRES') || fullLgText.includes('ESTRÉS') || fullLgText.includes('HPA')) {
-            pushAnomaly('NODO_4_COMUNICACION', 'LINGUAL_VISION', 'Punta Lingual Hiperémica (Hiperactividad Simpática / HPA)',
-                'Eritema en ápice lingual indicativo de sobrecarga adrenocortical, estrés neurovegetativo y alteración circadiana', 'ALTA');
+        // 3. Punta roja -> Nodo 4
+        if (hasAffirmativeOpticalSign(fullLgText, /\b(?:punta\s+roja|red\s+tip|eritema\s+apical|hiperemia\s+apical)\b/i, negLingualRe)) {
+            pushAnomaly('NODO_4_COMUNICACION', 'LINGUAL_VISION', 'Hiperemia Apical Lingual (Carga Neurovegetativa)',
+                'Eritema en ápice lingual sugestivo de demanda adaptativa al estrés y vigilia prolongada', 'MODERADA');
         }
 
-        // 4. Venas sublinguales ingurgitadas o cuerpo violáceo -> Nodo 5 (Reología / Microcirculación y Transporte)
-        if (fullLgText.includes('RANINA') || fullLgText.includes('SUBLINGUAL') || fullLgText.includes('ESTASIS') || fullLgText.includes('INGURGIT') || fullLgText.includes('VIOLACEO') || fullLgText.includes('VIOLÁCEO') || fullLgText.includes('CIANOSIS') || fullLgText.includes('PURPURA') || fullLgText.includes('PÚRPURA')) {
-            pushAnomaly('NODO_5_TRANSPORTE', 'LINGUAL_VISION', 'Estasis Venosa Sublingual / Microcirculación Hipóxica',
-                'Venas raninas dilatadas o tinte violáceo lingual compatible con lentitud reológica y sobrecarga venosa periférica', 'ALTA');
-        }
-
-        if (lgFindings && !fullLgText.includes('SABURRA') && !fullLgText.includes('BORDES') && !fullLgText.includes('PUNTA') && !fullLgText.includes('RANINA')) {
-            pushAnomaly('NODO_1_ASIMILACION', 'LINGUAL_VISION', 'Glosodiagnóstico Funcional', `${lgFindings} ${lgFlags ? `[${lgFlags}]` : ''}`.trim(), 'MODERADA');
+        // 4. Venas sublinguales ingurgitadas -> Nodo 5
+        if (hasAffirmativeOpticalSign(fullLgText, /\b(?:ingurgitaci[óo]n|varices\s+sublinguales|várices\s+sublinguales|estasis\s+sublingual|viol[áa]ce[oa])\b/i, negLingualRe)) {
+            pushAnomaly('NODO_5_TRANSPORTE', 'LINGUAL_VISION', 'Congestión Venosa Sublingual',
+                'Dilatación microvascular sublingual compatible con demanda de retorno venoso y reología periférica', 'MODERADA');
         }
     }
 
@@ -1318,36 +2118,251 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         });
     }
 
-    // Construir arreglo final de las 7 Micro-Cápsulas IFM con CIE-10 determinista pre-asignado
-    const nodes = Object.values(nodesMap).map(node => {
-        const hasAnomalies = node.anomalies.length > 0;
-        const resolvedCie = resolveCie10ForNode(node.id, node.anomalies, isLactanteExplicit);
-        const hasOntologyFlag = node.anomalies.some(a => a.requiresOntologyReview);
+    const numericLabKeys = Object.keys(labValues).filter(
+        (k) => typeof labValues[k] === 'number' && Number.isFinite(labValues[k])
+    );
+    const hasLabResultsLoaded = numericLabKeys.length > 0;
+
+    // Regla Universal A + B + Ajuste 5 (EGM-49): Ejecutar Precedencia Biomédica (Sangre Venosa > Gabinete > Bioimpedancia)
+    // ANTES de construir `nodes[]`, podando de raíz cualquier hallazgo bioeléctrico/óptico contradicho por química sanguínea normal.
+    let precedence = {
+        venousRenalNormal: false,
+        venousHepaticNormal: false,
+        hasGfrStageG2: false,
+        isHistoricalLab: Boolean(labVigencia?.is_historical || (Number(labVigencia?.age_days) > 180))
+    };
+    let subAxisFlags = {
+        hasTrueDysglycemia: false,
+        hasVenousNormoglycemia: false,
+        hasHypertriglyceridemia: false,
+        hasVenousNormalTriglycerides: false,
+        hasAtherogenicCholesterol: false,
+        hasAcutePhaseInflammation: false,
+        hasDistalVenousStasis: false
+    };
+
+    try {
+        const hasVenousRenal = Number(labValues.creatinine) > 0;
+        const venousRenalNormal =
+            hasVenousRenal &&
+            labValues.creatinine <= 1.2 &&
+            (!labValues.uricAcid || labValues.uricAcid <= 7.0) &&
+            (!labValues.bun || labValues.bun <= 23) &&
+            (!labValues.gfr || labValues.gfr >= 60);
+
+        const hasVenousHepatic = Number(labValues.ast) > 0 && Number(labValues.alt) > 0;
+        const venousHepaticNormal =
+            hasVenousHepatic &&
+            labValues.ast <= 40 &&
+            labValues.alt <= 61 &&
+            (!labValues.ggt || labValues.ggt <= 61) &&
+            (!labValues.bilirubin || labValues.bilirubin <= 1.2);
+
+        if (venousRenalNormal) {
+            electretSignals.hasRenalBurden = false;
+            electretSignals.hasSevereRenalAlert = false;
+            nodesMap.NODO_2_BIOTRANSFORMACION.anomalies = nodesMap.NODO_2_BIOTRANSFORMACION.anomalies.filter((a) => {
+                if (a.source !== 'ELECTRET') return true;
+                return !/(?:proteinuria|[áa]cido\s+[úu]rico|acido\s+urico|nitr[óo]geno\s+ureico|creatinina|urobilin[óo]geno|fun[cç]i[óo]n\s+renal)/i.test(a.label);
+            });
+        }
+        if (venousHepaticNormal) {
+            electretSignals.hasHepaticBurden = false;
+            electretSignals.hasBiliaryBurden = false;
+            nodesMap.NODO_2_BIOTRANSFORMACION.anomalies = nodesMap.NODO_2_BIOTRANSFORMACION.anomalies.filter((a) => {
+                if (a.source === 'ELECTRET') {
+                    return !/(?:grasa\s+en\s+el\s+h[íi]gado|higado\s+graso|bilirrubina|transaminasa|ves[íi]cula|biliar)/i.test(a.label);
+                }
+                if (a.source === 'OCULAR_VISION' || a.source === 'LINGUAL_VISION') {
+                    return !/(?:hepatobiliar|ict[ée]ric|subict[ée]ric|fuego\s+hep[áa]tico)/i.test(`${a.label} ${a.detail}`);
+                }
+                return true;
+            });
+        }
+
+        const hasGfrStageG2 = Number(labValues.gfr) >= 60 && Number(labValues.gfr) < 90;
+        if (venousRenalNormal && hasGfrStageG2) {
+            const alreadyHasGfrNote = nodesMap.NODO_2_BIOTRANSFORMACION.anomalies.some((a) => /filtrado\s+glomerular|tfge/i.test(a.label));
+            if (!alreadyHasGfrNote) {
+                pushAnomaly(
+                    'NODO_2_BIOTRANSFORMACION',
+                    'OCR_LAB',
+                    'Tasa de Filtración Glomerular Estimada (TFGe — Seguimiento Preventivo)',
+                    `${labValues.gfr} mL/min/1.73 m² (Estadio funcional intermedio KDIGO G2 con Creatinina ${labValues.creatinine} mg/dL y Ácido úrico ${labValues.uricAcid || 'normal'} mg/dL en rango fisiológico)`,
+                    'MODERADA'
+                );
+            }
+        }
+
+        if (Number(labValues.serumCalcium) > 0 && labValues.serumCalcium <= 10.2) {
+            hasHighSerumCalciumOrCalcification = Boolean(electretSignals.hasCalcificationAlert);
+        }
+
+        precedence = {
+            venousRenalNormal,
+            venousHepaticNormal,
+            hasGfrStageG2,
+            isHistoricalLab: Boolean(labVigencia?.is_historical || (Number(labVigencia?.age_days) > 180)),
+            studyDateDisplay: labVigencia?.study_date_display || null
+        };
+
+        const hasVenousNormoglycemia =
+            Number(labValues.glucose) > 0 &&
+            labValues.glucose < 100 &&
+            (!labValues.hba1c || labValues.hba1c < 5.7) &&
+            (!labValues.homaIr || labValues.homaIr <= 2.5) &&
+            (!glu || glu < 100);
+
+        if (hasVenousNormoglycemia) {
+            nodesMap.NODO_3_ENERGIA.anomalies = nodesMap.NODO_3_ENERGIA.anomalies.filter((a) => {
+                if (a.source !== 'ELECTRET') return true;
+                return !/(?:insulina|glucosa|az[úu]car\s+en\s+la\s+sangre|gluc[óo]geno)/i.test(a.label);
+            });
+        }
+
+        const hasVenousNormalTriglycerides = Number(labValues.triglycerides) > 0 && labValues.triglycerides < 150;
+        if (hasVenousNormalTriglycerides) {
+            nodesMap.NODO_3_ENERGIA.anomalies = nodesMap.NODO_3_ENERGIA.anomalies.filter((a) => {
+                if (a.source !== 'ELECTRET') return true;
+                return !/triglic[ée]rido/i.test(a.label);
+            });
+        }
+
+        const electretGlycemicAltered = nodesMap.NODO_3_ENERGIA.anomalies.some(
+            (a) => a.source === 'ELECTRET' && /insulina|glucosa|az[úu]car/i.test(a.label)
+        );
+
+        const hasTrueDysglycemia = Boolean(
+            glu >= 100 ||
+            Number(labValues.glucose) >= 100 ||
+            Number(labValues.hba1c) >= 5.7 ||
+            Number(labValues.homaIr) > 2.5 ||
+            (!hasVenousNormoglycemia && electretGlycemicAltered)
+        );
+
+        const hasHypertriglyceridemia = Boolean(Number(labValues.triglycerides) >= 150);
+        const hasAtherogenicCholesterol = Boolean(
+            Number(labValues.totalCholesterol) >= 200 ||
+            Number(labValues.ldl) >= 130 ||
+            Number(labValues.nonHdl) >= 130 ||
+            Number(labValues.sdLdl) > 1.35 ||
+            Number(labValues.atherogenicIndex) >= 4.5
+        );
+        const hasAcutePhaseInflammation = Boolean(
+            Number(labValues.hscrpMgL) > 3.0 ||
+            Number(labValues.vsg) > 20 ||
+            Number(labValues.ferritin) > 300
+        );
+        const hasDistalVenousStasis = Boolean(
+            nodesMap.NODO_5_TRANSPORTE.anomalies.some((a) =>
+                a.source === 'SOMATIC_VISION' || /resistencia\s+vascular|col[áa]geno.*circulatorio|estasis|ocre|venos/i.test(`${a.label} ${a.detail}`)
+            )
+        );
+
+        subAxisFlags = {
+            hasTrueDysglycemia,
+            hasVenousNormoglycemia,
+            hasHypertriglyceridemia,
+            hasVenousNormalTriglycerides,
+            hasAtherogenicCholesterol,
+            hasAcutePhaseInflammation,
+            hasDistalVenousStasis
+        };
+
+        // Precedencia Antropométrica Física (Fase 16 Cinta/Báscula) > Bioimpedancia Electret + Ajuste de Hipoxia por Altitud (EGM-50)
+        if (hasPhysicalTapeIcc) {
+            ['NODO_3_ENERGIA', 'NODO_7_ESTRUCTURAL'].forEach((nKey) => {
+                nodesMap[nKey].anomalies = nodesMap[nKey].anomalies.filter((a) => {
+                    if (a.source !== 'ELECTRET') return true;
+                    return !/(?:relaci[óo]n\s+cintura[-\s]*cadera|\brcc\b|waist[-\s]*hip)/i.test(a.label);
+                });
+            });
+        }
+        if (hasPhysicalScaleBmi && isAthleticHighLeanMass) {
+            ['NODO_3_ENERGIA', 'NODO_7_ESTRUCTURAL'].forEach((nKey) => {
+                nodesMap[nKey].anomalies = nodesMap[nKey].anomalies.filter((a) => {
+                    if (a.source !== 'ELECTRET') return true;
+                    return !/(?:[íi]ndice\s+de\s+masa\s+corporal|\bimc\b|sobrepeso|obesidad)/i.test(a.label);
+                });
+            });
+        }
+        if (spo2 > 0 && spo2 >= altitudeInfo.spo2NormalFloor) {
+            nodesMap.NODO_5_TRANSPORTE.anomalies = nodesMap.NODO_5_TRANSPORTE.anomalies.filter((a) => {
+                if (a.source !== 'ELECTRET') return true;
+                return !/^hipoxia$/i.test(String(a.label || '').trim());
+            });
+        }
+    } catch (precErr) {
+        console.warn('⚠️ [Precedence Engine Safe Catch]:', precErr.message);
+    }
+
+    // Deduplicación estricta de hallazgos intra-nodo (EGM-50) antes de construir las 7 Micro-Cápsulas IFM
+    const nodes = Object.values(nodesMap).map((node) => {
+        const seenNodeAnomalyKeys = new Set();
+        const dedupedAnomalies = (node.anomalies || []).filter((a) => {
+            const k = `${String(a?.source || '').toUpperCase()}::${normalizeForMatch(a?.label || '')}`;
+            if (seenNodeAnomalyKeys.has(k)) return false;
+            seenNodeAnomalyKeys.add(k);
+            return true;
+        });
+        node.anomalies = dedupedAnomalies;
+        const hasAnomalies = dedupedAnomalies.length > 0;
+        const resolvedAxis = resolveFunctionalAxisForNode(node.id, dedupedAnomalies, patientData, isLactanteExplicit);
         return {
             ...node,
             hasAnomalies,
-            anomaliesCount: node.anomalies.length,
-            preAssignedCie10: resolvedCie.cie10,
-            preAssignedLabel: resolvedCie.label,
-            validation_status: hasOntologyFlag ? 'REQUIERE_REVISIÓN' : resolvedCie.validation_status
+            anomaliesCount: dedupedAnomalies.length,
+            preAssignedCie10: resolvedAxis.accredited_cie10,
+            accredited_cie10: resolvedAxis.accredited_cie10,
+            functionalCode: resolvedAxis.functionalCode,
+            preAssignedLabel: resolvedAxis.label,
+            validation_status: 'VALIDADO',
+            requires_clinical_review: Boolean(resolvedAxis.requires_clinical_review)
         };
     });
 
-    const hasLabResultsLoaded = Object.keys(labValues).length > 0;
+    const priorAdherence = detectPriorInstitutionalAdherence(patientData);
+    const logisticsSummary = translateLogisticsProfile(patientData);
 
     return {
         nodes,
         hasHighSerumCalciumOrCalcification,
         combinedExclusions,
         labValues,
+        labVigencia,
+        unitConversionsApplied,
+        cabinetSignals,
+        precedence,
+        subAxisFlags,
         hasLabResultsLoaded,
         electretSignals,
         auxiliaryBioenergetics,
         unmappedOntologyWarnings,
-        vitalsSnapshot: { sys, dia, glu, waist, hip, icc },
+        altitudeInfo,
+        routeContext,
+        priorAdherence,
+        logisticsSummary,
+        vitalsSnapshot: {
+            sys,
+            dia,
+            glu,
+            spo2,
+            waist,
+            hip,
+            icc,
+            ica,
+            weightKg: weightPhys || null,
+            heightCm: heightCmPhys || null,
+            bmi: bmiPhys,
+            bodyFatPct: bodyFatPhys > 0 ? bodyFatPhys : null,
+            hasPhysicalTapeIcc,
+            hasPhysicalScaleBmi,
+            isAthleticHighLeanMass
+        },
         anamnesis360Context: {
             chiefComplaint: sanitizeClinicalSpanish(patientQuote),
             pathologiesCount: pathologies.length,
+            epigeneticSurveillance,
             highRiskVitals: sys >= 130 || glu >= 100,
             combinedExclusions,
             isPregnant,
@@ -1385,215 +2400,1078 @@ const FORBIDDEN_SUMMARY_CLAIMS_REGEX = /(?<![\p{L}\p{N}_])(quelaci[óo]n|silimar
 const UNCONFIRMED_NOSOLOGY_WITHOUT_LABS_REGEX = /(?<![\p{L}\p{N}_])(esteatosis\s+hep[áa]tica|acumulaci[óo]n\s+(?:significativa\s+|severa\s+)?de\s+metales\s+pesados|deficiencia\s+(?:relativa\s+|severa\s+)?de\s+yodo)(?![\p{L}\p{N}_])/iu;
 
 /**
- * Construye el Contrato Terapéutico Canónico (SSoTT) ANTES de cualquier síntesis narrativa,
- * garantizando 100% de coherencia entre Vista Médica (NOM-004), Vista Paciente y Portapapeles.
+ * Motor Universal de Macronutrientes y Patrón Alimentario (Directiva 1.E — EGM-49).
+ * Ajusta dinámicamente carbohidratos, proteínas y lípidos según fenotipo metabólico,
+ * función renal, dislipidemia aterogénica, glucemia, etapa vital y preferencias de entrevista.
+ */
+function resolveDynamicMacronutrientsAndRegimen(opts = {}) {
+    const {
+        patientData = {},
+        serum = null,
+        bioenergetics = null,
+        isLactanteExplicit = false,
+        isPediatricExplicit = false
+    } = opts;
+    const ageYears = opts.ageYears ?? bioenergetics?.ageYears ?? 35;
+    const bmi = opts.bmi ?? bioenergetics?.bmi ?? 24;
+    const labValues = opts.labValues || serum?.labValues || {};
+    const subAxisFlags = opts.subAxisFlags || serum?.subAxisFlags || {};
+    try {
+        if (isLactanteExplicit) {
+            return {
+                macros: { carbs: 50, protein: 15, fat: 35 },
+                regimen: 'Alimentación Pediátrica Guiada (L-OMS)',
+                regimenBadge: 'Alimentación Pediátrica L-OMS (Supervisión Pediátrica)'
+            };
+        }
+        if (isPediatricExplicit) {
+            return {
+                macros: { carbs: 48, protein: 22, fat: 30 },
+                regimen: 'Alimentación Integral de Crecimiento y Desarrollo',
+                regimenBadge: 'Nutrición Integral de Desarrollo (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+            };
+        }
+
+        const prefDietType = String(
+            patientData?.nutrition?.preferences?.diet_type ||
+            patientData?.evaluacionDietetica?.patron_alimentario ||
+            ''
+        ).toUpperCase();
+
+        if (/KETO|CETOG/.test(prefDietType)) {
+            return {
+                macros: { carbs: 10, protein: 30, fat: 60 },
+                regimen: 'Alimentación Cetogénica Clínica Antiinflamatoria',
+                regimenBadge: 'NutriKeto Clínico (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+            };
+        }
+
+        const hasRenalImpairment = (Number(labValues.gfr) > 0 && Number(labValues.gfr) < 60) || Number(labValues.creatinine) > 1.3;
+        const hasDysglycemia = Boolean(subAxisFlags?.hasTrueDysglycemia || Number(labValues.glucose) >= 100 || Number(labValues.hba1c) >= 5.7);
+
+        if (hasRenalImpairment && hasDysglycemia) {
+            return {
+                macros: { carbs: 30, protein: 20, fat: 50 },
+                regimen: 'Alimentación Nefroprotectora de Bajo Índice Glucémico',
+                regimenBadge: 'Pauta Nefroprotectora y Control Glucémico (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+            };
+        }
+
+        if (hasRenalImpairment) {
+            return {
+                macros: { carbs: 45, protein: 20, fat: 35 },
+                regimen: 'Alimentación Nefroprotectora Normoproteica Controlada',
+                regimenBadge: 'Pauta Nefroprotectora Controlada (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+            };
+        }
+
+        if (subAxisFlags?.hasTrueDysglycemia || Number(labValues.glucose) >= 100 || Number(labValues.hba1c) >= 5.7 || Number(bmi) >= 28.5) {
+            return {
+                macros: { carbs: 30, protein: 35, fat: 35 },
+                regimen: 'Pauta de Control Glucémico e Hiperproteica Moderada',
+                regimenBadge: 'Control Glucémico-Metabólico (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+            };
+        }
+
+        if (subAxisFlags?.hasAtherogenicCholesterol || Number(labValues.ldl) >= 130 || Number(labValues.sdLdl) > 1.35 || Number(labValues.totalCholesterol) >= 200) {
+            return {
+                macros: { carbs: 35, protein: 30, fat: 35 },
+                regimen: 'Alimentación Mediterránea Cardioprotectora Antiinflamatoria (Rica en Ácidos Grasos Monoinsaturados y Fibra Soluble)',
+                regimenBadge: 'Mediterránea Cardioprotectora (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+            };
+        }
+
+        if (ageYears >= 65) {
+            return {
+                macros: { carbs: 38, protein: 32, fat: 30 },
+                regimen: 'Alimentación de Preservación Osteomuscular y Vitalidad Senior',
+                regimenBadge: 'Preservación Osteomuscular (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+            };
+        }
+
+        if (Number(bmi) >= 26) {
+            return {
+                macros: { carbs: 35, protein: 35, fat: 30 },
+                regimen: 'Alimentación Funcional de Recomposición Corporal Antiinflamatoria',
+                regimenBadge: 'Recomposición Antiinflamatoria (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+            };
+        }
+
+        return {
+            macros: { carbs: 40, protein: 30, fat: 30 },
+            regimen: 'Alimentación Funcional Antiinflamatoria Personalizada',
+            regimenBadge: 'Alimentación Antiinflamatoria (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+        };
+    } catch (_) {
+        return {
+            macros: { carbs: 40, protein: 30, fat: 30 },
+            regimen: 'Alimentación Funcional Antiinflamatoria Personalizada',
+            regimenBadge: 'Alimentación Antiinflamatoria (0 Picante • 0 Cerdo • 0 Azúcares refinados)'
+        };
+    }
+}
+
+/**
+ * Evalúa de forma determinista las causas universales de Pausa Selectiva de 33Plus® (Ajuste 3 — EGM-49):
+ * Simpaticomiméticos centrales, Inhibidores de la MAO (IMAO), crisis hipertensiva, taquiarritmia activa descontrolada o embarazo/lactancia.
+ * PROHIBIDO inventar SKUs ficticios ("Variante Libre de Estimulantes") o citar "NOM-028".
+ */
+function detectSelective33PlusContraindication({
+    patientData = {},
+    serum = {},
+    medications = null
+} = {}) {
+    try {
+        const medsList = Array.isArray(medications) && medications.length > 0
+            ? medications
+            : (Array.isArray(patientData?.history?.medications) ? patientData.history.medications : []);
+        const medsUpper = medsList.map((m) => String(m?.name || m || '').toUpperCase()).join(' | ');
+        const rawPathologies = patientData?.history?.pathologies || patientData?.antecedentesPersonales || [];
+        const pathUpper = (Array.isArray(rawPathologies) ? rawPathologies : [])
+            .map((p) => String(typeof p === 'object' ? (p.name || p.patologia) : p || '').toUpperCase())
+            .join(' | ');
+
+        const hasSympathomimetic = /(?:FENTERMINA|ACXION|TERFAMEX|METILFENIDATO|CONCERTA|RITALIN|ANFETAMINA|LISDEXANFETAMINA|VYVANSE|MODAFINILO|ARMODAFINILO|EFEDRINA|PSEUDOEFEDRINA|SIBUTRAMINA)/.test(medsUpper);
+        const hasMaoInhibitor = /(?:FENELZINA|TRANILCIPROMINA|SELEGILINA|RASAGILINA|MOCLOBEMIDA|ISOCARBOXAZIDA|LINEZOLID|\bIMAO\b|INHIBIDOR(?:ES)?\s+DE\s+LA\s+MAO)/.test(medsUpper);
+
+        const vitalsSnap = serum?.vitalsSnapshot || {};
+        const hrRest = Number(patientData?.vitals?.heart_rate || patientData?.vitals?.hr || serum?.cabinetSignals?.ecgHrBpm || 0);
+        const hasHypertensiveCrisis = Number(vitalsSnap.sys) >= 160 || Number(vitalsSnap.dia) >= 100;
+        const hasActiveUncontrolledTachyarrhythmia =
+            Boolean(serum?.cabinetSignals?.hasActiveTachyarrhythmia) ||
+            (hrRest >= 115 && !(Number(patientData?.age) < 12)) ||
+            /(?:TAQUIARRITMIA\s+(?:ACTIVA|DESCONTROLADA)|FIBRILACI[ÓO]N\s+AURICULAR\s+DESCONTROLADA|TAQUICARDIA\s+(?:SUPRAVENTRICULAR|VENTRICULAR)|FLUTTER\s+AURICULAR)/.test(pathUpper);
+
+        const isPregnant = Boolean(serum?.anamnesis360Context?.isPregnant || patientData?.physio?.is_pregnant);
+        const isLactating = Boolean(serum?.anamnesis360Context?.isLactating || patientData?.physio?.is_lactating);
+
+        const reasons = [];
+        if (hasSympathomimetic) reasons.push('tratamiento activo con fármacos simpaticomiméticos centrales');
+        if (hasMaoInhibitor) reasons.push('tratamiento activo con inhibidores de la monoaminooxidasa (IMAO)');
+        if (hasHypertensiveCrisis) reasons.push(`cifras tensionales en rango crítico (${vitalsSnap.sys}/${vitalsSnap.dia} mmHg)`);
+        if (hasActiveUncontrolledTachyarrhythmia) reasons.push('taquiarritmia activa descontrolada');
+        if (isPregnant) reasons.push('estado gestacional activo');
+        if (isLactating) reasons.push('etapa de lactancia materna activa');
+
+        return {
+            isSelective33Paused: reasons.length > 0,
+            hasSympathomimetic,
+            hasMaoInhibitor,
+            hasHypertensiveCrisis,
+            hasActiveUncontrolledTachyarrhythmia,
+            isPregnant,
+            isLactating,
+            reasons,
+            reasonText: reasons.join(', ')
+        };
+    } catch (_) {
+        return {
+            isSelective33Paused: false,
+            reasons: [],
+            reasonText: ''
+        };
+    }
+}
+
+/**
+ * Motor Universal Multivariable de Estudio de Edad Metabólica (`calculateBidirectionalMetabolicAge` — EGM-51 v2).
+ * 100 % agnóstico de paciente: adapta curvas por sexo, edad, altitud (msnm), unidades internacionales SI,
+ * nivel de evidencia disponible (`Coverage-Weighted Scoring`: `NO_MEDIDO = 0`), compuertas de seguridad de las
+ * 17 rutas dinámicas (< 18 años, Embarazo/Lactancia, TCA/Salud Mental, Cuidados Paliativos) y protección de
+ * masa muscular en Deporte (`GOAL_MUSCLE` / alta MLG con ICA óptimo), con metas fisiológicas realistas (28d vs 90d).
+ */
+function calculateBidirectionalMetabolicAge(rawPatientData = {}, precomputedSerum = null, precomputedBioenergetics = null) {
+    const verifiedAge = resolveVerifiedPatientAge(rawPatientData, 35);
+    const chronoAge = Number(verifiedAge.ageYears) || 35;
+    const isFemale = resolveBackendPatientIsFemale(rawPatientData);
+    const isLactante = Boolean(chronoAge < 2 && (verifiedAge.isLactanteVerified || rawPatientData?.isLactante === true));
+    const isPediatric = Boolean(chronoAge < 18 && (isLactante || verifiedAge.isPediatricVerified || rawPatientData?.isPediatrico === true));
+
+    try {
+        const serum = precomputedSerum || distillClinicalSerum(rawPatientData, isLactante);
+        const bio = precomputedBioenergetics || calculatePrecisionBioenergetics(rawPatientData, chronoAge, verifiedAge.ageMonths, isLactante, isPediatric);
+        const altitudeInfo = serum?.altitudeInfo || resolvePatientAltitudeMsnm(rawPatientData);
+        const routeContext = serum?.routeContext || resolveActiveClinicalRoutes(rawPatientData, chronoAge, isLactante, isPediatric);
+        const vitalsSnap = serum?.vitalsSnapshot || {};
+        const labs = serum?.labValues || {};
+        const cab = serum?.cabinetSignals || {};
+
+        const hasLabEvidence = Boolean(serum?.hasLabResultsLoaded || cab?.hasCabinetStudies);
+        const rawElectretObj = rawPatientData?.scan_data?.electret_metrics || rawPatientData?.electretTelemetry?.categories || null;
+        const hasElectretEvidence = Boolean(rawElectretObj && typeof rawElectretObj === 'object' && Object.keys(rawElectretObj).length > 0);
+        const hasOpticalOrWearable = Boolean(
+            rawPatientData?.scan_data?.ocular_metrics ||
+            rawPatientData?.scan_data?.lingual_metrics ||
+            rawPatientData?.lifestyle_profile?.activity?.source_type === 'TELEMETRY_TCX'
+        );
+
+        const evidenceTier = hasLabEvidence
+            ? 'BIOQUIMICO_INTEGRAL'
+            : (hasElectretEvidence || hasOpticalOrWearable)
+                ? 'BIOFISICO_MULTIMODAL'
+                : 'CLINICO_ANTROPOMETRICO';
+
+        const evidenceTierBadge = evidenceTier === 'BIOQUIMICO_INTEGRAL'
+            ? 'Certeza Bioquímica y Clínica Integral'
+            : evidenceTier === 'BIOFISICO_MULTIMODAL'
+                ? 'Certeza Biofísica y Clínica Multimodal'
+                : 'Certeza Clínica y Antropométrica Basal';
+
+        const evidenceConfidencePct = evidenceTier === 'BIOQUIMICO_INTEGRAL'
+            ? 95
+            : evidenceTier === 'BIOFISICO_MULTIMODAL'
+                ? 82
+                : 72;
+
+        // A. Compuertas de Seguridad en las 17 Rutas Dinámicas (Ocultamiento de Edad Metabólica Punitiva)
+        if (routeContext.isSensitiveSafetyRoute) {
+            const code = routeContext.safetyGateReasonCode;
+            const gateMetaMap = {
+                PEDIATRICS_GROWTH_PERCENTILES: {
+                    badge: 'Protección Pediátrica Activa • Desarrollo Longitudinal',
+                    title: 'Seguimiento por Curvas de Crecimiento y Desarrollo (Sin Edad Metabólica Comparativa)',
+                    patientExplanation: chronoAge < 13
+                        ? 'En menores de 18 años acompañamos el crecimiento saludable mediante curvas pediátricas de talla, peso y vitalidad diaria junto con su madre, padre o tutor, sin aplicar comparaciones de edad metabólica de adultos.'
+                        : 'En etapa adolescente priorizamos su desarrollo armónico, energía escolar y bienestar integral mediante percentiles de crecimiento saludable, sin etiquetas comparativas de edad metabólica.',
+                    clinicalExplanation: 'Compuerta Ruta 5 (Pediatría < 18 años): Se suprime comparación punitiva de Edad Metabólica adulta; rigen percentiles L-OMS/CDC de crecimiento y maduración.'
+                },
+                PREGNANCY_LACTATION_PROTECTION: {
+                    badge: 'Protección Materno-Infantil • Embarazo y Lactancia',
+                    title: 'Acompañamiento Fisiológico Gestacional y de Lactancia (Edad Metabólica Desactivada)',
+                    patientExplanation: 'Durante el embarazo y la lactancia su organismo realiza adaptaciones fisiológicas maravillosas para nutrir la vida; por ello evaluamos su bienestar materno e hidratación sin comparaciones de edad metabólica.',
+                    clinicalExplanation: 'Compuerta Ruta 6 (Embarazo y Lactancia): Los cambios fisiológicos de volumen plasmático, lípidos y composición corporal invalidan ecuaciones de edad metabólica estándar.'
+                },
+                TCA_BEHAVIORAL_SAFETY: {
+                    badge: 'Seguridad Conductual Activa • Enfoque de Bienestar Integral',
+                    title: 'Acompañamiento Nutricional Centrado en Vitalidad y Relación Saludable con la Alimentación',
+                    patientExplanation: 'Su plan prioriza su energía diaria, descanso reparador, digestión cómoda y paz nutricional, prescindiendo deliberadamente de marcadores numéricos comparativos de edad corporal.',
+                    clinicalExplanation: 'Compuerta Ruta 9 (Salud Mental / TCA): Supresión obligatoria de métricas numéricas punitivas de composición/edad metabólica por bioseguridad conductual.'
+                },
+                PALLIATIVE_COMFORT_CARE: {
+                    badge: 'Cuidado Compasivo Integral • Confort y Calidad de Vida',
+                    title: 'Soporte Nutricional Enfocado en Confort Digestivo, Hidratación y Bienestar Diario',
+                    patientExplanation: 'Nuestro acompañamiento se centra plenamente en su confort diario, hidratación suave y aprovechamiento amable de sus alimentos, sin indicadores comparativos punitivos.',
+                    clinicalExplanation: 'Compuerta Ruta 14 (Cuidados Paliativos): Se desactiva cálculo punitivo de Edad Metabólica priorizando calidad de vida, tolerancia digestiva y confort.'
+                }
+            };
+            const gMeta = gateMetaMap[code] || gateMetaMap.TCA_BEHAVIORAL_SAFETY;
+            return {
+                engineVersion: '3.3.0-EGM51-V2',
+                isSuppressedBySafetyGate: true,
+                safetyGateReasonCode: code,
+                suppressionReasonCode: code,
+                safetyGateBadge: gMeta.badge,
+                safetyGateTitle: gMeta.title,
+                safetyGatePatientExplanation: gMeta.patientExplanation,
+                safetyGateClinicalExplanation: gMeta.clinicalExplanation,
+                suppressionReasonText: gMeta.patientExplanation,
+                chronologicalAge: chronoAge,
+                metabolicAge: null,
+                metabolicAgeExact: null,
+                deltaYears: null,
+                deltaYearsRounded: null,
+                cycle1TargetAge28d: null,
+                cycle1Delta28d: null,
+                cycle3ProjectionAge90d: null,
+                cycle3Delta90d: null,
+                evidenceTier,
+                evidenceTierBadge,
+                evidenceConfidencePct,
+                measuredDomainsCount: 0,
+                totalDomainsPossible: 5,
+                coverageWeightRatio: 0,
+                altitudeMsnm: altitudeInfo.msnm,
+                altitudeLabel: altitudeInfo.label,
+                spo2AdjustedNormal: true,
+                isAthleticHighLeanMass: false,
+                activeRoutes: routeContext.activeRoutes,
+                unitConversionsApplied: serum?.unitConversionsApplied || [],
+                anthropometrySource: 'SAFETY_GATED',
+                physicalMetrics: {},
+                domainBreakdown: [],
+                protectiveFactors: [],
+                modifiableLoadFactors: [],
+                patientSummary: gMeta.patientExplanation,
+                clinicalSummary: gMeta.clinicalExplanation
+            };
+        }
+
+        // B. Precedencia Antropométrica Física (Fase 16 Cinta/Báscula > Bioimpedancia) y Compuerta Deportiva (Ruta 3)
+        const weightKg = Number(vitalsSnap.weightKg || bio?.weightKg || 0) || null;
+        const heightCm = Number(vitalsSnap.heightCm || bio?.heightCm || 0) || null;
+        const waistCm = Number(vitalsSnap.waist || 0) || null;
+        const hipCm = Number(vitalsSnap.hip || 0) || null;
+
+        let electretBodyFat = null;
+        if (hasElectretEvidence) {
+            Object.values(rawElectretObj || {}).forEach((cat) => {
+                const items = Array.isArray(cat?.items) ? cat.items : [];
+                items.forEach((it) => {
+                    const nm = normalizeForMatch(it?.name || it?.key || '');
+                    if (nm.includes('porcentaje_de_grasa') || nm === 'body_fat_pct') {
+                        const v = parseFloat(String(it?.value ?? '').replace(/[^0-9.-]/g, ''));
+                        if (Number.isFinite(v) && v >= 4 && v <= 65) electretBodyFat = v;
+                    }
+                });
+            });
+        }
+        const bodyFatPct = Number(vitalsSnap.bodyFatPct || bio?.bodyFatPct || electretBodyFat || 0) || null;
+        const bmi = (weightKg && heightCm)
+            ? Number((weightKg / Math.pow(heightCm / 100, 2)).toFixed(1))
+            : (Number(vitalsSnap.bmi || bio?.bmi || 0) || null);
+        const ica = (waistCm && heightCm) ? Number((waistCm / heightCm).toFixed(2)) : null;
+        const icc = (waistCm && hipCm) ? Number((waistCm / hipCm).toFixed(2)) : (Number(vitalsSnap.icc || 0) || null);
+
+        const iccThreshold = isFemale ? 0.85 : 0.90;
+        const optimalFatMax = (isFemale ? 28.0 : 20.0) + (chronoAge >= 60 ? 2.0 : 0.0);
+        const athleticFatMax = isFemale ? 25.0 : 18.0;
+
+        const isAthleticHighLeanMass = Boolean(
+            routeContext.isMuscleOrSportRoute ||
+            (bodyFatPct !== null && bodyFatPct <= athleticFatMax && (ica === null || ica < 0.52) && (icc === null || icc < iccThreshold))
+        );
+
+        const protectiveFactors = [];
+        const modifiableLoadFactors = [];
+        const domains = [];
+
+        // DOMINIO 1 (Peso máx 0.30): Composición Corporal y Adiposidad Visceral Real
+        const hasAnthroDomain = Boolean(bmi !== null || ica !== null || icc !== null || bodyFatPct !== null);
+        if (hasAnthroDomain) {
+            let d1Score = 0;
+            if (isAthleticHighLeanMass) {
+                if (bodyFatPct !== null && bodyFatPct <= (isFemale ? 22 : 15)) {
+                    d1Score -= 3.2;
+                    protectiveFactors.push(`alta reserva muscular magra (${bodyFatPct} % grasa corporal; 0 penalización por IMC ${bmi || '--'})`);
+                } else {
+                    d1Score -= 2.0;
+                    protectiveFactors.push(`composición atlética con baja adiposidad visceral (0 penalización por IMC muscular)`);
+                }
+                if (ica !== null && ica < 0.49) {
+                    d1Score -= 1.0;
+                    protectiveFactors.push(`relación cintura-estatura óptima (ICA ${ica})`);
+                } else if (ica !== null && ica >= 0.54) {
+                    d1Score += 1.5;
+                }
+            } else {
+                if (ica !== null) {
+                    if (ica < 0.50) {
+                        d1Score -= 1.6;
+                        protectiveFactors.push(`cintura-estatura saludable (ICA ${ica})`);
+                    } else if (ica <= 0.54) {
+                        d1Score += 0.6;
+                    } else if (ica <= 0.60) {
+                        d1Score += 2.2;
+                        modifiableLoadFactors.push(`circunferencia abdominal central (ICA ${ica})`);
+                    } else {
+                        d1Score += 4.2;
+                        modifiableLoadFactors.push(`adiposidad central marcada (ICA ${ica})`);
+                    }
+                } else if (bmi !== null) {
+                    if (bmi >= 18.5 && bmi < 25.0) {
+                        d1Score -= 1.2;
+                        protectiveFactors.push(`índice de masa corporal en rango fisiológico (${bmi} kg/m²)`);
+                    } else if (bmi >= 25.0 && bmi < 30.0) {
+                        d1Score += 1.6;
+                        modifiableLoadFactors.push(`sobrepeso moderado (IMC ${bmi} kg/m²)`);
+                    } else if (bmi >= 30.0 && bmi < 35.0) {
+                        d1Score += 3.8;
+                        modifiableLoadFactors.push(`sobrecarga ponderal (IMC ${bmi} kg/m²)`);
+                    } else if (bmi >= 35.0) {
+                        d1Score += 6.0;
+                        modifiableLoadFactors.push(`sobrecarga ponderal grado II+ (IMC ${bmi} kg/m²)`);
+                    }
+                }
+
+                if (icc !== null) {
+                    if (icc < iccThreshold) {
+                        d1Score -= 0.6;
+                    } else {
+                        d1Score += icc >= (iccThreshold + 0.08) ? 1.8 : 1.0;
+                        modifiableLoadFactors.push(`relación cintura-cadera física (ICC ${icc})`);
+                    }
+                }
+
+                if (bodyFatPct !== null) {
+                    if (bodyFatPct <= optimalFatMax) {
+                        d1Score -= 0.8;
+                        protectiveFactors.push(`porcentaje de grasa corporal conservado (${bodyFatPct} %)`);
+                    } else if (bodyFatPct <= optimalFatMax + 5) {
+                        d1Score += 0.8;
+                    } else {
+                        d1Score += 2.2;
+                        modifiableLoadFactors.push(`porcentaje de grasa corporal elevado (${bodyFatPct} %)`);
+                    }
+                }
+            }
+            domains.push({
+                id: 'ANTHROPOMETRY_ADIPOSITY',
+                label: 'Composición Corporal y Adiposidad Visceral',
+                weight: 0.30,
+                measured: true,
+                scoreEquivalentYears: Math.max(-6.0, Math.min(9.0, Number(d1Score.toFixed(2))))
+            });
+        } else {
+            domains.push({ id: 'ANTHROPOMETRY_ADIPOSITY', label: 'Composición Corporal', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
+        }
+
+        // DOMINIO 2 (Peso máx 0.20): Hemodinámica, Oxigenación en Altitud (msnm) y Aptitud Física
+        const lpAct = rawPatientData?.lifestyle_profile?.activity || rawPatientData?.clinical_context?.activity?.exercise || {};
+        const tcxValid = lpAct?.source_type === 'TELEMETRY_TCX' && !lpAct?.telemetry_metadata?.preview_pending_confirm ? lpAct.telemetry_metadata : null;
+        const wkMin = Number(lpAct?.weekly_minutes || tcxValid?.weekly_minutes || ((Number(tcxValid?.daily_minutes || 0) * Number(tcxValid?.weekly_days || 0)) || 0));
+        const actLevelStr = String(rawPatientData?.activity_level || rawPatientData?.physical_activity || rawPatientData?.habits?.activity_level || '').toUpperCase();
+        const hasActiveExercise = Boolean(wkMin >= 120 || tcxValid || /MODERAD|INTENS|ATLETA|ACTIVO/.test(actLevelStr));
+        const isExplicitSedentary = !hasActiveExercise && /SEDENTARIO|NULA/.test(actLevelStr);
+        const sysBp = Number(vitalsSnap.sys || 0);
+        const diaBp = Number(vitalsSnap.dia || 0);
+        const spo2Val = Number(vitalsSnap.spo2 || 0);
+        const hasHemodynamicDomain = Boolean(sysBp > 0 || spo2Val > 0 || hasActiveExercise || isExplicitSedentary || cab.hasCabinetStudies);
+
+        if (hasHemodynamicDomain) {
+            let d2Score = 0;
+            if (sysBp > 0 && diaBp > 0) {
+                if (sysBp < 122 && diaBp < 80) {
+                    d2Score -= 1.2;
+                    protectiveFactors.push(`presión arterial óptima (${sysBp}/${diaBp} mmHg)`);
+                } else if (sysBp < 130 && diaBp < 85) {
+                    d2Score -= 0.3;
+                } else if (sysBp < 140 && diaBp < 90) {
+                    d2Score += 2.0;
+                    modifiableLoadFactors.push(`tensión arterial limítrofe (${sysBp}/${diaBp} mmHg)`);
+                } else {
+                    d2Score += 4.8;
+                    modifiableLoadFactors.push(`hipertensión arterial activa (${sysBp}/${diaBp} mmHg)`);
+                }
+            }
+            if (spo2Val > 0) {
+                if (spo2Val >= altitudeInfo.spo2NormalFloor) {
+                    d2Score -= spo2Val >= (altitudeInfo.spo2NormalFloor + 3) ? 0.6 : 0.2;
+                    protectiveFactors.push(
+                        altitudeInfo.msnm >= 1500
+                            ? `oxigenación fisiológica adaptada a altitud (${spo2Val} % en ${altitudeInfo.msnm} msnm)`
+                            : `saturación de oxígeno adecuada (${spo2Val} %)`
+                    );
+                } else {
+                    d2Score += spo2Val < 89 ? 3.5 : 1.8;
+                    modifiableLoadFactors.push(`hipoxemia relativa para altitud (${spo2Val} %)`);
+                }
+            }
+            if (hasActiveExercise) {
+                d2Score -= (wkMin >= 240 || routeContext.isMuscleOrSportRoute) ? 2.2 : 1.4;
+                protectiveFactors.push(
+                    tcxValid
+                        ? `actividad física estructurada validada (${wkMin || tcxValid.daily_minutes} min${wkMin ? '/sem' : '/día'})`
+                        : 'hábito de ejercicio físico activo'
+                );
+            } else if (isExplicitSedentary) {
+                d2Score += 1.4;
+                modifiableLoadFactors.push('bajo volumen actual de movimiento estructurado');
+            }
+            if (cab.hasCardiacConductionOrBradycardia) {
+                d2Score += 0.9;
+            }
+            domains.push({
+                id: 'HEMODYNAMICS_ALTITUDE_FITNESS',
+                label: 'Hemodinámica, Oxigenación por Altitud y Aptitud Física',
+                weight: 0.20,
+                measured: true,
+                scoreEquivalentYears: Math.max(-5.5, Math.min(8.5, Number(d2Score.toFixed(2))))
+            });
+        } else {
+            domains.push({ id: 'HEMODYNAMICS_ALTITUDE_FITNESS', label: 'Hemodinámica y Aptitud', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
+        }
+
+        // DOMINIO 3 (Peso máx 0.20): Regulación Glucémica e Insulínica (0 castigo si NO_MEDIDO)
+        const effGlucose = Number(labs.glucose || vitalsSnap.glu || 0);
+        const effHba1c = Number(labs.hba1c || 0);
+        const effHoma = Number(labs.homaIr || 0);
+        const hasGlycemicDomain = Boolean(effGlucose > 0 || effHba1c > 0 || effHoma > 0);
+
+        if (hasGlycemicDomain) {
+            let d3Score = 0;
+            if ((effGlucose >= 126) || (effHba1c >= 6.5)) {
+                d3Score += effGlucose >= 165 || effHba1c >= 7.5 ? 9.5 : 6.5;
+                modifiableLoadFactors.push(`desregulación glucémica (${effGlucose ? `Glucosa ${effGlucose} mg/dL` : `HbA1c ${effHba1c} %`})`);
+            } else if ((effGlucose >= 100 && effGlucose < 126) || (effHba1c >= 5.7 && effHba1c < 6.5) || effHoma > 2.5) {
+                d3Score += 3.2;
+                modifiableLoadFactors.push(`resistencia glucémica/insulínica temprana (${effGlucose ? `Glucosa ${effGlucose} mg/dL` : `HbA1c ${effHba1c} %`})`);
+            } else if (effGlucose >= 70 && effGlucose < 93 && (!effHba1c || effHba1c < 5.5)) {
+                d3Score -= 1.8;
+                protectiveFactors.push(`normoglucemia óptima en ayuno (${effGlucose} mg/dL)`);
+            } else {
+                d3Score -= 0.8;
+                protectiveFactors.push(`glucosa basal en rango saludable (${effGlucose || '--'} mg/dL)`);
+            }
+            domains.push({
+                id: 'GLYCEMIC_METABOLISM',
+                label: 'Regulación Glucémica e Insulínica',
+                weight: 0.20,
+                measured: true,
+                scoreEquivalentYears: Math.max(-4.0, Math.min(11.0, Number(d3Score.toFixed(2))))
+            });
+        } else {
+            domains.push({ id: 'GLYCEMIC_METABOLISM', label: 'Regulación Glucémica', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
+        }
+
+        // DOMINIO 4 (Peso máx 0.15): Transporte Lipoproteico e Inflamación Vascular (Cortes HDL por Sexo)
+        const hasLipidVascDomain = Boolean(
+            Number(labs.totalCholesterol) > 0 ||
+            Number(labs.ldl) > 0 ||
+            Number(labs.hdl) > 0 ||
+            Number(labs.triglycerides) > 0 ||
+            Number(labs.hscrpMgL) > 0
+        );
+        if (hasLipidVascDomain) {
+            let d4Score = 0;
+            const hdlMin = isFemale ? 50 : 40;
+            if (Number(labs.hdl) > 0) {
+                if (labs.hdl >= hdlMin + 12) {
+                    d4Score -= 1.2;
+                    protectiveFactors.push(`colesterol HDL cardioprotector (${labs.hdl} mg/dL)`);
+                } else if (labs.hdl < hdlMin) {
+                    d4Score += 2.2;
+                    modifiableLoadFactors.push(`colesterol HDL reducido para su sexo (${labs.hdl} mg/dL)`);
+                }
+            }
+            if (Number(labs.triglycerides) > 0) {
+                if (labs.triglycerides < 110) {
+                    d4Score -= 0.8;
+                    protectiveFactors.push(`triglicéridos en rango óptimo (${labs.triglycerides} mg/dL)`);
+                } else if (labs.triglycerides >= 220) {
+                    d4Score += 3.5;
+                    modifiableLoadFactors.push(`hipertrigliceridemia (${labs.triglycerides} mg/dL)`);
+                } else if (labs.triglycerides >= 150) {
+                    d4Score += 1.8;
+                    modifiableLoadFactors.push(`triglicéridos elevados (${labs.triglycerides} mg/dL)`);
+                }
+            }
+            if (Number(labs.ldl) >= 130 || Number(labs.sdLdl) > 1.35 || Number(labs.nonHdl) >= 160) {
+                d4Score += (Number(labs.ldl) >= 160 || Number(labs.sdLdl) > 1.6) ? 2.8 : 1.6;
+                modifiableLoadFactors.push(`carga lipoproteica LDL/sdLDL (${labs.ldl ? `LDL ${labs.ldl} mg/dL` : 'partículas aterogénicas'})`);
+            } else if (Number(labs.ldl) > 0 && labs.ldl < 100) {
+                d4Score -= 0.8;
+            }
+            if (Number(labs.hscrpMgL) > 0) {
+                if (labs.hscrpMgL <= 1.2) {
+                    d4Score -= 0.7;
+                    protectiveFactors.push(`proteína C reactiva ultrasensible tranquila (${labs.hscrpMgL} mg/L)`);
+                } else if (labs.hscrpMgL > 3.0) {
+                    d4Score += 2.4;
+                    modifiableLoadFactors.push(`inflamación vascular ultrasensible (PCR-us ${labs.hscrpMgL} mg/L)`);
+                }
+            }
+            domains.push({
+                id: 'LIPOPROTEIN_VASCULAR',
+                label: 'Transporte Lipoproteico e Inflamación Endotelial',
+                weight: 0.15,
+                measured: true,
+                scoreEquivalentYears: Math.max(-4.0, Math.min(9.5, Number(d4Score.toFixed(2))))
+            });
+        } else {
+            domains.push({ id: 'LIPOPROTEIN_VASCULAR', label: 'Perfil Lipoproteico', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
+        }
+
+        // DOMINIO 5 (Peso máx 0.15): Filtración Hepatorrenal y Hematología por Sexo/Edad/Altitud
+        const hasHepatoRenalDomain = Boolean(
+            Number(labs.creatinine) > 0 ||
+            Number(labs.gfr) > 0 ||
+            Number(labs.uricAcid) > 0 ||
+            Number(labs.alt) > 0 ||
+            Number(labs.ast) > 0 ||
+            Number(labs.hemoglobin) > 0
+        );
+        if (hasHepatoRenalDomain) {
+            let d5Score = 0;
+            const crUpper = isFemale ? 1.1 : 1.3;
+            const uricUpper = isFemale ? 6.0 : 7.0;
+            if (Number(labs.creatinine) > crUpper || (Number(labs.gfr) > 0 && labs.gfr < 60)) {
+                d5Score += (Number(labs.creatinine) >= 1.6 || (Number(labs.gfr) > 0 && labs.gfr < 45)) ? 7.5 : 4.0;
+                modifiableLoadFactors.push(`sobrecarga en filtración renal (Cr ${labs.creatinine} mg/dL${labs.gfr ? ` • TFGe ${labs.gfr}` : ''})`);
+            } else if (Number(labs.creatinine) > 0) {
+                d5Score -= 0.8;
+                protectiveFactors.push(`función renal conservada (Creatinina ${labs.creatinine} mg/dL)`);
+            }
+            if (Number(labs.uricAcid) > uricUpper) {
+                d5Score += 1.6;
+                modifiableLoadFactors.push(`ácido úrico elevado para su sexo (${labs.uricAcid} mg/dL)`);
+            }
+            if (Number(labs.alt) > 61 || Number(labs.ast) > 40 || Number(labs.ggt) > 61) {
+                d5Score += 2.6;
+                modifiableLoadFactors.push('sobrecarga enzimática hepatobiliar');
+            } else if (Number(labs.alt) > 0 && Number(labs.ast) > 0) {
+                d5Score -= 0.6;
+                protectiveFactors.push('enzimas hepáticas en rango fisiológico');
+            }
+            if (Number(labs.hemoglobin) > 0) {
+                const hbFloor = (isFemale ? 12.0 : 13.5) + altitudeInfo.hbAltitudeOffset;
+                if (labs.hemoglobin < hbFloor) {
+                    d5Score += 1.8;
+                    modifiableLoadFactors.push(`hemoglobina baja para altitud (${labs.hemoglobin} g/dL)`);
+                }
+            }
+            domains.push({
+                id: 'HEPATORENAL_HEMATOLOGY',
+                label: 'Filtración Hepatorrenal y Hematología Ajustada',
+                weight: 0.15,
+                measured: true,
+                scoreEquivalentYears: Math.max(-3.5, Math.min(10.0, Number(d5Score.toFixed(2))))
+            });
+        } else {
+            domains.push({ id: 'HEPATORENAL_HEMATOLOGY', label: 'Filtración Hepatorrenal', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
+        }
+
+        // C. Normalización por Nivel de Evidencia Disponible (`Coverage-Weighted Scoring`: NO_MEDIDO = 0)
+        const measuredDomains = domains.filter((d) => d.measured && d.weight > 0);
+        const totalActiveWeight = measuredDomains.reduce((acc, d) => acc + d.weight, 0);
+        let weightedDelta = totalActiveWeight > 0
+            ? measuredDomains.reduce((acc, d) => acc + (d.weight * d.scoreEquivalentYears), 0) / totalActiveWeight
+            : 0;
+
+        // Tope estricto <= +1.0 año para señales puramente bioeléctricas sin respaldo sérico ni antropométrico alterado
+        if (!hasLabEvidence && hasElectretEvidence) {
+            const electretAbnormalNodes = (serum?.nodes || []).filter((n) =>
+                Array.isArray(n.anomalies) && n.anomalies.some((a) => a.source === 'ELECTRET' && (a.severity === 'ALTA' || a.severity === 'CRÍTICA'))
+            ).length;
+            const pureBioelectricNudge = Math.min(1.0, electretAbnormalNodes * 0.2);
+            if (modifiableLoadFactors.length === 0) {
+                weightedDelta = Math.min(1.0, weightedDelta + pureBioelectricNudge);
+            }
+        }
+
+        // Acotamiento fisiológico universal [-8.0, +12.0]
+        const clampedDeltaExact = Number(Math.max(-8.0, Math.min(12.0, weightedDelta)).toFixed(1));
+        const metabolicAgeExact = Number(Math.max(18.0, chronoAge + clampedDeltaExact).toFixed(1));
+        const metabolicAgeRounded = Math.round(metabolicAgeExact);
+        const deltaYearsRounded = metabolicAgeRounded - chronoAge;
+
+        // Metas defendibles: Ciclo 1 (28 Días) limitado a <= 1.0 a 1.5 años; metas mayores proyectadas a 90 Días (Ciclo 3)
+        let cycle1Delta28d = 0;
+        let cycle3Delta90d = 0;
+        if (clampedDeltaExact > 0.4) {
+            cycle1Delta28d = -Number(Math.min(clampedDeltaExact, clampedDeltaExact >= 3.0 ? 1.5 : (clampedDeltaExact >= 1.2 ? 1.2 : Math.max(0.5, clampedDeltaExact))).toFixed(1));
+            cycle3Delta90d = -Number(Math.min(clampedDeltaExact, Math.max(Math.abs(cycle1Delta28d), Math.min(4.5, Number((clampedDeltaExact * 0.6).toFixed(1))))).toFixed(1));
+        } else {
+            const roomToFloor = Math.max(0, (metabolicAgeExact - (chronoAge - 8.0)));
+            cycle1Delta28d = roomToFloor >= 0.5 ? -0.5 : 0;
+            cycle3Delta90d = roomToFloor >= 1.0 ? -1.0 : cycle1Delta28d;
+        }
+
+        const cycle1TargetAge28d = Number((metabolicAgeExact + cycle1Delta28d).toFixed(1));
+        const cycle3ProjectionAge90d = Number((metabolicAgeExact + cycle3Delta90d).toFixed(1));
+
+        const topProtectiveText = protectiveFactors.slice(0, 3).join(', ');
+        const topModifiableText = modifiableLoadFactors.slice(0, 3).join(', ');
+
+        const patientSummary = clampedDeltaExact > 0.5
+            ? `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica estimada es de ${metabolicAgeExact} años (${clampedDeltaExact > 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años • ${evidenceTierBadge}). Sus fortalezas actuales (${topProtectiveText || 'homeostasis general'}) equilibran gran parte de los ejes por optimizar (${topModifiableText || 'adaptación metabólica'}). En su Ciclo 1 (28 días) proyectamos una mejora realista hacia ${cycle1TargetAge28d} años (${cycle1Delta28d} años), consolidando una proyección a 90 días hacia ${cycle3ProjectionAge90d} años.`
+            : clampedDeltaExact < -0.5
+                ? `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica actual es de ${metabolicAgeExact} años (${clampedDeltaExact} años • reserva funcional superior a su edad), respaldada por ${topProtectiveText || 'su composición corporal y vitalidad cardiometabólica'}. Nuestro objetivo a 28 y 90 días es preservar esta ventaja fisiológica (${cycle1TargetAge28d} años).`
+                : `Su Edad Cronológica (${chronoAge} años) y su Edad Metabólica actual (${metabolicAgeExact} años) se encuentran en equilibrio fisiológico (${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años • ${evidenceTierBadge}), respaldadas por ${topProtectiveText || 'sus constantes vitales conservadas'}${topModifiableText ? `, enfocando los próximos 28 días en optimizar ${topModifiableText} hacia ${cycle1TargetAge28d} años` : ''}.`;
+
+        const clinicalSummary = `Estudio Multivariable EGM-51 v2 (${evidenceTier} • ${measuredDomains.length}/5 dominios medidos • Altitud ${altitudeInfo.msnm} msnm): Edad Cronológica ${chronoAge} a vs Edad Metabólica ${metabolicAgeExact} a (Delta ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} a). Meta Ciclo 1 (28d): ${cycle1TargetAge28d} a (${cycle1Delta28d} a) | Proyección Ciclo 3 (90d): ${cycle3ProjectionAge90d} a (${cycle3Delta90d} a).`;
+
+        return {
+            engineVersion: '3.3.0-EGM51-V2',
+            isSuppressedBySafetyGate: false,
+            safetyGateReasonCode: null,
+            safetyGateBadge: null,
+            safetyGateTitle: null,
+            safetyGatePatientExplanation: null,
+            safetyGateClinicalExplanation: null,
+            chronologicalAge: chronoAge,
+            metabolicAge: metabolicAgeRounded,
+            metabolicAgeExact,
+            deltaYears: clampedDeltaExact,
+            deltaYearsRounded,
+            cycle1TargetAge28d,
+            cycle1Delta28d,
+            cycle3ProjectionAge90d,
+            cycle3Delta90d,
+            evidenceTier,
+            evidenceTierBadge,
+            evidenceConfidencePct,
+            measuredDomainsCount: measuredDomains.length,
+            totalDomainsPossible: 5,
+            coverageWeightRatio: Number(totalActiveWeight.toFixed(2)),
+            altitudeMsnm: altitudeInfo.msnm,
+            altitudeLabel: altitudeInfo.label,
+            spo2AdjustedNormal: Boolean(spo2Val === 0 || spo2Val >= altitudeInfo.spo2NormalFloor),
+            isAthleticHighLeanMass,
+            activeRoutes: routeContext.activeRoutes,
+            unitConversionsApplied: serum?.unitConversionsApplied || [],
+            anthropometrySource: (vitalsSnap.hasPhysicalTapeIcc || vitalsSnap.hasPhysicalScaleBmi) ? 'PHYSICAL_TAPE_SCALE' : (hasElectretEvidence ? 'BIOIMPEDANCE_FALLBACK' : 'UNMEASURED'),
+            physicalMetrics: { bmi, waistCm, hipCm, ica, icc, bodyFatPct },
+            domainBreakdown: domains,
+            protectiveFactors,
+            modifiableLoadFactors,
+            patientSummary: sanitizeClinicalSpanish(patientSummary),
+            clinicalSummary: sanitizeClinicalSpanish(clinicalSummary)
+        };
+    } catch (metaErr) {
+        console.warn('⚠️ [MetabolicAge EGM-51 v2 Safe Fallback]:', metaErr?.message || metaErr);
+        return {
+            engineVersion: '3.3.0-EGM51-FALLBACK',
+            isSuppressedBySafetyGate: false,
+            safetyGateReasonCode: null,
+            chronologicalAge: chronoAge,
+            metabolicAge: chronoAge,
+            metabolicAgeExact: chronoAge,
+            deltaYears: 0,
+            deltaYearsRounded: 0,
+            cycle1TargetAge28d: chronoAge,
+            cycle1Delta28d: 0,
+            cycle3ProjectionAge90d: chronoAge,
+            cycle3Delta90d: 0,
+            evidenceTier: 'CLINICO_ANTROPOMETRICO',
+            evidenceTierBadge: 'Respaldo Clínico Determinista',
+            evidenceConfidencePct: 70,
+            measuredDomainsCount: 1,
+            totalDomainsPossible: 5,
+            coverageWeightRatio: 0.3,
+            altitudeMsnm: 0,
+            altitudeLabel: 'Nivel basal',
+            spo2AdjustedNormal: true,
+            isAthleticHighLeanMass: false,
+            activeRoutes: ['GOAL_CLINICAL'],
+            unitConversionsApplied: [],
+            anthropometrySource: 'UNMEASURED',
+            physicalMetrics: {},
+            domainBreakdown: [],
+            protectiveFactors: [],
+            modifiableLoadFactors: [],
+            patientSummary: `Su Edad Cronológica (${chronoAge} años) se mantiene como referencia basal segura mientras integramos sus indicadores clínicos.`,
+            clinicalSummary: `Respaldo seguro EGM-51 v2: Edad Cronológica ${chronoAge} años.`
+        };
+    }
+}
+
+/**
+ * Compilador Clínico SSoTT Único (`canonicalClinicalPlan` — EGM-49 + EGM-50 + EGM-51 v2).
+ * Genera un único árbol intermedio determinista para Secciones 0, 1, 2, 3 y 4 del Expediente NOM-004 y Guía del Paciente.
  */
 function buildCanonicalTherapeuticContract({
+    patientData = {},
     serum = {},
     bioenergetics = {},
     biosecuritySemaphore = {},
-    hasStimulantsConflict = false,
+    medications = null,
+    selective33Guard = null,
+    physicalPrescription = null,
+    metabolicAgeStudy = null,
     isLactanteExplicit = false,
     isPediatricExplicit = false
 } = {}) {
-    const weightForWater = Number(bioenergetics?.weightKg) > 0 ? Number(bioenergetics.weightKg) : 70;
-    const hydrationTargetLiters = Math.min(3.2, Math.max(1.8, Number(((weightForWater * 32) / 1000).toFixed(1))));
-    const macros = bioenergetics?.macros || { carbs: 40, protein: 30, fat: 30 };
-    const targetKcal = bioenergetics?.targetKcal || bioenergetics?.tdee || 2000;
-    const tdeeKcal = bioenergetics?.tdee || targetKcal;
-    const caloricDeltaType = bioenergetics?.caloricDeltaType || 'MANTENIMIENTO_RECOMPOSICION';
-    const isPregnantOrLactating = Boolean(serum?.anamnesis360Context?.isPregnant || serum?.anamnesis360Context?.isLactating);
-    const switch33PlusToDecaf = Boolean(hasStimulantsConflict || isPregnantOrLactating);
-    const calciumLocked = Boolean(serum?.hasHighSerumCalciumOrCalcification || serum?.electretSignals?.hasCalcificationAlert);
-    const hasThyroidAlert = Boolean(serum?.electretSignals?.hasThyroidAlert);
-    const hasLabResultsLoaded = Boolean(serum?.hasLabResultsLoaded);
-    const isPaused = Boolean(biosecuritySemaphore?.isPaused || biosecuritySemaphore?.level === 'ROJO');
-    const isMicroDose = !isPaused && Boolean(biosecuritySemaphore?.isMicroDose || biosecuritySemaphore?.level === 'AMARILLO');
-    const isKetoRegimen = Number(macros.carbs) > 0 && Number(macros.carbs) <= 15;
-
-    const regimen = isLactanteExplicit
-        ? 'Alimentación Pediátrica Guiada (L-OMS)'
-        : (isKetoRegimen ? 'Alimentación Cetogénica Clínica' : 'Alimentación Antiinflamatoria Personalizada');
-    const regimenBadge = isLactanteExplicit
-        ? 'Alimentación Pediátrica L-OMS (Supervisión Pediátrica)'
-        : `${isKetoRegimen ? 'NutriKeto Clínico' : 'Alimentación Antiinflamatoria'} (0 Picante • 0 Cerdo • 0 Azúcares)`;
-
-    const patientSpecificExclusions = (serum?.combinedExclusions || [])
-        .map(sanitizeClinicalSpanish)
-        .filter((val) => {
-            const clean = String(val || '').trim();
-            if (!clean) return false;
-            return !/^(ninguna?|ninguno|niega|negad[oa]s?|n\/a|na|sin\s+alergias?|sin\s+exclusiones?|sin\s+restricciones?|no|no\s+refiere|null|undefined|-+)$/i.test(clean);
+    try {
+        const weightForWater = Number(bioenergetics?.weightKg) > 0 ? Number(bioenergetics.weightKg) : 70;
+        const hydrationTargetLiters = Math.min(3.2, Math.max(1.8, Number(((weightForWater * 32) / 1000).toFixed(1))));
+        const resolvedDiet = resolveDynamicMacronutrientsAndRegimen({
+            patientData,
+            ageYears: Number(bioenergetics?.age) || 35,
+            bmi: Number(bioenergetics?.bmi) || 24,
+            isLactanteExplicit,
+            isPediatricExplicit,
+            labValues: serum?.labValues || {},
+            subAxisFlags: serum?.subAxisFlags || {},
+            precedence: serum?.precedence || {}
         });
 
-    const evolutionTimeline = {
-        totalDays: 28,
-        summaryLabel: '28 Días de seguimiento continuo (Fase 1: Días 1–7 • Fase 2: Días 8–21 • Fase 3: Días 22–28)',
-        phases: isPaused
-            ? [
-                {
-                    phase: 1,
-                    rangeLabel: 'Días 1 a 7',
-                    weekLabel: 'Semana 1',
-                    title: 'Estabilización Inicial y Pausa Preventiva de Suplementación',
-                    description: `Alimentación antiinflamatoria (${targetKcal} kcal/día), hidratación estructurada (${hydrationTargetLiters} L/día) y recopilación de estudios de laboratorio de control (0 sobres activos).`
-                },
-                {
-                    phase: 2,
-                    rangeLabel: 'Días 8 a 21',
-                    weekLabel: 'Semanas 2-3',
-                    title: 'Valoración Médica Paraclínica y Desinflamación Mucosa',
-                    description: 'Revisión clínica de analitos solicitados para validar función renal, hepática y hemodinámica previo a cualquier suplementación.'
-                },
-                {
-                    phase: 3,
-                    rangeLabel: 'Días 22 a 28',
-                    weekLabel: 'Semana 4',
-                    title: 'Consolidación Metabólica y Re-Evaluación Comparativa (T0 → T1)',
-                    description: `Auditoría comparativa de evolución clínica al cierre del ciclo de 28 días (${targetKcal} kcal/día).`
-                }
-            ]
+        const macros = bioenergetics?.macrosDynamicApplied ? bioenergetics.macros : resolvedDiet.macros;
+        const regimen = resolvedDiet.regimen;
+        const regimenBadge = resolvedDiet.regimenBadge;
+        const targetKcal = bioenergetics?.targetKcal || bioenergetics?.tdee || 2000;
+        const tdeeKcal = bioenergetics?.tdee || targetKcal;
+        const caloricDeltaType = bioenergetics?.caloricDeltaType || 'MANTENIMIENTO_RECOMPOSICION';
+
+        const selGuard = selective33Guard || detectSelective33PlusContraindication({ patientData, serum, medications });
+        const calciumLocked = Boolean(serum?.hasHighSerumCalciumOrCalcification || serum?.electretSignals?.hasCalcificationAlert);
+        const hasThyroidAlert = Boolean(serum?.electretSignals?.hasThyroidAlert);
+        const hasLabResultsLoaded = Boolean(serum?.hasLabResultsLoaded);
+        const isPaused = Boolean(biosecuritySemaphore?.isPaused || biosecuritySemaphore?.level === 'ROJO');
+        const isMicroDose = !isPaused && Boolean(biosecuritySemaphore?.isMicroDose || biosecuritySemaphore?.level === 'AMARILLO' || selGuard.isSelective33Paused);
+        const isSelective33Paused = !isPaused && Boolean(selGuard.isSelective33Paused);
+
+        const doseFactor33 = isPaused || isSelective33Paused ? 0 : (isMicroDose ? 0.5 : 2);
+        const doseFactor34 = isPaused ? 0 : (isMicroDose ? 0.5 : 2);
+
+        const scaled33 = formatScaledActives('33PLUS', doseFactor33);
+        const scaled34 = formatScaledActives('34PLUS', doseFactor34);
+
+        const hasCardioConductionCaution = Boolean(serum?.cabinetSignals?.hasCardiacConductionOrBradycardia);
+        const ecoMonitorClause = hasCardioConductionCaution
+            ? ' bajo vigilancia de frecuencia cardiaca con EcoSinergix y corte horario estricto antes de las 14:00 h'
+            : ' (corte horario antes de las 14:00 h)';
+
+        const phrase33ForNode = isPaused
+            ? 'alimentación natural e hidratación medida (0 sobres activos de 33Plus® en pausa preventiva médica)'
+            : isSelective33Paused
+                ? `pausa selectiva de 33Plus® (0 sobres activos por ${selGuard.reasonText || 'criterio de bioseguridad'}) priorizando hidratación matutina`
+                : isMicroDose
+                    ? `micro-dosis gradual matutina de 33Plus® (1/2 sobre = ${FORMULA_33PLUS.halfSachetGramsDisplay} en ${FORMULA_33PLUS.minWaterMl} ml de agua natural${ecoMonitorClause}; aporte neto: ${scaled33.activesInline})`
+                    : `protocolo matutino de 33Plus® (2 sobres/día = ${scaled33.totalGramsDisplay}; ${FORMULA_33PLUS.sachetGramsDisplay} c/u en ${FORMULA_33PLUS.minWaterMl} ml de agua natural; aporte diario: ${scaled33.activesInline})`;
+
+        const phrase34ForNode = isPaused
+            ? 'hidratación fraccionada y proteína dietética suave (0 sobres activos de 34Plus® en pausa preventiva médica)'
             : isMicroDose
+                ? `micro-dosis nocturna de 34Plus® (1/2 sobre = ${FORMULA_34PLUS.halfSachetGramsDisplay} disuelto en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple; aporte neto: ${scaled34.activesInline})`
+                : `protocolo vespertino y nocturno de 34Plus® (2 sobres/día = ${scaled34.totalGramsDisplay}; ${FORMULA_34PLUS.sachetGramsDisplay} c/u en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple; aporte diario: ${scaled34.activesInline})`;
+
+        const patientSpecificExclusions = (serum?.combinedExclusions || [])
+            .map(sanitizeClinicalSpanish)
+            .filter((val) => {
+                const clean = String(val || '').trim();
+                if (!clean) return false;
+                return !/^(ninguna?|ninguno|niega|negad[oa]s?|n\/a|na|sin\s+alergias?|sin\s+exclusiones?|sin\s+restricciones?|no|no\s+refiere|null|undefined|-+)$/i.test(clean);
+            });
+
+        const phase1Desc = isPaused
+            ? `Alimentación protectora (${targetKcal} kcal/día; ${macros.carbs}% CHO / ${macros.protein}% P / ${macros.fat}% L), hidratación estructurada (${hydrationTargetLiters} L/día) y acreditación de estudios de control (0 sobres activos).`
+            : isSelective33Paused
+                ? `Sellado epitelial digestivo (${targetKcal} kcal/día), hidratación medida (${hydrationTargetLiters} L/día), pausa selectiva de 33Plus® (0 sobres activos) e inicio gradual nocturno con 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧.`
+                : isMicroDose
+                    ? `Sellado epitelial digestivo (${targetKcal} kcal/día; 0 Picante, 0 Cerdo, 0 Azúcares refinados), hidratación medida (${hydrationTargetLiters} L/día) e inicio gradual con 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) matutino de 33Plus® en ${FORMULA_33PLUS.minWaterMl} ml de agua natural y 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) nocturno de 34Plus® en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧.`
+                    : `Integración de ${regimen.toLowerCase()} (${targetKcal} kcal/día), hidratación diaria (${hydrationTargetLiters} L/día) y protocolo completo sincronizado de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay}/toma) y 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay}/toma en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧).`;
+
+        const evolutionTimeline = {
+            totalDays: 28,
+            summaryLabel: '28 Días de seguimiento continuo (Fase 1: Días 1–7 • Fase 2: Días 8–21 • Fase 3: Días 22–28)',
+            phases: isPaused
                 ? [
                     {
                         phase: 1,
                         rangeLabel: 'Días 1 a 7',
                         weekLabel: 'Semana 1',
-                        title: 'Adaptación Mucosa y Micro-Dosis Calibrada',
-                        description: `Sellado epitelial digestivo (0 Picante, 0 Cerdo, 0 Azúcares), hidratación medida (${hydrationTargetLiters} L/día) e inicio gradual con 1/2 sobre (5 g) matutino de 33Plus® y 1/2 sobre (5 g) nocturno de 34Plus® en mínimo 500 ml de agua simple 💧.`
+                        title: 'Estabilización Inicial y Pausa Preventiva de Suplementación',
+                        description: phase1Desc
                     },
                     {
                         phase: 2,
                         rangeLabel: 'Días 8 a 21',
                         weekLabel: 'Semanas 2-3',
-                        title: 'Escalamiento Gradual según Tolerancia y Modulación Metabólica',
-                        description: 'Valoración de tolerancia digestiva y renal a partir del Día 8 para integrar o mantener la toma de media mañana, optimizando sensibilidad metabólica y fluidez microvascular.'
+                        title: 'Valoración Médica Paraclínica y Desinflamación Mucosa',
+                        description: 'Revisión clínica de estudios solicitados para acreditar estabilidad renal, hepática y hemodinámica previo a cualquier suplementación.'
                     },
                     {
                         phase: 3,
                         rangeLabel: 'Días 22 a 28',
                         weekLabel: 'Semana 4',
-                        title: 'Consolidación Funcional y Re-Evaluación Comparativa (T0 → T1)',
-                        description: `Auditoría comparativa de bioseñales y estudios de control al cierre del ciclo de 28 días sobre meta de ${targetKcal} kcal/día.`
+                        title: 'Consolidación Metabólica y Re-Evaluación Comparativa (T0 → T1)',
+                        description: `Auditoría comparativa de evolución clínica al cierre del ciclo de 28 días (${targetKcal} kcal/día).`
                     }
                 ]
-                : [
-                    {
-                        phase: 1,
-                        rangeLabel: 'Días 1 a 7',
-                        weekLabel: 'Semana 1',
-                        title: 'Sincronización Circadiana y Sellado de Barrera Mucosa',
-                        description: `Integración de ${regimen.toLowerCase()} (${targetKcal} kcal/día), hidratación diaria (${hydrationTargetLiters} L/día) y protocolo sincronizado de 33Plus® y 34Plus® (en mínimo 500 ml de agua simple 💧).`
-                    },
-                    {
-                        phase: 2,
-                        rangeLabel: 'Días 8 a 21',
-                        weekLabel: 'Semanas 2-3',
-                        title: 'Modulación Metabólica, Vascular y Reparación Tisular',
-                        description: 'Optimización del transporte lipídico-glucémico, oxigenación microvascular diurna y síntesis nocturna de matriz de colágeno.'
-                    },
-                    {
-                        phase: 3,
-                        rangeLabel: 'Días 22 a 28',
-                        weekLabel: 'Semana 4',
-                        title: 'Consolidación Funcional y Re-Evaluación Comparativa (T0 → T1)',
-                        description: `Auditoría comparativa de parámetros fuera de rango al día 28 y consolidación de composición corporal (${targetKcal} kcal/día).`
-                    }
-                ]
-    };
+                : isMicroDose
+                    ? [
+                        {
+                            phase: 1,
+                            rangeLabel: 'Días 1 a 7',
+                            weekLabel: 'Semana 1',
+                            title: 'Adaptación Mucosa y Micro-Dosis Calibrada',
+                            description: phase1Desc
+                        },
+                        {
+                            phase: 2,
+                            rangeLabel: 'Días 8 a 21',
+                            weekLabel: 'Semanas 2-3',
+                            title: 'Escalamiento Gradual según Tolerancia y Modulación Metabólica',
+                            description: isSelective33Paused
+                                ? `Continuidad de pausa selectiva en 33Plus® (0 sobres activos) y valoración de tolerancia digestiva para escalar 34Plus® vespertino/nocturno (${FORMULA_34PLUS.halfSachetGramsDisplay} a ${FORMULA_34PLUS.sachetGramsDisplay}) en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple.`
+                                : `Valoración de tolerancia digestiva y respuesta cardiovascular (EcoSinergix) a partir del Día 8 para mantener micro-dosis o integrar toma de media mañana (${FORMULA_33PLUS.halfSachetGramsDisplay} antes de las 14:00 h).`
+                        },
+                        {
+                            phase: 3,
+                            rangeLabel: 'Días 22 a 28',
+                            weekLabel: 'Semana 4',
+                            title: 'Consolidación Funcional y Re-Evaluación Comparativa (T0 → T1)',
+                            description: `Auditoría comparativa de bioseñales y estudios de control al cierre del ciclo de 28 días sobre meta de ${targetKcal} kcal/día.`
+                        }
+                    ]
+                    : [
+                        {
+                            phase: 1,
+                            rangeLabel: 'Días 1 a 7',
+                            weekLabel: 'Semana 1',
+                            title: 'Sincronización Circadiana y Sellado de Barrera Mucosa',
+                            description: phase1Desc
+                        },
+                        {
+                            phase: 2,
+                            rangeLabel: 'Días 8 a 21',
+                            weekLabel: 'Semanas 2-3',
+                            title: 'Modulación Metabólica, Vascular y Reparación Tisular',
+                            description: 'Optimización del transporte lipídico-glucémico, oxigenación microvascular diurna y síntesis nocturna de matriz de colágeno.'
+                        },
+                        {
+                            phase: 3,
+                            rangeLabel: 'Días 22 a 28',
+                            weekLabel: 'Semana 4',
+                            title: 'Consolidación Funcional y Re-Evaluación Comparativa (T0 → T1)',
+                            description: `Auditoría comparativa de parámetros fuera de rango al día 28 y consolidación de composición corporal (${targetKcal} kcal/día).`
+                        }
+                    ]
+        };
 
-    return {
-        contractVersion: '3.0.0-SSOTT',
-        regimen,
-        regimenBadge,
-        caloricDeltaType,
-        tdeeKcal,
-        targetKcal,
-        macros,
-        hydrationTargetLiters,
-        patientSpecificExclusions,
-        calciumLocked,
-        hasThyroidAlert,
-        hasLabResultsLoaded,
-        isPaused,
-        isMicroDose,
-        isPediatricExplicit,
-        isLactanteExplicit,
-        switch33PlusToDecaf,
-        semaphoreLevel: biosecuritySemaphore?.level || 'VERDE',
-        evolutionTimeline
-    };
+        const resolvedMetabolicAge = metabolicAgeStudy || calculateBidirectionalMetabolicAge(patientData, serum, bioenergetics);
+        const priorAdherence = serum?.priorAdherence || detectPriorInstitutionalAdherence(patientData);
+        const logisticsSummary = serum?.logisticsSummary || translateLogisticsProfile(patientData);
+        const isRecalibrationMode = Boolean(isMicroDose && !isPaused && priorAdherence?.hasPriorAdherence);
+
+        return {
+            contractVersion: '3.3.0-EGM51-SSOTT',
+            regimen,
+            regimenBadge,
+            caloricDeltaType,
+            tdeeKcal,
+            targetKcal,
+            macros,
+            hydrationTargetLiters,
+            patientSpecificExclusions,
+            calciumLocked,
+            hasThyroidAlert,
+            hasLabResultsLoaded,
+            isPaused,
+            isMicroDose,
+            isRecalibrationMode,
+            isSelective33Paused,
+            selective33ReasonText: selGuard.reasonText || '',
+            isPediatricExplicit,
+            isLactanteExplicit,
+            semaphoreLevel: biosecuritySemaphore?.level || 'VERDE',
+            priorAdherence,
+            logisticsSummary,
+            metabolicAgeStudy: resolvedMetabolicAge,
+            posology: {
+                doseFactor33,
+                doseFactor34,
+                scaled33,
+                scaled34,
+                phrase33ForNode,
+                phrase34ForNode,
+                hasCardioConductionCaution,
+                isRecalibrationMode
+            },
+            movement: {
+                medicalPrescriptionText: physicalPrescription || '',
+                hasPostsurgicalInguinalWall: Boolean(serum?.cabinetSignals?.hasPostsurgicalInguinalOrAbdominalWall),
+                hasCardioConductionCaution,
+                recommendsEchocardiogram: Boolean(serum?.cabinetSignals?.recommendsEchocardiogram)
+            },
+            evolutionTimeline
+        };
+    } catch (planErr) {
+        console.warn('⚠️ [Canonical Plan Safe Catch]:', planErr.message);
+        return {
+            contractVersion: '3.2.0-EGM49-FALLBACK',
+            regimen: 'Alimentación Funcional Antiinflamatoria Personalizada',
+            regimenBadge: 'Alimentación Antiinflamatoria (0 Picante • 0 Cerdo • 0 Azúcares refinados)',
+            caloricDeltaType: 'MANTENIMIENTO_RECOMPOSICION',
+            tdeeKcal: 2000,
+            targetKcal: 2000,
+            macros: { carbs: 40, protein: 30, fat: 30 },
+            hydrationTargetLiters: 2.2,
+            patientSpecificExclusions: [],
+            calciumLocked: false,
+            hasThyroidAlert: false,
+            hasLabResultsLoaded: false,
+            isPaused: true,
+            isMicroDose: false,
+            isSelective33Paused: false,
+            selective33ReasonText: '',
+            semaphoreLevel: 'ROJO',
+            posology: {
+                doseFactor33: 0,
+                doseFactor34: 0,
+                scaled33: formatScaledActives('33PLUS', 0),
+                scaled34: formatScaledActives('34PLUS', 0),
+                phrase33ForNode: 'alimentación natural e hidratación medida (0 sobres activos)',
+                phrase34ForNode: 'hidratación fraccionada y proteína suave (0 sobres activos)',
+                hasCardioConductionCaution: false
+            },
+            movement: { medicalPrescriptionText: '', hasPostsurgicalInguinalWall: false, hasCardioConductionCaution: false },
+            evolutionTimeline: { totalDays: 28, summaryLabel: '28 Días de seguimiento continuo', phases: [] }
+        };
+    }
 }
 
 /**
- * Resuelve de forma 100% determinista el `therapeutic_focus` de cada Nodo IFM acoplado al SSoTT:
- * - Cero contradicciones de calcio cuando `calciumLocked === true`.
- * - Cero dieta hipocalórica cuando `caloricDeltaType === 'MANTENIMIENTO_RECOMPOSICION'`.
- * - Cero prescripción de quelantes, silimarina, glutatión, yodo exógeno o fitoterapia fuera de T.I.L.O.
+ * Compila `therapeutic_focus` de cada Nodo IFM (Sección 1 y Sección 3 CDSS 3.1–3.7)
+ * interpolando 100% desde `canonicalClinicalPlan` (`posology`, `bioenergetics`, `movement`).
  */
 function resolveNodeTherapeuticFocus(nodeId, contract = null) {
     const c = contract || buildCanonicalTherapeuticContract({});
     const kcal = c.targetKcal || 2000;
     const m = c.macros || { carbs: 40, protein: 30, fat: 30 };
     const liters = c.hydrationTargetLiters || 2.2;
+    const dose33Phrase = c.posology?.phrase33ForNode || 'hidratación matutina supervisada';
+    const dose34Phrase = c.posology?.phrase34ForNode || 'hidratación nocturna supervisada';
 
-    let caloricPhrase = `pauta normocalórica de mantenimiento y recomposición (${kcal} kcal/día; ${m.carbs}% CHO / ${m.protein}% P / ${m.fat}% L)`;
+    let caloricPhrase = `pauta normocalórica personalizada (${kcal} kcal/día; ${m.carbs}% CHO / ${m.protein}% P / ${m.fat}% L)`;
     if (String(c.caloricDeltaType || '').includes('DEFICIT')) {
-        caloricPhrase = `ajuste energético antiinflamatorio (${kcal} kcal/día; ${m.carbs}% CHO / ${m.protein}% P / ${m.fat}% L)`;
+        caloricPhrase = `ajuste energético cardioprotector (${kcal} kcal/día; ${m.carbs}% CHO / ${m.protein}% P / ${m.fat}% L)`;
     } else if (String(c.caloricDeltaType || '').includes('SUPERAVIT')) {
         caloricPhrase = `soporte energético de recuperación (${kcal} kcal/día; ${m.carbs}% CHO / ${m.protein}% P / ${m.fat}% L)`;
     }
 
-    const name33 = c.switch33PlusToDecaf ? '33Plus® (variante sin estimulantes)' : '33Plus®';
-    const dose33Phrase = c.isPaused
-        ? 'alimentación natural sin suplementos activos (en pausa preventiva hasta validación de laboratorios)'
-        : c.isMicroDose
-            ? `micro-dosis gradual matutina de ${name33} (1/2 sobre de 5 g en 300 ml de agua natural en Semana 1)`
-            : `esquema matutino sincronizado de ${name33} (en 300 ml de agua natural)`;
+    const exclText = Array.isArray(c.patientSpecificExclusions) && c.patientSpecificExclusions.length > 0
+        ? `, además de exclusión personalizada de ${c.patientSpecificExclusions.join(', ')}`
+        : '';
 
-    const dose34Phrase = c.isPaused
-        ? 'hidratación medida y proteína dietética suave (suplementación en pausa preventiva médica)'
-        : c.isMicroDose
-            ? 'micro-dosis nocturna de 34Plus® (1/2 sobre de 5 g disuelto en mínimo 500 ml de agua simple)'
-            : 'protocolo vespertino y nocturno de 34Plus® (disuelto en mínimo 500 ml de agua simple)';
+    const cardioMoveClause = c.movement?.hasCardioConductionCaution
+        ? 'actividad aeróbica sin impacto en Zona 1–2 monitoreada con EcoSinergix (FC <= 130 lpm)'
+        : 'caminata aeróbica conversacional sin impactos bruscos';
+
+    const structuralMoveClause = c.movement?.hasPostsurgicalInguinalWall
+        ? 'movilidad articular controlada con prohibición estricta de maniobras de Valsalva pesadas (protección de pared inguinal postquirúrgica)'
+        : 'movilidad articular progresiva sin impacto';
 
     switch (nodeId) {
         case 'NODO_1_ASIMILACION':
             return sanitizeClinicalSpanish(
-                `Restauración de barrera mucosa digestiva mediante exclusión estricta de irritantes (0 picante, 0 cerdo, 0 azúcares refinados), tiempos pausados de masticación, hidratación fraccionada (${liters} L/día) y soporte prebiótico con ${dose34Phrase}.`
+                `Restauración de barrera mucosa digestiva mediante exclusión estricta de irritantes (0 picante, 0 cerdo, 0 azúcares refinados${exclText}), tiempos pausados de masticación, hidratación fraccionada (${liters} L/día) y soporte prebiótico con ${dose34Phrase}.`
             );
         case 'NODO_2_BIOTRANSFORMACION':
             return sanitizeClinicalSpanish(
-                `Soporte hepatobiliar fisiológico y nefroprotección mediante ${caloricPhrase}, hidratación estructurada (${liters} L/día de agua simple), vegetales crucíferos y fibra soluble alimentaria, evitando sobrecarga renal o insumos ajenos al protocolo.`
+                `Soporte fisiológico hepatobiliar y nefroprotección mediante ${caloricPhrase}, hidratación estructurada (${liters} L/día de agua simple), vegetales crucíferos y fibra soluble alimentaria, sin sobrecarga osmótica ni insumos externos.`
             );
         case 'NODO_3_ENERGIA':
             return sanitizeClinicalSpanish(
-                `Modulación glucémica, sensibilidad insulínica y transporte lipídico saludable mediante ${caloricPhrase}, grasas monoinsaturadas y cofactores bioenergéticos (Coenzima Q10, Cromo y polifenoles) aportados en ${dose33Phrase}.`
+                `Modulación metabólica y transporte saludable de lipoproteínas mediante ${caloricPhrase}, ácidos grasos monoinsaturados, fibra soluble y soporte bioenergético con ${dose33Phrase}.`
             );
         case 'NODO_4_COMUNICACION':
             return sanitizeClinicalSpanish(
-                `Sincronización circadiana neuroendocrina (luz natural matutina, cena ligera 2–3 h antes de dormir e higiene del sueño), regulación de carga alostática${c.hasThyroidAlert ? ' y correlación con perfil tiroideo sérico (sin administración empírica de minerales hormonales aislados)' : ''} y apoyo adaptativo con L-Teanina en ${dose33Phrase}.`
+                `Sincronización circadiana neuroendocrina (luz natural matutina, cena ligera 2–3 h antes de dormir e higiene del sueño), regulación de carga alostática${c.hasThyroidAlert ? ' y correlación con perfil tiroideo sérico' : ''} y transición neurovegetativa nocturna mediante ${dose34Phrase}.`
             );
         case 'NODO_5_TRANSPORTE':
             return sanitizeClinicalSpanish(
-                `Optimización endotelial, fluidez microcirculatoria y oxigenación tisular mediante hidratación constante (${liters} L/día), caminata aeróbica conversacional sin impactos bruscos y polifenoles antioxidantes en ${dose33Phrase}.`
+                `Optimización endotelial, fluidez microcirculatoria y oxigenación tisular mediante hidratación constante (${liters} L/día), ${cardioMoveClause} y protección antioxidante vascular con ${dose33Phrase}.`
             );
         case 'NODO_6_DEFENSA':
             return sanitizeClinicalSpanish(
-                `Modulación inmunológica antiinflamatoria y protección antioxidante celular (Vitamina C, aminoácidos estructurales y retiro de alérgenos/irritantes detectados), acompañada de descanso reparador y ${dose34Phrase}.`
+                `Modulación inmunológica antiinflamatoria y protección antioxidante celular (retiro de irritantes y alérgenos detectados${exclText}), acompañada de descanso reparador y ${dose34Phrase}.`
             );
         case 'NODO_7_ESTRUCTURAL':
             if (c.calciumLocked) {
                 return sanitizeClinicalSpanish(
-                    `Soporte de matriz colágena y articular mediante ${dose34Phrase}, proteína dietética de alto valor biológico, magnesio y vitamina K2 alimentaria y movilidad suave sin impacto, con exclusión estricta de suplementos aislados de calcio inorgánico por alerta de calcificación ectópica.`
+                    `Soporte de matriz colágena y estructural mediante ${dose34Phrase}, proteína dietética de alto valor biológico, magnesio y vitamina K2 alimentaria y ${structuralMoveClause}, con exclusión estricta de suplementos aislados de calcio inorgánico.`
                 );
             }
             return sanitizeClinicalSpanish(
-                `Regeneración de matriz extracelular, síntesis de colágeno tipo I/III y soporte osteomuscular mediante ${dose34Phrase}, proteína dietética de alto valor biológico y movilidad articular progresiva.`
+                `Regeneración de matriz extracelular, síntesis de colágeno y soporte osteomuscular mediante ${dose34Phrase}, proteína dietética de alto valor biológico y ${structuralMoveClause}.`
             );
         default:
             return 'Modulación nutricional personalizada e hidratación estructurada bajo monitoreo clínico.';
     }
+}
+
+function stripUnaccreditedCodesAndFlags(rawText) {
+    if (!rawText) return '';
+    return String(rawText)
+        .replace(/\s*\[\s*⚠️?\s*REQUIERE_REVISI[ÓO]N\s*\]/giu, '')
+        .replace(/\(\s*(?:CIE-10:\s*)?[A-Z]\d{2}(?:\.\d{1,2})?\s*\)/gu, '')
+        .replace(/\bCIE-10:\s*[A-Z]\d{2}(?:\.\d{1,2})?\b/giu, '')
+        .replace(/(\d+(?:\.\d+)?)\s+[íi]ndice(?![\p{L}\p{N}_])/giu, '$1')
+        .replace(/elevaci[óo]n\s+(?:leve\s+|moderada\s+)?en\s+los\s+niveles\s+de\s+metales\s+pesados/giu, 'bioseñales bioeléctricas orientativas de depuración ambiental')
+        .replace(/niveles\s+(?:elevados\s+|alterados\s+)?de\s+metales\s+pesados/giu, 'bioseñales bioeléctricas orientativas de depuración ambiental')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
 }
 
 function formatCleanAnomalyDescriptorForSummary(anomaly) {
@@ -1611,7 +3489,7 @@ function formatCleanAnomalyDescriptorForSummary(anomaly) {
 
 function formatMedicalBiomarkerSummary(rawItem) {
     const translated = translateBiomarkerToSpanish(rawItem);
-    return sanitizeClinicalSpanish(translated)
+    return stripUnaccreditedCodesAndFlags(sanitizeClinicalSpanish(translated))
         .replace(/Ref:\s*N\/A\s*\|\s*/gi, '')
         .replace(/ANORMAL\s+SEVERO\s*(\(\+\+\+\))?/gi, (_, g1) => `Alerta Severa${g1 ? ` ${g1}` : ' (+++)'}`)
         .replace(/ANORMAL\s+MODERADO\s*(\(\+\+\))?/gi, (_, g1) => `Alerta Moderada${g1 ? ` ${g1}` : ' (++)'}`)
@@ -1622,8 +3500,7 @@ function formatMedicalBiomarkerSummary(rawItem) {
 }
 
 /**
- * Construye una síntesis médica determinista en prosa clínica limpia (cero dobles paréntesis crudos
- * y cero volcados de rangos numéricos de debug) para garantizar uniformidad editorial 100%.
+ * Construye una síntesis médica determinista en prosa clínica limpia (cero CIE-10 no acreditados y cero banderas de debug).
  */
 function buildDeterministicNodeSynthesis(node, contract = null) {
     const rawAnomalies = Array.isArray(node.anomalies) ? node.anomalies : [];
@@ -1638,21 +3515,23 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
 
     const cleanNodeTitle = sanitizeClinicalSpanish(String(node.name || '').replace(/^\d+\.\s*/, '').trim());
     const topDescriptors = Array.from(
-        new Set(anomalies.slice(0, 4).map(formatCleanAnomalyDescriptorForSummary).filter(Boolean))
+        new Set(anomalies.slice(0, 6).map(formatCleanAnomalyDescriptorForSummary).filter(Boolean))
     );
     const remainingCount = Math.max(0, count - topDescriptors.length);
-    const hasConfirmedLab = anomalies.some(a => a.source === 'OCR_LAB' || a.source === 'FUNCTIONAL_INDEX');
+    const hasConfirmedLabOrCabinet = anomalies.some(a =>
+        a.source === 'OCR_LAB' || a.source === 'FUNCTIONAL_INDEX' || String(a.source || '').startsWith('CABINET_')
+    );
 
     let summary = 'Función conservada. Sin alteraciones detectadas.';
     if (count > 0) {
         const listClause = topDescriptors.join(', ') + (remainingCount > 0 ? ` y ${remainingCount} parámetros complementarios` : '');
-        if (hasConfirmedLab) {
+        if (hasConfirmedLabOrCabinet) {
             summary = sanitizeClinicalSpanish(
-                `Correlación clínica y funcional en ${cleanNodeTitle} (${count} hallazgos registrados), destacando alteración en ${listClause}. El perfil integrado sugiere demanda adaptativa prioritaria compatible con vigilancia bajo ${node.preAssignedLabel}.`
+                `Correlación clínica y paraclínica en ${cleanNodeTitle} (${count} hallazgos integrados), destacando ${listClause}. El perfil sugiere demanda adaptativa prioritaria dentro del ${node.preAssignedLabel || 'eje funcional evaluado'}.`
             );
         } else {
             summary = sanitizeClinicalSpanish(
-                `Se registran ${count} bioseñales funcionales fuera de rango óptimo en ${cleanNodeTitle}, con predominio en ${listClause}. Estos hallazgos orientativos sugieren sobrecarga adaptativa en el eje evaluado, sujeta a correlación clínica y confirmación paraclínica.`
+                `Se registran ${count} bioseñales funcionales orientativas en ${cleanNodeTitle}, con predominio en ${listClause}. Hallazgos compatibles con sobrecarga adaptativa funcional sujeta a correlación clínica.`
             );
         }
     }
@@ -1661,9 +3540,12 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
         nodeId: node.id,
         nodeName: sanitizeClinicalSpanish(node.name),
         status,
-        cie10: node.preAssignedCie10 || 'Z00.0',
-        validation_status: node.validation_status || 'VALIDADO',
-        summary,
+        cie10: node.accredited_cie10 || null,
+        accredited_cie10: node.accredited_cie10 || null,
+        functionalCode: node.functionalCode || 'IFM-00',
+        validation_status: 'VALIDADO',
+        requires_clinical_review: Boolean(node.requires_clinical_review),
+        summary: stripUnaccreditedCodesAndFlags(summary),
         key_biomarkers: anomalies.map(a => formatMedicalBiomarkerSummary(`${a.label}: ${a.detail}`)),
         therapeutic_focus: count > 0
             ? resolveNodeTherapeuticFocus(node.id, contract)
@@ -1688,8 +3570,11 @@ async function synthesizeAllIfmNodesSSoTT(nodes, contract = null, ai = null) {
                     nodeId: node.id,
                     nodeName: sanitizeClinicalSpanish(node.name),
                     status: 'HOMEOSTASIS',
-                    cie10: node.preAssignedCie10 || 'Z00.0',
+                    cie10: node.accredited_cie10 || null,
+                    accredited_cie10: node.accredited_cie10 || null,
+                    functionalCode: node.functionalCode || 'IFM-00',
                     validation_status: 'VALIDADO',
+                    requires_clinical_review: false,
                     summary: 'Función conservada. Sin alteraciones detectadas.',
                     key_biomarkers: [],
                     therapeutic_focus: 'Mantenimiento preventivo y vigilancia estándar.'
@@ -1702,21 +3587,22 @@ async function synthesizeAllIfmNodesSSoTT(nodes, contract = null, ai = null) {
             (a, b) => (SEVERITY_RANK[b.severity] || 0) - (SEVERITY_RANK[a.severity] || 0)
         );
         const topLines = sortedAnomalies
-            .slice(0, 14)
+            .slice(0, 16)
             .map((a, idx) => `   ${idx + 1}. [${a.source}] ${a.label}: ${a.detail}`)
             .join('\n');
-        return `NODO "${node.id}" (${node.name} | CIE-10: ${node.preAssignedCie10} | ${node.anomalies.length} hallazgos totales):\n${topLines}`;
+        return `NODO "${node.id}" (${node.name} | Eje: ${node.functionalCode || 'IFM'} | ${node.anomalies.length} hallazgos totales):\n${topLines}`;
     }).join('\n\n');
 
-    const prompt = `Eres el motor médico funcional CORTEX v3.0 SSoTT (Cumplimiento NOM-004-SSA3-2012 y COFEPRIS).
+    const prompt = `Eres el motor médico funcional CORTEX v3.2 SSoTT (Cumplimiento NOM-004-SSA3-2012 y COFEPRIS).
 Tu única tarea es redactar la síntesis observacional concisa ("summary") para cada uno de los siguientes ${activeNodes.length} Nodos IFM con hallazgos.
 
 REGLAS EPISTEMOLÓGICAS Y NORMATIVAS ESTRICTAS (OBLIGATORIAS):
 1. Devuelve exactamente un elemento en "nodes" por cada nodo listado, respetando el "nodeId" exacto.
 2. En "summary" redacta máximo 2 oraciones en español médico impecable (con ortografía y acentuación perfectas, sin listas de números ni paréntesis anidados).
-3. Todo hallazgo con etiqueta "[ELECTRET]" corresponde a bioimpedancia funcional orientativa (NO es estudio de laboratorio sanguíneo ni imagenología). Queda ESTRICTAMENTE PROHIBIDO afirmar diagnósticos orgánicos cerrados como "esteatosis hepática severa", "intoxicación o acumulación confirmada de metales pesados", "deficiencia confirmada de yodo", "disbiosis confirmada" o "prostatitis diagnosticada" si no existe fuente "[OCR_LAB]". Exprésalo siempre como correlación biofísica funcional o sobrecarga adaptativa sujeta a confirmación paraclínica.
-4. CERO PRESCRIPCIONES EN "summary": Queda prohibido recomendar dietas, calorías, suplementos, minerales (calcio, yodo, selenio), quelación, silimarina, glutatión o fármacos dentro de "summary".
-5. ESTILO EDITORIAL MÉDICO SIN REPETICIONES LÉXICAS: Queda estrictamente prohibido repetir el mismo verbo o sustantivo clínico dentro de una misma oración o entre las dos oraciones del mismo nodo (p. ej., NUNCA escribas "sugieren... y sugieren...", "muestran... y muestran...", "indican... e indican...", "alteraciones... y alteraciones..."). Emplea conectores variados ("asociado a", "acompañado de", "compatible con").
+3. Todo hallazgo con etiqueta "[ELECTRET]" corresponde a bioimpedancia funcional orientativa (NO es estudio de laboratorio sanguíneo ni imagenología). Queda ESTRICTAMENTE PROHIBIDO afirmar diagnósticos orgánicos cerrados como "esteatosis hepática", "congestión hepatobiliar escleral", "elevación azoada", "inflamación sistémica aguda", "intoxicación de metales pesados", "disbiosis confirmada" o "prostatitis" si no están acreditados en "[OCR_LAB]" o "[CABINET_*]".
+4. CERO CÓDIGOS CIE-10 NI PRESCRIPCIONES EN "summary": Queda prohibido incluir códigos CIE-10 (ej. E78.5, I10, Z00.0) o recomendar dietas, calorías, suplementos o fármacos dentro de "summary".
+5. ESTILO EDITORIAL MÉDICO SIN REPETICIONES LÉXICAS: Emplea conectores variados ("asociado a", "acompañado de", "compatible con").
+6. FIDELIDAD LITERAL DE GABINETE Y LABORATORIO (EGM-50): Queda ESTRICTAMENTE PROHIBIDO suavizar o alterar el grado de severidad reportado en "[CABINET_*]" (ej. NUNCA conviertas un "BLOQUEO DE LA RAMA DERECHA DEL HAZ DE HIS" o "QRS >= 120 ms" en "bloqueo incompleto", ni omitas cambios postquirúrgicos o vasculares acreditados) y NUNCA cites analitos no medidos en la lista (ej. no menciones "apo B" si solo constan LDL, no-HDL o sdLDL).
 
 NODOS ACTIVOS A SINTETIZAR:
 ${nodesDigestText}`;
@@ -1779,8 +3665,11 @@ ${nodesDigestText}`;
                 nodeId: node.id,
                 nodeName: sanitizeClinicalSpanish(node.name),
                 status: 'HOMEOSTASIS',
-                cie10: node.preAssignedCie10 || 'Z00.0',
+                cie10: node.accredited_cie10 || null,
+                accredited_cie10: node.accredited_cie10 || null,
+                functionalCode: node.functionalCode || 'IFM-00',
                 validation_status: 'VALIDADO',
+                requires_clinical_review: false,
                 summary: 'Función conservada. Sin alteraciones detectadas.',
                 key_biomarkers: [],
                 therapeutic_focus: 'Mantenimiento preventivo y vigilancia estándar.'
@@ -1793,12 +3682,36 @@ ${nodesDigestText}`;
             return deterministicNode;
         }
 
-        let sanitizedSummary = sanitizeClinicalSpanish(String(llmCandidate.summary).trim());
+        let sanitizedSummary = stripUnaccreditedCodesAndFlags(sanitizeClinicalSpanish(String(llmCandidate.summary).trim()));
         if (!resolvedContract.hasLabResultsLoaded) {
             sanitizedSummary = sanitizedSummary.replace(
                 /(?<![\p{L}\p{N}_])disbiosis(?:\s+intestinal)?(?![\p{L}\p{N}_])/giu,
                 'desequilibrio funcional de la microbiota'
             );
+        }
+
+        // Regla EGM-50: Fidelidad Literal de Gabinete y Analitos Medidos (Prohibido suavizar bloqueos completos o inventar Apo B)
+        const nodeAnomText = (node.anomalies || []).map((a) => `${a.label || ''} ${a.detail || ''}`).join(' | ');
+        const hasCompleteRbbbInNode = /BLOQUEO\s+DE\s+LA\s+RAMA\s+DERECHA|QRS\s*(?:1[2-9]\d|[2-9]\d{2})\s*ms/i.test(nodeAnomText) && !/bloqueo\s+incompleto/i.test(nodeAnomText);
+        if (hasCompleteRbbbInNode) {
+            sanitizedSummary = sanitizedSummary.replace(
+                /bloqueo\s+incompleto\s+de\s+(?:la\s+)?rama\s+derecha(?:\s+del\s+haz\s+de\s+his)?/giu,
+                'bloqueo de la rama derecha del haz de His'
+            );
+        }
+        const hasCompleteLbbbInNode = /BLOQUEO\s+DE\s+LA\s+RAMA\s+IZQUIERDA/i.test(nodeAnomText) && !/bloqueo\s+incompleto/i.test(nodeAnomText);
+        if (hasCompleteLbbbInNode) {
+            sanitizedSummary = sanitizedSummary.replace(
+                /bloqueo\s+incompleto\s+de\s+(?:la\s+)?rama\s+izquierda(?:\s+del\s+haz\s+de\s+his)?/giu,
+                'bloqueo de la rama izquierda del haz de His'
+            );
+        }
+        const hasApoBMeasured = /\bapo(?:lipoprote[íi]na)?\s*-?\s*b\b/i.test(nodeAnomText);
+        if (!hasApoBMeasured) {
+            sanitizedSummary = sanitizedSummary
+                .replace(/,\s*ldl\s+y\s+apo(?:lipoprote[íi]na)?\s*-?\s*b\b/giu, ', colesterol LDL, no-HDL y partículas sdLDL')
+                .replace(/\by\s+apo(?:lipoprote[íi]na)?\s*-?\s*b\b/giu, 'y partículas pequeñas densas (sdLDL)')
+                .replace(/\bapo(?:lipoprote[íi]na)?\s*-?\s*b\b/giu, 'colesterol no-HDL');
         }
         const hasForbiddenTherapeuticClaim = FORBIDDEN_SUMMARY_CLAIMS_REGEX.test(sanitizedSummary);
         const hasUnconfirmedNosology = !resolvedContract.hasLabResultsLoaded && UNCONFIRMED_NOSOLOGY_WITHOUT_LABS_REGEX.test(sanitizedSummary);
@@ -1885,20 +3798,192 @@ function translateBiomarkerToSpanish(b) {
  * - `13+` años (`Usted Global` — `CALIBRADOR_EMPODERADOR` `13–17`, `ESTRATEGA_SENIOR` `18–64`, `GERIATRIC_MODE` `≥ 65`):
  *   Cero tuteo; acusativo mexicano sin leísmo (`Lo`/`La` según sexo biológico) y triangulación con tutor en `13–17`.
  */
+/**
+ * Resolutor SSoTT Canónico e Inmutable de Edad y Etapa Vital en Backend (Fail-Closed Anti-Falso-Lactante).
+ * Prioridad 1: Fecha de nacimiento verificada (DD/MM/YYYY, YYYY-MM-DD o CURP oficial).
+ * Prioridad 2: Entero positivo estricto (> 0 y <= 125) en rutas clínicas conocidas.
+ * PROHIBIDO evaluar Number(null)/Number('') === 0 o activar lactante (< 2 años) / MODO_TUTOR (< 13 años)
+ * cuando la edad es null, undefined, NaN o 0 sin fecha de nacimiento verificada.
+ */
+function resolveVerifiedPatientAge(patientData, fallback = 35) {
+    const safeFallback = Number.isInteger(fallback) && fallback > 0 ? fallback : 35;
+    const baseResult = {
+        ageYears: safeFallback,
+        ageMonths: safeFallback * 12,
+        dobDate: null,
+        hasVerifiedBirthDate: false,
+        hasExplicitPositiveAge: false,
+        isLactanteVerified: false,
+        isTutorModeVerified: false,
+        isPediatricVerified: false
+    };
+    if (!patientData || typeof patientData !== 'object') return baseResult;
+
+    try {
+        const pInfo = patientData.identityLock?.patientInfo;
+        let parsedDob = null;
+
+        if (pInfo?.dob_year && pInfo?.dob_month && pInfo?.dob_day) {
+            const y = parseInt(String(pInfo.dob_year).trim(), 10);
+            const m = parseInt(String(pInfo.dob_month).trim(), 10);
+            const d = parseInt(String(pInfo.dob_day).trim(), 10);
+            if (Number.isInteger(y) && y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+                const dt = new Date(y, m - 1, d);
+                if (!Number.isNaN(dt.getTime())) parsedDob = dt;
+            }
+        }
+
+        if (!parsedDob) {
+            const rawDobCandidates = [
+                patientData.birthDate,
+                patientData.birthdate,
+                patientData.fecha_nacimiento,
+                patientData.dob,
+                patientData.profile?.birthDate,
+                patientData.profile?.birthdate,
+                patientData.profile?.dob,
+                patientData.identificacion?.fechaNacimiento,
+                patientData.identificacion?.fechanac,
+                patientData.demographics?.birthdate,
+                patientData.demographics?.birthDate,
+                pInfo?.birthdate
+            ];
+            for (const raw of rawDobCandidates) {
+                if (typeof raw !== 'string' || !raw.trim()) continue;
+                const s = raw.trim();
+                const ddmmyyyy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+                const yyyymmdd = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+                let candidateDate = null;
+                if (ddmmyyyy) {
+                    const dd = parseInt(ddmmyyyy[1], 10);
+                    const mm = parseInt(ddmmyyyy[2], 10);
+                    const yyyy = parseInt(ddmmyyyy[3], 10);
+                    if (yyyy >= 1900 && yyyy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+                        candidateDate = new Date(yyyy, mm - 1, dd);
+                    }
+                } else if (yyyymmdd) {
+                    const yyyy = parseInt(yyyymmdd[1], 10);
+                    const mm = parseInt(yyyymmdd[2], 10);
+                    const dd = parseInt(yyyymmdd[3], 10);
+                    if (yyyy >= 1900 && yyyy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+                        candidateDate = new Date(yyyy, mm - 1, dd);
+                    }
+                }
+                if (candidateDate && !Number.isNaN(candidateDate.getTime())) {
+                    parsedDob = candidateDate;
+                    break;
+                }
+            }
+        }
+
+        if (!parsedDob) {
+            const rawCurp = String(
+                patientData.profile?.curp ||
+                patientData.identificacion?.curp ||
+                patientData.demographics?.curp ||
+                pInfo?.curp ||
+                ''
+            ).trim().toUpperCase();
+            const curpMatch = rawCurp.match(/^[A-Z]{4}(\d{2})(\d{2})(\d{2})[HMX][A-Z]{5}([A-Z0-9])\d$/);
+            if (curpMatch) {
+                const yy = parseInt(curpMatch[1], 10);
+                const mm = parseInt(curpMatch[2], 10);
+                const dd = parseInt(curpMatch[3], 10);
+                const fullYear = /[0-9]/.test(curpMatch[4]) ? (1900 + yy) : (2000 + yy);
+                if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+                    const dt = new Date(fullYear, mm - 1, dd);
+                    if (!Number.isNaN(dt.getTime())) parsedDob = dt;
+                }
+            }
+        }
+
+        if (parsedDob && !Number.isNaN(parsedDob.getTime())) {
+            const now = new Date();
+            let years = now.getFullYear() - parsedDob.getFullYear();
+            const mDiff = now.getMonth() - parsedDob.getMonth();
+            if (mDiff < 0 || (mDiff === 0 && now.getDate() < parsedDob.getDate())) {
+                years -= 1;
+            }
+            let months = (now.getFullYear() - parsedDob.getFullYear()) * 12 + (now.getMonth() - parsedDob.getMonth());
+            if (now.getDate() < parsedDob.getDate()) {
+                months -= 1;
+            }
+            if (years >= 0 && years <= 125) {
+                const safeMonths = Math.max(0, months);
+                return {
+                    ageYears: years,
+                    ageMonths: safeMonths,
+                    dobDate: parsedDob,
+                    hasVerifiedBirthDate: true,
+                    hasExplicitPositiveAge: years > 0,
+                    isLactanteVerified: safeMonths >= 0 && safeMonths < 24,
+                    isTutorModeVerified: years >= 0 && years < 13,
+                    isPediatricVerified: years >= 0 && years < 18
+                };
+            }
+        }
+
+        const positiveIntCandidates = [
+            patientData.profile?.age,
+            patientData.identificacion?.edad,
+            patientData.demographics?.age,
+            patientData.anthropometrics?.age,
+            patientData.scan_data?.electret_metrics?.patientInfo?.age,
+            patientData.scan_data?.electret_metadata?.age,
+            patientData.electretTelemetry?.patientMetadata?.age,
+            patientData.clinical_dossier?.bioenergetics?.age,
+            patientData.vitals?.age,
+            pInfo?.age,
+            patientData.age,
+            patientData.edad
+        ];
+        for (const c of positiveIntCandidates) {
+            if (c === null || c === undefined || typeof c === 'boolean') continue;
+            const trimmed = String(c).trim();
+            if (!trimmed) continue;
+            const parsed = parseInt(trimmed, 10);
+            if (Number.isInteger(parsed) && parsed > 0 && parsed <= 125) {
+                const isExplicitAdultCat = String(patientData.profile?.pediatric_profile?.category || '').toUpperCase() === 'ADULTO';
+                const babyMonths = parseInt(String(patientData.profile?.baby_age_months ?? ''), 10);
+                const hasVerifiedBabyMonths = Number.isInteger(babyMonths) && babyMonths > 0 && babyMonths < 24 && !isExplicitAdultCat;
+                return {
+                    ageYears: parsed,
+                    ageMonths: hasVerifiedBabyMonths ? babyMonths : (parsed * 12),
+                    dobDate: null,
+                    hasVerifiedBirthDate: false,
+                    hasExplicitPositiveAge: true,
+                    isLactanteVerified: parsed < 2 && hasVerifiedBabyMonths,
+                    isTutorModeVerified: !isExplicitAdultCat && parsed < 13 && Boolean(patientData.profile?.pediatric_profile?.is_minor === true),
+                    isPediatricVerified: !isExplicitAdultCat && parsed < 18
+                };
+            }
+        }
+    } catch (_) {
+        // Fail-closed seguro a modo adulto ("Usted Global")
+    }
+
+    return baseResult;
+}
+
 function resolveClinicalAddressing({
     patientName = '',
-    ageYears = 30,
+    ageYears = 35,
     isFemale = false,
     isLactanteExplicit = false
 } = {}) {
-    const safeAge = Number.isFinite(Number(ageYears)) && Number(ageYears) >= 0 ? Number(ageYears) : 30;
-    const isLactante = Boolean(isLactanteExplicit || safeAge < 2);
-    const isTutorChild = !isLactante && safeAge < 13;
+    const parsedAge = Number(ageYears);
+    const safeAge = Number.isFinite(parsedAge) && parsedAge > 0
+        ? parsedAge
+        : (isLactanteExplicit && parsedAge === 0 ? 0 : 35);
+    const isLactante = Boolean(safeAge < 2 && isLactanteExplicit);
+    const isTutorChild = !isLactante && safeAge > 0 && safeAge < 13;
     const isTutorMode = isLactante || isTutorChild;
     const isAdolescent = safeAge >= 13 && safeAge < 18;
     const isSenior = safeAge >= 65;
 
-    const cleanFullName = cleanClinicalLabel(patientName || (isLactante ? 'su bebé' : 'Paciente'));
+    const cleanFullName = toSpanishTitleCaseFullName(
+        cleanClinicalLabel(patientName || (isLactante ? 'su bebé' : 'Paciente'))
+    );
     const hasSpecificName = !/^(paciente|su\s+beb[ée]|tu\s+beb[ée]|el\s+menor|la\s+menor|lactante)$/i.test(cleanFullName.trim());
     const rawFirstToken = cleanFullName.split(/\s+/)[0] || cleanFullName;
     const firstName = hasSpecificName
@@ -1906,6 +3991,7 @@ function resolveClinicalAddressing({
         : (isTutorMode
             ? (isLactante ? 'su bebé' : (isFemale ? 'su hija' : 'su hijo'))
             : 'paciente');
+    const fullVocativeName = hasSpecificName ? cleanFullName : 'Paciente';
 
     const childShortRef = isLactante
         ? (hasSpecificName ? firstName : 'su bebé')
@@ -1934,6 +4020,7 @@ function resolveClinicalAddressing({
         isSenior,
         hasSpecificName,
         cleanFullName,
+        fullVocativeName,
         firstName,
         childShortRef,
         childSubjectWithKinship,
@@ -2062,6 +4149,7 @@ function evaluateBiosecurityAndTitration(
     const redReasons = [];
     const yellowReasons = [];
     const recommendedLabsSet = new Set();
+    const selective33Guard = detectSelective33PlusContraindication({ patientData, serum, medications });
 
     // 1. Reglas de Compuerta ROJA (Pausa Preventiva de Suplementación Activa)
     if (addr.isLactante) {
@@ -2075,6 +4163,7 @@ function evaluateBiosecurityAndTitration(
             recommendedLabs: [],
             isPaused: true,
             isMicroDose: false,
+            isSelective33Paused: true,
             titrationPlanText: '0 sobres activos (etapa de lactancia temprana bajo vigilancia pediátrica).'
         };
     }
@@ -2093,6 +4182,10 @@ function evaluateBiosecurityAndTitration(
     }
     if (vitals.sys >= 160 || vitals.dia >= 100) {
         redReasons.push(`presión arterial elevada (${vitals.sys}/${vitals.dia} mmHg) que requiere estabilización médica inmediata`);
+    }
+    if (selective33Guard.hasActiveUncontrolledTachyarrhythmia && ((vitals.hr || 0) >= 120 || (serum?.cabinetSignals?.ecgHrBpm || 0) >= 120)) {
+        redReasons.push('taquiarritmia activa descontrolada que requiere estabilización cardiológica prioritaria');
+        recommendedLabsSet.add('Electrocardiograma de 12 derivaciones, electrolitos séricos y valoración cardiológica presencial');
     }
     const fastGlucose = vitals.glu || labs.glucose || 0;
     if (fastGlucose >= 250 || (fastGlucose > 0 && fastGlucose < 60)) {
@@ -2120,30 +4213,69 @@ function evaluateBiosecurityAndTitration(
             recommendedLabs: Array.from(recommendedLabsSet),
             isPaused: true,
             isMicroDose: false,
+            isSelective33Paused: true,
             titrationPlanText: '0 sobres activos por ahora (Pausa preventiva hasta revisión de estudios de laboratorio).'
         };
     }
 
-    // 2. Reglas de Compuerta AMARILLA (Inicio Gradual con Micro-Dosis Calibrada)
-    if (signals.hasRenalBurden || hasRenalStoneOrMildHistory || (labs.creatinine >= 1.2 && labs.creatinine <= 1.5) || (labs.gfr >= 45 && labs.gfr < 60) || labs.uricAcid > 6.8) {
+    // 2. Reglas de Compuerta AMARILLA con Precedencia Biomédica Universal (Sangre Venosa > Gabinete > Bioimpedancia)
+    const precedence = serum?.precedence || {};
+    const cabinet = serum?.cabinetSignals || {};
+    const subAxes = serum?.subAxisFlags || {};
+
+    if (!precedence.venousRenalNormal && (signals.hasRenalBurden || hasRenalStoneOrMildHistory || (labs.creatinine > 1.2 && labs.creatinine <= 1.5) || (labs.gfr >= 45 && labs.gfr < 60) || labs.uricAcid > 7.0)) {
         yellowReasons.push(
             addr.isTutorMode
-                ? `los riñones de ${addr.childShortRef} muestran señales de trabajo extra (como filtración de proteínas o ácido úrico elevado)`
-                : 'sus riñones muestran señales de trabajo extra (como filtración de proteínas o ácido úrico elevado)'
+                ? `los riñones de ${addr.childShortRef} muestran señales de trabajo extra`
+                : 'sus riñones muestran señales de trabajo extra'
         );
-        recommendedLabsSet.add('Química sanguínea (Creatinina, Ácido Úrico, BUN) y Examen General de Orina (EGO)');
-    }
-    if (signals.hasHepaticBurden || signals.hasBiliaryBurden || (labs.alt > 45 && labs.alt <= 105) || (labs.ast > 45 && labs.ast <= 105)) {
+        if (!labs.creatinine) {
+            recommendedLabsSet.add('Química sanguínea (Creatinina, Ácido Úrico, BUN) y Examen General de Orina (EGO)');
+        } else {
+            recommendedLabsSet.add('Examen General de Orina (EGO) con relación albúmina/creatinina');
+        }
+    } else if (precedence.hasGfrStageG2) {
         yellowReasons.push(
             addr.isTutorMode
-                ? `el hígado y la vesícula de ${addr.childShortRef} están procesando carga acumulada de grasas`
-                : 'su hígado y vesícula están procesando carga acumulada de grasas'
+                ? `su tasa de filtración glomerular (${labs.gfr} mL/min/1.73 m²) se ubica en estadio intermedio KDIGO G2, por lo que hidratamos y titulamos con suavidad`
+                : `su tasa de filtración renal (${labs.gfr} mL/min/1.73 m²) se encuentra en rango intermedio preventivo (KDIGO G2), con creatinina y ácido úrico normales`
         );
-        recommendedLabsSet.add('Perfil hepático y Perfil de lípidos completo');
+        recommendedLabsSet.add('Examen General de Orina (EGO) con relación albúmina/creatinina (seguimiento preventivo de filtrado glomerular KDIGO G2)');
     }
+
+    if (!precedence.venousHepaticNormal && (signals.hasHepaticBurden || signals.hasBiliaryBurden || (labs.alt > 61 && labs.alt <= 105) || (labs.ast > 40 && labs.ast <= 105))) {
+        yellowReasons.push(
+            addr.isTutorMode
+                ? `el hígado y la vesícula de ${addr.childShortRef} requieren acompañamiento depurativo gradual`
+                : 'su hígado y vesícula requieren acompañamiento depurativo gradual'
+        );
+        if (!labs.alt && !labs.ast) {
+            recommendedLabsSet.add('Perfil hepático completo (AST, ALT, GGT y Bilirrubinas)');
+        }
+    }
+
+    if (subAxes.hasAtherogenicCholesterol && precedence.isHistoricalLab) {
+        recommendedLabsSet.add(
+            `Actualización periódica (> 6 meses${precedence.studyDateDisplay ? ` • último ${precedence.studyDateDisplay}` : ''}) de Perfil Lipídico ampliado (Colesterol total, LDL directo, no-HDL y sdLDL)`
+        );
+    } else if (subAxes.hasAtherogenicCholesterol) {
+        recommendedLabsSet.add('Control evolutivo de Perfil Lipídico ampliado (Colesterol LDL directo, no-HDL y sdLDL) tras ciclo de 28 días');
+    }
+
+    if (cabinet.hasCardiacConductionOrBradycardia) {
+        yellowReasons.push(
+            addr.isTutorMode
+                ? `el estudio electrocardiográfico de ${addr.childShortRef} registra conducción eléctrica que amerita inicio gradual`
+                : `su electrocardiograma en reposo registra bradicardia sinusal${cabinet.ecgHrBpm ? ` (${cabinet.ecgHrBpm} lpm)` : ''} y bloqueo de rama derecha, por lo que cuidamos su respuesta cardiovascular paso a paso con EcoSinergix`
+        );
+    }
+    if (cabinet.recommendsEchocardiogram) {
+        recommendedLabsSet.add('Valoración cardiológica y Ecocardiograma transtorácico de correlación (sugerido en informe electrocardiográfico)');
+    }
+
     const hasCalcificationTrigger = Boolean(serum?.hasHighSerumCalciumOrCalcification || signals.hasCalcificationAlert);
-    if (hasCalcificationTrigger) {
-        recommendedLabsSet.add('Calcio sérico, Magnesio y Vitamina D (25-OH)');
+    if (hasCalcificationTrigger && !labs.vitaminD) {
+        recommendedLabsSet.add('Vitamina D sérica (25-OH) para control de fijación mineral');
     }
     if (signals.hasThyroidAlert && !labs.tsh) {
         yellowReasons.push(
@@ -2151,9 +4283,7 @@ function evaluateBiosecurityAndTitration(
                 ? `el eje tiroideo de ${addr.childShortRef} muestra señales funcionales que conviene corroborar en laboratorio`
                 : 'su eje tiroideo muestra señales funcionales que conviene corroborar en laboratorio'
         );
-        recommendedLabsSet.add('Perfil tiroideo (TSH, T4L, Anti-TPO)');
-    } else if (signals.hasThyroidAlert) {
-        recommendedLabsSet.add('Perfil tiroideo (TSH, T4L, Anti-TPO)');
+        recommendedLabsSet.add('Perfil tiroideo (TSH, T4 libre y Anti-TPO)');
     }
     if (signals.hasDigestiveSensitivity) {
         yellowReasons.push(
@@ -2169,11 +4299,12 @@ function evaluateBiosecurityAndTitration(
                 : `su presión arterial requiere vigilancia cercana (${vitals.sys}/${vitals.dia} mmHg)`
         );
     }
-    if (hasStimulantsConflict || isPregnant || isLactating) {
+    if (selective33Guard.isSelective33Paused || isPregnant || isLactating) {
+        const selClause = selective33Guard.reasonText || (isPregnant || isLactating ? 'etapa de embarazo o lactancia materna' : 'interacción farmacológica autonómica');
         yellowReasons.push(
             addr.isTutorMode
-                ? `se requiere una modulación suave sin estimulantes para cuidar el sistema nervioso y cardiovascular de ${addr.childShortRef}`
-                : 'usted requiere una modulación suave sin estimulantes para cuidar su sistema nervioso y cardiovascular'
+                ? `se mantiene en pausa selectiva preventiva 33Plus® (0 sobres activos) para proteger a ${addr.childShortRef} ante ${selClause}`
+                : `mantenemos 33Plus® en pausa selectiva preventiva (0 sobres activos) por ${selClause}`
         );
     }
     if (!serum?.hasLabResultsLoaded && (ageYears >= 65 || (Array.isArray(medications) && medications.length >= 3))) {
@@ -2189,7 +4320,9 @@ function evaluateBiosecurityAndTitration(
         );
     }
 
-    if (yellowReasons.length > 0 || isPediatricExplicit) {
+    const isSelective33PausedActive = Boolean(selective33Guard.isSelective33Paused || isPregnant || isLactating);
+
+    if (yellowReasons.length > 0 || isPediatricExplicit || isSelective33PausedActive) {
         if (yellowReasons.length === 0) {
             yellowReasons.push(
                 addr.isTutorMode
@@ -2198,23 +4331,71 @@ function evaluateBiosecurityAndTitration(
             );
         }
         const formattedYellowReasons = joinSpanishList(yellowReasons.slice(0, 3));
+        if (isSelective33PausedActive) {
+            return {
+                level: 'AMARILLO',
+                modeCode: 'PAUSA_SELECTIVA_33PLUS_MICRO_34PLUS',
+                badgeLabel: 'Pausa Selectiva de 33Plus® • Micro-Dosis Nocturna 34Plus®',
+                title: addr.isTutorMode
+                    ? `Protección neurovascular selectiva para ${addr.childShortRef}: 33Plus® en pausa y 34Plus® gradual`
+                    : 'Protección neurovascular selectiva: 33Plus® en pausa preventiva y reparación nocturna gradual con 34Plus®',
+                honestExplanation: addr.isTutorMode
+                    ? `Por seguridad clínica —ya que ${formattedYellowReasons}— mantenemos 33Plus® en pausa selectiva (0 sobres activos, hidratación matutina simple) e iniciamos únicamente con 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO 500 ml de agua simple.`
+                    : `Por seguridad clínica —ya que ${formattedYellowReasons}— mantenemos 33Plus® en pausa selectiva (0 sobres activos, hidratación matutina simple) e iniciamos únicamente con 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO 500 ml de agua simple.`,
+                ethicalNote: addr.isTutorMode
+                    ? `33Plus® y 34Plus® son soporte nutricional complementario a la alimentación diaria de ${addr.childShortRef} (nunca sustituyen sus medicamentos ni el seguimiento médico).`
+                    : '33Plus® y 34Plus® son apoyo nutricional complementario a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico).',
+                recommendedLabs: Array.from(recommendedLabsSet),
+                isPaused: false,
+                isMicroDose: true,
+                isSelective33Paused: true,
+                selective33Reasons: selective33Guard.reasons || [],
+                titrationPlanText: `Pausa selectiva matutina: 0 sobres activos de 33Plus® (hidratación protectora de 300 ml de agua natural al despertar) + Micro-dosis nocturna de 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO 500 ml de agua simple 💧.`
+            };
+        }
+
+        const cardioCutoffClause = cabinet.hasCardiacConductionOrBradycardia
+            ? ' Corte matutino estricto antes de las 14:00 h y monitoreo de FC con EcoSinergix.'
+            : '';
+        const priorAdherence = serum?.priorAdherence || detectPriorInstitutionalAdherence(patientData);
+        const hasPriorSupplementAdherence = Boolean(!addr.isTutorMode && priorAdherence?.hasPriorAdherence);
+        const priorDurationClause = priorAdherence?.durationText ? ` durante ${priorAdherence.durationText}` : '';
+
+        if (hasPriorSupplementAdherence) {
+            return {
+                level: 'AMARILLO',
+                modeCode: 'RECALIBRACION_PREVENTIVA_DOSIS',
+                badgeLabel: 'Recalibración Preventiva de Dosis • Ajuste Bioseguro',
+                title: 'Recalibración preventiva de su pauta actual para proteger su ritmo cardiovascular y asimilación',
+                honestExplanation: `Reconocemos y valoramos su constancia previa${priorDurationClause} con ${priorAdherence.publicSafeLabel || '33Plus® y 34Plus®'}. A la luz de su evaluación clínica actual —donde ${formattedYellowReasons}— recalibramos preventivamente su posología durante los primeros 7 días (Semana 1) a 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® antes de las 14:00 h y 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® por la noche en mínimo 500 ml de agua simple, optimizando su aprovechamiento sin sobrecarga.`,
+                ethicalNote: `33Plus® y 34Plus® actúan como apoyo nutricional complementario a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico).`,
+                recommendedLabs: Array.from(recommendedLabsSet),
+                isPaused: false,
+                isMicroDose: true,
+                isRecalibrationMode: true,
+                isSelective33Paused: false,
+                titrationPlanText: `Recalibración preventiva de dosis (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en 300 ml de agua natural (antes de las 14:00 h) + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO 500 ml de agua simple 💧.${cardioCutoffClause} Valorar re-escalamiento en Semana 2 según respuesta clínica.`
+            };
+        }
+
         return {
             level: 'AMARILLO',
             modeCode: 'MICRO_DOSIS_GRADUAL_CALIBRADA',
             badgeLabel: 'Inicio Gradual Preventivo • Micro-Dosis Calibrada',
             title: addr.isTutorMode
                 ? `Avanzamos paso a paso para cuidar los filtros naturales y la digestión de ${addr.childShortRef}`
-                : 'Avanzamos paso a paso para cuidar sus filtros naturales y su digestión',
+                : 'Avanzamos paso a paso para cuidar su circulación, sus filtros naturales y su digestión',
             honestExplanation: addr.isTutorMode
-                ? `Para cuidar el organismo de ${addr.childShortRef} con total responsabilidad —ya que ${formattedYellowReasons}— iniciaremos los primeros 7 días (Semana 1) con una micro-dosis suave (medio sobre) bien diluida en agua natural, permitiendo una adaptación cómoda y sin sobrecarga.`
-                : `Para proteger su organismo con total responsabilidad —ya que ${formattedYellowReasons}— iniciaremos los primeros 7 días (Semana 1) con una micro-dosis suave (medio sobre) bien diluida en agua natural, permitiendo que su organismo se adapte sin sobrecarga${addr.isAdolescent ? ', contando siempre con el acompañamiento de su madre, padre o tutor legal' : ''}.`,
+                ? `Para cuidar el organismo de ${addr.childShortRef} con total responsabilidad —ya que ${formattedYellowReasons}— iniciaremos los primeros 7 días (Semana 1) con una micro-dosis suave (1/2 sobre de ${FORMULA_33PLUS.halfSachetGramsDisplay} de 33Plus® y 1/2 sobre de ${FORMULA_34PLUS.halfSachetGramsDisplay} de 34Plus®) bien diluida en agua natural, permitiendo una adaptación cómoda y sin sobrecarga.`
+                : `Para proteger su organismo con total responsabilidad —ya que ${formattedYellowReasons}— iniciaremos los primeros 7 días (Semana 1) con una micro-dosis suave (1/2 sobre de ${FORMULA_33PLUS.halfSachetGramsDisplay} de 33Plus® antes de las 14:00 h y 1/2 sobre de ${FORMULA_34PLUS.halfSachetGramsDisplay} de 34Plus® por la noche) bien diluida en agua simple, permitiendo que su organismo se adapte sin sobrecarga${addr.isAdolescent ? ', contando siempre con el acompañamiento de su madre, padre o tutor legal' : ''}.`,
             ethicalNote: addr.isTutorMode
                 ? `33Plus® y 34Plus® actúan como soporte nutricional complementario a la alimentación diaria de ${addr.childShortRef} (nunca sustituyen sus medicamentos ni el seguimiento de su pediatra o médico tratante).`
                 : `33Plus® y 34Plus® actúan como apoyo nutricional complementario a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico${addr.isAdolescent ? ', y se integran en conjunto con su madre, padre o tutor legal' : ''}).`,
             recommendedLabs: Array.from(recommendedLabsSet),
             isPaused: false,
             isMicroDose: true,
-            titrationPlanText: 'Fase de adaptación (Días 1 al 7): 1/2 sobre (5 g) de 33Plus® al despertar + 1/2 sobre (5 g) de 34Plus® antes de dormir en 500 ml de agua simple 💧. Escalar gradualmente según tolerancia.'
+            isSelective33Paused: false,
+            titrationPlanText: `Fase de adaptación (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en 300 ml de agua natural (antes de las 14:00 h) + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO 500 ml de agua simple 💧.${cardioCutoffClause} Escalar gradualmente en Semana 2 según tolerancia.`
         };
     }
 
@@ -2232,10 +4413,11 @@ function evaluateBiosecurityAndTitration(
         ethicalNote: addr.isTutorMode
             ? `33Plus® y 34Plus® son fórmulas de nutrición celular que acompañan la alimentación diaria e hidratación constante de ${addr.childShortRef}.`
             : `33Plus® y 34Plus® son fórmulas de nutrición celular que acompañan su alimentación diaria e hidratación constante${addr.isAdolescent ? ', supervisadas junto con su madre, padre o tutor legal' : ''}.`,
-        recommendedLabs: [],
+        recommendedLabs: Array.from(recommendedLabsSet),
         isPaused: false,
         isMicroDose: false,
-        titrationPlanText: 'Protocolo estándar sincronizado a su día: 2 tomas matutinas de 33Plus® y 2 tomas vespertinas/nocturnas de 34Plus® en 500 ml de agua simple 💧.'
+        isSelective33Paused: false,
+        titrationPlanText: `Protocolo estándar sincronizado a su día: 2 tomas matutinas de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} c/u en 300 ml de agua) y 2 tomas vespertinas/nocturnas de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} c/u en MÍNIMO 500 ml de agua simple 💧).`
     };
 }
 
@@ -2287,28 +4469,48 @@ function buildOrthomolecularPrescription(
         hasStimulantsConflict
     });
 
-    const node3 = processedNodes.find(n => n.nodeId === 'NODO_3_ENERGIA');
-    const node5 = processedNodes.find(n => n.nodeId === 'NODO_5_TRANSPORTE');
-    const node6 = processedNodes.find(n => n.nodeId === 'NODO_6_DEFENSA');
-    const node7 = processedNodes.find(n => n.nodeId === 'NODO_7_ESTRUCTURAL');
+    // Iteración exhaustiva SSoTT sobre el 100% de hallazgos acreditados de laboratorio y gabinete (0 truncamiento .slice(0,4))
+    const collectAxisBiomarkers = (targetNodeIds = []) => {
+        const serumNodes = Array.isArray(serum?.nodes) ? serum.nodes : [];
+        const accredited = [];
+        const functionalFallback = [];
+        targetNodeIds.forEach((nId) => {
+            const rawNode = serumNodes.find(sn => sn.id === nId);
+            if (rawNode && Array.isArray(rawNode.anomalies)) {
+                rawNode.anomalies.forEach((a) => {
+                    const formatted = formatMedicalBiomarkerSummary(`${a.label}: ${a.detail}`);
+                    if (!formatted) return;
+                    const src = String(a.source || '');
+                    if (src === 'OCR_LAB' || src === 'FUNCTIONAL_INDEX' || src.startsWith('CABINET_')) {
+                        if (!accredited.includes(formatted)) accredited.push(formatted);
+                    } else if (!functionalFallback.includes(formatted)) {
+                        functionalFallback.push(formatted);
+                    }
+                });
+            } else {
+                const procNode = processedNodes.find(pn => pn.nodeId === nId);
+                (procNode?.key_biomarkers || []).forEach((b) => {
+                    const formatted = formatMedicalBiomarkerSummary(b);
+                    if (formatted && !functionalFallback.includes(formatted)) functionalFallback.push(formatted);
+                });
+            }
+        });
+        return accredited.length > 0 ? accredited : functionalFallback.slice(0, 5);
+    };
 
-    const energyBiomarkers = [...(node3?.key_biomarkers || []), ...(node5?.key_biomarkers || [])]
-        .slice(0, 4)
-        .map(formatMedicalBiomarkerSummary);
-    const tissueBiomarkers = [...(node6?.key_biomarkers || []), ...(node7?.key_biomarkers || [])]
-        .slice(0, 4)
-        .map(formatMedicalBiomarkerSummary);
+    const energyBiomarkers = collectAxisBiomarkers(['NODO_3_ENERGIA', 'NODO_5_TRANSPORTE']);
+    const tissueBiomarkers = collectAxisBiomarkers(['NODO_1_ASIMILACION', 'NODO_2_BIOTRANSFORMACION', 'NODO_4_COMUNICACION', 'NODO_6_DEFENSA', 'NODO_7_ESTRUCTURAL']);
 
-    const isPregnantOrLactating = Boolean(serum?.anamnesis360Context?.isPregnant || serum?.anamnesis360Context?.isLactating);
-    const switch33PlusToDecaf = Boolean(hasStimulantsConflict || isPregnantOrLactating || addr.isTutorMode);
-    const label33Formula = switch33PlusToDecaf
-        ? '🔴 33Plus® (Variante Suave Sin Estimulantes)'
-        : '🔴 33Plus® (Energía Celular y Circulación)';
+    const scaled33 = contract.posology?.scaled33 || formatScaledActives('33PLUS', semaphore.isPaused ? 0 : (semaphore.isMicroDose ? 0.5 : 2));
+    const scaled34 = contract.posology?.scaled34 || formatScaledActives('34PLUS', semaphore.isPaused ? 0 : (semaphore.isMicroDose ? 0.5 : 2));
+    const isSelective33Paused = Boolean(contract.isSelective33Paused || semaphore.isSelective33Paused) && !semaphore.isPaused;
+    const hasConductionCaution = Boolean(serum?.cabinetSignals?.hasCardiacConductionOrBradycardia);
+    const label33Formula = '🔴 33Plus® (Energía Celular y Circulación)';
 
     let circadianSchedule = [];
     let sup33 = null;
     let sup34 = null;
-    let protocolName = 'Protocolo Circadiano Dual de Restauración Celular (33Plus® & 34Plus®)';
+    let protocolName = 'Protocolo Circadiano Dual de Restauración Celular (33Plus® y 34Plus®)';
 
     if (semaphore.isPaused) {
         protocolName = addr.isLactante
@@ -2350,7 +4552,7 @@ function buildOrthomolecularPrescription(
         sup33 = {
             id: 'sup_33plus',
             cortex: '33Plus® (En Pausa Preventiva de Bioseguridad)',
-            name: '33Plus® — En pausa temporal hasta revisión de estudios de control',
+            name: scaled33.clinicalHeaderName,
             dosage: '0 sobres activos (Pausa preventiva por prioridad médica)',
             timing: addr.isLactante
                 ? 'No indicado en menores de 2 años (etapa exclusiva de lactancia/pediatría)'
@@ -2372,7 +4574,7 @@ function buildOrthomolecularPrescription(
         sup34 = {
             id: 'sup_34plus',
             cortex: '34Plus® (En Pausa Preventiva de Bioseguridad)',
-            name: '34Plus® — En pausa temporal hasta revisión de estudios de control',
+            name: scaled34.clinicalHeaderName,
             dosage: '0 sobres activos (Pausa preventiva por prioridad médica)',
             timing: addr.isLactante
                 ? 'No indicado en menores de 2 años (etapa exclusiva de lactancia/pediatría)'
@@ -2390,33 +4592,36 @@ function buildOrthomolecularPrescription(
                     : 'Mantenemos 34Plus® en pausa preventiva mientras cuidamos su hidratación y alimentación natural en casa.'),
             status: 'paused_by_biosecurity'
         };
-    } else if (semaphore.isMicroDose) {
-        protocolName = 'Protocolo de Inicio Gradual Calibrado (Micro-Dosis Protectora 33Plus® & 34Plus®)';
+    } else if (isSelective33Paused) {
+        protocolName = 'Protocolo de Protección Selectiva (33Plus® en Pausa Preventiva • Micro-Dosis Nocturna 34Plus®)';
+        const selReason = contract.selective33ReasonText || 'precaución farmacológica o fisiológica activa';
         circadianSchedule = [
             {
                 tomaNumber: 1,
                 timeSlot: 'Al despertar en ayunas',
-                phase: 'FASE MATUTINA — Adaptación Suave de Energía y Circulación',
-                formula: label33Formula,
-                dosage: '1/2 sobre (5 g) disuelto en 300 ml de agua natural o tibia',
-                clinicalObjective: 'Aporte gradual de antioxidantes vasculares (CoQ10, polifenoles y L-Teanina) respetando la tasa de filtración y tolerancia gástrica.',
+                phase: 'FASE MATUTINA — Hidratación Protectora (33Plus® en Pausa Selectiva)',
+                formula: '💧 Hidratación Preparatoria (33Plus® en pausa selectiva: 0 sobres activos)',
+                dosage: '0 sobres activos de 33Plus® • Beber 300 ml de agua simple natural',
+                clinicalObjective: `Pausa selectiva preventiva de ergogénicos naturales de 33Plus® por ${selReason}, preservando estabilidad autonómica y cardiovascular.`,
                 patientObjective: addr.isTutorMode
-                    ? `Apoyar la energía matutina y la circulación de ${addr.childShortRef} de forma suave y progresiva.`
-                    : 'Encender su energía de la mañana y apoyar su circulación de forma suave y progresiva.',
+                    ? `Hidratar suavemente el organismo de ${addr.childShortRef} por la mañana manteniendo 33Plus® en pausa de seguridad.`
+                    : 'Hidratar suavemente su organismo al despertar manteniendo 33Plus® en pausa preventiva de seguridad.',
                 waterVolumeMl: 300,
+                isPaused: true,
                 isMicroDose: true
             },
             {
                 tomaNumber: 2,
-                timeSlot: 'A media mañana (Días 8 en adelante, según tolerancia)',
-                phase: 'FASE MATUTINA — Escalamiento Gradual Opcional',
-                formula: label33Formula,
-                dosage: 'Iniciar solo con agua natural (Semana 1) • Valorar 1/2 sobre adicional en Semana 2',
-                clinicalObjective: 'Titulación escalonada sujeta a tolerancia digestiva, presión arterial y estudios renales/hepáticos.',
+                timeSlot: 'A media mañana',
+                phase: 'FASE MATUTINA — Hidratación Preparatoria Continua',
+                formula: '💧 Hidratación Preparatoria (Agua Simple)',
+                dosage: '300 ml de agua simple purificada a sorbos',
+                clinicalObjective: 'Sostener perfusión tisular e hidratación celular diurna sin estímulo simpaticomimético.',
                 patientObjective: addr.isTutorMode
-                    ? `Permitir que el organismo de ${addr.childShortRef} se adapte primero antes de valorar una segunda toma matutina.`
-                    : 'Permitir que su organismo se adapte primero antes de sumar una segunda toma matutina.',
+                    ? `Mantener la hidratación natural de ${addr.childShortRef} a mitad de la mañana.`
+                    : 'Mantener su hidratación natural constante a mitad de la mañana.',
                 waterVolumeMl: 300,
+                isPaused: true,
                 isMicroDose: true
             },
             {
@@ -2437,10 +4642,10 @@ function buildOrthomolecularPrescription(
                 timeSlot: '30 a 60 min antes de dormir',
                 phase: 'FASE NOCTURNA — Reparación Suave de Tejidos y Mucosa Digestiva',
                 formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
-                dosage: '1/2 sobre (5 g) disuelto en MÍNIMO 500 ml de agua simple 💧',
-                clinicalObjective: 'Aporte controlado de péptidos de colágeno, Vitamina C e inulina prebiótica con amplia dilución hídrica para proteger el vaciado gástrico y el riñón.',
+                dosage: `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) disuelto en MÍNIMO 500 ml de agua simple 💧`,
+                clinicalObjective: `Aporte controlado en micro-dosis (${scaled34.activeListText}) con amplia dilución hídrica.`,
                 patientObjective: addr.isTutorMode
-                    ? `Nutrir articulaciones, piel y digestión mientras ${addr.childShortRef} duerme, siempre con suficiente agua simple.`
+                    ? `Nutrir articulaciones, piel y digestión mientras ${addr.childShortRef} descansa, siempre con suficiente agua simple.`
                     : 'Nutrir sus articulaciones, piel y digestión mientras usted duerme, siempre con suficiente agua simple.',
                 waterVolumeMl: 500,
                 isMicroDose: true
@@ -2449,35 +4654,144 @@ function buildOrthomolecularPrescription(
 
         sup33 = {
             id: 'sup_33plus',
-            cortex: switch33PlusToDecaf
-                ? '33Plus® (Micro-Dosis Gradual • Sin Estimulantes NOM-028)'
-                : '33Plus® (Micro-Dosis Gradual • Energía y Circulación)',
-            name: switch33PlusToDecaf
-                ? '33Plus® (Variante Sin Estimulantes) - L-Teanina, CoQ10, Cromo y Polifenoles'
-                : '33Plus® - Polifenoles de Semilla de Uva, CoQ10, Cromo y L-Teanina',
-            dosage: 'Inicio gradual (Días 1–7): 1/2 sobre (5 g) al despertar en ayunas en 300 ml de agua natural',
-            timing: addr.isTutorMode
-                ? `Sincronizado al despertar de ${addr.childShortRef} (evitar ofrecerlo después de las 2:00 PM)`
-                : 'Sincronizado a su despertar real (evitar tomarlo después de las 2:00 PM)',
-            clinical_timing: 'Sincronizado al despertar del paciente en ayunas (evitar administración posterior a las 14:00 h)',
-            rationale: `TITULACIÓN EN MICRO-DOSIS PREVENTIVA (Semana 1 — 5 g/día): Inicio escalonado al 50% de concentración para resguardar reserva hepatorrenal, tolerancia endotelial y homeostasis mineral del paciente.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos: ${energyBiomarkers.join(' | ')}.` : ''}`,
+            cortex: '33Plus® (En Pausa Selectiva de Bioseguridad)',
+            name: scaled33.clinicalHeaderName,
+            dosage: FORMULA_33PLUS.dosageByMode.PAUSED_SELECTIVE_33,
+            timing: 'En pausa selectiva preventiva (sustituir por 300 ml de agua simple matutina)',
+            clinical_timing: 'Pausa selectiva matutina (0 sobres activos por precaución autonómica/fisiológica)',
+            rationale: `PAUSA SELECTIVA DE BIOSEGURIDAD (NOM-004): Se difiere temporalmente la administración de 33Plus® (0 sobres activos) ante ${selReason}, preservando intacta la reparación tisular nocturna con 34Plus®.`,
             patient_rationale: addr.isTutorMode
-                ? `Acompaña a ${addr.childShortRef} por la mañana con antioxidantes suaves para apoyar su energía diaria y circulación, iniciando con medio sobre para cuidar su adaptación.`
-                : `${addr.directObjCap} acompaña por la mañana con antioxidantes para apoyar su energía diaria y la flexibilidad de su circulación, iniciando con medio sobre para cuidar su adaptación.`,
-            status: 'approved'
+                ? `Por seguridad y cuidado del sistema nervioso y cardiovascular de ${addr.childShortRef}, mantenemos 33Plus® en pausa preventiva (0 sobres activos) mientras acompañamos su hidratación natural matutina.`
+                : `Por seguridad clínica ante ${selReason}, mantenemos 33Plus® en pausa selectiva preventiva (0 sobres activos) y priorizamos su hidratación natural por la mañana.`,
+            status: 'paused_by_biosecurity'
         };
 
         sup34 = {
             id: 'sup_34plus',
             cortex: '34Plus® (Micro-Dosis Gradual • Reparación y Digestión)',
-            name: '34Plus® - Péptidos de Colágeno Hidrolizado, Vitamina C, L-Arginina e Inulina Prebiótica',
-            dosage: 'Inicio gradual (Días 1–7): 1/2 sobre (5 g) 30 a 60 min antes de dormir en MÍNIMO 500 ml de agua simple 💧',
+            name: scaled34.clinicalHeaderName,
+            dosage: FORMULA_34PLUS.dosageByMode.MICRO_DOSE,
             timing: 'Noche (30 a 60 min antes de dormir, siempre en medio litro de agua simple 💧)',
             clinical_timing: 'Sincronizado a ventana nocturna (30–60 min previo al descanso en mínimo 500 ml de agua simple 💧)',
-            rationale: `TITULACIÓN EN MICRO-DOSIS PREVENTIVA (Semana 1 — 5 g/día): Aporte nocturno controlado de péptidos de colágeno e inulina prebiótica con dilución obligatoria en mínimo 500 ml de agua simple para proteger vaciado gástrico y filtración renal del paciente.${tissueBiomarkers.length > 0 ? ` Hallazgos objetivos: ${tissueBiomarkers.join(' | ')}.` : ''}`,
+            rationale: `${scaled34.regulatorySummary}.${tissueBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${tissueBiomarkers.length}): ${tissueBiomarkers.join(' | ')}.` : ''}`,
             patient_rationale: addr.isTutorMode
-                ? `Trabaja mientras ${addr.childShortRef} descansa aportando bloques de construcción (colágeno, fibra prebiótica y vitamina C) para su digestión, piel y tejidos en crecimiento. Disuélvalo siempre en medio litro de agua simple 💧.`
-                : 'Trabaja mientras usted descansa aportando bloques de construcción (colágeno, fibra prebiótica y vitamina C) para su digestión, piel y articulaciones. Tómelo siempre en medio litro de agua simple 💧.',
+                ? `Trabaja mientras ${addr.childShortRef} descansa aportando colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, magnesio, vitamina C, vitamina K2 y zinc (${FORMULA_34PLUS.halfSachetGramsDisplay} en medio litro de agua simple 💧).`
+                : `Trabaja mientras usted descansa aportando colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, citrato de magnesio, vitamina C, vitamina K2 MK-7 y zinc (1/2 sobre de ${FORMULA_34PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_34PLUS.sachetGramsDisplay}— en mínimo 500 ml de agua simple 💧).`,
+            status: 'approved'
+        };
+    } else if (semaphore.isMicroDose) {
+        const priorAdh = serum?.priorAdherence || contract?.priorAdherence || detectPriorInstitutionalAdherence(patientData);
+        const isRecalibration = Boolean(semaphore.isRecalibrationMode || contract?.isRecalibrationMode || (!addr.isTutorMode && priorAdh?.hasPriorAdherence));
+        const activeList33Safe = scaled33.activeListText || scaled33.activesInline || 'L-Taurina, L-Carnitina, Coenzima Q10, Semilla de Uva, Vitamina C y Picolinato de Cromo';
+        const activeList34Safe = scaled34.activeListText || scaled34.activesInline || 'Colágeno Hidrolizado, L-Teanina, L-Glicina, FOS-Inulina, Citrato de Magnesio, Vitamina C, Vitamina K2 MK-7 y Zinc';
+        protocolName = isRecalibration
+            ? 'Protocolo de Recalibración Preventiva de Dosis (Ajuste Calibrado 33Plus® y 34Plus®)'
+            : 'Protocolo de Inicio Gradual Calibrado (Micro-Dosis Protectora 33Plus® y 34Plus®)';
+        const cardioTimingNote = hasConductionCaution
+            ? ' • Corte estricto antes de las 14:00 h y monitoreo de FC con EcoSinergix'
+            : '';
+        circadianSchedule = [
+            {
+                tomaNumber: 1,
+                timeSlot: 'Al despertar en ayunas (antes de las 14:00 h)',
+                phase: isRecalibration
+                    ? 'FASE MATUTINA — Recalibración Preventiva de Energía y Circulación'
+                    : 'FASE MATUTINA — Adaptación Suave de Energía y Circulación',
+                formula: label33Formula,
+                dosage: `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) disuelto en 300 ml de agua natural o tibia${cardioTimingNote}`,
+                clinicalObjective: `Aporte escalado al 50% de sobre oficial de ${FORMULA_33PLUS.sachetGramsDisplay} (${activeList33Safe}) respetando tolerancia gástrica y conducción cardiovascular.`,
+                patientObjective: addr.isTutorMode
+                    ? `Apoyar la energía matutina y la circulación de ${addr.childShortRef} de forma suave y progresiva.`
+                    : isRecalibration
+                        ? 'Sostener su energía matutina y circulación con dosis recalibrada de precisión (siempre antes de las 2:00 PM).'
+                        : 'Encender su energía de la mañana y apoyar su circulación de forma suave y progresiva (siempre antes de las 2:00 PM).',
+                waterVolumeMl: 300,
+                isMicroDose: true,
+                isRecalibration
+            },
+            {
+                tomaNumber: 2,
+                timeSlot: 'A media mañana (Semana 1: solo agua • Semana 2: valorar escalamiento)',
+                phase: 'FASE MATUTINA — Hidratación Preparatoria y Escalamiento Gradual',
+                formula: '💧 Hidratación Preparatoria (Agua Simple en Semana 1)',
+                dosage: `Iniciar solo con 300 ml de agua natural (Semana 1) • Valorar 1/2 sobre adicional (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® en Semana 2 según tolerancia`,
+                clinicalObjective: 'Ventana de hidratación preparatoria en Semana 1; titulación escalonada en Semana 2 sujeta a tolerancia digestiva, respuesta cardiovascular con EcoSinergix y seguimiento clínico.',
+                patientObjective: addr.isTutorMode
+                    ? `Hidratar a ${addr.childShortRef} con agua natural la primera semana antes de valorar una segunda toma matutina.`
+                    : 'Hidratar su organismo con agua simple durante la primera semana antes de valorar una segunda toma matutina.',
+                waterVolumeMl: 300,
+                isMicroDose: true
+            },
+            {
+                tomaNumber: 3,
+                timeSlot: 'A media tarde',
+                phase: 'FASE VESPERTINA — Hidratación de Limpieza Renal y Digestiva',
+                formula: '💧 Hidratación Preparatoria (Agua Simple)',
+                dosage: '500 ml de agua simple purificada a sorbos durante la tarde 💧',
+                clinicalObjective: 'Mantener flujo urinario constante y preparar la mucosa intestinal para la reparación nocturna.',
+                patientObjective: addr.isTutorMode
+                    ? `Ayudar a los riñones e intestino de ${addr.childShortRef} a limpiar desechos suavemente durante la tarde.`
+                    : 'Ayudar a sus riñones e intestino a limpiar desechos suavemente durante la tarde.',
+                waterVolumeMl: 500,
+                isMicroDose: true
+            },
+            {
+                tomaNumber: 4,
+                timeSlot: '30 a 60 min antes de dormir',
+                phase: isRecalibration
+                    ? 'FASE NOCTURNA — Recalibración Nocturna de Tejidos y Mucosa Digestiva'
+                    : 'FASE NOCTURNA — Reparación Suave de Tejidos y Mucosa Digestiva',
+                formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
+                dosage: `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) disuelto en MÍNIMO 500 ml de agua simple 💧`,
+                clinicalObjective: `Aporte escalado al 50% de sobre oficial de ${FORMULA_34PLUS.sachetGramsDisplay} (${activeList34Safe}) con amplia dilución hídrica.`,
+                patientObjective: addr.isTutorMode
+                    ? `Nutrir articulaciones, piel y digestión mientras ${addr.childShortRef} duerme, siempre con suficiente agua simple.`
+                    : 'Nutrir sus articulaciones, piel y digestión mientras usted duerme, siempre con suficiente agua simple.',
+                waterVolumeMl: 500,
+                isMicroDose: true,
+                isRecalibration
+            }
+        ];
+
+        sup33 = {
+            id: 'sup_33plus',
+            cortex: isRecalibration
+                ? '33Plus® (Recalibración Preventiva • Energía y Circulación)'
+                : '33Plus® (Micro-Dosis Gradual • Energía y Circulación)',
+            name: scaled33.clinicalHeaderName,
+            dosage: isRecalibration
+                ? (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || FORMULA_33PLUS.dosageByMode.MICRO_DOSE)
+                : FORMULA_33PLUS.dosageByMode.MICRO_DOSE,
+            timing: addr.isTutorMode
+                ? `Sincronizado al despertar de ${addr.childShortRef} (evitar ofrecerlo después de las 2:00 PM)`
+                : `Sincronizado a su despertar real (corte estricto antes de las 2:00 PM${hasConductionCaution ? ' y monitoreo con EcoSinergix' : ''})`,
+            clinical_timing: `Sincronizado al despertar del paciente en ayunas (corte horario estricto antes de las 14:00 h${hasConductionCaution ? ' y monitoreo cronotrópico con EcoSinergix' : ''})`,
+            rationale: `${scaled33.regulatorySummary}.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${energyBiomarkers.length}): ${energyBiomarkers.join(' | ')}.` : ''}`,
+            patient_rationale: addr.isTutorMode
+                ? `Acompaña a ${addr.childShortRef} por la mañana con L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva, vitamina C y cromo para apoyar su energía diaria y circulación, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre de ${FORMULA_33PLUS.sachetGramsDisplay}—) para cuidar su adaptación.`
+                : isRecalibration
+                    ? `Continuamos su adherencia previa con 33Plus® aportando L-Taurina, L-Carnitina, Coenzima Q10, antioxidantes de semilla de uva, vitamina C y picolinato de cromo, recalibrando preventivamente su toma matutina a medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_33PLUS.sachetGramsDisplay}—, antes de las 14:00 h) para acompañar con total seguridad su conducción cardiovascular.`
+                    : `${addr.directObjCap} acompaña por la mañana con L-Taurina, L-Carnitina, Coenzima Q10, antioxidantes de semilla de uva, vitamina C y picolinato de cromo para apoyar su energía diaria y la flexibilidad de su circulación, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_33PLUS.sachetGramsDisplay}—, antes de las 14:00 h) para cuidar su adaptación.`,
+            status: 'approved'
+        };
+
+        sup34 = {
+            id: 'sup_34plus',
+            cortex: isRecalibration
+                ? '34Plus® (Recalibración Preventiva • Reparación y Digestión)'
+                : '34Plus® (Micro-Dosis Gradual • Reparación y Digestión)',
+            name: scaled34.clinicalHeaderName,
+            dosage: isRecalibration
+                ? (FORMULA_34PLUS.dosageByMode.RECALIBRATION_DOSE || FORMULA_34PLUS.dosageByMode.MICRO_DOSE)
+                : FORMULA_34PLUS.dosageByMode.MICRO_DOSE,
+            timing: 'Noche (30 a 60 min antes de dormir, siempre en medio litro de agua simple 💧)',
+            clinical_timing: 'Sincronizado a ventana nocturna (30–60 min previo al descanso en mínimo 500 ml de agua simple 💧)',
+            rationale: `${scaled34.regulatorySummary}.${tissueBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${tissueBiomarkers.length}): ${tissueBiomarkers.join(' | ')}.` : ''}`,
+            patient_rationale: addr.isTutorMode
+                ? `Trabaja mientras ${addr.childShortRef} descansa aportando colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, magnesio, vitamina C, vitamina K2 y zinc (${FORMULA_34PLUS.halfSachetGramsDisplay} —50% del sobre de ${FORMULA_34PLUS.sachetGramsDisplay}— en medio litro de agua simple 💧).`
+                : isRecalibration
+                    ? `Mantenemos su soporte nocturno con 34Plus® (colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, citrato de magnesio, vitamina C, vitamina K2 MK-7 y zinc), recalibrando preventivamente su posología a 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_34PLUS.sachetGramsDisplay}— en mínimo 500 ml de agua simple 💧) para optimizar la absorción digestiva y el descanso.`
+                    : `Trabaja mientras usted descansa aportando colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, citrato de magnesio, vitamina C, vitamina K2 MK-7 y zinc para su digestión, descanso, piel y articulaciones (1/2 sobre de ${FORMULA_34PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_34PLUS.sachetGramsDisplay}— en mínimo 500 ml de agua simple 💧).`,
             status: 'approved'
         };
     } else {
@@ -2487,23 +4801,23 @@ function buildOrthomolecularPrescription(
                 timeSlot: 'Al despertar en ayunas',
                 phase: 'FASE DIURNA — Encendido de Energía Celular y Circulación',
                 formula: label33Formula,
-                dosage: '1 sobre (10 g) disuelto en 300 ml de agua natural o tibia',
-                clinicalObjective: 'Inducción de energía mitocondrial, oxigenación tisular y soporte endotelial matutino.',
+                dosage: `1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) disuelto en 300 ml de agua natural o tibia`,
+                clinicalObjective: 'Inducción de energía mitocondrial (L-Carnitina MP080, L-Taurina MP026, CoQ10 MP104), oxigenación tisular y soporte endotelial matutino.',
                 patientObjective: addr.isTutorMode
                     ? `Impulsar la energía natural y atención matutina de ${addr.childShortRef} desde temprano.`
-                    : 'Despertar su energía natural con claridad mental y apoyar una circulación ligera desde temprano.',
+                    : 'Despertar su energía natural con claridad y apoyar una circulación ligera desde temprano.',
                 waterVolumeMl: 300
             },
             {
                 tomaNumber: 2,
-                timeSlot: 'A media mañana (aprox. 4 h después de despertar)',
-                phase: 'FASE DIURNA — Estabilidad de Energía y Enfoque',
+                timeSlot: 'A media mañana (aprox. 4 h después de despertar, antes de las 14:00 h)',
+                phase: 'FASE DIURNA — Estabilidad de Energía y Circulación',
                 formula: label33Formula,
-                dosage: '1 sobre (10 g) disuelto en 300 ml de agua natural',
-                clinicalObjective: 'Sostén de enfoque cognitivo, sensibilidad a la glucosa y protección antioxidante vascular.',
+                dosage: `1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) disuelto en 300 ml de agua natural`,
+                clinicalObjective: 'Protección antioxidante vascular (Semilla de Uva 95 % MP040, Vitamina C MP048) y sensibilidad metabólica (Picolinato de Cromo MP078).',
                 patientObjective: addr.isTutorMode
                     ? `Mantener la vitalidad de ${addr.childShortRef} estable a mitad del día.`
-                    : 'Mantener su vitalidad estable a mitad del día evitando bajones de energía después de comer.',
+                    : 'Mantener su vitalidad estable a mitad del día evitando bajones de energía.',
                 waterVolumeMl: 300
             },
             {
@@ -2511,8 +4825,8 @@ function buildOrthomolecularPrescription(
                 timeSlot: 'A media tarde',
                 phase: 'FASE VESPERTINA — Bienestar Digestivo y Desinflamación',
                 formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
-                dosage: '1 sobre (10 g) disuelto en MÍNIMO 500 ml de agua simple 💧',
-                clinicalObjective: 'Soporte a la barrera mucosa intestinal, aporte prebiótico y modulación del desgaste oxidativo vespertino.',
+                dosage: `1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) disuelto en MÍNIMO 500 ml de agua simple 💧`,
+                clinicalObjective: 'Soporte a la barrera mucosa intestinal (FOS-Inulina MP020, Zinc Optizinc MP171) y transición neurovegetativa vespertina (L-Teanina MP123).',
                 patientObjective: addr.isTutorMode
                     ? `Cuidar la digestión vespertina de ${addr.childShortRef} e hidratar profundamente sus tejidos con medio litro de agua simple.`
                     : 'Cuidar su digestión de la tarde e hidratar profundamente sus tejidos con medio litro de agua simple.',
@@ -2523,8 +4837,8 @@ function buildOrthomolecularPrescription(
                 timeSlot: '30 a 60 min antes de dormir',
                 phase: 'FASE NOCTURNA — Reparación Profunda de Tejidos y Articulaciones',
                 formula: '🟢 34Plus® (Reparación Celular y Colágeno)',
-                dosage: '1 sobre (10 g) disuelto en MÍNIMO 500 ml de agua simple 💧',
-                clinicalObjective: 'Síntesis nocturna de colágeno tipo I/III, recuperación miofascial y nutrición de la microbiota intestinal.',
+                dosage: `1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) disuelto en MÍNIMO 500 ml de agua simple 💧`,
+                clinicalObjective: 'Síntesis nocturna de colágeno (MP009, L-Glicina MP023, Vitamina C MP048), relajación neuromuscular (Citrato de Magnesio MP012, L-Teanina MP123) y fijación mineral (Vitamina K2 MK-7 MP172).',
                 patientObjective: addr.isTutorMode
                     ? `Aportar a los músculos, huesos, piel y articulaciones de ${addr.childShortRef} los nutrientes que emplea para repararse mientras duerme.`
                     : 'Aportar a sus músculos, huesos, piel y articulaciones los nutrientes que emplean para repararse mientras usted duerme.',
@@ -2534,41 +4848,31 @@ function buildOrthomolecularPrescription(
 
         sup33 = {
             id: 'sup_33plus',
-            cortex: switch33PlusToDecaf
-                ? '33Plus® (Modulación Mitocondrial Sin Estimulantes NOM-028)'
-                : '33Plus® (Ignición Mitocondrial y Reología Vascular)',
-            name: switch33PlusToDecaf
-                ? '33Plus® (Protocolo Libre de Estimulantes) - L-Teanina Pura, CoQ10, Cromo (200 mcg) y Polifenoles'
-                : '33Plus® - Polifenoles de Semilla de Uva, CoQ10, Cromo (200 mcg) y L-Teanina',
-            dosage: '2 tomas matutinas: 1 sobre al despertar en ayunas y 1 sobre a media mañana (cada uno en 300 ml de agua natural)',
+            cortex: '33Plus® (Ignición Mitocondrial y Reología Vascular)',
+            name: scaled33.clinicalHeaderName,
+            dosage: FORMULA_33PLUS.dosageByMode.STANDARD_DOSE,
             timing: addr.isTutorMode
                 ? `Sincronizado a la mañana de ${addr.childShortRef} (Al despertar y a media mañana)`
-                : 'Sincronizado a su mañana (Al despertar y a media mañana)',
-            clinical_timing: 'Sincronizado a ventana matutina del paciente (al despertar en ayunas y a media mañana)',
-            rationale: switch33PlusToDecaf
-                ? `BLOQUEO DE BIOSEGURIDAD (NOM-028 / Fisiológico): Conmutación a variante sin estimulantes para resguardar estabilidad cardiovascular y nerviosa del paciente${energyBiomarkers.length > 0 ? ` (${energyBiomarkers.join(' | ')})` : ''}.`
-                : (energyBiomarkers.length > 0
-                    ? `Prescripción dirigida por hallazgos objetivos en expediente (${energyBiomarkers.join(' | ')}): favorece la protección antioxidante de lípidos circulantes y la fluidez microvascular diurna.`
-                    : 'Optimización de microcirculación, oxigenación tisular diurna y sensibilidad metabólica a la glucosa.'),
+                : 'Sincronizado a su mañana (Al despertar y a media mañana, antes de las 2:00 PM)',
+            clinical_timing: 'Sincronizado a ventana matutina del paciente (al despertar en ayunas y a media mañana, antes de las 14:00 h)',
+            rationale: `${scaled33.regulatorySummary}.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${energyBiomarkers.length}): ${energyBiomarkers.join(' | ')}.` : ' Optimización de microcirculación, oxigenación tisular diurna y metabolismo celular.'}`,
             patient_rationale: addr.isTutorMode
-                ? `Acompaña a ${addr.childShortRef} por la mañana: aporta antioxidantes de semilla de uva, Coenzima Q10 y cromo para apoyar su circulación y una energía limpia durante el día.`
-                : `Su aliado de la mañana: ${addr.directObjLower} acompaña con antioxidantes de semilla de uva, Coenzima Q10 y cromo para apoyar su circulación, su corazón y una energía limpia durante el día.`,
+                ? `Acompaña a ${addr.childShortRef} por la mañana: aporta L-Taurina, L-Carnitina, antioxidantes de semilla de uva, Coenzima Q10, vitamina C y cromo (${scaled33.totalGramsDisplay}/día en 2 sobres de ${FORMULA_33PLUS.sachetGramsDisplay}) para apoyar su circulación y una energía limpia durante el día.`
+                : `Su aliado de la mañana: ${addr.directObjLower} acompaña con L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva, vitamina C y picolinato de cromo (${scaled33.totalGramsDisplay}/día en 2 sobres de ${FORMULA_33PLUS.sachetGramsDisplay}) para apoyar su circulación, su corazón y una energía limpia durante el día.`,
             status: 'approved'
         };
 
         sup34 = {
             id: 'sup_34plus',
             cortex: '34Plus® (Ingeniería Tisular y Homeostasis Mucosa)',
-            name: '34Plus® - Péptidos de Colágeno Hidrolizado, Vitamina C, L-Arginina e Inulina Prebiótica',
-            dosage: '2 tomas vespertinas/nocturnas: 1 sobre a media tarde y 1 sobre antes de dormir, cada uno en MÍNIMO 500 ml de agua simple 💧',
+            name: scaled34.clinicalHeaderName,
+            dosage: FORMULA_34PLUS.dosageByMode.STANDARD_DOSE,
             timing: 'Sincronizado a su tarde y noche (Media tarde y 30–60 min antes de dormir)',
             clinical_timing: 'Sincronizado a ventana vespertina y nocturna (media tarde y 30–60 min previo al descanso en mínimo 500 ml de agua simple 💧)',
-            rationale: tissueBiomarkers.length > 0
-                ? `Prescripción dirigida por hallazgos tisulares e inmunológicos (${tissueBiomarkers.join(' | ')}): promueve la regeneración epitelial digestiva y de matriz de colágeno durante el descanso nocturno. Dilución obligatoria en mínimo 500 ml de agua simple.`
-                : 'Reparación de matriz de colágeno y recubrimiento digestivo nocturno. Dilución obligatoria en mínimo 500 ml de agua simple.',
+            rationale: `${scaled34.regulatorySummary}.${tissueBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${tissueBiomarkers.length}): ${tissueBiomarkers.join(' | ')}.` : ' Reparación de matriz de colágeno, relajación nocturna y recubrimiento digestivo.'}`,
             patient_rationale: addr.isTutorMode
-                ? `Soporte de reparación vespertino y nocturno para ${addr.childShortRef}: aporta colágeno hidrolizado, vitamina C y fibra prebiótica suave para confortar su intestino y nutrir articulaciones, huesos y piel. Disuélvalo siempre en medio litro de agua simple 💧.`
-                : 'Su aliado de reparación en la tarde y noche: aporta colágeno hidrolizado, vitamina C y fibra prebiótica suave para confortar su intestino y nutrir articulaciones, huesos y piel. Disuélvalo siempre en medio litro de agua simple 💧.',
+                ? `Soporte de reparación vespertino y nocturno para ${addr.childShortRef}: aporta colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, magnesio, vitamina C, vitamina K2 y zinc (${scaled34.totalGramsDisplay}/día en 2 sobres de ${FORMULA_34PLUS.sachetGramsDisplay}). Disuélvalo siempre en medio litro de agua simple 💧.`
+                : `Su aliado de reparación en la tarde y noche: aporta colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, citrato de magnesio, vitamina C, vitamina K2 MK-7 y zinc (${scaled34.totalGramsDisplay}/día en 2 sobres de ${FORMULA_34PLUS.sachetGramsDisplay}) para confortar su intestino, favorecer su descanso y nutrir articulaciones, huesos y piel. Disuélvalo siempre en medio litro de agua simple 💧.`,
             status: 'approved'
         };
     }
@@ -2610,6 +4914,9 @@ function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     // Excluir marcadores ambientales no-orgánicos de las tarjetas fisiológicas del paciente
     if (/radiaci[óo]n\s+electromagn[ée]tica|electromagn[ée]tic/i.test(base)) {
         return '';
+    }
+    if (/vigilancia\s+epigen[ée]tica|heredo[-\s]*familiar|carga\s+familiar/i.test(base)) {
+        return 'prevención personalizada por antecedentes familiares';
     }
 
     if (/mercurio|ars[ée]nico|plomo|cadmio|pesticida|metales?\s+pesados?|toxina/i.test(base)) {
@@ -2663,14 +4970,32 @@ function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     if (/vitamina|zinc|selenio|hierro|magnesio|potasio|calcio|coenzima|treonina|histidina|lisina|valina|leucina|isoleucina|tript[óo]fano|metionina|fenilalanina|arginina|amino[áa]cido|inmunoglobulina|linf[áa]tic|am[íi]gdala|bazo|m[ée]dula|respiratori|mucosa/i.test(base)) {
         return 'reservas de vitaminas, minerales y defensas naturales';
     }
+    if (/electrocardiograma|\becg\b|rama\s+derecha|bradicardia/i.test(base)) {
+        return 'ritmo y conducción eléctrica del corazón en reposo';
+    }
+    if (/radiograf|\brx\b|arco\s+a[óo]rtico|cardiotor[áa]cico/i.test(base)) {
+        return 'elasticidad de sus grandes arterias y función pulmonar';
+    }
+    if (/ultrasonido|inguinal|doppler/i.test(base)) {
+        return 'firmeza de la pared abdominal/inguinal y flujo vascular';
+    }
+    if (/bas[óo]filos/i.test(base)) {
+        return 'equilibrio de sensibilidad inmunológica e histamínica';
+    }
     if (/mioc[áa]rdic|coronari|latido|bombeo|viscosidad|elasticidad|vascular|arteri|venos|microcirculaci|ox[íi]geno|pulmonar|riesgo\s+cerebrovascular|stroke|presi[óo]n|impedancia|volumen\s+de\s+perfusi/i.test(base)) {
         return 'fluidez de la circulación y oxigenación del corazón';
     }
-    if (/araquid[óo]nico|omega|colesterol|triglic[ée]ridos?|lipoprote[íi]na|grasa\s+en\s+sangre|adiposo|obesidad|l[íi]pido/i.test(base)) {
+    if (/colesterol|ldl|aterog[ée]nic|sd\s*ldl/i.test(base)) {
+        return 'transporte saludable de colesterol en sus arterias';
+    }
+    if (/araquid[óo]nico|omega|triglic[ée]ridos?|lipoprote[íi]na|grasa\s+en\s+sangre|adiposo|obesidad|l[íi]pido/i.test(base)) {
         return 'equilibrio de grasas saludables en sangre';
     }
-    if (/insulina|glucosa|az[úu]car|gluc[óo]geno|energ[íi]a|mitocondri|metabolismo|cuerpo\s+[áa]cido|ph/i.test(base)) {
-        return 'aprovechamiento diario de azúcares y energía celular';
+    if (/insulina|glucosa|az[úu]car|gluc[óo]geno/i.test(base)) {
+        return 'aprovechamiento diario de glucosa';
+    }
+    if (/energ[íi]a|mitocondri|metabolismo|cuerpo\s+[áa]cido|ph/i.test(base)) {
+        return 'producción de energía celular diaria';
     }
     if (/peristalsis|intestin|col[óo]nic|colon|flora|microbiota|estre[ñn]imiento|evacuaci/i.test(base)) {
         return 'ritmo de movimiento del estómago e intestino';
@@ -2794,6 +5119,36 @@ function buildPatientFriendlyGuide({
     const n6 = getNode('NODO_6_DEFENSA');
     const n7 = getNode('NODO_7_ESTRUCTURAL');
 
+    const subAxes = serum?.subAxisFlags || {};
+    const cabinet = serum?.cabinetSignals || {};
+
+    const adultCardioMeaning = (() => {
+        const clauses = [];
+        if (subAxes.hasAtherogenicCholesterol) {
+            clauses.push(
+                subAxes.hasVenousNormoglycemia && subAxes.hasVenousNormalTriglycerides
+                    ? 'sus estudios muestran colesterol LDL y partículas pequeñas (sdLDL) elevadas mientras su glucosa y triglicéridos se mantienen en rango saludable'
+                    : 'existe carga de partículas de colesterol circulando en sus arterias'
+            );
+        } else if (subAxes.hasHypertriglyceridemia) {
+            clauses.push('hay exceso de triglicéridos circulando en sangre');
+        }
+        if (subAxes.hasTrueDysglycemia) {
+            clauses.push('su aprovechamiento de glucosa requiere apoyo cercano');
+        }
+        if (cabinet.hasCardiacConductionOrBradycardia || cabinet.hasAorticOrThoracicRemodeling) {
+            clauses.push('sus estudios de gabinete cardiovascular sugieren acompañar el ritmo y la elasticidad arterial sin esfuerzos bruscos');
+        }
+        const detailLead = clauses.length > 0
+            ? `En sus resultados observamos que ${joinSpanishList(clauses)}. `
+            : 'Imagine sus arterias como tuberías flexibles y a sus células como pequeñas baterías: ';
+        return `${detailLead}Con hidratación constante, grasas nobles, fibra soluble y protección antioxidante diurna (33Plus®) ayudaremos a proteger el recubrimiento de sus vasos sanguíneos y mantener una circulación fluida.`;
+    })();
+
+    const adultDefenseMeaning = subAxes.hasAcutePhaseInflammation
+        ? 'Sus marcadores muestran activación inflamatoria sistémica que requiere descanso reparador nocturno, hidratación y nutrición desinflamatoria.'
+        : 'Su organismo se repara a profundidad cuando usted descansa bien y baja el ritmo por la noche (con proteína C reactiva sistémica en rango tranquilo y solo sensibilidad inmunológica leve). Al ordenar sus horarios de cena y nutrir su mucosa, fortalecemos su equilibrio natural.';
+
     const fiveSystems = addr.isTutorMode
         ? [
             makeSystemCard({
@@ -2866,15 +5221,19 @@ function buildPatientFriendlyGuide({
             makeSystemCard({
                 id: 'circulacion_energia',
                 title: 'Su Circulación, Corazón y Energía Diaria',
-                subtitle: 'Cómo viaja el oxígeno y el combustible hacia sus órganos',
+                subtitle: 'Cómo viajan el oxígeno, los lípidos y la energía hacia sus órganos',
                 iconKey: 'heart',
                 sourceNodes: [n5, n3],
-                observedWhenActive: (topics) =>
-                    `Notamos que su sistema circulatorio y sus reservas de energía están haciendo un esfuerzo extra (especialmente en indicadores como ${topics.join(', ')}).`,
-                meaningWhenActive:
-                    'Imagine sus arterias como tuberías flexibles y a sus células como pequeñas baterías: cuando la sangre viaja un poco más espesa o hay exceso de grasas y azúcares circulando, el corazón trabaja más y usted puede sentir cansancio. Con hidratación, alimentación limpia y antioxidantes ayudaremos a que todo fluya con ligereza.',
+                observedWhenActive: (topics) => {
+                    const filteredTopics = subAxes.hasVenousNormoglycemia
+                        ? topics.filter(t => !/az[úu]car|glucosa/i.test(t))
+                        : topics;
+                    const safeTopics = filteredTopics.length > 0 ? filteredTopics : topics;
+                    return `Notamos atención prioritaria en indicadores cardiovasculares y lipídicos (${safeTopics.join(', ')}).`;
+                },
+                meaningWhenActive: adultCardioMeaning,
                 healthyObserved: 'Sus indicadores principales de circulación, oxigenación y manejo de energía se mantienen estables.',
-                healthyMeaning: 'Sus "tuberías" y "baterías celulares" responden adecuadamente; el objetivo será conservar esa vitalidad día con día.'
+                healthyMeaning: 'Sus arterias y su energía celular responden adecuadamente; el objetivo será conservar esa vitalidad día con día.'
             }),
             makeSystemCard({
                 id: 'digestion_absorcion',
@@ -2885,7 +5244,7 @@ function buildPatientFriendlyGuide({
                 observedWhenActive: (topics) =>
                     `Observamos señales de digestión lenta o sensibilidad en el recubrimiento digestivo (${topics.join(', ')}).`,
                 meaningWhenActive:
-                    'Aunque usted consuma buenos alimentos, si el estómago y el intestino trabajan lento o están irritados, no logramos absorber al 100% las vitaminas y minerales. Retirar irritantes (picante, cerdo y azúcares) y comer sin prisa le dará un respiro inmediato a su digestión.',
+                    'Aunque usted consuma buenos alimentos, si el estómago y el intestino trabajan lento o están irritados, no logramos absorber al 100 % las vitaminas y minerales. Retirar irritantes (picante, cerdo y azúcares refinados) y comer sin prisa le dará un respiro inmediato a su digestión.',
                 healthyObserved: 'Su sistema digestivo muestra buena capacidad general de asimilación.',
                 healthyMeaning: 'Su intestino está listo para aprovechar los nutrientes de su plan de alimentación.'
             }),
@@ -2896,11 +5255,13 @@ function buildPatientFriendlyGuide({
                 iconKey: 'droplets',
                 sourceNodes: [n2],
                 observedWhenActive: (topics) =>
-                    `Sus filtros naturales muestran señales de carga acumulada de trabajo (${topics.join(', ')}).`,
+                    `Sus filtros naturales muestran indicadores preventivos que acompañamos con hidratación medida (${topics.join(', ')}).`,
                 meaningWhenActive:
-                    'Su hígado y sus riñones funcionan como los filtros de agua de casa: limpian todos los días lo que su organismo ya no necesita. Por eso cuidamos tanto la cantidad de agua simple que usted ingiere y ajustamos su suplementación con prudencia para acompañarlos sin forzarlos.',
-                healthyObserved: 'Sus filtros hepático y renal se observan despejados y trabajando a buen ritmo.',
-                healthyMeaning: 'Sus órganos depuradores tienen buen margen para procesar nutrientes con normalidad.'
+                    serum?.precedence?.venousRenalNormal && serum?.precedence?.venousHepaticNormal
+                        ? 'Sus análisis de sangre confirman enzimas hepáticas, creatinina y ácido úrico en rango normal; acompañamos su tasa de filtración renal con hidratación fraccionada constante y dilución amplia para mantener sus filtros despejados sin sobrecargarlos.'
+                        : 'Su hígado y sus riñones funcionan como los filtros de agua de casa: limpian todos los días lo que su organismo ya no necesita. Por eso cuidamos tanto la cantidad de agua simple que usted ingiere y ajustamos su suplementación con prudencia.',
+                healthyObserved: 'Sus filtros hepático y renal se observan despejados y trabajando a buen ritmo en sus análisis de sangre.',
+                healthyMeaning: 'Sus órganos depuradores cuentan con buen margen funcional; mantendremos su hidratación diaria constante para conservarlos así.'
             }),
             makeSystemCard({
                 id: 'descanso_defensas',
@@ -2909,22 +5270,23 @@ function buildPatientFriendlyGuide({
                 iconKey: 'shield',
                 sourceNodes: [n4, n6],
                 observedWhenActive: (topics) =>
-                    `Identificamos desgaste en su recuperación nerviosa, hormonal o en sus defensas (${topics.join(', ')}).`,
-                meaningWhenActive:
-                    'Su organismo se repara a profundidad cuando usted descansa bien y baja el ritmo por la noche. Al ordenar sus horarios de cena, hidratarse bien y nutrir sus defensas, ayudamos a que su sistema nervioso e inmunológico disminuyan la inflamación.',
+                    `Identificamos señales en su ritmo de descanso, manejo de estrés o sensibilidad inmunológica (${topics.join(', ')}).`,
+                meaningWhenActive: adultDefenseMeaning,
                 healthyObserved: 'Su comunicación hormonal y sus defensas mantienen un equilibrio favorable.',
                 healthyMeaning: 'Su escudo protector responde de forma ordenada; cuidar su sueño mantendrá esta fortaleza.'
             }),
             makeSystemCard({
                 id: 'huesos_musculos',
-                title: 'Sus Huesos, Músculos, Piel y Articulaciones',
-                subtitle: 'El sostén y la estructura que le permite moverse con libertad',
+                title: 'Sus Huesos, Músculos, Piel y Sostén Estructural',
+                subtitle: 'La estructura muscular, articular y de colágeno que sostiene su movimiento',
                 iconKey: 'bone',
                 sourceNodes: [n7],
                 observedWhenActive: (topics) =>
-                    `Observamos mayor demanda de nutrientes de soporte estructural, minerales y colágeno (${topics.join(', ')}).`,
+                    `Observamos demanda de soporte estructural, colágeno y cuidado biomecánico (${topics.join(', ')}).`,
                 meaningWhenActive:
-                    'Los aminoácidos, minerales, vitamina D y el colágeno son como los ladrillos y el cemento que mantienen firmes sus huesos, músculos y articulaciones. Vamos a nutrirlos con proteína de fácil digestión y movimiento suave que no lastime sus articulaciones.',
+                    cabinet.hasPostsurgicalInguinalOrAbdominalWall
+                        ? 'El colágeno, el magnesio, la vitamina K2 y los aminoácidos mantienen firmes sus tejidos, articulaciones y su pared inguinal con antecedente quirúrgico (hoy íntegra sin hernia). Los nutriremos por la noche y cuidaremos su postura evitando cargar peso con pujo abdominal.'
+                        : 'Los aminoácidos, minerales, vitamina K2 y el colágeno mantienen firmes sus huesos, músculos y articulaciones. Vamos a nutrirlos con proteína de fácil digestión y movimiento seguro sin impacto.',
                 healthyObserved: 'Su estructura ósea, muscular y de colágeno conserva buena firmeza funcional.',
                 healthyMeaning: 'Mantendremos un buen aporte de proteína y movimiento diario para proteger su masa muscular.'
             })
@@ -2942,19 +5304,47 @@ function buildPatientFriendlyGuide({
             return !/^(ninguna?|ninguno|niega|negad[oa]s?|n\/a|na|sin\s+alergias?|sin\s+exclusiones?|sin\s+restricciones?|no|no\s+refiere|null|undefined|-+)$/i.test(clean);
         });
 
+    const buildSafeAdultMovementGuidance = () => {
+        const parts = [];
+        const tcxMetaGuide = orthomolecularPrescription?.therapeutic_contract?.confirmedTcxMeta || null;
+        if (cabinet.hasCardiacConductionOrBradycardia || cabinet.hasAorticOrThoracicRemodeling) {
+            parts.push('Ejercicio aeróbico sin impacto (elíptica suave, natación o caminata en terreno plano) manteniendo un techo cardioprotector seguro de FC <= 130 lpm monitoreado con EcoSinergix y valoración ecocardiográfica de seguimiento');
+        } else if (addr.ageYears >= 55) {
+            parts.push('Caminata suave o elíptica sin impacto de 20 a 30 minutos a ritmo conversacional');
+        } else {
+            parts.push(`Actividad aeróbica ligera de 20 a 30 minutos al día a ritmo conversacional y pausas activas cada hora si usted permanece mucho tiempo ${addr.seatedLabel}`);
+        }
+
+        if (tcxMetaGuide) {
+            const devName = sanitizeClinicalSpanish(tcxMetaGuide.device_name || 'su reloj inteligente');
+            parts.push(`dando continuidad segura a su rutina registrada en ${devName}`);
+        }
+
+        if (cabinet.hasPostsurgicalInguinalOrAbdominalWall) {
+            parts.push('protegiendo su región inguinal (cero maniobras de Valsalva pesadas ni pujo conteniendo el aire al realizar esfuerzos)');
+        } else if (cabinet.hasAxialLoadRestriction) {
+            parts.push('evitando cargas axiales verticales o saltos sobre columna y rodillas');
+        }
+
+        if (subAxes.hasDistalVenousStasis) {
+            parts.push('sumando ejercicios rítmicos de tobillo y pantorrilla para activar el retorno venoso hacia el corazón');
+        } else {
+            parts.push('acompañada de movilidad articular progresiva');
+        }
+        return `${parts.join(', ')}.`;
+    };
+
     const movementGuidance = addr.isLactante
         ? `Estimulación motriz temprana (tiempo boca abajo supervisado, gateo libre y juego sensorial acorde a la edad de ${ref}), además de contacto suave con luz natural matutina.`
         : addr.isTutorChild
             ? `Juego activo diario acorde a la etapa de crecimiento de ${ref}, coordinación motriz libre al aire libre y contacto matutino con luz natural.`
-            : (addr.ageYears >= 55
-                ? 'Caminata suave y constante a paso cómodo de 15 a 20 minutos después de sus comidas principales (a un ritmo donde usted pueda conversar sin agitarse), acompañada de estiramientos suaves de cuello, hombros y cadera.'
-                : `Caminata ligera de 20 a 30 minutos al día a ritmo conversacional y pausas activas cada hora si usted permanece mucho tiempo ${addr.seatedLabel}, sumando movilidad articular suave sin impactos bruscos.`);
+            : buildSafeAdultMovementGuidance();
 
     const greetingTitle = addr.isLactante
         ? `Estimada madre, padre o tutor: lectura clara del bienestar de ${ref}`
         : addr.isTutorChild
             ? `Estimada madre, padre o tutor: lectura clara de la salud de ${ref}`
-            : `${addr.estimadoLabel} ${addr.firstName}: esta es la lectura clara de su salud hoy`;
+            : `${addr.estimadoLabel} ${addr.fullVocativeName || addr.cleanFullName}: esta es la lectura clara de su salud hoy`;
 
     const empatheticLead = addr.isLactante
         ? `Integramos con todo cuidado la valoración de crecimiento, tolerancia digestiva y desarrollo de ${addr.childSubjectWithKinship} para explicarle con claridad qué observamos y acompañarle paso a paso en casa.`
@@ -2964,22 +5354,32 @@ function buildPatientFriendlyGuide({
                 ? `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso junto con su madre, padre o tutor legal.`
                 : `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso, sin prisas ni sobrecargas.`;
 
+    const resolvedMacros = orthomolecularPrescription?.therapeutic_contract?.macros || bioenergetics?.macros || { carbs: 40, protein: 30, fat: 30 };
+    const resolvedRegimen = orthomolecularPrescription?.dietaryPlan?.regimen || bioenergetics?.regimen || 'Alimentación Funcional Antiinflamatoria Personalizada';
+    const macroDistributionNote = !addr.isLactante
+        ? ` Distribución equilibrada: ${resolvedMacros.carbs}% carbohidratos integrales, ${resolvedMacros.protein}% proteínas limpias y ${resolvedMacros.fat}% grasas saludables.`
+        : '';
+
     return {
         greetingTitle,
         empatheticLead,
         ui_labels: uiLabels,
         biosecurity_semaphore: biosecuritySemaphore,
+        metabolic_age_study: orthomolecularPrescription?.therapeutic_contract?.metabolicAgeStudy || null,
+        logistics_summary: orthomolecularPrescription?.therapeutic_contract?.logisticsSummary || serum?.logisticsSummary || null,
         calcium_alert_text: orthomolecularPrescription?.calcium_alert_text || null,
         five_systems: fiveSystems,
         home_action_plan: {
             protective_nutrition: {
                 title: 'Alimentación Protectora en Casa',
                 targetKcal: bioenergetics?.targetKcal || null,
+                regimen: resolvedRegimen,
+                macros: resolvedMacros,
                 summary: addr.isLactante
                     ? `Mantener lactancia materna o fórmula indicada por su pediatra e introducción gradual de alimentos naturales para ${ref}, sin sal añadida ni azúcares.`
                     : addr.isTutorChild
-                        ? `El plan alimentario de ${ref} (${bioenergetics?.targetKcal || 1600} kcal al día) está calculado acorde a su crecimiento, priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva), fruta natural y proteínas limpias como pescado, pollo o huevo.`
-                        : `Su plan está calculado a la medida de su organismo (${bioenergetics?.targetKcal || 1800} kcal al día), priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva, semillas), fibra suave y proteínas limpias como pescado, pollo o huevo.`,
+                        ? `El plan alimentario de ${ref} (${bioenergetics?.targetKcal || 1600} kcal al día • ${resolvedRegimen}) está calculado acorde a su crecimiento, priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva), fruta natural y proteínas limpias como pescado, pollo o huevo.${macroDistributionNote}`
+                        : `Su plan (${resolvedRegimen}) está calculado a la medida de su organismo (${bioenergetics?.targetKcal || 1800} kcal al día), priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva, semillas), fibra soluble y proteínas limpias como pescado, pollo o huevo.${macroDistributionNote}`,
                 universalRules: addr.isTutorMode
                     ? ['0 Picante (protege la mucosa digestiva)', '0 Carne de cerdo y embutidos', '0 Azúcares refinados ni refrescos']
                     : ['0 Picante (protege su mucosa digestiva)', '0 Carne de cerdo y embutidos', '0 Azúcares refinados ni refrescos'],
@@ -3017,11 +5417,10 @@ function buildPatientFriendlyGuide({
 
 /**
  * POST /api/cortex/synthesize-dossier
- * Arquitectura Híbrida Neuro-Simbólica v2.4:
- * 1. Tronco Encefálico Determinista (Compuertas Duras, Destilación de Suero Clínico en 7 Nodos IFM,
- *    Diccionario CIE-10 con Fallback R79.9/R89.9 y Árbol Bioenergético Devine-Lemmens / Katch-McArdle / Schofield).
- * 2. Inferencia Concurrente Controlada por Lotes (Promise.allSettled, batchSize = 3, delay 800 ms,
- *    temperature: 0.1, responseSchema estricto e Isomorfismo Estructural Completo).
+ * Arquitectura Compilador Clínico SSoTT v3.2 (EGM-49):
+ * 1. Tronco Determinista Multi-Paciente (Precedencia de Evidencia Orgánica pre-Nodos,
+ *    Sin CIE-10 automáticos no acreditados, Macronutrientes Dinámicos y Estequiometría Oficial 33Plus® / 34Plus®).
+ * 2. Inferencia Concurrente Controlada (1 llamada observacional estructurada + Paridad 1:1 Guía / NOM-004).
  */
 const synthesizeDossier = async (req, res) => {
     const { citationId: rawCitationId, patientData: bodyPatientData } = req.body;
@@ -3032,21 +5431,43 @@ const synthesizeDossier = async (req, res) => {
     }
 
     try {
-        let patientData = bodyPatientData || null;
+        const stmtSelect = db.prepare('SELECT * FROM session_persistence WHERE citation_id = ?');
+        const row = stmtSelect.get(citationId.toString());
+        let storedSnapshot = null;
+        if (row && row.patient_data_snapshot) {
+            const rawSnapshot = cryptoVault.decryptClinicalData(row.patient_data_snapshot);
+            try {
+                storedSnapshot = typeof rawSnapshot === 'string' ? JSON.parse(rawSnapshot || '{}') : (rawSnapshot || {});
+            } catch (pe) {
+                storedSnapshot = null;
+            }
+        }
 
-        if (!patientData) {
-            const stmtSelect = db.prepare('SELECT * FROM session_persistence WHERE citation_id = ?');
-            const row = stmtSelect.get(citationId.toString());
-
-            if (row && row.patient_data_snapshot) {
-                const rawSnapshot = cryptoVault.decryptClinicalData(row.patient_data_snapshot);
-                try {
-                    patientData = typeof rawSnapshot === 'string' ? JSON.parse(rawSnapshot || '{}') : (rawSnapshot || {});
-                } catch (pe) {
-                    patientData = {};
-                }
-            } else {
-                patientData = {};
+        let patientData = bodyPatientData || storedSnapshot || {};
+        if (bodyPatientData && storedSnapshot) {
+            const storedExt = storedSnapshot?.scan_data?.external_metrics;
+            const bodyExt = bodyPatientData?.scan_data?.external_metrics;
+            if (storedExt && typeof storedExt === 'object') {
+                patientData = {
+                    ...storedSnapshot,
+                    ...bodyPatientData,
+                    clinical_flags: Array.from(new Set([
+                        ...(Array.isArray(storedSnapshot.clinical_flags) ? storedSnapshot.clinical_flags : []),
+                        ...(Array.isArray(bodyPatientData.clinical_flags) ? bodyPatientData.clinical_flags : [])
+                    ])),
+                    scan_data: {
+                        ...(storedSnapshot.scan_data || {}),
+                        ...(bodyPatientData.scan_data || {}),
+                        external_metrics: {
+                            ...storedExt,
+                            ...(bodyExt || {}),
+                            external_studies: bodyExt?.external_studies || storedExt.external_studies,
+                            imaging: bodyExt?.imaging || storedExt.imaging,
+                            vigencia: bodyExt?.vigencia || storedExt.vigencia,
+                            totalParameters: bodyExt?.totalParameters ?? storedExt.totalParameters
+                        }
+                    }
+                };
             }
         }
 
@@ -3060,108 +5481,26 @@ const synthesizeDossier = async (req, res) => {
         const medications = patientData.history?.medications || [];
 
         // ==========================================
-        // 1. SANITIZACIÓN Y PARSEO CRONOLÓGICO BLINDADO (Fuerza Pediátrica)
+        // 1. SANITIZACIÓN Y PARSEO CRONOLÓGICO BLINDADO SSoTT (Fail-Closed Anti-Falso-Lactante)
         // ==========================================
-        const extractAgeNumber = (data) => {
-            if (!data) return null;
-            const candidates = [
-                data.identityLock?.patientInfo?.age,
-                data.age,
-                data.edad,
-                data.profile?.age,
-                data.vitals?.age,
-                data.identificacion?.edad,
-                data.profile?.pediatric_profile?.age
-            ];
-            for (const val of candidates) {
-                if (val !== undefined && val !== null && val !== "") {
-                    const num = Number(val);
-                    if (!isNaN(num)) return num;
-                }
-            }
-            return null;
-        };
-
-        const extractDobDate = (data) => {
-            if (!data) return null;
-            const pInfo = data.identityLock?.patientInfo;
-            if (pInfo?.dob_year && pInfo?.dob_month && pInfo?.dob_day) {
-                return new Date(pInfo.dob_year, pInfo.dob_month - 1, pInfo.dob_day);
-            }
-            let rawDob = data.dob || data.fecha_nacimiento || data.identificacion?.fechaNacimiento || data.profile?.dob;
-            if (rawDob && typeof rawDob === "string" && rawDob.trim() !== "") {
-                let parts = rawDob.trim().split(/[-/]/);
-                if (parts.length === 3) {
-                    if (parts[0].length <= 2 && parts[2].length === 4) {
-                        return new Date(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}T00:00:00`);
-                    }
-                }
-                const d = new Date(rawDob);
-                if (!isNaN(d.getTime())) return d;
-            }
-            return null;
-        };
-
-        let extractedAge = extractAgeNumber(patientData);
-        let dobDate = extractDobDate(patientData);
-
-        let ageYears = extractedAge !== null ? extractedAge : 30;
-        let ageMonths = 0;
+        const verifiedAge = resolveVerifiedPatientAge(patientData, 35);
+        let ageYears = verifiedAge.ageYears;
+        let ageMonths = verifiedAge.ageMonths ?? (ageYears * 12);
         let correctedAgeMonths = null;
 
-        if (dobDate && !isNaN(dobDate.getTime())) {
-            const today = new Date();
-            ageYears = today.getFullYear() - dobDate.getFullYear();
-            let monthDiff = today.getMonth() - dobDate.getMonth();
-            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dobDate.getDate())) {
-                ageYears--;
-            }
-
-            ageMonths = (today.getFullYear() - dobDate.getFullYear()) * 12 + (today.getMonth() - dobDate.getMonth());
-            if (today.getDate() < dobDate.getDate()) {
-                ageMonths--;
-            }
-            ageMonths = Math.max(0, ageMonths);
-
+        if (verifiedAge.hasVerifiedBirthDate && ageMonths < 36) {
             const semanasGestacion = parseInt(patientData.vitals?.semanas_gestacion || patientData.history?.semanas_gestacion, 10);
-            if (ageMonths < 36 && !isNaN(semanasGestacion) && semanasGestacion < 37) {
+            if (!isNaN(semanasGestacion) && semanasGestacion < 37) {
                 const semanasFaltantes = 40 - semanasGestacion;
                 const mesesFaltantes = semanasFaltantes / 4;
                 correctedAgeMonths = Math.max(0, ageMonths - mesesFaltantes);
             }
-        } else if (extractedAge !== null && extractedAge < 2) {
-            ageMonths = extractedAge === 0 ? 11 : extractedAge * 12;
         }
 
-        const hasExplicitNumericAge =
-            (extractedAge !== null && extractedAge >= 0) ||
-            (dobDate !== null && !isNaN(dobDate.getTime()));
+        const isLactanteExplicit = Boolean(ageYears < 2 && verifiedAge.isLactanteVerified);
+        const isPediatricExplicit = Boolean(ageYears < 18 && (isLactanteExplicit || verifiedAge.isPediatricVerified));
 
-        const isLactanteExplicit = Boolean(
-            patientData.isLactante ||
-            patientData.profile?.pediatric_profile?.is_lactante ||
-            (hasExplicitNumericAge && ageYears >= 0 && ageYears < 2)
-        );
-
-        const isPediatricExplicit = Boolean(
-            isLactanteExplicit ||
-            patientData.isPediatrico ||
-            patientData.profile?.pediatric_profile?.is_minor ||
-            patientData.profile?.pediatric_profile?.is_pediatric ||
-            (hasExplicitNumericAge && ageYears >= 0 && ageYears < 18)
-        );
-
-        if (isNaN(ageYears) || ageYears < 0) {
-            ageYears = isLactanteExplicit ? 0 : (isPediatricExplicit ? 10 : 30);
-        }
-
-        const pName = cleanClinicalLabel(
-            patientData.profile?.name ||
-            patientData.profile?.first_name ||
-            patientData.identificacion?.nombre ||
-            patientData.identityLock?.patientInfo?.name ||
-            (isLactanteExplicit ? "su bebé" : "Paciente")
-        );
+        const pName = isLactanteExplicit ? "su bebé" : formatInstitutionalFullName(patientData);
 
         const clinicalAddressing = resolveClinicalAddressing({
             patientName: pName,
@@ -3171,10 +5510,22 @@ const synthesizeDossier = async (req, res) => {
         });
 
         // ==========================================
-        // 2. DESTILACIÓN DEL SUERO CLÍNICO Y ÁRBOL BIOENERGÉTICO
+        // 2. DESTILACIÓN DEL SUERO CLÍNICO + MACRONUTRIENTES DINÁMICOS SSoTT
         // ==========================================
         const serum = distillClinicalSerum(patientData, isLactanteExplicit);
         const bioenergetics = calculatePrecisionBioenergetics(patientData, ageYears, ageMonths, isLactanteExplicit, isPediatricExplicit);
+        const dynamicDiet = resolveDynamicMacronutrientsAndRegimen({
+            serum,
+            bioenergetics,
+            isLactanteExplicit,
+            isPediatricExplicit
+        });
+        if (!isLactanteExplicit && dynamicDiet?.macros) {
+            bioenergetics.macros = dynamicDiet.macros;
+            bioenergetics.macrosDynamicApplied = true;
+            bioenergetics.regimen = dynamicDiet.regimen;
+            bioenergetics.regimenBadge = dynamicDiet.regimenBadge;
+        }
 
         // ==========================================
         // 3. CASCADA DE ENRUTAMIENTO PEDIÁTRICO / ADULTO
@@ -3193,41 +5544,80 @@ const synthesizeDossier = async (req, res) => {
             }
         }
 
-        // 4. Compuertas Duras de Bioseguridad (Fármacos NOM-028, Esfuerzo y Lactantes)
+        // 4. Compuertas Duras de Bioseguridad ( Farmacopea Real, Esfuerzo y Lactantes )
+        const lpActSynthesize = patientData.lifestyle_profile?.activity || patientData.clinical_context?.activity?.exercise || {};
+        const confirmedTcxMeta = lpActSynthesize?.source_type === 'TELEMETRY_TCX' && !lpActSynthesize?.telemetry_metadata?.preview_pending_confirm
+            ? lpActSynthesize.telemetry_metadata
+            : null;
+        const weeklyMinutesSynthesize = Number(
+            lpActSynthesize?.weekly_minutes ||
+            confirmedTcxMeta?.weekly_minutes ||
+            ((Number(confirmedTcxMeta?.daily_minutes || 0) * Number(confirmedTcxMeta?.weekly_days || 0)) || 0)
+        );
+        const hasValidatedHabitualExercise = Boolean(lpActSynthesize?.has_scheduled_exercise && (weeklyMinutesSynthesize >= 90 || confirmedTcxMeta));
+
         const activityLevel = String(
             patientData.activity_level ||
             patientData.physical_activity ||
             patientData.habits?.activity_level ||
             patientData.profile?.activity_level ||
-            (clinicalAddressing.isTutorMode ? "JUEGO ACTIVO" : "SEDENTARIO")
+            (hasValidatedHabitualExercise ? "MODERADO" : (clinicalAddressing.isTutorMode ? "JUEGO ACTIVO" : "SEDENTARIO"))
         ).toUpperCase();
 
-        const isSedentary = !isPediatricExplicit && (activityLevel.includes("SEDENTARIO") || activityLevel.includes("LIGERO") || activityLevel.includes("NULA"));
+        const isSedentary = !isPediatricExplicit && !hasValidatedHabitualExercise && (activityLevel.includes("SEDENTARIO") || activityLevel.includes("LIGERO") || activityLevel.includes("NULA"));
         const heartRate = parseInt(patientData.vitals?.heart_rate || patientData.vitals?.hr || (isLactanteExplicit ? 90 : 70), 10);
         const hasBradycardia = !isPediatricExplicit && heartRate < 60;
         const hasCardioFlags = !isPediatricExplicit && clinicalFlags.some(f => String(f).includes("BRADICARDIA") || String(f).includes("CARDIO"));
-        const isExerciseRestricted = !isPediatricExplicit && (isSedentary || ageYears >= 55 || hasBradycardia || hasCardioFlags);
+        const isExerciseRestricted = !isPediatricExplicit && (isSedentary || (!hasValidatedHabitualExercise && ageYears >= 55) || hasBradycardia || hasCardioFlags);
 
-        const hasStimulantsConflict = medications.some(m => {
-            const mName = String(m?.name || m || '').toUpperCase();
-            return ['FENTER', 'ACXION', 'TERFAMEX', 'CLONAZEPAM', 'DIAZEPAM', 'FLUOXETINA', 'SERTRALINA', 'ANSIOL', 'ANTIDEPRES', 'METILFENIDATO'].some(k => mName.includes(k));
+        const selective33Guard = detectSelective33PlusContraindication({
+            patientData,
+            serum,
+            medications
         });
+        const hasStimulantsConflict = Boolean(selective33Guard.isSelective33Paused);
 
         let pediatricDisclaimer = "";
-        if (isLactanteExplicit || (hasExplicitNumericAge && (ageMonths < 12 || ageYears < 1))) {
+        if (isLactanteExplicit || (verifiedAge.hasVerifiedBirthDate && ageMonths < 12)) {
             pediatricDisclaimer = "⚠️ DESCARGO REGULATORIO NOM-043/COFEPRIS: En lactantes menores de 1 año, la lactancia materna y la fórmula de continuación son la base nutricional primaria. Toda sugerencia de modulación nutricional celular (34Plus®) es de carácter orientativo y requiere validación explícita por el Pediatra tratante.";
         }
 
-        // Estrategia técnica para vista médica
+        // Estrategia técnica multimodal para vista médica (Gabinete ECG/RX/US + Retorno Venoso + Telemetría)
         let physicalStrategyText = "";
+        const cabSig = serum?.cabinetSignals || {};
+        const subAx = serum?.subAxisFlags || {};
         if (clinicalAddressing.isLactante) {
             physicalStrategyText = "Estimulación Psicomotriz Pediátrica: Gateo Activo, Coordinación Motora Gruesa/Fina y Tiempo de Juego Supervisado (Tummy Time).";
         } else if (clinicalAddressing.isTutorChild) {
             physicalStrategyText = "Desarrollo Psicomotor Escolar: Juego Activo Diario, Coordinación Motriz Libre y Exposición Matutina Segura a Luz Natural.";
         } else if (clinicalAddressing.isAdolescent) {
             physicalStrategyText = "Acondicionamiento Físico Juvenil Guiado: Actividad aeróbica recreativa, coordinación neuromuscular y movilidad articular progresiva acorde a etapa adolescente.";
+        } else if (cabSig.hasCardiacConductionOrBradycardia || cabSig.hasPostsurgicalInguinalOrAbdominalWall || cabSig.hasAorticOrThoracicRemodeling) {
+            const rxSegments = [];
+            if (cabSig.hasCardiacConductionOrBradycardia || cabSig.hasAorticOrThoracicRemodeling) {
+                rxSegments.push(
+                    `Ejercicio aeróbico sin impacto (elíptica controlada, natación o caminata llana) en Zona 1–2 cardioprotectora con techo estricto de FC <= 130 lpm monitoreado con EcoSinergix${cabSig.recommendsEchocardiogram ? ' e interconsulta/ecocardiograma transtorácico de correlación' : ''}`
+                );
+            }
+            if (cabSig.hasPostsurgicalInguinalOrAbdominalWall) {
+                rxSegments.push("protección de pared inguinal postquirúrgica (prohibición estricta de maniobras de Valsalva pesadas o apneas isométricas)");
+            }
+            if (subAx.hasDistalVenousStasis) {
+                rxSegments.push("activación rítmica de bomba muscular gemelar (pantorrilla-corazón) para retorno venoso distal");
+            }
+            if (confirmedTcxMeta) {
+                const devLabel = confirmedTcxMeta.device_name || "Wearable .TCX";
+                rxSegments.push(`continuidad calibrada de rutina registrada (${devLabel})`);
+            }
+            physicalStrategyText = `Prescripción Multimodal Guiada por Gabinete: ${rxSegments.join(' + ')}.`;
         } else if (isExerciseRestricted) {
             physicalStrategyText = "Prescripción Adaptativa Ligera: Actividad aeróbica suave conversacional (6\u00A0000 a 8\u00A0000 pasos/día) + Readaptación Articular Progresiva sin impacto ni esfuerzo máximo.";
+        } else if (confirmedTcxMeta) {
+            const devLabel = confirmedTcxMeta.device_name || "Wearable .TCX";
+            const discNames = Array.isArray(confirmedTcxMeta.disciplines) && confirmedTcxMeta.disciplines.length > 0
+                ? confirmedTcxMeta.disciplines.map(d => d.sport).join(' + ')
+                : 'Rutina Multicomponente';
+            physicalStrategyText = `Continuidad de Rutina Telemétrica Validada (${devLabel}: ${discNames} • ${weeklyMinutesSynthesize || confirmedTcxMeta.daily_minutes} min${weeklyMinutesSynthesize ? '/sem' : '/día'} • FC media ${confirmedTcxMeta.average_hr || '--'} BPM / pico ${confirmedTcxMeta.max_hr || '--'} BPM) en Zona Aeróbica Controlada 1–2 con protección articular.`;
         } else {
             physicalStrategyText = "Acondicionamiento Aeróbico Moderado + Fortalecimiento Muscular Progresivo en 3 Fases con control biomecánico.";
         }
@@ -3246,14 +5636,23 @@ const synthesizeDossier = async (req, res) => {
             clinicalAddressing
         );
 
+        const metabolicAgeStudy = calculateBidirectionalMetabolicAge(patientData, serum, bioenergetics);
+
         const canonicalContract = buildCanonicalTherapeuticContract({
+            patientData,
             serum,
             bioenergetics,
             biosecuritySemaphore,
+            medications,
             hasStimulantsConflict,
+            metabolicAgeStudy,
             isLactanteExplicit,
-            isPediatricExplicit
+            isPediatricExplicit,
+            physicalPrescription: physicalStrategyText
         });
+        if (confirmedTcxMeta) {
+            canonicalContract.confirmedTcxMeta = confirmedTcxMeta;
+        }
 
         // ==========================================
         // 6. SÍNTESIS OBSERVACIONAL UNIFICADA EN 1 SOLA LLAMADA GEMINI (16000 ms + therapeutic_focus 100% determinista)
@@ -3268,7 +5667,7 @@ const synthesizeDossier = async (req, res) => {
             }
         }
 
-        console.log(`🧠 CORTEX SSoTT v2.7.2: Sintetizando 7 Nodos IFM en llamada unificada (timeout=16000ms, temp=0.1) para Ruta ${determinedRoute}...`);
+        console.log(`🧠 CORTEX SSoTT v3.2.0: Sintetizando 7 Nodos IFM en llamada unificada (timeout=16000ms, temp=0.1) para Ruta ${determinedRoute}...`);
         const processedIfmNodes = await synthesizeAllIfmNodesSSoTT(serum.nodes, canonicalContract, aiInstance);
 
         // ==========================================
@@ -3285,9 +5684,10 @@ const synthesizeDossier = async (req, res) => {
             clinicalAddressing
         );
 
+        const formatNodeAxisBadge = (n) => n.accredited_cie10 ? ` (${n.accredited_cie10})` : '';
+
         const preliminary_diagnosis = processedIfmNodes.map((n, idx) => {
-            const auditTag = n.validation_status === 'REQUIERE_REVISIÓN' ? ' [⚠️ REQUIERE_REVISIÓN]' : '';
-            return sanitizeClinicalSpanish(`${idx + 1}. ${n.nodeName.replace(/^\d+\.\s*/, '')}: ${n.summary} (${n.cie10})${auditTag}`);
+            return sanitizeClinicalSpanish(`${idx + 1}. ${n.nodeName.replace(/^\d+\.\s*/, '')}${formatNodeAxisBadge(n)}: ${n.summary}`);
         });
 
         const activeNodesWithAnomalies = processedIfmNodes.filter(n => n.status !== 'HOMEOSTASIS');
@@ -3320,18 +5720,18 @@ const synthesizeDossier = async (req, res) => {
         const diagnosticoCausaRaiz = isLactanteExplicit
             ? `Lactante de ${ageMonths || 11} meses en fase acelerada de crecimiento y desarrollo L-OMS. Constantes vitales dentro de parámetros normales (FC ${heartRate} LPM). Evaluación orientada a la maduración de la mucosa intestinal, tolerancia a alimentos sólidos y neurodesarrollo motor.`
             : (activeNodesWithAnomalies.length > 0
-                ? activeNodesWithAnomalies.map(n => `• ${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')} (${n.cie10}): ${n.summary}`).join(' ')
-                : 'Homeostasis funcional conservada en los 7 Nodos de la Matriz IFM (Z00.0).');
+                ? activeNodesWithAnomalies.map(n => `• ${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')}${formatNodeAxisBadge(n)}: ${n.summary}`).join(' ')
+                : 'Homeostasis funcional conservada en los 7 Nodos de la Matriz IFM.');
 
         const critical_alerts = [];
         if (isLactanteExplicit) {
             critical_alerts.push(`PROTOCOLO LACTANTE: Constantes vitales normales en escala PALS/OMS (FC ${heartRate} LPM). Prescrita Estimulación Psicomotriz.`);
-        } else if (isExerciseRestricted) {
-            critical_alerts.push("Salvaguarda de Esfuerzo Físico (Adulto): Se restringe ejercicio extenuante de alta intensidad por perfil sedentario o cardiovascular. Prescrita caminata aeróbica ligera y movilidad articular progresiva.");
+        } else if (isExerciseRestricted || cabSig.hasCardiacConductionOrBradycardia || cabSig.hasPostsurgicalInguinalOrAbdominalWall) {
+            critical_alerts.push(`SALVAGUARDA BIOMECÁNICA Y DE ESFUERZO FÍSICO: ${physicalStrategyText}`);
         }
 
-        if (hasStimulantsConflict) {
-            critical_alerts.push("BLOQUEO FARMACOLÓGICO (NOM-028): Se detectaron fármacos activos con interacción simpaticomimética. Fórmula 33Plus® adaptada a protocolo libre de estimulantes.");
+        if (selective33Guard.isSelective33Paused && !biosecuritySemaphore.isPaused) {
+            critical_alerts.push(`PAUSA SELECTIVA DE 33PLUS® (NOM-004): Se difiere temporalmente 33Plus® (0 sobres activos) por ${selective33Guard.reasonText || 'precaución farmacológica/fisiológica activa'}, manteniendo hidratación matutina protectora y 34Plus® nocturno en micro-dosis.`);
         }
 
         if (biosecuritySemaphore.level !== 'VERDE') {
@@ -3353,7 +5753,7 @@ const synthesizeDossier = async (req, res) => {
 
         activeNodesWithAnomalies.forEach(n => {
             if (Array.isArray(n.key_biomarkers) && n.key_biomarkers.length > 0) {
-                critical_alerts.push(`ALERTA ${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '').toUpperCase()} (${n.cie10}): ${n.key_biomarkers.slice(0, 4).join(' | ')}`);
+                critical_alerts.push(`HALLAZGOS ${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '').toUpperCase()} [${n.accredited_cie10 || n.functionalCode || 'IFM'}]: ${n.key_biomarkers.slice(0, 6).join(' | ')}`);
             }
         });
 
@@ -3363,16 +5763,17 @@ const synthesizeDossier = async (req, res) => {
             "3. Estimulación Psicomotriz Activa y Tiempo de Juego (Tummy Time)",
             "4. Soporte Nutricional Pediátrico bajo Supervisión del Pediatra Tratante"
         ] : [
-            ...activeNodesWithAnomalies.map((n, idx) => `${idx + 1}. [${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')} - ${n.cie10}] ${n.therapeutic_focus}`),
-            `${activeNodesWithAnomalies.length + 1}. [Bioenergética ${bioenergetics.equationUsed} • ${canonicalContract.regimen}] TMB: ${bioenergetics.bmr} kcal | TDEE: ${bioenergetics.tdee} kcal | Meta Prescrita: ${bioenergetics.targetKcal} kcal (${bioenergetics.macros.carbs}% C / ${bioenergetics.macros.protein}% P / ${bioenergetics.macros.fat}% L) | Hidratación Meta: ${canonicalContract.hydrationTargetLiters} L/día.`,
+            ...activeNodesWithAnomalies.map((n, idx) => `${idx + 1}. [${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')} • ${n.accredited_cie10 || n.functionalCode || 'IFM'}] ${n.therapeutic_focus}`),
+            `${activeNodesWithAnomalies.length + 1}. [Bioenergética ${bioenergetics.equationUsed} • ${canonicalContract.regimen}] TMB: ${bioenergetics.bmr} kcal | TDEE: ${bioenergetics.tdee} kcal | Meta Prescrita: ${bioenergetics.targetKcal} kcal (${bioenergetics.macros.carbs}% C / ${bioenergetics.macros.protein}% P / ${bioenergetics.macros.fat}% L) | Hidratación Meta: ${canonicalContract.hydrationTargetLiters} L/día | Logística: ${canonicalContract.logisticsSummary?.venueLabel || 'Casa'} (${canonicalContract.logisticsSummary?.cookLabel || 'Preparación propia'})${canonicalContract.patientSpecificExclusions.length > 0 ? ` | Exclusiones personalizadas: ${canonicalContract.patientSpecificExclusions.join(', ')}` : ''}.`,
             `${activeNodesWithAnomalies.length + 2}. [Readaptación Biomecánica y Prescripción de Movimiento] ${physicalStrategyText}`,
-            `${activeNodesWithAnomalies.length + 3}. [Bioseguridad y Posología (${biosecuritySemaphore.level})] ${biosecuritySemaphore.titrationPlanText}`
+            `${activeNodesWithAnomalies.length + 3}. [Bioseguridad y Posología (${biosecuritySemaphore.level})] ${biosecuritySemaphore.titrationPlanText}`,
+            `${activeNodesWithAnomalies.length + 4}. [Estudio de Edad Metabólica SSoTT] ${metabolicAgeStudy.clinicalSummary}`
         ];
 
         const payload = {
             doctrina_aplicada: determinedRoute === 'RUTA_A'
                 ? 'Ruta Clínica A • Endocrinología y Desarrollo Pediátrico L-OMS (Primeros 1000 Días)'
-                : `Ruta Clínica ${determinedRoute.replace('RUTA_', '')} • Medicina Funcional de Sistemas (Matriz IFM SSoTT v2.7)`,
+                : `Ruta Clínica ${determinedRoute.replace('RUTA_', '')} • Medicina Funcional de Sistemas (Matriz IFM SSoTT v3.3)`,
             diagnostico_causa_raiz: sanitizeClinicalSpanish(diagnosticoCausaRaiz),
             preliminary_diagnosis,
             ifm_nodes_matrix: processedIfmNodes,
@@ -3382,7 +5783,11 @@ const synthesizeDossier = async (req, res) => {
                 detail: formatMedicalBiomarkerSummary(item?.detail || '')
             })),
             bioenergetics,
+            metabolic_age_study: metabolicAgeStudy,
+            logistics_summary: canonicalContract.logisticsSummary,
+            prior_adherence: canonicalContract.priorAdherence,
             biosecurity_semaphore: biosecuritySemaphore,
+            canonical_clinical_plan: canonicalContract,
             therapeutic_contract: canonicalContract,
             orthomolecular_prescription: orthomolecularPrescription,
             patient_friendly_guide: patientFriendlyGuide,
@@ -3390,8 +5795,8 @@ const synthesizeDossier = async (req, res) => {
             suggested_management,
             alertas_bioseguridad: critical_alerts.join(' • ') || (pediatricDisclaimer || 'Parámetros de bioseguridad verificados bajo la NOM-004-SSA3-2012.'),
             sistemas_afectados: activeNodesWithAnomalies.length > 0
-                ? activeNodesWithAnomalies.map(n => `${n.nodeName.replace(/^\d+\.\s*/, '')} (${n.cie10})`)
-                : ["Homeostasis Sistémica Conservada (Z00.0)"],
+                ? activeNodesWithAnomalies.map(n => `${n.nodeName.replace(/^\d+\.\s*/, '')}${formatNodeAxisBadge(n)}`)
+                : ["Homeostasis Sistémica Conservada"],
             estrategia_terapeutica: {
                 nutricion_defensora: isLactanteExplicit
                     ? "Matriz de Nutrición Celular 34Plus® Pediátrica: Leche Materna / Fórmula de Continuación + Introducción Guiada de Sólidos (BLW / Papillas caseras)."
@@ -3409,7 +5814,7 @@ const synthesizeDossier = async (req, res) => {
             },
             human_approved_diagnosis: preliminary_diagnosis,
             human_approved_management: suggested_management,
-            ssot_contract_version: "2.8.2",
+            ssot_contract_version: "3.3.0-EGM51-SSOTT",
             status: "SYNTHESIZED_READY_FOR_REVIEW"
         };
 
@@ -3434,6 +5839,25 @@ const synthesizeDossier = async (req, res) => {
                 if (validUid) {
                     healedSnapshot.profile = { ...(healedSnapshot.profile || {}), usuarioId: validUid, citaId: citationId, citationId };
                     healedSnapshot.identificacion = { ...(healedSnapshot.identificacion || {}), usuarioId: validUid, idCita: citationId, citaId: citationId };
+                }
+                if (Number.isInteger(ageYears) && ageYears > 0) {
+                    healedSnapshot.profile = { ...(healedSnapshot.profile || {}), age: ageYears };
+                    healedSnapshot.identificacion = { ...(healedSnapshot.identificacion || {}), edad: ageYears };
+                }
+                if (ageYears >= 18) {
+                    delete healedSnapshot.isLactante;
+                    delete healedSnapshot.isPediatrico;
+                }
+                if (bioenergetics?.targetKcal && healedSnapshot.nutrition?.protocol) {
+                    healedSnapshot.nutrition = {
+                        ...healedSnapshot.nutrition,
+                        protocol: {
+                            ...healedSnapshot.nutrition.protocol,
+                            target: bioenergetics.targetKcal,
+                            bmr: bioenergetics.bmr,
+                            tdee: bioenergetics.tdee
+                        }
+                    };
                 }
                 if (Number(existingRow.is_completed) === 1) {
                     healedSnapshot.is_completed = true;
@@ -3533,22 +5957,11 @@ const approveDossier = async (req, res) => {
         let updatedFriendlyGuide = existingDossier.patient_friendly_guide || null;
         if (mergedIfmNodes.length > 0 && (ifmNodesMatrix || bioenergetics || orthomolecularPrescription || !updatedFriendlyGuide)) {
             const isFem = resolveBackendPatientIsFemale(patientData);
-            const rawAgeCandidate =
-                patientData?.identityLock?.patientInfo?.age ??
-                patientData?.profile?.age ??
-                patientData?.identificacion?.edad ??
-                patientData?.age;
-            const hasExplicitAgeInSnap = rawAgeCandidate !== undefined && rawAgeCandidate !== null && rawAgeCandidate !== '';
-            const ageNum = hasExplicitAgeInSnap && !isNaN(Number(rawAgeCandidate)) ? Number(rawAgeCandidate) : 30;
-            const isLact = Boolean(patientData?.isLactante || patientData?.profile?.pediatric_profile?.is_lactante || (hasExplicitAgeInSnap && ageNum >= 0 && ageNum < 2));
-            const isPed = Boolean(isLact || patientData?.isPediatrico || patientData?.profile?.pediatric_profile?.is_pediatric || (hasExplicitAgeInSnap && ageNum >= 0 && ageNum < 18));
-            const pName = cleanClinicalLabel(
-                patientData.profile?.name ||
-                patientData.profile?.first_name ||
-                patientData.identificacion?.nombre ||
-                patientData.identityLock?.patientInfo?.name ||
-                (isLact ? 'su bebé' : 'Paciente')
-            );
+            const verifiedSnapAge = resolveVerifiedPatientAge(patientData, 35);
+            const ageNum = verifiedSnapAge.ageYears;
+            const isLact = Boolean(ageNum < 2 && verifiedSnapAge.isLactanteVerified);
+            const isPed = Boolean(ageNum < 18 && (isLact || verifiedSnapAge.isPediatricVerified));
+            const pName = isLact ? 'su bebé' : formatInstitutionalFullName(patientData);
             const serumSnap = distillClinicalSerum(patientData, isLact);
             const rawGuide = buildPatientFriendlyGuide({
                 patientName: pName,
@@ -3739,7 +6152,16 @@ module.exports = {
     approveDossier,
     presyncBaselineSnapshot,
     distillClinicalSerum,
+    calculateBidirectionalMetabolicAge,
+    resolvePatientAltitudeMsnm,
+    normalizeInternationalLabUnit,
+    calculateCkdEpi2021Egfr,
+    resolveActiveClinicalRoutes,
+    detectPriorInstitutionalAdherence,
+    translateLogisticsProfile,
     buildCanonicalTherapeuticContract,
+    detectSelective33PlusContraindication,
+    resolveDynamicMacronutrientsAndRegimen,
     resolveNodeTherapeuticFocus,
     synthesizeAllIfmNodesSSoTT,
     evaluateBiosecurityAndTitration,

@@ -7,6 +7,95 @@ import { fetchZipData, fetchMexicanCoordinates } from '../utils/geoServices';
 import { useClinicalGenome } from '../store/useClinicalGenome';
 
 // --- INITIAL STATES (EXTRACTED FOR RESET CAPABILITY) ---
+export function buildSessionRecoveryCardMessage({
+    holderName = 'Paciente',
+    userId = '---',
+    citationId = '---',
+    phaseNum = 20,
+    isCompleted = false,
+    options = undefined,
+    isTutorMode = false
+} = {}) {
+    try {
+        const cleanHolder = String(holderName || 'Paciente')
+            .replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\s*/gu, '')
+            .trim() || 'Paciente';
+        const cleanUid = String(userId || '---').trim() || '---';
+        const cleanCita = String(citationId || '---').replace(/^#+/, '').trim() || '---';
+        const parsedPhase = Number(phaseNum);
+        const safePhaseNum = Number.isFinite(parsedPhase) && parsedPhase > 0
+            ? (isCompleted ? Math.max(21, parsedPhase) : parsedPhase)
+            : (isCompleted ? 21 : 20);
+        const statusLabel = `Fase\u00A0${safePhaseNum} (${isCompleted ? 'Estudio Completado' : 'En Curso'})`;
+
+        const cleanedOptions = Array.isArray(options)
+            ? options.map((opt) => {
+                if (!opt || typeof opt !== 'object') return opt;
+                const cleanLabel = String(opt.label || '')
+                    .replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\s*/gu, '')
+                    .replace(/\s*➔\s*$/u, '')
+                    .trim();
+                const inferredIconKey = opt.iconKey || (
+                    opt.value === 'GO_TO_PHASE_20' ? 'file_text' :
+                    opt.value === 'GO_TO_PHASE_21' ? 'calendar' :
+                    opt.value === 'RESTART_FROM_PHASE_0' ? 'rotate_ccw' :
+                    undefined
+                );
+                return {
+                    ...opt,
+                    label: cleanLabel,
+                    ...(inferredIconKey ? { iconKey: inferredIconKey } : {})
+                };
+            })
+            : undefined;
+
+        const confirmationNote = isTutorMode
+            ? 'Se han restaurado y desplegado en el Dashboard todos los datos de la valoración pediátrica: Biometría y Vitales, Bioquímica Cuántica, Evaluaciones Multimodales, Historia Clínica y Diagnóstico.'
+            : 'Se han restaurado y desplegado en el Dashboard todos los datos de su estudio: Biometría y Vitales, Bioquímica Cuántica, Evaluaciones Multimodales, Historia Clínica y Diagnóstico.';
+
+        return {
+            id: 'session_recovery_ssot_card',
+            role: 'assistant',
+            avatar: tiloImg,
+            headerBadge: {
+                iconKey: 'clipboard_check',
+                label: 'EXPEDIENTE CLÍNICO RECUPERADO EXITOSAMENTE • NOM-004'
+            },
+            recoveryMeta: {
+                holderName: cleanHolder,
+                userId: cleanUid,
+                citationId: `#${cleanCita}`,
+                statusLabel,
+                isCompleted: Boolean(isCompleted)
+            },
+            confirmationNote,
+            content: 'Expediente Clínico Recuperado Exitosamente — Puede consultar y revisar libremente cada pestaña superior.',
+            ...(cleanedOptions ? { options: cleanedOptions } : {})
+        };
+    } catch (err) {
+        console.warn('⚠️ [buildSessionRecoveryCardMessage Safe Catch]:', err?.message || err);
+        return {
+            id: 'session_recovery_ssot_card',
+            role: 'assistant',
+            avatar: tiloImg,
+            headerBadge: {
+                iconKey: 'clipboard_check',
+                label: 'EXPEDIENTE CLÍNICO RECUPERADO EXITOSAMENTE • NOM-004'
+            },
+            recoveryMeta: {
+                holderName: 'Paciente',
+                userId: '---',
+                citationId: '---',
+                statusLabel: isCompleted ? 'Fase\u00A021 (Estudio Completado)' : 'Fase\u00A020 (En Curso)',
+                isCompleted: Boolean(isCompleted)
+            },
+            confirmationNote: 'Se han restaurado y desplegado en el Dashboard todos los datos de su estudio: Biometría y Vitales, Bioquímica Cuántica, Evaluaciones Multimodales, Historia Clínica y Diagnóstico.',
+            content: 'Expediente Clínico Recuperado Exitosamente — Puede consultar y revisar libremente cada pestaña superior.',
+            ...(Array.isArray(options) ? { options } : {})
+        };
+    }
+}
+
 const INITIAL_CURRENT_PHASE = 'PHASE_0_AUTH';
 const INITIAL_ACTIVE_TAB = 'profile';
 const INITIAL_MESSAGES = [
@@ -27,7 +116,7 @@ const INITIAL_PATIENT_DATA = {
         name: "", // Full name
         birthdate: "",
         pediatric_profile: null,
-        age: 0,
+        age: null,
         sex: "",
         occupation: "",
         ocupacion_descriptor: "", // V15.8 NEAT-005
@@ -42,7 +131,7 @@ const INITIAL_PATIENT_DATA = {
         address: { zip_code: "", colony: "", street: "" }
     },
     demographics: {
-        age: 0,
+        age: null,
         gender: "",
         curp: "",
         birthdate: ""
@@ -169,7 +258,7 @@ const INITIAL_PATIENT_DATA = {
     },
     // Contexto Global (Tone of Voice Engine)
     session_context: {
-        calculated_age: 0,
+        calculated_age: null,
         interaction_mode: "",
         system_prompt_addon: ""
     },
@@ -545,19 +634,20 @@ export const useCortex = () => {
                             }
                         }
 
-                        // Deep merge for critical top-level structures to prevent undefined crashes
+                        // Deep merge for critical top-level structures to prevent undefined/null crashes
+                        const base = (initialValue && typeof initialValue === 'object') ? initialValue : INITIAL_PATIENT_DATA;
                         return {
-                            ...initialValue,
+                            ...base,
                             ...savedData,
-                            identificacion: { ...initialValue.identificacion, ...(savedData.identificacion || {}) },
-                            profile: { ...initialValue.profile, ...(savedData.profile || {}) },
-                            domicilio: { ...initialValue.domicilio, ...(savedData.domicilio || {}) },
-                            evaluacionDietetica: { ...initialValue.evaluacionDietetica, ...(savedData.evaluacionDietetica || {}) },
-                            history: { ...initialValue.history, ...(savedData.history || {}) },
-                            habits: { ...initialValue.habits, ...(savedData.habits || {}) },
-                            nutrition: { ...initialValue.nutrition, ...(savedData.nutrition || {}) },
-                            vitals: { ...initialValue.vitals, ...(savedData.vitals || {}) },
-                            clinical_context: { ...initialValue.clinical_context, ...(savedData.clinical_context || {}) }
+                            identificacion: { ...(base.identificacion || {}), ...(savedData.identificacion || {}) },
+                            profile: { ...(base.profile || {}), ...(savedData.profile || {}) },
+                            domicilio: { ...(base.domicilio || {}), ...(savedData.domicilio || {}) },
+                            evaluacionDietetica: { ...(base.evaluacionDietetica || {}), ...(savedData.evaluacionDietetica || {}) },
+                            history: { ...(base.history || {}), ...(savedData.history || {}) },
+                            habits: { ...(base.habits || {}), ...(savedData.habits || {}) },
+                            nutrition: { ...(base.nutrition || {}), ...(savedData.nutrition || {}) },
+                            vitals: { ...(base.vitals || {}), ...(savedData.vitals || {}) },
+                            clinical_context: { ...(base.clinical_context || {}), ...(savedData.clinical_context || {}) }
                         };
                     }
                 }
@@ -672,7 +762,7 @@ export const useCortex = () => {
 
     // 4. ESTADO GLOBAL DEL PACIENTE (Data Lake)
     const [patientData, setPatientData] = useState(() => {
-        const saved = getSavedState('patientData', null);
+        const saved = getSavedState('patientData', INITIAL_PATIENT_DATA);
         if (saved) {
             return saved;
         }
@@ -760,9 +850,15 @@ export const useCortex = () => {
         // Volcado inmediato de rescate hacia SQLite una vez que la sesión activa está identificada
         // 🛡️ SSoTT v2.8.2: Prohibido disparar rescate sobre estudios completados (is_completed), en Fase >= 20 o antes de verificar hidratación SQLite
         const rescuePhaseNum = extractPhaseNumber(currentPhase);
+        const hasRescueBaseIdentity = Boolean(
+            String(patientData?.profile?.first_name || '').trim() ||
+            String(patientData?.profile?.name || '').trim() ||
+            String(patientData?.identificacion?.nombre || '').trim()
+        );
         if (
             !hasSyncedRescueRef.current.synced &&
             hasSyncedRescueRef.current.verifiedHydration &&
+            hasRescueBaseIdentity &&
             currentPhase &&
             currentPhase !== 'PHASE_0_AUTH' &&
             !Boolean(patientData?.is_completed) &&
@@ -868,14 +964,20 @@ export const useCortex = () => {
             const activeUid = (typeof window !== 'undefined') ? normalizeValidUserId(window.localStorage.getItem('tilo_active_user_id'), currentCita) : null;
             const queryTarget = currentCita || activeUid;
 
-            // PROTECCIÓN CRÍTICA: Si ya hay una entrevista activa en curso en el navegador (Fases 1-18), NO sobrescribir el chat en vivo
+            // PROTECCIÓN CRÍTICA: Si ya hay una entrevista activa en curso en el navegador (Fases 1-18) CON identidad íntegra en RAM, NO sobrescribir el chat en vivo
             const localPhaseNum = extractPhaseNumber(currentPhase);
             const isPostSynthesisLocal =
                 Boolean(patientData?.is_completed) ||
                 Boolean(patientData?.clinical_dossier) ||
                 localPhaseNum >= 19;
+            const hasLocalBaseIdentity = Boolean(
+                String(patientData?.profile?.first_name || '').trim() ||
+                String(patientData?.profile?.name || '').trim() ||
+                String(patientData?.identificacion?.nombre || '').trim()
+            );
             const hasActiveLocalConsultation = currentPhase && currentPhase !== 'PHASE_0_AUTH' && Array.isArray(messages) && messages.length > 1;
-            if (hasActiveLocalConsultation && !isPostSynthesisLocal) {
+            const mustVerifyInitialServerNonce = Boolean(queryTarget && !hasSyncedRescueRef.current.verifiedHydration && !isPostSynthesisLocal);
+            if (hasActiveLocalConsultation && !isPostSynthesisLocal && hasLocalBaseIdentity && !mustVerifyInitialServerNonce) {
                 hasSyncedRescueRef.current.verifiedHydration = true;
                 return;
             }
@@ -890,8 +992,9 @@ export const useCortex = () => {
             const hasCorruptedChars = strSnapshot.includes('\ufffd') || strSnapshot.includes('sico Pesado') || strSnapshot.includes('Catlico');
             const hasFase18 = Boolean(patientData?.scan_data?.electret_metrics && Object.keys(patientData.scan_data.electret_metrics).length > 0);
             const hasBirthdate = Boolean(patientData?.profile?.birthdate || patientData?.identificacion?.fechanac);
+            const needsMidConsultationHeal = Boolean(queryTarget && hasActiveLocalConsultation && !isPostSynthesisLocal && !hasLocalBaseIdentity);
             const needsFreshServerDossier = Boolean(queryTarget && !hasSyncedRescueRef.current.verifiedHydration && isPostSynthesisLocal);
-            const needsSync = Boolean(queryTarget && (!hasVitals || !hasFase18 || !hasBirthdate || hasCorruptedChars || needsFreshServerDossier));
+            const needsSync = Boolean(queryTarget && (mustVerifyInitialServerNonce || needsMidConsultationHeal || !hasVitals || !hasFase18 || !hasBirthdate || hasCorruptedChars || needsFreshServerDossier));
 
             if (!queryTarget) {
                 hasSyncedRescueRef.current.verifiedHydration = true;
@@ -909,11 +1012,6 @@ export const useCortex = () => {
                             const isTrulyCompleted = Boolean(json.session_progress.is_completed) || lastPhase >= 21;
                             const isCompletedOrDossier = isTrulyCompleted || lastPhase >= 19;
 
-                            // Solo reemplazar cuando el expediente en SQLite ya alcanzó Fase 19+
-                            if (!isCompletedOrDossier && hasActiveLocalConsultation) {
-                                return;
-                            }
-
                             let snapshot = null;
                             const rawSnap = json.session_progress.patient_data_snapshot;
                             if (typeof rawSnap === 'string') {
@@ -930,6 +1028,120 @@ export const useCortex = () => {
                                 snapshot = rawSnap;
                             }
 
+                            // 🛡️ PUENTE ATÓMICO SQLite -> localStorage ANTE REBOBINADO AUTORIZADO (_server_rewind_nonce)
+                            const serverRewindNonce = snapshot?._server_rewind_nonce || null;
+                            const localRewindNonce = patientData?._server_rewind_nonce || null;
+                            if (snapshot && !isCompletedOrDossier && serverRewindNonce && serverRewindNonce !== localRewindNonce) {
+                                try {
+                                    const restoredPhase = snapshot?._session_meta?.currentPhase || json.session_progress.last_active_block || currentPhase;
+                                    const restoredActiveTab = snapshot?._session_meta?.activeTab || (String(restoredPhase).includes('PHASE_11') ? 'lifestyle' : activeTab);
+                                    const restoredMessages = Array.isArray(snapshot?._session_meta?.messages) && snapshot._session_meta.messages.length > 0
+                                        ? snapshot._session_meta.messages
+                                        : messages;
+                                    const restoredFase3 = snapshot?._session_meta?.fase3State || fase3State;
+
+                                    console.log("🔄 [SSoTT SERVER REWIND] Sincronizando estado limpio desde SQLite:", queryTarget, restoredPhase, serverRewindNonce);
+                                    hasSyncedRescueRef.current.verifiedHydration = true;
+                                    hasSyncedRescueRef.current.synced = true;
+
+                                    if (typeof window !== 'undefined' && window.localStorage) {
+                                        const cleanSessionPayload = JSON.stringify({
+                                            currentPhase: restoredPhase,
+                                            activeTab: restoredActiveTab,
+                                            messages: restoredMessages,
+                                            patientData: snapshot,
+                                            apiContext,
+                                            authAttempts,
+                                            fase3State: restoredFase3
+                                        });
+                                        const validUid = normalizeValidUserId(
+                                            snapshot?.profile?.usuarioId ?? snapshot?.identificacion?.usuarioId ?? activeUid,
+                                            queryTarget
+                                        );
+                                        if (validUid) {
+                                            window.localStorage.setItem(`tilo_session_data_${validUid}`, cleanSessionPayload);
+                                        }
+                                        window.localStorage.setItem(`tilo_session_data_cita_${queryTarget}`, cleanSessionPayload);
+                                    }
+
+                                    setPatientData(snapshot);
+                                    if (restoredActiveTab && restoredActiveTab !== activeTab) {
+                                        setActiveTab(restoredActiveTab);
+                                    }
+                                    if (restoredPhase && restoredPhase !== currentPhase) {
+                                        setCurrentPhase(restoredPhase);
+                                    }
+                                    if (Array.isArray(restoredMessages) && restoredMessages.length > 0) {
+                                        setMessages(restoredMessages);
+                                    }
+                                } catch (rewindErr) {
+                                    console.error("⚠️ Error al aplicar rebobinado atómico desde SQLite:", rewindErr);
+                                }
+                                return;
+                            }
+
+                            // 🛡️ SUTA DE RESCATE DEFENSIVA EN VIVO (Fases 1-18 cuando RAM perdió identidad base)
+                            if (snapshot && !isCompletedOrDossier && needsMidConsultationHeal) {
+                                try {
+                                    const safeDeepMerge = (serverObj, localObj) => {
+                                        if (!serverObj || typeof serverObj !== 'object') return localObj;
+                                        if (!localObj || typeof localObj !== 'object') return serverObj;
+                                        const merged = { ...localObj, ...serverObj };
+                                        for (const section of ['profile', 'demographics', 'identificacion', 'domicilio', 'evaluacionDietetica', 'history', 'pharmacology', 'familyTree', 'physio', 'habits', 'activity', 'nutrition', 'logistics', 'vitals', 'session_context', 'clinical_context']) {
+                                            if (serverObj[section] && typeof serverObj[section] === 'object' && !Array.isArray(serverObj[section])) {
+                                                const localSec = (localObj[section] && typeof localObj[section] === 'object' && !Array.isArray(localObj[section])) ? localObj[section] : {};
+                                                const nextSec = { ...localSec };
+                                                for (const [k, v] of Object.entries(serverObj[section])) {
+                                                    const localVal = localSec[k];
+                                                    const isLocalEmpty =
+                                                        localVal === null ||
+                                                        localVal === undefined ||
+                                                        localVal === '' ||
+                                                        localVal === 0 ||
+                                                        (Array.isArray(localVal) && localVal.length === 0) ||
+                                                        (typeof localVal === 'object' && !Array.isArray(localVal) && Object.keys(localVal).length === 0);
+                                                    const isServerNonEmpty =
+                                                        v !== null &&
+                                                        v !== undefined &&
+                                                        v !== '' &&
+                                                        !(Array.isArray(v) && v.length === 0);
+                                                    if (isLocalEmpty || isServerNonEmpty) {
+                                                        nextSec[k] = v;
+                                                    }
+                                                }
+                                                merged[section] = nextSec;
+                                            }
+                                        }
+                                        return merged;
+                                    };
+
+                                    const healedPatientData = safeDeepMerge(snapshot, patientData);
+                                    const restoredPhase = snapshot?._session_meta?.currentPhase || json.session_progress.last_active_block || currentPhase;
+                                    const restoredMessages = Array.isArray(snapshot?._session_meta?.messages) && snapshot._session_meta.messages.length > 0
+                                        ? snapshot._session_meta.messages
+                                        : messages;
+
+                                    console.log("🩹 [SSoTT DEEP-MERGE RESCUE] Restaurando expediente en vivo desde SQLite:", queryTarget, restoredPhase);
+                                    hasSyncedRescueRef.current.verifiedHydration = true;
+                                    setPatientData(healedPatientData);
+                                    if (restoredPhase && restoredPhase !== currentPhase) {
+                                        setCurrentPhase(restoredPhase);
+                                    }
+                                    if (Array.isArray(restoredMessages) && restoredMessages.length > 0) {
+                                        setMessages(restoredMessages);
+                                    }
+                                } catch (mergeErr) {
+                                    console.error("⚠️ Error en deepMerge defensivo de rescate:", mergeErr);
+                                }
+                                return;
+                            }
+
+                            // Solo reemplazar a vista diagnóstica cuando el expediente en SQLite ya alcanzó Fase 19+
+                            if (!isCompletedOrDossier && hasActiveLocalConsultation) {
+                                hasSyncedRescueRef.current.verifiedHydration = true;
+                                return;
+                            }
+
                             if (snapshot && isCompletedOrDossier && (snapshot.vitals || snapshot.scan_data || snapshot.clinical_dossier)) {
                                 console.log("⚡ Auto-hidratando expediente SSoTT desde SQLite para cita/usuario:", queryTarget);
                                 if (isTrulyCompleted) {
@@ -940,22 +1152,27 @@ export const useCortex = () => {
                                 setCurrentPhase(targetPhase);
                                 setActiveTab('diagnosis');
 
-                                const pName = snapshot.profile?.name || snapshot.identificacion?.nombre || "Paciente";
+                                const pName = snapshot.identificacion?.nombreCompleto || snapshot.profile?.name || snapshot.identificacion?.nombre || "Paciente";
                                 const uId = normalizeValidUserId(snapshot.profile?.usuarioId ?? json.session_progress.user_id ?? activeUid, currentCita);
+                                const ageSnap = Number(snapshot?.identificacion?.edad ?? snapshot?.profile?.age ?? 30);
+                                const isTutorSnap = Boolean((ageSnap > 0 && ageSnap < 13) || snapshot?.isLactante === true);
 
                                 const hydratedMessages = [
-                                    {
-                                        role: 'assistant',
-                                        content: `📋 **Expediente Clínico Recuperado Exitosamente**\n\n👤 **Titular:** ${pName}\n🆔 **Usuario ID:** ${uId || '---'}\n📑 **Cita:** #${currentCita || json.session_progress.citation_id}\n🏁 **Estado:** Fase ${isTrulyCompleted ? Math.max(21, lastPhase) : lastPhase} (${isTrulyCompleted ? 'Estudio Completado' : 'En Curso'})\n\n---\n\n✅ Se han restaurado y desplegado en el **Dashboard** todos los datos del estudio: **Biometría y Vitales, Bioquímica Cuántica, Evaluaciones Multimodales, Historia Clínica y Diagnóstico**.\n\nPuede consultar y revisar libremente cada pestaña superior:`,
-                                        avatar: tiloImg,
+                                    buildSessionRecoveryCardMessage({
+                                        holderName: pName,
+                                        userId: uId || '---',
+                                        citationId: currentCita || json.session_progress.citation_id,
+                                        phaseNum: lastPhase,
+                                        isCompleted: isTrulyCompleted,
+                                        isTutorMode: isTutorSnap,
                                         options: [
-                                            { label: "📋 Revisar Diagnóstico y Prescripción (Fase 20) ➔", value: "GO_TO_PHASE_20" },
-                                            { label: "📅 Ver Calendario y Crononutrición (Fase 21)", value: "GO_TO_PHASE_21" },
+                                            { label: "Revisar Diagnóstico y Prescripción (Fase 20)", value: "GO_TO_PHASE_20", iconKey: "file_text" },
+                                            { label: "Ver Calendario y Crononutrición (Fase 21)", value: "GO_TO_PHASE_21", iconKey: "calendar" },
                                             ...(!isTrulyCompleted
-                                                ? [{ label: "🔄 Reiniciar Estudio desde Fase 0", value: "RESTART_FROM_PHASE_0" }]
+                                                ? [{ label: "Reiniciar Estudio desde Fase 0", value: "RESTART_FROM_PHASE_0", iconKey: "rotate_ccw" }]
                                                 : [])
                                         ]
-                                    }
+                                    })
                                 ];
 
                                 try {
@@ -999,7 +1216,7 @@ export const useCortex = () => {
         };
         checkAndHydrateSession();
         return () => { isCancelled = true; };
-    }, [patientData?.profile?.citaId, apiContext?.citaId, apiContext?.idCita]);
+    }, [patientData?.profile?.citaId, patientData?.profile?.name, apiContext?.citaId, apiContext?.idCita, 'v3.1.2-ssott-heal']);
 
     // Auto-focus tabs based on phase transitions (Interface Event Dispatcher)
     useEffect(() => {
@@ -1436,7 +1653,14 @@ export const useCortex = () => {
 
         const suppsLines = supplements.length > 0
             ? supplements.map(s => {
-                const name = (s.name || '').trim();
+                const rawName = (s.name || '').trim();
+                const name = /^33\s*plus®?$/i.test(rawName)
+                    ? '🔴 33Plus®'
+                    : /^34\s*plus®?$/i.test(rawName)
+                        ? '🟢 34Plus®'
+                        : rawName
+                            .replace(/\b33\s*plus®?\b/gi, '33Plus®')
+                            .replace(/\b34\s*plus®?\b/gi, '34Plus®');
                 const freq = (s.frequency || '').trim();
                 const duration = (s.duration || '').trim();
                 const parenContent = [freq, duration].filter(Boolean).join(' - ');
@@ -1765,21 +1989,26 @@ export const useCortex = () => {
                                 setCurrentPhase(restoredPhase);
                                 setActiveTab(restoredTab);
 
+                                const ageRestored = Number(savedPatientData?.identificacion?.edad ?? savedPatientData?.profile?.age ?? 30);
+                                const isTutorRestored = Boolean((ageRestored > 0 && ageRestored < 13) || savedPatientData?.isLactante === true);
                                 const restoredMessages = (!isCompletedOrDossier && Array.isArray(sessionMeta?.messages) && sessionMeta.messages.length > 0)
                                     ? sessionMeta.messages
                                     : [
-                                        {
-                                            role: 'assistant',
-                                            content: `📋 **Expediente Clínico Recuperado Exitosamente**\n\n👤 **Titular:** ${titularName}\n🆔 **Usuario ID:** ${masterUserId || '---'}\n📑 **Cita:** #${activeCitationStr}\n🏁 **Estado:** Fase ${isTrulyCompleted ? Math.max(21, lastPhaseNum) : lastPhaseNum} (${isTrulyCompleted ? 'Estudio Completado' : 'En Curso'})\n\n---\n\n✅ Se han restaurado y desplegado en el **Dashboard** todos los datos del estudio: **Biometría y Vitales, Bioquímica Cuántica, Evaluaciones Multimodales, Historia Clínica y Diagnóstico**.\n\nPuede consultar y revisar libremente cada pestaña superior:`,
-                                            avatar: tiloImg,
+                                        buildSessionRecoveryCardMessage({
+                                            holderName: titularName,
+                                            userId: masterUserId || '---',
+                                            citationId: activeCitationStr,
+                                            phaseNum: lastPhaseNum,
+                                            isCompleted: isTrulyCompleted,
+                                            isTutorMode: isTutorRestored,
                                             options: isCompletedOrDossier ? [
-                                                { label: "📋 Revisar Diagnóstico y Prescripción (Fase 20) ➔", value: "GO_TO_PHASE_20" },
-                                                { label: "📅 Ver Calendario y Crononutrición (Fase 21)", value: "GO_TO_PHASE_21" },
+                                                { label: "Revisar Diagnóstico y Prescripción (Fase 20)", value: "GO_TO_PHASE_20", iconKey: "file_text" },
+                                                { label: "Ver Calendario y Crononutrición (Fase 21)", value: "GO_TO_PHASE_21", iconKey: "calendar" },
                                                 ...(!isTrulyCompleted
-                                                    ? [{ label: "🔄 Reiniciar Estudio desde Fase 0", value: "RESTART_FROM_PHASE_0" }]
+                                                    ? [{ label: "Reiniciar Estudio desde Fase 0", value: "RESTART_FROM_PHASE_0", iconKey: "rotate_ccw" }]
                                                     : [])
                                             ] : undefined
-                                        }
+                                        })
                                     ];
 
                                 setMessages(restoredMessages);

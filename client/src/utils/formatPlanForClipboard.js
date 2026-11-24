@@ -1,4 +1,10 @@
-import { resolvePatientFriendlyGuide, sanitizeClinicalSpanish } from './patientGuideAdapter.js';
+import {
+  resolvePatientFriendlyGuide,
+  sanitizeClinicalSpanish,
+  translateLogisticsProfile,
+  resolveMetabolicAgeStudySSoT
+} from './patientGuideAdapter.js';
+import { FORMULA_33PLUS, FORMULA_34PLUS } from './pharmacopeiaCatalogSSoT.js';
 
 /**
  * Copia texto al portapapeles de forma defensiva (Clipboard API + fallback <textarea> execCommand)
@@ -187,6 +193,23 @@ export const formatPlanForClipboard = function (options) {
     }
     text += `\n`;
 
+    const metPatient = guide.metabolicAgeStudy || resolveMetabolicAgeStudySSoT(patientData);
+    if (metPatient && !metPatient.isSuppressedBySafetyGate && metPatient.metabolicAge !== null && metPatient.metabolicAge !== undefined) {
+      const exactAge = metPatient.metabolicAgeExact ?? metPatient.metabolicAge;
+      const deltaVal = Number(metPatient.deltaYears ?? 0);
+      const deltaFmt = deltaVal > 0 ? `+${deltaVal}` : `${deltaVal}`;
+      text += `⏱️ ESTUDIO DE EDAD METABÓLICA (${metPatient.evidenceTierBadge || 'Certeza Clínica'}):\n`;
+      text += `   • Edad Cronológica: ${metPatient.chronologicalAge} años | Edad Metabólica Actual: ${exactAge} años (${deltaFmt} años)\n`;
+      text += `   • Meta Ciclo 1 (28 Días): ${metPatient.cycle1TargetAge28d} años (${metPatient.cycle1Delta28d} años) | Proyección a 90 Días: ${metPatient.cycle3ProjectionAge90d} años\n`;
+      if (metPatient.patientSummary) {
+        text += `   • Lectura integral: ${metPatient.patientSummary}\n`;
+      }
+      text += `\n`;
+    } else if (metPatient && metPatient.isSuppressedBySafetyGate && metPatient.suppressionReasonText) {
+      text += `🛡️ ENFOQUE CLÍNICO PROTECTOR:\n`;
+      text += `   • ${metPatient.suppressionReasonText}\n\n`;
+    }
+
     text += `1. 💓 ${uiLabels.clipboardSystemsHeading || 'SUS 5 SISTEMAS DE SALUD EN PALABRAS SENCILLAS'}:\n`;
     (guide.fiveSystems || []).forEach((sys) => {
       const statusDot = sys.status === 'ATENCION_PRIORITARIA' ? '🔴' : sys.status === 'VIGILANCIA_PREVENTIVA' ? '🟡' : '🟢';
@@ -248,6 +271,9 @@ export const formatPlanForClipboard = function (options) {
     if (rules.length > 0) {
       text += `   Reglas clave: ${rules.join(' | ')}\n`;
     }
+    if (guide.logisticsSummary) {
+      text += `   Entorno cotidiano: ${guide.logisticsSummary.venueLabel} | Preparación de alimentos: ${guide.logisticsSummary.cookLabel}\n`;
+    }
     text += `\n`;
 
     text += `4. 💧 ${hyd.title || 'HIDRATACIÓN INTELIGENTE'} (${hyd.litersPerDay ? `${hyd.litersPerDay} L/día` : '2.0 L/día'}):\n`;
@@ -265,29 +291,34 @@ export const formatPlanForClipboard = function (options) {
     text += `\n`;
 
     text += `--------------------------------------------------\n`;
-    text += `✨ Equipo en Acción® & Ecosistema T.I.L.O. (Visión 2030)\n`;
+    text += `✨ Equipo en Acción® y Ecosistema T.I.L.O. (Visión 2030)\n`;
     text += `==================================================\n`;
 
-    return text.trim();
+    return text.replace(/\s*&\s*/g, ' y ').trim();
   }
 
-  // --- VISTA MÉDICA (NOM-004 — SSoTT v2.7) ---
+  // --- VISTA MÉDICA (NOM-004 — SSoTT v3.2) ---
   const dossier = patientData?.clinical_dossier || {};
+  const canonicalPlan = dossier?.canonical_clinical_plan || dossier?.therapeutic_contract || dossier?.orthomolecular_prescription?.therapeutic_contract || {};
   const ortho = dossier?.orthomolecular_prescription || {};
   const bio = dossier?.bioenergetics || ortho?.bioenergetics_summary || {};
   const sem = dossier?.biosecurity_semaphore || ortho?.biosecurity_semaphore || {};
-  const macros = bio?.macros || { carbs: 40, protein: 30, fat: 30 };
+  const macros = canonicalPlan?.macros || bio?.macros || { carbs: 40, protein: 30, fat: 30 };
   const isKetoRegimen = Number(macros.carbs) > 0 && Number(macros.carbs) <= 15;
   const dynamicRegimenBadge = sanitizeClinicalSpanish(
+    canonicalPlan?.regimenBadge ||
     ortho?.dietaryPlan?.regimenBadge ||
     (isKetoRegimen
       ? 'NutriKeto Clínico (0 Picante • 0 Cerdo • 0 Azúcares)'
       : 'Alimentación Antiinflamatoria (0 Picante • 0 Cerdo • 0 Azúcares)')
   );
   const weightForWater = Number(bio?.weightKg) > 0 ? Number(bio.weightKg) : 70;
-  const hydrationLiters = Number(ortho?.hydrationTargetLiters) > 0
-    ? Number(ortho.hydrationTargetLiters)
+  const hydrationLiters = Number(canonicalPlan?.hydrationTargetLiters || ortho?.hydrationTargetLiters) > 0
+    ? Number(canonicalPlan?.hydrationTargetLiters || ortho?.hydrationTargetLiters)
     : Math.min(3.2, Math.max(1.8, Number(((weightForWater * 32) / 1000).toFixed(1))));
+  const personalExclList = Array.isArray(canonicalPlan?.patientSpecificExclusions)
+    ? canonicalPlan.patientSpecificExclusions
+    : (Array.isArray(ortho?.dietaryPlan?.patientSpecificExclusions) ? ortho.dietaryPlan.patientSpecificExclusions : []);
 
   const effectiveDiagnoses = Array.isArray(cleanDiagnoses) && cleanDiagnoses.length > 0
     ? cleanDiagnoses
@@ -311,9 +342,13 @@ export const formatPlanForClipboard = function (options) {
 
   const normalizeFormalClinicalField = (rawStr) =>
     sanitizeClinicalSpanish(rawStr || '')
-      .replace(/\(Matriz IFM SSoTT v2\.[456]\)/giu, '(Matriz IFM SSoTT v2.7)')
+      .replace(/\(\s*null\s*\)/giu, '')
+      .replace(/\[\s*⚠️?\s*REQUIERE_REVISI[ÓO]N\s*\]/giu, '')
+      .replace(/\(Matriz IFM SSoTT v2\.[45678]\)/giu, '(Matriz IFM SSoTT v3.2)')
       .replace(/\[Readaptaci[óo]n F[íi]sica\]/giu, '[Readaptación Biomecánica y Prescripción de Movimiento]')
       .replace(/6,000[–-]8,000\s*pasos\/d[íi]a/giu, '6\u00A0000 a 8\u00A0000 pasos/día')
+      .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+33Plus®/giu, `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus®`)
+      .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+34Plus®/giu, `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus®`)
       .replace(/\btus\s+laboratorios\b/giu, 'sus estudios de laboratorio')
       .replace(/\btu\s+cuerpo\b/giu, 'su organismo')
       .replace(/\bantes\s+de\s+acostarte\b/giu, 'antes de dormir')
@@ -323,12 +358,26 @@ export const formatPlanForClipboard = function (options) {
       .replace(/(?<![\p{L}\p{N}_])t[óo]mala(?![\p{L}\p{N}_])/giu, (m) => (m[0] === 'T' ? 'Tómela' : 'tómela'))
       .replace(/(?<![\p{L}\p{N}_])disu[ée]lvelo(?![\p{L}\p{N}_])/giu, (m) => (m[0] === 'D' ? 'Disuélvalo' : 'disuélvalo'))
       .replace(/(?<![\p{L}\p{N}_])tus(?=\s+\p{L})/giu, (m) => (m[0] === 'T' ? 'Sus' : 'sus'))
-      .replace(/(?<![\p{L}\p{N}_])tu(?=\s+\p{L})/giu, (m) => (m[0] === 'T' ? 'Su' : 'su'));
+      .replace(/(?<![\p{L}\p{N}_])tu(?=\s+\p{L})/giu, (m) => (m[0] === 'T' ? 'Su' : 'su'))
+      .replace(/\s*&\s*/gu, ' y ');
 
-  if (sem?.level || ortho?.has_calcium_contraction_lock) {
+  const metStudy = resolveMetabolicAgeStudySSoT(patientData);
+  const logistics = translateLogisticsProfile(patientData);
+
+  if (sem?.level || ortho?.has_calcium_contraction_lock || metStudy) {
     text += `0. BIOSEGURIDAD, SALVAGUARDAS Y PARACLÍNICOS DE CONTROL:\n`;
     if (sem?.level) {
       text += `   • Semáforo (${sanitizeClinicalSpanish(sem.level)}): ${sanitizeClinicalSpanish(sem.badgeLabel || '')} — ${normalizeFormalClinicalField(sem.titrationPlanText || '')}\n`;
+    }
+    if (metStudy) {
+      if (metStudy.isSuppressedBySafetyGate) {
+        text += `   • Estudio de Edad Metabólica (Compuerta Protectora Activa): ${normalizeFormalClinicalField(metStudy.suppressionReasonText || 'Comparativa punitiva suprimida por ruta clínica sensible.')}\n`;
+      } else if (metStudy.metabolicAge !== null && metStudy.metabolicAge !== undefined) {
+        const exactAge = metStudy.metabolicAgeExact ?? metStudy.metabolicAge;
+        const deltaVal = Number(metStudy.deltaYears ?? 0);
+        const deltaFmt = deltaVal > 0 ? `+${deltaVal}` : `${deltaVal}`;
+        text += `   • Estudio Multivariable de Edad Metabólica (${sanitizeClinicalSpanish(metStudy.evidenceTierBadge || metStudy.evidenceTier)}): Edad Cronológica ${metStudy.chronologicalAge} años vs Edad Metabólica ${exactAge} años (Delta ${deltaFmt} años) | Meta Ciclo 1 (28d): ${metStudy.cycle1TargetAge28d} años (${metStudy.cycle1Delta28d} años) | Proyección Ciclo 3 (90d): ${metStudy.cycle3ProjectionAge90d} años.\n`;
+      }
     }
     if (ortho?.has_calcium_contraction_lock) {
       const clinicalMineralSafeguard = ortho?.calcium_clinical_safeguard_text ||
@@ -352,9 +401,12 @@ export const formatPlanForClipboard = function (options) {
   }
   text += `\n`;
 
-  text += `2. PRESCRIPCIÓN BIOENERGÉTICA Y CRONOBIOLOGÍA ORTOMOLECULAR (33Plus® & 34Plus®):\n`;
+  text += `2. PRESCRIPCIÓN BIOENERGÉTICA Y CRONOBIOLOGÍA ORTOMOLECULAR (33Plus® y 34Plus®):\n`;
   if (bio?.targetKcal) {
-    text += `   • Régimen y Meta Energética: ${dynamicRegimenBadge} | Meta: ${bio.targetKcal} kcal/día (${macros.carbs}% Carbohidratos / ${macros.protein}% Proteínas / ${macros.fat}% Lípidos) | Hidratación Meta: ${hydrationLiters} L/día.\n`;
+    const exclSuffix = personalExclList.length > 0
+      ? ` | Exclusiones personalizadas: ${personalExclList.map(sanitizeClinicalSpanish).join(', ')}`
+      : '';
+    text += `   • Régimen y Meta Energética: ${dynamicRegimenBadge} | Meta: ${bio.targetKcal} kcal/día (${macros.carbs}% Carbohidratos / ${macros.protein}% Proteínas / ${macros.fat}% Lípidos) | Hidratación Meta: ${hydrationLiters} L/día${exclSuffix}.\n`;
   }
   const normalizeCanonicalFormulaBrand = (raw = '') =>
     sanitizeClinicalSpanish(raw)
@@ -379,7 +431,21 @@ export const formatPlanForClipboard = function (options) {
     text += `   • Horario Circadiano Clínico:\n`;
     ortho.circadianSchedule.forEach((slot, idx) => {
       const slotNum = slot.tomaNumber || (idx + 1);
-      text += `     - Toma ${slotNum} [${sanitizeClinicalSpanish(slot.timeSlot)}]: ${sanitizeClinicalSpanish(slot.formula)} — ${sanitizeClinicalSpanish(slot.dosage).replace(/🍵/g, '💧')}\n`;
+      const rawFormula = sanitizeClinicalSpanish(slot.formula || '');
+      const rawDosage = sanitizeClinicalSpanish(slot.dosage || '').replace(/🍵/g, '💧');
+      const week1Segment = rawDosage.split('•')[0] || '';
+      const hasActiveSachetWeek1 = /\b(?:1|2|1\/2|1\/4|medio|cuarto|un)\s+sobres?\b/i.test(week1Segment);
+      const isWaterOnlyWeek1 = Boolean(
+        slot.isPaused ||
+        (!hasActiveSachetWeek1 && (
+          /(?:hidrataci[óo]n|agua\s+simple|agua\s+natural\s+purificada)/i.test(rawFormula) ||
+          /(?:iniciar\s+solo\s+con\s+(?:300\s*ml\s+de\s+)?agua|solo\s+(?:con\s+)?agua\s+(?:natural|simple)|hidrataci[óo]n\s+preparatoria|pausa\s+preventiva|0\s+sobres\s+activos)/i.test(week1Segment)
+        ))
+      );
+      const displayFormula = isWaterOnlyWeek1 && rawFormula.includes('33') && !/hidrataci[óo]n\s+preparatoria/i.test(rawFormula)
+        ? '💧 Hidratación Preparatoria (Agua Simple en Semana 1)'
+        : rawFormula;
+      text += `     - Toma ${slotNum} [${sanitizeClinicalSpanish(slot.timeSlot)}]: ${displayFormula} — ${rawDosage}\n`;
     });
   }
   text += `\n`;
@@ -395,18 +461,23 @@ export const formatPlanForClipboard = function (options) {
   }
   text += `\n`;
 
+  const isSel33Paused = Boolean(canonicalPlan?.isSelective33Paused || sem?.isSelective33Paused) && !sem?.isPaused;
   const defaultPhases = [
     {
       rangeLabel: 'Días 1 a 7',
       weekLabel: 'Semana 1',
       title: sem?.isPaused
         ? 'Estabilización Inicial y Pausa Preventiva de Suplementación'
-        : (sem?.isMicroDose ? 'Adaptación Mucosa y Micro-Dosis Calibrada' : 'Sincronización Circadiana y Sellado de Barrera Mucosa'),
+        : isSel33Paused
+          ? 'Pausa Selectiva de 33Plus® y Reparación Nocturna Gradual con 34Plus®'
+          : (sem?.isMicroDose ? 'Adaptación Mucosa y Micro-Dosis Calibrada' : 'Sincronización Circadiana y Sellado de Barrera Mucosa'),
       description: sem?.isPaused
         ? `Alimentación antiinflamatoria (${bio?.targetKcal || 2000} kcal/día), hidratación (${hydrationLiters} L/día) y estudios de control (0 sobres activos).`
-        : (sem?.isMicroDose
-          ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationLiters} L/día) y micro-dosis de 1/2 sobre (5 g) de 33Plus® matutino y 1/2 sobre (5 g) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
-          : `Integración alimentaria (${bio?.targetKcal || 2000} kcal/día), hidratación (${hydrationLiters} L/día) y protocolo completo de 33Plus® y 34Plus®.`)
+        : isSel33Paused
+          ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationLiters} L/día), 0 sobres activos de 33Plus® (pausa selectiva) y micro-dosis de 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
+          : (sem?.isMicroDose
+            ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationLiters} L/día) y micro-dosis de 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® matutino y 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
+            : `Integración alimentaria (${bio?.targetKcal || 2000} kcal/día), hidratación (${hydrationLiters} L/día) y protocolo completo de 33Plus® y 34Plus®.`)
     },
     {
       rangeLabel: 'Días 8 a 21',
@@ -433,15 +504,11 @@ export const formatPlanForClipboard = function (options) {
   phases.forEach((p, idx) => {
     text += `   • Fase ${p.phase || (idx + 1)} (${sanitizeClinicalSpanish(p.rangeLabel)} • ${sanitizeClinicalSpanish(p.weekLabel)} — ${sanitizeClinicalSpanish(p.title)}): ${sanitizeClinicalSpanish(p.description)}\n`;
   });
-  const env = patientData?.logistics_profile?.environment?.venue || 'HOME';
-  const cook = patientData?.logistics_profile?.cook_type || 'SELF';
-  const translateV = (v) => v === 'WORK' ? 'Oficina' : v === 'STREET' ? 'Calle' : 'Casa';
-  const translateC = (c) => c === 'SELF' ? 'Propia' : c === 'FAMILY' ? 'Familiar' : 'Personal';
-  text += `   • Entorno Principal: ${translateV(env)} | Preparación de Alimentos: ${translateC(cook)}\n`;
+  text += `   • Entorno Principal: ${logistics.venueLabel} | Preparación de Alimentos: ${logistics.cookLabel}\n`;
   text += `   • Ruta de Evolución: ${timelineSummary}.\n\n`;
   text += `==================================================\n`;
 
-  return text.trim();
+  return text.replace(/\s*&\s*/g, ' y ').trim();
 };
 
 /**

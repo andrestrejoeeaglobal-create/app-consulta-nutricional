@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // eslint-disable-next-line no-unused-vars
 import { AnimatePresence, motion } from "framer-motion";
-import { User, Lock, AlertCircle, Apple, Activity, FlaskConical, FileText, ClipboardList, Calendar, Utensils, Send, CreditCard, Sparkles, Check, Settings2, Baby, Zap, Eye, EyeOff, Target, AlertTriangle, Copy, Printer, Paperclip, Smartphone } from "lucide-react";
+import { User, Lock, AlertCircle, Apple, Activity, FlaskConical, FileText, ClipboardList, Calendar, Utensils, Send, CreditCard, Sparkles, Check, CheckCircle2, Settings2, Baby, Zap, Eye, EyeOff, Target, AlertTriangle, Copy, Printer, Paperclip, Smartphone, RotateCcw } from "lucide-react";
 import MedicalDashboard from "./components/MedicalDashboard"; // Re-enabled
 import AvisoPrivacidad from "./components/AvisoPrivacidad";
 import ReactMarkdown from "react-markdown"; // <--- Importamos ReactMarkdown
@@ -24,7 +24,7 @@ import ThemeToggleButton from "./components/ui/ThemeToggleButton";
 import { enqueueCitationProgressPatch } from "./utils/syncOutboxQueue";
 import VisualIdentityCard from "./components/VisualIdentityCard"; // <--- V8.0 Visual Identity Card
 import VisualBodyMap from "./components/VisualBodyMap"; // <--- V9.6 Visual Body Map
-import useCortex from "./hooks/useCortex"; // <--- T.I.L.O Logical Engine
+import useCortex, { buildSessionRecoveryCardMessage } from "./hooks/useCortex"; // <--- T.I.L.O Logical Engine
 import SearchableVerticalMenu from "./components/ui/SearchableVerticalMenu"; // V8.0 Searchable Vertical Menu
 import BiomarkerScoringEngine from "./utils/BiomarkerScoringEngine";
 import Fase3_MotivoConsulta from "./components/interview/Fase3_MotivoConsulta";
@@ -49,7 +49,8 @@ import Fase20_Portapapeles, {
   buildSSoTExecutiveOptions,
   buildSSoTExecutiveSummaryContent
 } from "./components/interview/Fase20_Portapapeles";
-import Fase21_Calendario from "./components/interview/Fase21_Calendario";
+import Fase21_Calendario, { buildPhase21InstitutionalClosureMessage } from "./components/interview/Fase21_Calendario";
+import { resolveVerifiedPatientAge, sanitizeClinicalSpanish } from "./utils/patientGuideAdapter";
 import ClinicalToastContainer from "./components/ui/ClinicalToast";
 import { useClinicalToast } from "./hooks/useClinicalToast";
 
@@ -931,19 +932,42 @@ function App() {
       // 1. Sanitizar cualquier mensaje con opciones antiguas, spam previo de portapapeles o RESTART_FROM_PHASE_0 en consultas cerradas NOM-004
       let needsSanitization = false;
       const isClosedConsultation = Boolean(patientData?.is_completed);
+      const isPhase20Active =
+        currentPhase === 'PHASE_20_PORTAPAPELES' ||
+        currentPhase === 'PHASE_20_CLIPBOARD' ||
+        String(currentPhase || '').startsWith('PHASE_20');
       const isClipboardSpamBubble = (m) =>
         m?.role === 'assistant' &&
         typeof m.content === 'string' &&
         (m.content.startsWith('✅ **Portapapeles Actualizado:**') || m.content.startsWith('⚠️ **Aviso de Portapapeles:**'));
+      const isStalePhase19RecoveryInPhase20 = (m) =>
+        isPhase20Active &&
+        !isClosedConsultation &&
+        m?.role === 'assistant' &&
+        typeof m.content === 'string' &&
+        (
+          m.content.includes('Expediente Clínico Recuperado Exitosamente') ||
+          (Array.isArray(m.options) && m.options.some(o => o?.value === 'GO_TO_PHASE_20'))
+        );
 
-      const filteredMessages = messages.length > 1
+      const hasPhase20GatePresent = messages.some(
+        m => m?.id === 'phase20_ssot_executive_gate' ||
+          (typeof m?.content === 'string' && m.content.includes('Compuerta Ejecutiva de Despacho y Portapapeles (SSoTT — Fase 20)'))
+      );
+
+      const filteredMessages = messages.length > 0
         ? messages.filter((m, idx) => {
-            if (isClipboardSpamBubble(m)) {
+            if (isClipboardSpamBubble(m) && messages.length > 1) {
+              needsSanitization = true;
+              return false;
+            }
+            if (isStalePhase19RecoveryInPhase20(m) && (hasPhase20GatePresent || messages.length > 1)) {
               needsSanitization = true;
               return false;
             }
             const nextMsg = messages[idx + 1];
             if (
+              messages.length > 1 &&
               m?.role === 'user' &&
               isClipboardSpamBubble(nextMsg) &&
               /Copiar\s+(Gu[íi]a\s+Paciente|Expediente\s+NOM-004)/i.test(String(m.content || ''))
@@ -955,7 +979,129 @@ function App() {
           })
         : messages;
 
-      const sanitizedMessages = (filteredMessages.length > 0 ? filteredMessages : messages).map(msg => {
+      const isPhase21Active =
+        currentPhase === 'PHASE_21_CALENDARIO' ||
+        currentPhase === 'PHASE_21_CALENDAR' ||
+        String(currentPhase || '').startsWith('PHASE_21');
+      const hasPhase21BubblePresent = messages.some(
+        m => m?.id === 'phase21_ssot_calendar_gate' ||
+          m?.id === 'phase21_institutional_farewell' ||
+          (typeof m?.content === 'string' && (
+            m.content.includes('Calendario y Periodización Celular de 28 Días') ||
+            m.content.includes('Calendario y Ruta de Ejecución de 28 Días Desplegados')
+          ))
+      );
+
+      const sanitizedMessages = (filteredMessages.length > 0 ? filteredMessages : messages).map((msg, mIdx, arr) => {
+        if (
+          msg?.role === 'user' &&
+          typeof msg.content === 'string' &&
+          /(?:Ver\s+Calendario|Continuar\s+a\s+Calendario|Revisar\s+Diagn[óo]stico)/i.test(msg.content)
+        ) {
+          const cleanedUserContent = msg.content
+            .replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\s*/u, '')
+            .replace(/\s*➔\s*$/u, '')
+            .trim();
+          if (cleanedUserContent !== msg.content) {
+            needsSanitization = true;
+            return { ...msg, content: cleanedUserContent };
+          }
+        }
+        const isLegacyOrVerboseFarewell =
+          msg?.role === 'assistant' &&
+          typeof msg.content === 'string' &&
+          (
+            (msg?.id !== 'phase21_institutional_farewell' && (
+              msg.content.includes('Calendario y Periodización Celular de 28 Días (Fase 21 — Estudio Completado)') ||
+              msg.content.includes('Consulta Médica Concluida y Cincelada en Expediente')
+            )) ||
+            (msg?.id === 'phase21_institutional_farewell' && (
+              (Array.isArray(msg.options) && msg.options.length > 0) ||
+              msg.content.includes('Meta Calórica y Macronutrientes') ||
+              /\b(?:Lunes|Martes|Miércoles|Jueves|Viernes|Sábado|Domingo),/.test(msg.content)
+            ))
+          );
+        if (isLegacyOrVerboseFarewell) {
+          needsSanitization = true;
+          return buildPhase21InstitutionalClosureMessage(patientData);
+        }
+        if (
+          msg?.role === 'assistant' &&
+          !msg?.recoveryMeta &&
+          typeof msg.content === 'string' &&
+          msg.content.includes('Expediente Clínico Recuperado Exitosamente')
+        ) {
+          needsSanitization = true;
+          try {
+            const holderMatch = msg.content.match(/Titular:\*\*\s*([^\n]+)/i);
+            const uidMatch = msg.content.match(/Usuario\s+ID:\*\*\s*([^\n]+)/i);
+            const citaMatch = msg.content.match(/Cita:\*\*\s*#?([^\n]+)/i);
+            const phaseMatch = msg.content.match(/Fase\s+(\d+)/i);
+            const verifiedAgeMig = resolveVerifiedPatientAge(patientData, 30);
+            const ageMig = Number(verifiedAgeMig.ageYears) || 30;
+            const isTutorMig = Boolean(
+              (ageMig < 2 && (verifiedAgeMig.isLactanteVerified || patientData?.isLactante === true)) ||
+              (ageMig < 13 && (verifiedAgeMig.isPediatricVerified || patientData?.isPediatrico === true))
+            );
+            const shouldOmitRecoveryOpts = Boolean(
+              isPhase21Active && (hasPhase21BubblePresent || mIdx < arr.length - 1)
+            );
+            return buildSessionRecoveryCardMessage({
+              holderName:
+                patientData?.identificacion?.nombreCompleto ||
+                patientData?.profile?.name ||
+                (holderMatch ? holderMatch[1].trim() : 'Paciente'),
+              userId:
+                patientData?.profile?.usuarioId ||
+                patientData?.identificacion?.usuarioId ||
+                (uidMatch ? uidMatch[1].trim() : '---'),
+              citationId:
+                citationId ||
+                patientData?.profile?.citationId ||
+                patientData?.identificacion?.idCita ||
+                (citaMatch ? citaMatch[1].trim() : '---'),
+              phaseNum: phaseMatch ? Number(phaseMatch[1]) : (isClosedConsultation ? 21 : 20),
+              isCompleted: isClosedConsultation || /Estudio\s+Completado/i.test(msg.content),
+              isTutorMode: isTutorMig,
+              options: shouldOmitRecoveryOpts ? undefined : msg.options
+            });
+          } catch (migErr) {
+            console.warn('⚠️ [EGM-55 Recovery Migration Safe Catch]:', migErr?.message || migErr);
+            const plainFallback = msg.content
+              .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+              .replace(/\n{3,}/g, '\n\n')
+              .trim();
+            return {
+              ...msg,
+              id: msg.id || 'session_recovery_ssot_card',
+              headerBadge: msg.headerBadge || {
+                iconKey: 'clipboard_check',
+                label: 'EXPEDIENTE CLÍNICO RECUPERADO EXITOSAMENTE • NOM-004'
+              },
+              recoveryMeta: {
+                holderName: patientData?.identificacion?.nombreCompleto || patientData?.profile?.name || 'Paciente',
+                userId: String(patientData?.profile?.usuarioId || '---'),
+                citationId: citationId ? `#${citationId}` : '---',
+                statusLabel: isClosedConsultation ? 'Fase\u00A021 (Estudio Completado)' : 'En Curso',
+                isCompleted: isClosedConsultation
+              },
+              confirmationNote: 'Se han restaurado y desplegado en el Dashboard todos los datos de su estudio: Biometría y Vitales, Bioquímica Cuántica, Evaluaciones Multimodales, Historia Clínica y Diagnóstico.',
+              content: plainFallback || 'Expediente Clínico Recuperado Exitosamente — Puede consultar y revisar libremente cada pestaña superior.',
+              options: (isPhase21Active && (hasPhase21BubblePresent || mIdx < arr.length - 1)) ? undefined : msg.options
+            };
+          }
+        }
+        if (
+          msg.options &&
+          msg.options.length > 0 &&
+          isPhase21Active &&
+          (hasPhase21BubblePresent || mIdx < arr.length - 1) &&
+          typeof msg.content === 'string' &&
+          msg.content.includes('Expediente Clínico Recuperado Exitosamente')
+        ) {
+          needsSanitization = true;
+          return { ...msg, options: undefined };
+        }
         if (msg.options && msg.options.length > 0) {
           const hasOldBtn = msg.options.some(o =>
             o.value === 'NEW_CONSULTATION' ||
@@ -1091,7 +1237,7 @@ function App() {
         }
       }
     }
-  }, [messages, setMessages, patientData]);
+  }, [messages, setMessages, patientData, currentPhase]);
 
   // 2. Estado de los datos del paciente (Movido a useCortex.js)
   // patientData and setPatientData are now imported from useCortex
@@ -1119,22 +1265,35 @@ function App() {
   // --- PERSISTENCE PROTOCOL STATE (V15.5) ---
   const [recoveryData, setRecoveryData] = useState(null); // Stores potential session to resume
 
-  // Calibración Dinámica de Autoridad y Respeto según Edad y Sexo (NOM-004 & TILO Protocol)
+  // Calibración Dinámica de Autoridad y Respeto según Edad Verificada y Sexo (NOM-004 & TILO Protocol — Cero "Don/Doña")
   const getPatientAddressing = () => {
-    const ageCandidate = Number(patientData?.identificacion?.edad ?? patientData?.identityLock?.patientInfo?.age ?? patientData?.edad ?? 30);
+    const verified = resolveVerifiedPatientAge(patientData, 30);
+    const ageCandidate = Number(verified.ageYears) || 30;
     const { isFemale } = resolvePatientSex(patientData);
     const isMale = !isFemale;
-    const isPediatric = ageCandidate < 18;
+    const isLactante = Boolean(ageCandidate < 2 && (verified.isLactanteVerified || patientData?.isLactante === true));
+    const isPediatric = Boolean(ageCandidate < 18 && (isLactante || verified.isPediatricVerified || patientData?.isPediatrico === true));
+    const isTutorMode = Boolean(isLactante || (isPediatric && ageCandidate < 13));
     const isSenior = ageCandidate >= 60;
-    const fullName = patientData?.identificacion?.nombre || patientData?.identificacion?.nombreCompleto || patientData?.profile?.name || 'del Paciente';
+    const composedName = [
+      patientData?.identificacion?.nombre,
+      patientData?.identificacion?.apellidoPaterno,
+      patientData?.identificacion?.apellidoMaterno
+    ].map((x) => String(x || '').trim()).filter(Boolean).join(' ');
+    const rawFullName =
+      patientData?.identificacion?.nombreCompleto ||
+      patientData?.profile?.name ||
+      composedName ||
+      patientData?.identificacion?.nombre ||
+      'Paciente';
+    const fullName = sanitizeClinicalSpanish(String(rawFullName).replace(/^(?:don|doña|sr\.?|sra\.?)\s+/i, '').trim()) || 'Paciente';
     const firstName = fullName.split(' ')[0] || fullName;
-    const honorific = isSenior 
-      ? (isMale ? ("Don " + firstName) : ("Doña " + firstName)) 
-      : (isMale ? ("Sr. " + fullName) : ("Sra. " + fullName));
+    const honorific = `${isFemale ? 'Estimada' : 'Estimado'} ${fullName}`;
     
     return {
       ageCandidate,
       isPediatric,
+      isTutorMode,
       isSenior,
       fullName,
       firstName,
@@ -1179,24 +1338,43 @@ function App() {
       return true;
     }
 
+    const stripConsumedRecoveryOptions = (list) =>
+      (Array.isArray(list) ? list : []).map((m) => {
+        if (m?.role === 'assistant' && typeof m.content === 'string' && m.content.includes('Expediente Clínico Recuperado Exitosamente') && m.options) {
+          return { ...m, options: undefined };
+        }
+        return m;
+      });
+
+    const cleanUserNavLabel = userBubbleLabel
+      ? String(userBubbleLabel)
+          .replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\s*/u, '')
+          .replace(/\s*➔\s*$/u, '')
+          .trim()
+      : null;
+
     if (cmd === 'GO_TO_PHASE_20') {
       setActiveTab('diagnosis');
       if (isCompletedStudy) {
         setInputHandler(null);
         const execSummary = buildSSoTExecutiveSummaryContent(currentPData);
-        setMessages(prev => [
-          ...(Array.isArray(prev) ? prev : []),
-          ...(userBubbleLabel ? [{ role: 'user', content: userBubbleLabel }] : []),
-          {
-            role: 'assistant',
-            content: execSummary,
-            avatar: tiloImg,
-            options: buildSSoTExecutiveOptions(true)
-          }
-        ]);
+        setMessages(prev => {
+          const base = stripConsumedRecoveryOptions(prev).filter((m) => m?.id !== 'phase20_ssot_completed_summary');
+          return [
+            ...base,
+            ...(cleanUserNavLabel ? [{ role: 'user', content: cleanUserNavLabel }] : []),
+            {
+              id: 'phase20_ssot_completed_summary',
+              role: 'assistant',
+              content: execSummary,
+              avatar: tiloImg,
+              options: buildSSoTExecutiveOptions(true)
+            }
+          ];
+        });
       } else {
-        if (userBubbleLabel) {
-          setMessages(prev => [...(Array.isArray(prev) ? prev : []), { role: 'user', content: userBubbleLabel }]);
+        if (cleanUserNavLabel) {
+          setMessages(prev => [...stripConsumedRecoveryOptions(prev), { role: 'user', content: cleanUserNavLabel }]);
         }
         setCurrentPhase('PHASE_20_PORTAPAPELES');
       }
@@ -1209,34 +1387,25 @@ function App() {
       setCurrentPhase('PHASE_21_CALENDARIO');
 
       if (isCompletedStudy) {
-        const bio = currentPData?.clinical_dossier?.bioenergetics || {};
-        const rawKcal = Number(bio?.targetKcal || currentPData?.nutrition?.protocol?.target || 0);
-        const formattedKcal = Number.isFinite(rawKcal) && rawKcal > 0
-          ? `${String(Math.round(rawKcal)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')} kcal/día`
-          : 'Meta personalizada SSoTT';
-        const m = bio?.macros || currentPData?.nutrition?.protocol?.macros || { carbs: 35, protein: 35, fat: 30 };
-
-        setMessages(prev => [
-          ...(Array.isArray(prev) ? prev : []),
-          ...(userBubbleLabel ? [{ role: 'user', content: userBubbleLabel }] : []),
-          {
-            role: 'assistant',
-            content:
-              `📅 **Calendario y Periodización Celular de 28 Días (Fase 21 — Estudio Completado)**\n\n` +
-              `Se ha desplegado en el panel derecho la arquitectura crononutricional sellada bajo **NOM-004-SSA3-2012**:\n\n` +
-              `• **Meta Calórica Prescrita:** **${formattedKcal}**\n\n` +
-              `• **Distribución de Macronutrientes:** ${m.carbs}% Hidratos de Carbono | ${m.protein}% Proteínas | ${m.fat}% Lípidos\n\n` +
-              `Puede alternar a la pestaña de **Diagnóstico y Portapapeles** o copiar directamente los documentos SSoTT:`,
-            avatar: tiloImg,
-            options: [
-              { label: '📋 Revisar Diagnóstico y Portapapeles (Fase 20)', value: 'GO_TO_PHASE_20' },
-              { label: '📋 Copiar Guía Paciente', value: 'COPY_SSOT_PATIENT_GUIDE' },
-              { label: '🩺 Copiar Expediente NOM-004', value: 'COPY_SSOT_MEDICAL_DOSSIER' }
-            ]
-          }
-        ]);
-      } else if (userBubbleLabel) {
-        setMessages(prev => [...(Array.isArray(prev) ? prev : []), { role: 'user', content: userBubbleLabel }]);
+        const closureBubble = buildPhase21InstitutionalClosureMessage(currentPData);
+        setMessages(prev => {
+          const cleaned = stripConsumedRecoveryOptions(prev).filter(
+            (m) =>
+              m?.id !== 'phase21_institutional_farewell' &&
+              !(typeof m?.content === 'string' && m.content.includes('Calendario y Periodización Celular de 28 Días (Fase 21 — Estudio Completado)'))
+          );
+          const lastEntry = cleaned[cleaned.length - 1];
+          const shouldAppendUserLabel = Boolean(
+            cleanUserNavLabel && !(lastEntry?.role === 'user' && lastEntry?.content === cleanUserNavLabel)
+          );
+          return [
+            ...cleaned,
+            ...(shouldAppendUserLabel ? [{ role: 'user', content: cleanUserNavLabel }] : []),
+            closureBubble
+          ];
+        });
+      } else if (cleanUserNavLabel) {
+        setMessages(prev => [...stripConsumedRecoveryOptions(prev), { role: 'user', content: cleanUserNavLabel }]);
       }
       return true;
     }
@@ -1475,11 +1644,6 @@ function App() {
     }
 
     if (opt.value === 'FINAL_CONSULTATION_CLOSE') {
-      const addr = getPatientAddressing();
-      const finalMsg = addr.isPediatric
-        ? `Se ha completado satisfactoriamente la atención pediátrica de **${addr.fullName}**.`
-        : `Se ha completado satisfactoriamente su atención clínica y diseño biológico.`;
-
       const sealedPatientData = {
         ...patientData,
         is_completed: true,
@@ -1493,17 +1657,19 @@ function App() {
         } : {})
       };
       setPatientData(sealedPatientData);
+      setActiveTab('schedule');
 
-      setMessages(prev => [
-        ...prev,
-        { role: 'user', content: opt.label },
-        {
-          role: 'assistant',
-          content: `🏁 **Consulta Médica Concluida y Cincelada en Expediente (NOM-004)**\n\n${finalMsg}\n\n• Todos sus datos biométricos, diagnóstico CORTEX SSoTT y solicitud de cita de seguimiento han sido guardados de forma inmutable.\n• Su expediente completo queda disponible en el panel principal.\n\n¡Gracias por confiar en Equipo en Acción® y el Ecosistema T.I.L.O.!`,
-          avatar: tiloImg,
-          options: buildSSoTExecutiveOptions(true)
-        }
-      ]);
+      const closureBubble = buildPhase21InstitutionalClosureMessage(sealedPatientData);
+      setMessages(prev => {
+        const cleaned = (Array.isArray(prev) ? prev : [])
+          .map((m) => (m?.options ? { ...m, options: undefined } : m))
+          .filter((m) => m?.id !== 'phase21_institutional_farewell');
+        return [
+          ...cleaned,
+          { role: 'user', content: opt.label },
+          closureBubble
+        ];
+      });
       setInterviewStep('finished');
       setInputHandler(null);
       if (typeof saveSessionProgress === 'function') {
@@ -1697,7 +1863,10 @@ function App() {
     const activeCitation = resolveValidCitationId(patientData, apiContext, sessionMetadata);
     if (!activeCitation) return;
 
-    const persistKey = `${activeCitation}:${currentPhase}`;
+    const phase18SubKey = phaseNum === 18
+      ? `:${patientData?.scan_data?.active_substep || 'INIT'}:${patientData?.scan_data?.substep_sync_tick || 0}:${Boolean(patientData?.scan_data?.electret_scanned)}:${Boolean(patientData?.scan_data?.ocular_metrics)}:${Boolean(patientData?.scan_data?.lingual_metrics)}:${Boolean(patientData?.scan_data?.external_metrics)}:${Boolean(patientData?.scan_data?.visual_metrics)}`
+      : '';
+    const persistKey = `${activeCitation}:${currentPhase}${phase18SubKey}`;
     if (lastPersistedPhaseKeyRef.current === persistKey) return;
 
     const timer = setTimeout(() => {
@@ -1763,14 +1932,21 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const currentLen = Array.isArray(messages) ? messages.length : 0;
+    const prevLen = typeof messagesEndRef.lastLen === 'number' ? messagesEndRef.lastLen : currentLen;
+    messagesEndRef.lastLen = currentLen;
+
+    // Disparar scroll automático únicamente cuando incremente messages.length por acción real (jamás en re-renders pasivos)
+    if (currentLen <= prevLen) return undefined;
+
     if (isSpecificLogisticsQuestion || hasVerticalMenuOpen) {
       const timer = setTimeout(() => {
         scrollToBottom();
       }, 150);
       return () => clearTimeout(timer);
-    } else {
-      scrollToBottom();
     }
+    scrollToBottom();
+    return undefined;
   }, [messages, scrollToBottom, isSpecificLogisticsQuestion, hasVerticalMenuOpen]);
 
   // --- AUTOSAVE EFFECT (PHASE 4 PERSISTENCE) ---
@@ -6651,8 +6827,19 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                         registerInputHandler={setInputHandler}
                         setIsGlobalTyping={() => {}}
                         onPhaseComplete={(lifestyleData, localMessages) => {
-                          const updatedPatient = { ...patientData, lifeStyleInfo: lifestyleData };
-                          setPatientData(updatedPatient);
+                          setPatientData(prev => ({
+                            ...prev,
+                            lifeStyleInfo: lifestyleData,
+                            lifestyle_profile: {
+                              ...(prev.lifestyle_profile || {}),
+                              ...(lifestyleData?.activity ? {
+                                activity: {
+                                  ...(prev.lifestyle_profile?.activity || {}),
+                                  ...lifestyleData.activity
+                                }
+                              } : {})
+                            }
+                          }));
                           if (localMessages && Array.isArray(localMessages)) {
                             setMessages(localMessages);
                           }
@@ -6806,7 +6993,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setPatientData={setPatientData}
                       messages={messagesList}
                       setMessages={setMessages}
-                      registerInputHandler={setInputHandler}
+                      registerInputHandler={handleRegisterInputHandler}
                       setActiveTab={setActiveTab}
                       onPhaseComplete={() => {
                         setInputHandler(null);
@@ -6816,13 +7003,13 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                     />
                   )}
 
-                  {currentPhase === 'PHASE_20_PORTAPAPELES' && (
+                  {(currentPhase === 'PHASE_20_PORTAPAPELES' || currentPhase === 'PHASE_20_CLIPBOARD') && (
                     <Fase20_Portapapeles
                       patientData={patientData}
                       setPatientData={setPatientData}
                       messages={messagesList}
                       setMessages={setMessages}
-                      registerInputHandler={setInputHandler}
+                      registerInputHandler={handleRegisterInputHandler}
                       setActiveTab={setActiveTab}
                       onPhaseComplete={() => {
                         setInputHandler(null);
@@ -6838,7 +7025,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       setPatientData={setPatientData}
                       messages={messagesList}
                       setMessages={setMessages}
-                      registerInputHandler={setInputHandler}
+                      registerInputHandler={handleRegisterInputHandler}
                       setActiveTab={setActiveTab}
                       onPhaseComplete={() => {
                         setInputHandler(null);
@@ -6959,7 +7146,85 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
 
                               </div>
                             ) : (
-                              <ReactMarkdown>{cleanBinaryGateMessage(msg.content)}</ReactMarkdown>
+                              <>
+                                {msg.headerBadge && (
+                                  <div className="mb-3 pb-2 border-b border-slate-200/80 dark:border-[#334155] flex items-center gap-2">
+                                    {msg.headerBadge.iconKey === 'calendar_check' ? (
+                                      <CheckCircle2 className="w-4 h-4 text-[#3AAA35] shrink-0" strokeWidth={2} />
+                                    ) : msg.headerBadge.iconKey === 'clipboard_check' ? (
+                                      <ClipboardList className="w-4 h-4 text-[#1C75BC] dark:text-[#93C5FD] shrink-0" strokeWidth={2} />
+                                    ) : (
+                                      <Calendar className="w-4 h-4 text-[#1C75BC] dark:text-[#93C5FD] shrink-0" strokeWidth={2} />
+                                    )}
+                                    <span className={`text-[10.5px] font-extrabold uppercase tracking-wider tabular-nums ${
+                                      msg.headerBadge.iconKey === 'calendar_check'
+                                        ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                                        : 'text-[#1C75BC] dark:text-[#93C5FD]'
+                                    }`}>
+                                      {msg.headerBadge.label}
+                                    </span>
+                                  </div>
+                                )}
+                                {msg.recoveryMeta ? (
+                                  <div className="space-y-3 tabular-nums">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-200/80 dark:border-[#334155] rounded-xl p-3">
+                                      <div className="flex items-start gap-2">
+                                        <User className="w-3.5 h-3.5 text-[#1C75BC] dark:text-[#93C5FD] shrink-0 mt-0.5" strokeWidth={2} />
+                                        <div className="min-w-0">
+                                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Titular</span>
+                                          <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] block truncate">{msg.recoveryMeta.holderName}</span>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-start gap-2">
+                                        <CreditCard className="w-3.5 h-3.5 text-[#1C75BC] dark:text-[#93C5FD] shrink-0 mt-0.5" strokeWidth={2} />
+                                        <div>
+                                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Usuario ID</span>
+                                          <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] block tabular-nums">{msg.recoveryMeta.userId}</span>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-start gap-2">
+                                        <FileText className="w-3.5 h-3.5 text-[#1C75BC] dark:text-[#93C5FD] shrink-0 mt-0.5" strokeWidth={2} />
+                                        <div>
+                                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Cita</span>
+                                          <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] block tabular-nums">{msg.recoveryMeta.citationId}</span>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-start gap-2">
+                                        {msg.recoveryMeta.isCompleted ? (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-[#3AAA35] shrink-0 mt-0.5" strokeWidth={2} />
+                                        ) : (
+                                          <Activity className="w-3.5 h-3.5 text-[#1C75BC] dark:text-[#93C5FD] shrink-0 mt-0.5" strokeWidth={2} />
+                                        )}
+                                        <div>
+                                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Estado</span>
+                                          <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] block tabular-nums">{msg.recoveryMeta.statusLabel}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {msg.confirmationNote && (
+                                      <div className="p-3 rounded-xl bg-[#3AAA35]/8 dark:bg-[#3AAA35]/15 border border-[#3AAA35]/25 dark:border-[#3AAA35]/40 flex items-start gap-2.5 text-xs text-[#0F172A] dark:text-[#F8FAFC] leading-relaxed">
+                                        <CheckCircle2 className="w-4 h-4 text-[#3AAA35] shrink-0 mt-0.5" strokeWidth={2} />
+                                        <span>{msg.confirmationNote}</span>
+                                      </div>
+                                    )}
+
+                                    <p className="text-xs text-[#334155] dark:text-[#CBD5E1] font-medium leading-relaxed">
+                                      Puede consultar y revisar libremente cada pestaña superior.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="tabular-nums">
+                                    <ReactMarkdown>
+                                      {cleanBinaryGateMessage(
+                                        msg.headerBadge?.iconKey === 'clipboard_check' && typeof msg.content === 'string'
+                                          ? msg.content.replace(/^Expediente\s+Cl[ií]nico\s+Recuperado\s+Exitosamente\s*(?:[—–\-:]\s*)?/i, '')
+                                          : msg.content
+                                      )}
+                                    </ReactMarkdown>
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
 
@@ -6988,33 +7253,54 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                             </div>
                           )}
 
-                          {/* V7.1 RENDERIZADO DE BOTONES (Chips Interactivos) */}
-                          {/* ADAPTIVE UI: Todos los botones se muestran. Si hay > 3, usar Select Dropdown */}
-                          {msg.options && (
+                          {/* V7.1 RENDERIZADO DE BOTONES (Únicamente en la última burbuja activa con opciones — EGM-53/54) */}
+                          {Array.isArray(msg.options) && msg.options.length > 0 && index === messagesList.length - 1 && (
                             (msg.options.length > 3) ? null : (
-                              <div className="mt-4 flex flex-wrap gap-2">
+                              <div className="mt-4 flex flex-wrap gap-2.5">
                                 {msg.options
                                   .filter(opt => !(Boolean(patientData?.is_completed) && opt?.value === 'RESTART_FROM_PHASE_0'))
                                   .map((opt, i) => {
-                                  const isLastMessage = index === messagesList.length - 1;
                                   const isElectretStart = opt.value === 'START_ELECTRET_SCAN';
                                   const isElectretDisabled = isElectretStart && !hardwareStatus?.handContactDetected;
-                                  const isDisabled = !isLastMessage || isElectretDisabled;
+                                  const isSecondaryChip = opt.variant === 'secondary';
+                                  const renderOptionIcon = (iconKey) => {
+                                    switch (iconKey) {
+                                      case 'copy':
+                                        return <Copy className="w-4 h-4 shrink-0" strokeWidth={2} />;
+                                      case 'file_text':
+                                        return <FileText className="w-4 h-4 shrink-0" strokeWidth={2} />;
+                                      case 'calendar':
+                                        return <Calendar className="w-4 h-4 shrink-0" strokeWidth={2} />;
+                                      case 'smartphone':
+                                        return <Smartphone className="w-4 h-4 shrink-0" strokeWidth={2} />;
+                                      case 'check':
+                                        return <Check className="w-4 h-4 shrink-0" strokeWidth={2} />;
+                                      case 'rotate_ccw':
+                                        return <RotateCcw className="w-4 h-4 shrink-0" strokeWidth={2} />;
+                                      default:
+                                        return null;
+                                    }
+                                  };
+                                  const isRecoveryCardOption = msg.id === 'session_recovery_ssot_card' || Boolean(msg.recoveryMeta);
                                   return (
                                     <button
                                       key={i}
-                                      disabled={isDisabled}
+                                      type="button"
+                                      disabled={isElectretDisabled}
                                       onClick={() => {
-                                        if (isDisabled) return;
+                                        if (isElectretDisabled) return;
                                         handleOptionSelect(msg, opt.value);
                                       }}
-                                      className={`px-4 py-2 font-bold rounded-full text-xs transition-all shadow-sm border ${
+                                      className={
                                         isElectretDisabled
-                                          ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60 font-mono text-[11px]'
-                                          : 'bg-[#1C75BC] text-white hover:bg-[#155d96] border-[#1C75BC]'
-                                      }`}
+                                          ? 'min-h-[44px] px-4 py-2 font-bold rounded-full text-xs transition-all shadow-sm border bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60 font-mono text-[11px]'
+                                          : isSecondaryChip
+                                            ? 'min-h-[48px] px-4 py-2.5 inline-flex items-center justify-center gap-2 font-bold rounded-xl text-xs transition-all shadow-sm border bg-white dark:bg-[#1E293B] text-[#1C75BC] dark:text-[#93C5FD] border-[#CBD5E1] dark:border-[#334155] hover:bg-[#1C75BC] hover:text-white dark:hover:bg-[#1C75BC] dark:hover:text-white cursor-pointer'
+                                            : `${isRecoveryCardOption ? 'min-h-[48px] px-4 py-2.5' : 'min-h-[44px] px-4 py-2'} inline-flex items-center justify-center gap-2 font-bold rounded-full text-xs transition-all shadow-sm border bg-[#1C75BC] text-white hover:bg-[#155A92] border-[#1C75BC] cursor-pointer`
+                                      }
                                     >
-                                      {isElectretDisabled ? '🔴 ELECTRODOS SIN CONTACTO DE PIEL' : opt.label}
+                                      {!isElectretDisabled && renderOptionIcon(opt.iconKey)}
+                                      <span>{isElectretDisabled ? '🔴 ELECTRODOS SIN CONTACTO DE PIEL' : opt.label}</span>
                                     </button>
                                   );
                                 })}
@@ -7442,7 +7728,11 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                   <MedicalDashboard
                     patientData={patientData}
                     setPatientData={setPatientData}
-                    currentStep={interviewStep === 'appointment' ? currentPhase : interviewStep}
+                    currentStep={
+                      activeTab === 'schedule' && (currentPhase === 'PHASE_21_CALENDARIO' || Boolean(patientData?.is_completed))
+                        ? 'PHASE_21_CALENDARIO'
+                        : (interviewStep === 'appointment' ? currentPhase : interviewStep)
+                    }
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                     isEditing={isEditing}
@@ -7472,9 +7762,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
         {
           isLoggedIn && !showPrivacyPolicy && (
             <footer className="w-full min-h-[64px] bg-white dark:bg-[#1E293B] border-t border-slate-200 dark:border-slate-700 flex items-center justify-between px-6 z-20 shrink-0 shadow-[0_-2px_10px_rgba(15,23,42,0.04)] relative">
-              <span className="text-[#334155] dark:text-[#CBD5E1] text-[11px] font-mono tabular-nums cursor-help select-none font-bold" title="Build: v2.8.4-SSoTT | Constitución v2.0.2 | NOM-004 Compliant">
-                [TILO-CORE]
-              </span>
+              <div className="w-24 shrink-0 select-none" aria-hidden="true" />
 
               {/* Firma Empírica de 5 Hexágonos Local */}
               <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-64 h-full flex justify-center items-center">

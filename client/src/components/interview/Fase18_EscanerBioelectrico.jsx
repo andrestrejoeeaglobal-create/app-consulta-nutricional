@@ -39,6 +39,22 @@ export default function Fase18_EscanerBioelectrico({
 
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+    const buildSubstepSyncPatch = (substep) => ({
+        active_substep: substep,
+        substep_sync_tick: Date.now()
+    });
+
+    const resolveBiologicalSexCode = (pData) => {
+        const raw = String(
+            pData?.profile?.sex ||
+            pData?.identificacion?.sexo ||
+            pData?.demographics?.gender ||
+            'M'
+        ).trim().toUpperCase();
+        if (raw.startsWith('F') || raw.includes('MUJER')) return 'F';
+        return 'M';
+    };
+
     // 🛡️ SUTURA 5: Centinela Auto-Sync Reactivo con AbortController y setTimeout encadenado
     const [, setIsAutoSyncActive] = useState(false);
     const autoSyncAbortControllerRef = useRef(null);
@@ -239,36 +255,50 @@ Si dispone de estudios de laboratorio recientes para **${pName}** (PDF de Quími
             return;
         }
 
-        // Si el chat no tiene mensaje de la Fase 18, emitir mensaje inicial con la Compuerta de Generación Activa Estricta
+        // Si el chat no tiene mensaje de la Fase 18, emitir mensaje inicial con la Compuerta de Adquisición Real (.HTM)
         const hasPhase18Message = messages?.some(m => m.content?.includes("Fase 18: Telemetría Bioeléctrica Cuántica") || m.content?.includes("Fase 18: Inicialización de Telemetría Multimodal") || m.content?.includes("FASE 18: Escáner Bioeléctrico"));
         if (!hasPhase18Message) {
             const saludoEstructurado = {
                 role: 'assistant',
-                content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Direct Hardware Interface)
+                content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Ingesta Nativa NOM-004)
 
-Para iniciar la toma física con **${pName}**, seleccione una de las siguientes opciones:
+Para integrar el estudio real de **${pName}**, elija una vía operativa:
 
-1. Presione **"⚡ Realizar Escaneo Bioeléctrico"** para activar la lectura en tiempo real del sensor USB (**VID_5608 PID_0808**).
-2. Pídale a **${pName}** que sujete firmemente los electrodos cilíndricos del sensor.
-3. *T.I.L.O. tomará el control directo del hardware y volcará los 450+ biomarcadores en su Dashboard de forma 100% automática, sin requerir software externo.*`,
+1. **Iniciar escaneo en Electret:** Abre el software del analizador con los datos de **${pName}** y activa el **Centinela Auto-Sync** hasta que usted presione *"Obtener Informe"*.
+2. **Sincronizar informe generado:** Importa de inmediato el estudio `.concat('`.htm`') + ` más reciente de **${pName}** en el equipo.
+3. **Cargar archivo .HTM:** Permite seleccionar manualmente cualquier reporte `.concat('`.htm`') + ` exportado.`,
                 inputType: 'electret_scan_widget',
                 actions: [
                     {
                         id: 'btn_launch_electret',
-                        label: '⚡ Realizar Escaneo Bioeléctrico',
-                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
+                        label: '🚀 Iniciar escaneo en Electret',
+                        style: 'bg-[#1C75BC] text-white hover:bg-[#155A92] font-semibold px-4 py-2.5 min-h-[48px] rounded-xl transition-all shadow-sm flex items-center gap-2',
                         value: 'LAUNCH_ELECTRET_APP'
                     },
                     {
+                        id: 'btn_sync_electret',
+                        label: '🔄 Sincronizar informe generado',
+                        style: 'bg-white dark:bg-slate-800 text-[#1C75BC] border border-[#1C75BC]/40 hover:bg-[#1C75BC]/10 font-semibold px-4 py-2.5 min-h-[48px] rounded-xl transition-all flex items-center gap-2',
+                        value: 'SYNC_ELECTRET_HARDWARE'
+                    },
+                    {
+                        id: 'btn_upload_htm',
+                        label: '📄 Cargar archivo .HTM',
+                        style: 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 font-semibold px-4 py-2.5 min-h-[48px] rounded-xl transition-all flex items-center gap-2',
+                        value: 'UPLOAD_ELECTRET_HTM'
+                    },
+                    {
                         id: 'btn_skip_electret',
-                        label: '⏩ Continuar sin Escáner Electret',
-                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
+                        label: '⏩ Continuar sin escáner Electret',
+                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2.5 min-h-[48px] rounded-xl transition-all',
                         value: 'ELECTRET_SKIP'
                     }
                 ],
                 options: [
-                    { label: "⚡ Realizar Escaneo Bioeléctrico", value: "LAUNCH_ELECTRET_APP" },
-                    { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
+                    { label: "🚀 Iniciar escaneo en Electret", value: "LAUNCH_ELECTRET_APP" },
+                    { label: "🔄 Sincronizar informe generado", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "📄 Cargar archivo .HTM", value: "UPLOAD_ELECTRET_HTM" },
+                    { label: "⏩ Continuar sin escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
             setMessages(prev => [...prev, saludoEstructurado]);
@@ -286,10 +316,10 @@ Para iniciar la toma física con **${pName}**, seleccione una de las siguientes 
             if (content.includes("Paso 4: Carga de Estudios") || content.includes("Validación Bioquímica Exógena")) {
                 return 'EXTERNAL';
             }
-            if (content.includes("Paso 3: Evaluación Lingual") || content.includes("Telemetría Lingual Integrada") || content.includes("Topografía CYTOS") || content.includes("Saburra Tisular")) {
+            if (content.includes("Paso 3: Evaluación Lingual") || content.includes("Telemetría Lingual Integrada") || content.includes("Glosodiagnóstico Funcional") || content.includes("Topografía Lingual") || content.includes("Saburra Tisular")) {
                 return 'LINGUAL';
             }
-            if (content.includes("Paso 2: Auditoría Visual Ocular") || content.includes("Telemetría Ocular Binocular") || content.includes("Gemini Vision") || content.includes("Microcirculación Foveal")) {
+            if (content.includes("Paso 2: Auditoría Visual Ocular") || content.includes("Telemetría Ocular Binocular") || content.includes("Constancia Binocular") || content.includes("Microcirculación epiescleral")) {
                 return 'OCULAR';
             }
             if (content.includes("Escáner Bioeléctrico") || content.includes("Telemetría Multimodal") || content.includes("Electret")) {
@@ -320,7 +350,7 @@ Para iniciar la toma física con **${pName}**, seleccione una de las siguientes 
             if (m.content.includes("Auditoría de Topografía Lingual Multidimensional")) {
                 return {
                     ...m,
-                    content: `### 👅 Telemetría Lingual Integrada en Dashboard\n\n✅ **6 Ejes Glosómicos (Dorsal y Sublingual)** han sido desplegados en el panel derecho (**Evaluación Lingual CYTOS**).\n\n¿Confirma los hallazgos en el Dashboard para avanzar a Estudios de Laboratorio?`
+                    content: `### 👅 Telemetría Lingual Integrada en Dashboard\n\n✅ **6 Ejes Glosómicos (Dorsal y Sublingual)** han sido desplegados en el panel derecho (**Topografía Lingual de 6 Ejes**).\n\n¿Confirma los hallazgos en el Dashboard para avanzar a Estudios de Laboratorio?`
                 };
             }
             if (m.content.includes("Resumen de Bioseñales Electret Sincronizadas") && m.content.includes("Viscosidad Sanguínea")) {
@@ -344,14 +374,58 @@ Para iniciar la toma física con **${pName}**, seleccione una de las siguientes 
     // ==========================================================================
     // 🧬 PROCESAMIENTO CENTRAL DE TELEMETRÍA ELECTRET (NOM-004)
     // ==========================================================================
+    const resolvedCitationId = String(
+        patientData?.citaId ||
+        patientData?.idCita ||
+        patientData?.profile?.citaId ||
+        patientData?.identificacion?.idCita ||
+        ''
+    ).trim();
+
+    const getElectretActionButtons = () => ([
+        {
+            id: 'btn_launch_electret',
+            label: '🚀 Iniciar escaneo en Electret',
+            style: 'bg-[#1C75BC] text-white hover:bg-[#155A92] font-semibold px-4 py-2.5 min-h-[48px] rounded-xl transition-all shadow-sm flex items-center gap-2',
+            value: 'LAUNCH_ELECTRET_APP'
+        },
+        {
+            id: 'btn_sync_electret',
+            label: '🔄 Sincronizar informe generado',
+            style: 'bg-white dark:bg-slate-800 text-[#1C75BC] border border-[#1C75BC]/40 hover:bg-[#1C75BC]/10 font-semibold px-4 py-2.5 min-h-[48px] rounded-xl transition-all flex items-center gap-2',
+            value: 'SYNC_ELECTRET_HARDWARE'
+        },
+        {
+            id: 'btn_upload_htm',
+            label: '📄 Cargar archivo .HTM',
+            style: 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 font-semibold px-4 py-2.5 min-h-[48px] rounded-xl transition-all flex items-center gap-2',
+            value: 'UPLOAD_ELECTRET_HTM'
+        },
+        {
+            id: 'btn_skip_electret',
+            label: '⏩ Continuar sin escáner Electret',
+            style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2.5 min-h-[48px] rounded-xl transition-all',
+            value: 'ELECTRET_SKIP'
+        }
+    ]);
+
+    const getElectretActionOptions = () => ([
+        { label: "🚀 Iniciar escaneo en Electret", value: "LAUNCH_ELECTRET_APP" },
+        { label: "🔄 Sincronizar informe generado", value: "SYNC_ELECTRET_HARDWARE" },
+        { label: "📄 Cargar archivo .HTM", value: "UPLOAD_ELECTRET_HTM" },
+        { label: "⏩ Continuar sin escáner Electret", value: "ELECTRET_SKIP" }
+    ]);
+
     const processTelemetryData = (data) => {
         if (!data?.electret_metrics || !data?.success) {
-            throw new Error(data?.message || "No se detectaron métricas reales en el hardware escáner USB.");
+            throw new Error(data?.message || "No se detectaron métricas reales en el informe bioeléctrico.");
         }
         const metricsToSet = data.electret_metrics;
+        const synthesisList = Array.isArray(data.synthesisItems) ? data.synthesisItems : [];
+        const metadataObj = data.patientMetadata || data.patient_metadata || null;
 
         // Doble Candado Defensivo de Identidad NOM-004 en Cliente
-        const scannedNameFound = data?.patientMetadata?.name || data?.patient_metadata?.name || data?.electret_metrics?.patient_metadata?.name || null;
+        const scannedNameFound = metadataObj?.name || data?.electret_metrics?.patient_metadata?.name || null;
         if (scannedNameFound && pName) {
             const normActive = pName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
             const normScan = scannedNameFound.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -366,26 +440,22 @@ Para iniciar la toma física con **${pName}**, seleccione una de las siguientes 
 
                 const mismatchMsg = {
                     role: 'assistant',
-                    content: `### 🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB
+                    content: `### 🛡️ Alerta NOM-004: Incongruencia de identidad en estudio bioeléctrico
 
-Se detectó una lectura en el hardware a nombre de **"${scannedNameFound}"**, la cual **no corresponde** al paciente activo en este expediente (**"${pName}"**).
+Se detectó un informe a nombre de **"${scannedNameFound}"**, el cual **no corresponde** al titular activo de este expediente (**"${pName}"**).
 
-Para prevenir la contaminación cruzada de datos clínicos entre pacientes, esta lectura ha sido bloqueada automáticamente.
-
-Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pName}"** y seleccione una opción:`,
-                    actions: [
-                        { id: 'btn_launch_electret', label: '🚀 Realizar Escaneo Electret', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
-                        { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
-                    ],
-                    options: [
-                        { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
-                        { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
-                    ]
+Para prevenir la contaminación cruzada entre expedientes, esta lectura ha sido bloqueada. Genere o seleccione el informe correspondiente a **"${pName}"**:`,
+                    actions: getElectretActionButtons(),
+                    options: getElectretActionOptions()
                 };
                 setMessages(prev => [...prev, mismatchMsg]);
                 return;
             }
         }
+
+        const totalSys = Object.keys(metricsToSet || {}).length || 37;
+        const totalParams = data.totalParameters || 262;
+        const abnormalTotal = data.abnormalCount ?? 0;
 
         setPatientData(prev => ({
             ...prev,
@@ -393,32 +463,39 @@ Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pNam
                 ...(prev?.scan_data || {}),
                 electret_metrics: metricsToSet,
                 electret_patient_name: scannedNameFound || pName,
-                electret_scanned: true
+                electret_metadata: metadataObj,
+                electret_synthesis: synthesisList,
+                electret_scanned: true,
+                electret_skipped: false,
+                ...buildSubstepSyncPatch('ELECTRET')
             }
         }));
 
-        // INYECCIÓN ANTIGRAVITY: Despacho Global (SSOT)
+        // Despacho Global SSoTT preservando conteos exactos y lista de síntesis
         useClinicalGenome.getState().setElectretTelemetry({
             categories: metricsToSet,
             patientName: scannedNameFound || pName,
+            patientMetadata: metadataObj,
+            synthesisItems: synthesisList,
+            citationId: resolvedCitationId || null,
             isScanned: true,
-            totalParameters: data.totalParameters || 253,
-            abnormalCount: data.abnormalCount || 0
+            totalParameters: totalParams,
+            abnormalCount: abnormalTotal
         });
 
         setIsGlobalTyping?.(false);
         setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
 
-        const totalSys = Object.keys(metricsToSet || {}).length || 37;
-        const totalParams = data.totalParameters || 253;
+        const synText = synthesisList.length > 0 ? ` • **${synthesisList.length} hallazgos prioritarios de síntesis**` : '';
+        const dateNote = metadataObj?.scanDate ? ` (estudio del \`${metadataObj.scanDate}\`)` : '';
 
         const gateMsg = {
             role: 'assistant',
-            content: `### ⚡ Bioseñales Electret Integradas en Dashboard
+            content: `### ⚡ Bioseñales Electret integradas en su Dashboard
 
-✅ **${totalSys} Sistemas Biológicos (${totalParams} parámetros)** sincronizados y desplegados en las **Bento Cards Termodinámicas** del panel derecho.
+✅ **${totalSys} sistemas biológicos (${totalParams} parámetros evaluados, ${abnormalTotal} fuera de rango${synText})** sincronizados con paridad nativa${dateNote} y desplegados en el panel derecho.
 
-¿Confirma la sincronización para avanzar a la Auditoría Ocular?`,
+¿Confirma usted la sincronización para avanzar a la Auditoría Ocular?`,
             options: [
                 { label: "✅ Sí, proceder", value: "ELECTRET_CONFIRM" },
                 { label: "❌ Reevaluar Electret", value: "ELECTRET_RETRY" }
@@ -427,14 +504,64 @@ Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pNam
         setMessages(prev => [...prev, gateMsg]);
     };
 
+    const handleElectretHtmUpload = async (e) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+        stopAutoSync();
+        setIsUploading(true);
+        setIsGlobalTyping?.(true);
+
+        setMessages(prev => [
+            ...prev.filter(m => m.inputType !== 'status_progress'),
+            {
+                role: 'assistant',
+                content: `📄 *Decodificando reporte nativo **${file.name}** y verificando identidad biométrica NOM-004...*`,
+                inputType: 'status_progress'
+            }
+        ]);
+
+        try {
+            const formData = new FormData();
+            formData.append('htmFile', file);
+            formData.append('patientName', pName || '');
+            if (resolvedCitationId) formData.append('citationId', resolvedCitationId);
+
+            const res = await fetch(`${apiUrl}/api/bio/scan/electret/upload-htm`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.success) {
+                const err = new Error(data?.message || 'No fue posible procesar el archivo .htm seleccionado.');
+                err.data = data;
+                throw err;
+            }
+            processTelemetryData(data);
+        } catch (err) {
+            setIsGlobalTyping?.(false);
+            setMessages(prev => [
+                ...prev.filter(m => m.inputType !== 'status_progress'),
+                {
+                    role: 'assistant',
+                    content: `### 🛡️ ${err?.data?.error === 'CROSS_PATIENT_CONTAMINATION_PREVENTED' ? 'Alerta NOM-004: Incongruencia de identidad' : 'Aviso al procesar archivo .HTM'}\n\n${err.message}`,
+                    actions: getElectretActionButtons(),
+                    options: getElectretActionOptions()
+                }
+            ]);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     // ==========================================================================
     // 🛡️ SUTURA 5: CENTINELA AUTO-SYNC REACTIVO (POLLING ENCADENADO + ABORTCONTROLLER)
     // ==========================================================================
-    const startAutoSyncSentinel = () => {
+    const startAutoSyncSentinel = (sentinelOptions = {}) => {
         stopAutoSync();
         isAutoSyncActiveRef.current = true;
         setIsAutoSyncActive(true);
 
+        const minMtimeMs = Number(sentinelOptions.minMtimeMs) || 0;
         const targetPatientParam = encodeURIComponent(pName || '');
         let pollCount = 0;
         const maxPolls = 70; // ~4 minutos
@@ -450,20 +577,14 @@ Por favor, genere un estudio nuevo en el software Electret a nombre de **"${pNam
 
                 const timeoutMsg = {
                     role: 'assistant',
-                    content: `### ⏱️ Centinela en Pausa (Ventana de 4 minutos completada)
+                    content: `### ⏱️ Centinela en pausa (ventana de 4 minutos completada)
 
-No se detectó la finalización del reporte en el software Electret durante el periodo de vigilancia activa.
+No se detectó un informe nuevo generado durante el periodo de vigilancia activa.
 
-* **Si aún está realizando la prueba física:** Al concluir en Electret y hacer clic en *"Obtener Informe"*, presione **"🚀 Reactivar Vigilancia"**.
-* **O bien:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"**.`,
-                    actions: [
-                        { id: 'btn_launch_electret', label: '🚀 Reactivar Vigilancia', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
-                        { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
-                    ],
-                    options: [
-                        { label: "🚀 Reactivar Vigilancia", value: "LAUNCH_ELECTRET_APP" },
-                        { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
-                    ]
+* **Si ya generó o exportó el estudio:** Presione **"🔄 Sincronizar informe generado"** o **"📄 Cargar archivo .HTM"**.
+* **Si aún realiza la prueba:** Presione **"🚀 Iniciar escaneo en Electret"** al concluir.`,
+                    actions: getElectretActionButtons(),
+                    options: getElectretActionOptions()
                 };
                 setMessages(prev => [...prev, timeoutMsg]);
                 return;
@@ -473,14 +594,19 @@ No se detectó la finalización del reporte en el software Electret durante el p
             autoSyncAbortControllerRef.current = abortController;
 
             try {
-                const res = await fetch(`${apiUrl}/api/bio/scan/electret/sync?patientName=${targetPatientParam}&_t=${Date.now()}`, {
+                const res = await fetch(`${apiUrl}/api/bio/scan/electret/sync?patientName=${targetPatientParam}&forceFresh=true&_t=${Date.now()}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Cache-Control': 'no-cache, no-store, must-revalidate',
                         'Pragma': 'no-cache'
                     },
-                    body: JSON.stringify({ patientName: pName || '' }),
+                    body: JSON.stringify({
+                        patientName: pName || '',
+                        citationId: resolvedCitationId,
+                        forceFresh: true,
+                        minMtimeMs
+                    }),
                     signal: abortController.signal
                 });
 
@@ -499,17 +625,11 @@ No se detectó la finalización del reporte en el software Electret durante el p
 
                     const mismatchMsg = {
                         role: 'assistant',
-                        content: `### 🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB
+                        content: `### 🛡️ Alerta NOM-004: Incongruencia de identidad en escáner
 
-${data.message || `El escaneo detectado no corresponde al titular del expediente actual (${pName}). Por favor verifique el nombre en el software Electret y reintente.`}`,
-                        actions: [
-                            { id: 'btn_launch_electret', label: '🚀 Realizar Escaneo Electret', style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md', value: 'LAUNCH_ELECTRET_APP' },
-                            { id: 'btn_skip_electret', label: '⏩ Continuar sin Escáner Electret', style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all', value: 'ELECTRET_SKIP' }
-                        ],
-                        options: [
-                            { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
-                            { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
-                        ]
+${data.message || `El informe detectado no corresponde al titular del expediente actual (${pName}). Verifique el nombre en Electret y reintente.`}`,
+                        actions: getElectretActionButtons(),
+                        options: getElectretActionOptions()
                     };
                     setMessages(prev => [...prev, mismatchMsg]);
                     return;
@@ -539,65 +659,74 @@ ${data.message || `El escaneo detectado no corresponde al titular del expediente
         const isSkipIntent = lowerVal.includes('omitir') || lowerVal.includes('skip') || lowerVal === 'no';
 
         // ----------------------------------------------------------------------
-        // ETAPA 1: ELECTRET (BIOELÉCTRICO)
+        // ETAPA 1: ELECTRET (BIOELÉCTRICO — 100% REAL .HTM / CERO DATOS SINTÉTICOS)
         // ----------------------------------------------------------------------
+        if (value === 'UPLOAD_ELECTRET_HTM') {
+            document.getElementById('tilo-electret-htm-input')?.click();
+            return;
+        }
+
         if (value === 'LAUNCH_ELECTRET_APP') {
+            stopAutoSync();
             setIsGlobalTyping?.(true);
+
+            const scanStartedAtMs = Date.now() - 3000;
+            const resolvedAge = parseInt(patientData?.identificacion?.edad || patientData?.profile?.age || 45, 10) || 45;
+            const resolvedHeight = parseFloat(patientData?.vitals?.height || patientData?.talla || patientData?.biometrics?.height) || 172;
+            const resolvedWeight = parseFloat(patientData?.vitals?.weight || patientData?.peso || patientData?.biometrics?.weight) || 78;
 
             const launchMsg = {
                 role: 'assistant',
-                content: `### ⚡ Escaneo Bioeléctrico Directo en Curso (T.I.L.O. Hardware Interface)
+                content: `### 🚀 Escaneo bioeléctrico asistido en curso (Centinela activo)
 
-Tomando control del sensor USB cilíndrico (**VID_5608 PID_0808**)...
+Iniciando el software del analizador cuántico para **${pName}** (${resolvedHeight} cm, ${resolvedWeight} kg, ${resolvedAge} años)...
 
-* 🤲 Pídale a **${pName}** que sostenga firmemente los electrodos cilíndricos.
-* 🔌 Muestreando microvoltaje, contacto galvánico y bioimpedancia en tiempo real...`,
+1. Pídale a **${pName}** que sostenga firmemente el electrodo cilíndrico e inicie el test (60 s).
+2. Al concluir, haga clic en **"Guardar"** y **"Obtener Informe"** en Electret; el Centinela importará automáticamente el 100% del estudio real.
+3. *Si el informe ya fue generado previamente en este equipo, presione **"🔄 Sincronizar informe generado"** o **"📄 Cargar archivo .HTM"**.*`,
                 inputType: 'status_progress',
                 actions: [
                     {
-                        id: 'btn_launch_electret',
-                        label: '⏳ Muestreando Hardware...',
-                        style: 'bg-[#1C75BC] text-white opacity-70 cursor-wait font-medium px-4 py-2 rounded-lg transition-all shadow-md flex items-center gap-2',
-                        value: 'LAUNCH_ELECTRET_APP'
+                        id: 'btn_sync_electret_now',
+                        label: '🔄 Sincronizar informe generado',
+                        style: 'bg-[#1C75BC] text-white hover:bg-[#155A92] font-semibold px-4 py-2.5 min-h-[48px] rounded-xl transition-all shadow-sm flex items-center gap-2',
+                        value: 'SYNC_ELECTRET_HARDWARE'
+                    },
+                    {
+                        id: 'btn_upload_htm_live',
+                        label: '📄 Cargar archivo .HTM',
+                        style: 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 font-semibold px-4 py-2.5 min-h-[48px] rounded-xl transition-all flex items-center gap-2',
+                        value: 'UPLOAD_ELECTRET_HTM'
                     },
                     {
                         id: 'btn_skip_electret',
-                        label: '⏩ Continuar sin Escáner Electret',
-                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
+                        label: '⏩ Continuar sin escáner Electret',
+                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2.5 min-h-[48px] rounded-xl transition-all',
                         value: 'ELECTRET_SKIP'
                     }
                 ],
                 options: [
-                    { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
+                    { label: "🔄 Sincronizar informe generado", value: "SYNC_ELECTRET_HARDWARE" },
+                    { label: "📄 Cargar archivo .HTM", value: "UPLOAD_ELECTRET_HTM" },
+                    { label: "⏩ Continuar sin escáner Electret", value: "ELECTRET_SKIP" }
                 ]
             };
             setMessages(prev => [...prev, launchMsg]);
 
-            // Disparo de adquisición física directa en el hardware (sin abrir Electret)
-            fetch(`${apiUrl}/api/bio/scan/electret/direct-acquire`, {
+            fetch(`${apiUrl}/api/bio/scan/electret/launch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name: pName || patientData?.profile?.name || patientData?.identificacion?.nombreCompleto || 'Paciente',
-                    age: patientData?.identificacion?.edad || patientData?.profile?.age || 34,
-                    height: patientData?.biometrics?.height || 172,
-                    weight: patientData?.biometrics?.weight || 78,
-                    sex: patientData?.identificacion?.sexo || patientData?.profile?.sex || 'M',
-                    duration: 3.5
+                    name: pName || patientData?.profile?.name || patientData?.identificacion?.nombre || 'Paciente',
+                    age: resolvedAge,
+                    height: resolvedHeight,
+                    weight: resolvedWeight
                 })
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success && data.electret_metrics) {
-                    processTelemetryData(data);
-                } else {
-                    throw new Error(data.message || "Falla en adquisición directa");
-                }
-            })
-            .catch(err => {
-                console.warn("Direct acquire fallback to auto-sync:", err.message);
-                startAutoSyncSentinel();
-            });
+                .catch(err => console.warn('Aviso al lanzar puente RPA Electret:', err.message))
+                .finally(() => {
+                    startAutoSyncSentinel({ minMtimeMs: scanStartedAtMs });
+                });
 
             return;
         }
@@ -607,30 +736,9 @@ Tomando control del sensor USB cilíndrico (**VID_5608 PID_0808**)...
                 role: 'assistant',
                 content: `### 📡 Fase 18: Telemetría Bioeléctrica Cuántica (Electret)
 
-Para iniciar la toma con **${pName}**, seleccione una de las siguientes opciones:
-
-1. Presione **"🚀 Realizar Escaneo Electret"** para iniciar la aplicación en pantalla con **Centinela Auto-Sync** activado.
-2. Pídale a **${pName}** que sujete firmemente los electrodos cilíndricos del sensor.
-3. Ejecute la prueba (60s) en Electret, haga clic en **"Guardar"** y luego en **"Obtener Informe"**.
-4. *T.I.L.O. detectará y volcará los 450+ biomarcadores en su Dashboard de forma automática en cuanto el informe sea generado.*`,
-                actions: [
-                    {
-                        id: 'btn_launch_electret',
-                        label: '🚀 Realizar Escaneo Electret',
-                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
-                        value: 'LAUNCH_ELECTRET_APP'
-                    },
-                    {
-                        id: 'btn_skip_electret',
-                        label: '⏩ Continuar sin Escáner Electret',
-                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
-                        value: 'ELECTRET_SKIP'
-                    }
-                ],
-                options: [
-                    { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
-                    { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
-                ]
+Seleccione cómo desea integrar el estudio bioeléctrico de **${pName}**:`,
+                actions: getElectretActionButtons(),
+                options: getElectretActionOptions()
             };
             setMessages(prev => [...prev, instrMsg]);
             return;
@@ -640,30 +748,32 @@ Para iniciar la toma con **${pName}**, seleccione una de las siguientes opciones
             stopAutoSync();
             setIsGlobalTyping?.(true);
 
-            // 1. Iniciar estado de progreso de sincronización física
             const syncingMsg = {
                 role: 'assistant',
-                content: `🔄 *Consultando base de datos de Electret.exe y aplicando validación biométrica NOM-004...*`,
+                content: `🔄 *Buscando el informe .htm más reciente de **${pName}** y aplicando validación biométrica NOM-004...*`,
                 inputType: 'status_progress'
             };
             setMessages(prev => [...prev, syncingMsg]);
 
             const targetPatientParam = encodeURIComponent(pName || '');
 
-            // 2. Intentar la sincronización real con el endpoint protegido (Sutura 1: POST + Cache-Buster + Headers anti-caché)
-            fetch(`${apiUrl}/api/bio/scan/electret/sync?patientName=${targetPatientParam}&_t=${Date.now()}`, {
+            fetch(`${apiUrl}/api/bio/scan/electret/sync?patientName=${targetPatientParam}&forceFresh=true&_t=${Date.now()}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                     'Pragma': 'no-cache'
                 },
-                body: JSON.stringify({ patientName: pName || '' })
+                body: JSON.stringify({
+                    patientName: pName || '',
+                    citationId: resolvedCitationId,
+                    forceFresh: true
+                })
             })
             .then(async (res) => {
                 const data = await res.json().catch(() => null);
                 if (!res.ok || !data?.success) {
-                    const err = new Error(data?.message || "Error al sincronizar con el hardware escáner USB.");
+                    const err = new Error(data?.message || "No se localizó un informe .htm para este paciente.");
                     err.data = data;
                     throw err;
                 }
@@ -677,40 +787,19 @@ Para iniciar la toma con **${pName}**, seleccione una de las siguientes opciones
                 setMessages(prev => prev.filter(m => m.inputType !== 'status_progress'));
 
                 const errCode = err?.data?.error;
-                let errorTitle = '📡 Compuerta en Espera (NOM-004)';
-                let errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Presione **"🚀 Realizar Escaneo Electret"**, realice el test con el paciente sujetando los electrodos y haga clic en *"Obtener Informe"*.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
+                let errorTitle = '📡 Compuerta en espera de estudio real (NOM-004)';
+                let errorBody = `No se localizó en este equipo un informe \`.htm\` verificado a nombre de **${pName}**.\n\n* **Para realizar una nueva toma:** Presione **"🚀 Iniciar escaneo en Electret"**.\n* **Si exportó el archivo en otra carpeta:** Presione **"📄 Cargar archivo .HTM"** para seleccionarlo manualmente.`;
 
                 if (errCode === 'CROSS_PATIENT_CONTAMINATION_PREVENTED') {
-                    errorTitle = '🛡️ Alerta NOM-004: Incongruencia de Identidad en Escáner USB';
-                    errorBody = err?.data?.message || `El escaneo reciente detectado no corresponde al titular del expediente actual (${pName}). Por favor verifique el nombre en el software Electret y reintente.`;
-                } else if (errCode === 'NO_ACTIVE_STUDY' || errCode === 'NO_RECENT_SCAN' || errCode === 'SCAN_EXPIRED_OR_OBSOLETE') {
-                    errorTitle = '📡 Compuerta en Espera (NOM-004)';
-                    errorBody = `No se detectó un estudio generado en este momento para **${pName}** en el software Electret.\n\n* **Si va a realizar la prueba física:** Presione **"🚀 Realizar Escaneo Electret"**, realice el test con el paciente sujetando los electrodos y haga clic en *"Obtener Informe"*.\n* **Si no dispone del equipo en este momento:** Puede continuar la consulta médica seleccionando **"⏩ Continuar sin Escáner Electret"** (habilitará el Paso 2: Auditoría Visual Ocular).`;
+                    errorTitle = '🛡️ Alerta NOM-004: Incongruencia de identidad';
+                    errorBody = err?.data?.message || `El informe reciente detectado no corresponde al titular del expediente actual (${pName}).`;
                 }
 
                 const errorMsg = {
                     role: 'assistant',
-                    content: `### ${errorTitle}
-
-${errorBody}`,
-                    actions: [
-                        {
-                            id: 'btn_launch_electret',
-                            label: '🚀 Realizar Escaneo Electret',
-                            style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
-                            value: 'LAUNCH_ELECTRET_APP'
-                        },
-                        {
-                            id: 'btn_skip_electret',
-                            label: '⏩ Continuar sin Escáner Electret',
-                            style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
-                            value: 'ELECTRET_SKIP'
-                        }
-                    ],
-                    options: [
-                        { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
-                        { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
-                    ]
+                    content: `### ${errorTitle}\n\n${errorBody}`,
+                    actions: getElectretActionButtons(),
+                    options: getElectretActionOptions()
                 };
                 setMessages(prev => [...prev, errorMsg]);
             });
@@ -720,45 +809,28 @@ ${errorBody}`,
 
         if (value === 'ELECTRET_RETRY') {
             stopAutoSync();
-            // PROTOCOLO DE PURGA DE MEMORIA Y ESTADO GLOBAL
             setPatientData(prev => ({
                 ...prev,
                 scan_data: {
                     ...(prev?.scan_data || {}),
                     electret_metrics: null,
+                    electret_synthesis: null,
                     electret_scanned: false
                 }
             }));
             if (useClinicalGenome && useClinicalGenome.getState) {
                 useClinicalGenome.getState().clearElectretTelemetry();
             }
-            // 🛡️ NOM-004: Esterilización física inmediata de archivos residuales en disco
             fetch(`${apiUrl}/api/bio/scan/electret/sterilize`, { method: 'POST' }).catch(() => {});
 
             setCurrentStep('ELECTRET');
 
             const retryMsg = {
                 role: 'assistant',
-                content: `🔄 *Escáner Electret vaciado de memoria y listo para reevaluación.* Seleccione para iniciar la prueba física o continuar sin escáner:`,
+                content: `🔄 *Memoria bioeléctrica liberada y lista para nueva adquisición o carga de estudio real para **${pName}**:*`,
                 inputType: 'electret_scan_widget',
-                actions: [
-                    {
-                        id: 'btn_launch_electret',
-                        label: '🚀 Realizar Escaneo Electret',
-                        style: 'bg-[#1C75BC] text-white hover:bg-[#155d96] font-medium px-4 py-2 rounded-lg transition-all shadow-md shadow-blue-600/10 flex items-center gap-2',
-                        value: 'LAUNCH_ELECTRET_APP'
-                    },
-                    {
-                        id: 'btn_skip_electret',
-                        label: '⏩ Continuar sin Escáner Electret',
-                        style: 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium px-4 py-2 rounded-lg transition-all',
-                        value: 'ELECTRET_SKIP'
-                    }
-                ],
-                options: [
-                    { label: "🚀 Realizar Escaneo Electret", value: "LAUNCH_ELECTRET_APP" },
-                    { label: "⏩ Continuar sin Escáner Electret", value: "ELECTRET_SKIP" }
-                ]
+                actions: getElectretActionButtons(),
+                options: getElectretActionOptions()
             };
             setMessages(prev => [...prev, retryMsg]);
             return;
@@ -772,14 +844,15 @@ ${errorBody}`,
                     ...(prev?.scan_data || {}),
                     electret_metrics: null,
                     electret_scanned: false,
-                    electret_skipped: true
+                    electret_skipped: true,
+                    ...buildSubstepSyncPatch('OCULAR')
                 }
             }));
             setCurrentStep('OCULAR');
 
             const skipMsg = {
                 role: 'assistant',
-                content: `⚠️ **Escáner Bioeléctrico Omitido**: Se ha registrado en el expediente la ausencia de lecturas del hardware Electret. Procedemos con las pruebas complementarias de visión e imagen tisular.\n\n### 👁️ Paso 2: Auditoría Visual Ocular Binocular (Gemini Vision)\n\nIniciamos la evaluación de **Microcirculación Foveal, Oxigenación Tisular y Asimetría Vascular**.`,
+                content: `⚠️ **Escáner Bioeléctrico Omitido**: Se ha registrado en el expediente la ausencia de lecturas del hardware Electret. Procedemos con las pruebas complementarias de visión e imagen tisular.\n\n### 👁️ Paso 2: Auditoría Visual Ocular Binocular (Equipo en Acción®)\n\nIniciamos la evaluación de **Microcirculación epiescleral y bulbar, perfusión tisular y simetría binocular**.`,
                 inputType: 'camera_capture_widget',
                 context: 'ocular_scan',
                 actions: [
@@ -809,23 +882,33 @@ ${errorBody}`,
                                 (activeStep === 'ELECTRET' && (lowerVal === 'sí' || lowerVal === 'si' || lowerVal === 'yes' || lowerVal.includes('proceder')));
 
         if (isConfirmIntent) {
-            // INYECCIÓN ANTIGRAVITY: Despacho Global (SSOT) al confirmar
             if (patientData?.scan_data?.electret_metrics) {
+                const prevGenome = useClinicalGenome.getState().electretTelemetry || {};
                 useClinicalGenome.getState().setElectretTelemetry({
+                    ...prevGenome,
                     categories: patientData.scan_data.electret_metrics,
-                    patientName: pName,
+                    patientName: patientData?.scan_data?.electret_patient_name || pName,
+                    patientMetadata: patientData?.scan_data?.electret_metadata || prevGenome.patientMetadata || null,
+                    synthesisItems: patientData?.scan_data?.electret_synthesis || prevGenome.synthesisItems || [],
                     isScanned: true,
-                    totalParameters: 450,
-                    abnormalCount: 0
+                    totalParameters: prevGenome.totalParameters || 262,
+                    abnormalCount: prevGenome.abnormalCount ?? 0
                 });
             }
 
+            setPatientData(prev => ({
+                ...prev,
+                scan_data: {
+                    ...(prev?.scan_data || {}),
+                    ...buildSubstepSyncPatch('OCULAR')
+                }
+            }));
             setCurrentStep('OCULAR');
             const msgOcular = {
                 role: 'assistant',
-                content: `### 👁️ Paso 2: Auditoría Visual Ocular Binocular (Gemini Vision)
+                content: `### 👁️ Paso 2: Auditoría Visual Ocular Binocular (Equipo en Acción®)
 
-Iniciamos la evaluación de **Microcirculación Foveal, Oxigenación Tisular y Asimetría Vascular**. 
+Iniciamos la evaluación de **Microcirculación epiescleral y bulbar, perfusión tisular y simetría binocular**. 
 
 Para realizar el análisis binocular simultáneo, capturaremos secuencialmente la fotografía de su **Ojo Derecho** y posteriormente su **Ojo Izquierdo**.
 
@@ -878,16 +961,16 @@ Por favor presione el botón a continuación para abrir el sensor óptico del **
                 scan_data: {
                     ...(prev?.scan_data || {}),
                     ocular_metrics: 'OMITTED',
-                    active_substep: 'LINGUAL'
+                    ...buildSubstepSyncPatch('LINGUAL')
                 }
             }));
             setCurrentStep('LINGUAL');
 
             const msgLingual = {
                 role: 'assistant',
-                content: `### 👅 Paso 3: Evaluación Lingual (Topografía CYTOS)
+                content: `### 👅 Paso 3: Evaluación Lingual (Glosodiagnóstico Funcional Equipo en Acción®)
 
-Procedemos al análisis de **Saburra Tisular e Hidratación Digestiva**. A través del espectro topográfico lingual, Gemini 2.5 Flash evalúa la densidad de la saburra y la integridad de las papilas para correlacionar el estado del microbioma gastrointestinal.
+Procedemos al análisis de **Saburra Tisular, Venas Sublinguales e Hidratación Mucosa**. A través de la topografía glosómica dual (Cara Dorsal y Cara Ventral), el Motor de Visión Clínica de **Equipo en Acción®** evalúa la densidad de la biopelícula y la integridad de las papilas para correlacionar el estado del microbioma digestivo.
 
 Por favor presione el botón para capturar o seleccionar la fotografía de la superficie lingual expuesta.`,
                 inputType: 'camera_capture_widget',
@@ -945,12 +1028,19 @@ Por favor presione el botón para capturar o seleccionar la fotografía de la su
         }
 
         if (value === 'OCULAR_CONFIRM' || (activeStep === 'OCULAR' && (lowerVal.includes('sí, es correcta') || lowerVal.includes('si, es correcta') || lowerVal.includes('confirmar telemetría ocular')))) {
+            setPatientData(prev => ({
+                ...prev,
+                scan_data: {
+                    ...(prev?.scan_data || {}),
+                    ...buildSubstepSyncPatch('LINGUAL')
+                }
+            }));
             setCurrentStep('LINGUAL');
             const msgLingual = {
                 role: 'assistant',
-                content: `### 👅 Paso 3: Evaluación Lingual (Topografía CYTOS)
+                content: `### 👅 Paso 3: Evaluación Lingual (Glosodiagnóstico Funcional Equipo en Acción®)
 
-Procedemos al análisis de **Saburra Tisular e Hidratación Digestiva**. A través del espectro topográfico lingual, Gemini 2.5 Flash evalúa la densidad de la saburra y la integridad de las papilas para correlacionar el estado del microbioma gastrointestinal.
+Procedemos al análisis de **Saburra Tisular, Venas Sublinguales e Hidratación Mucosa**. A través de la topografía glosómica dual (Cara Dorsal y Cara Ventral), el Motor de Visión Clínica de **Equipo en Acción®** evalúa la densidad de la biopelícula y la integridad de las papilas para correlacionar el estado del microbioma digestivo.
 
 Por favor presione el botón para capturar o seleccionar la fotografía de la superficie lingual expuesta.`,
                 inputType: 'camera_capture_widget',
@@ -979,9 +1069,10 @@ Por favor presione el botón para capturar o seleccionar la fotografía de la su
         }
 
         // ----------------------------------------------------------------------
-        // ETAPA 3: LENGUA (CYTOS)
+        // ETAPA 3: LENGUA (GLOSODIAGNÓSTICO FUNCIONAL EQUIPO EN ACCIÓN®)
         // ----------------------------------------------------------------------
         if (value === 'START_LINGUAL_SCAN' || lowerVal.includes('capturar superficie lingual') || lowerVal.includes('capturar lengua')) {
+            setLingualActiveTab(lingualFile && !ventralFile ? 'ventral' : 'dorsal');
             setActiveModal('LINGUAL');
             return;
         }
@@ -992,7 +1083,7 @@ Por favor presione el botón para capturar o seleccionar la fotografía de la su
                 scan_data: {
                     ...(prev?.scan_data || {}),
                     lingual_metrics: 'OMITTED',
-                    active_substep: 'EXTERNAL'
+                    ...buildSubstepSyncPatch('EXTERNAL')
                 }
             }));
             setCurrentStep('EXTERNAL');
@@ -1029,33 +1120,59 @@ Entramos a la fase de **Validación Bioquímica Exógena**. Si dispone de estudi
         }
 
         if (value === 'LINGUAL_RETRY' || (activeStep === 'LINGUAL' && (lowerVal.includes('re-capturar lengua') || lowerVal.includes('recapturar lengua')))) {
-            setLingualFile(null);
-            setLingualPreview(null);
-            setVentralFile(null);
-            setVentralPreview(null);
-            setPatientData(prev => ({
-                ...prev,
-                scan_data: {
-                    ...(prev?.scan_data || {}),
-                    lingual_metrics: null
+            try {
+                if (lingualPreview && typeof URL?.revokeObjectURL === 'function') {
+                    URL.revokeObjectURL(lingualPreview);
                 }
-            }));
-            setCurrentStep('LINGUAL');
+                if (ventralPreview && typeof URL?.revokeObjectURL === 'function') {
+                    URL.revokeObjectURL(ventralPreview);
+                }
+                setLingualFile(null);
+                setLingualPreview(null);
+                setVentralFile(null);
+                setVentralPreview(null);
+                setLingualActiveTab('dorsal');
+                setPatientData(prev => ({
+                    ...prev,
+                    scan_data: {
+                        ...(prev?.scan_data || {}),
+                        lingual_metrics: null,
+                        ...buildSubstepSyncPatch('LINGUAL')
+                    }
+                }));
+                setCurrentStep('LINGUAL');
 
-            const retryMsg = {
-                role: 'assistant',
-                content: `🔄 *Evaluación lingual restablecida y purgada de memoria.* Realice nuevamente la captura de la superficie lingual.`,
-                inputType: 'camera_capture_widget',
-                context: 'lingual_scan',
-                options: [
-                    { label: "📷 Capturar Superficie Lingual", value: "START_LINGUAL_SCAN" }
-                ]
-            };
-            setMessages(prev => [...prev, retryMsg]);
+                const retryMsg = {
+                    role: 'assistant',
+                    content: `🔄 *Evaluación lingual restablecida y purgada de memoria.* Realice nuevamente la captura de la superficie lingual (Cara Dorsal y Cara Ventral).`,
+                    inputType: 'camera_capture_widget',
+                    context: 'lingual_scan',
+                    options: [
+                        { label: "📷 Capturar Superficie Lingual", value: "START_LINGUAL_SCAN" },
+                        { label: "⏩ Omitir esta prueba", value: "LINGUAL_SKIP" }
+                    ]
+                };
+                setMessages(prev => [...prev, retryMsg]);
+            } catch (retryErr) {
+                console.warn('⚠️ [LINGUAL_RETRY Safe Catch]:', retryErr?.message || retryErr);
+                setLingualFile(null);
+                setLingualPreview(null);
+                setVentralFile(null);
+                setVentralPreview(null);
+                setLingualActiveTab('dorsal');
+                setActiveModal('LINGUAL');
+            }
             return;
         }
 
         if (value === 'LINGUAL_CONFIRM' || (activeStep === 'LINGUAL' && (lowerVal.includes('confirmar telemetría lingual') || lowerVal.includes('confirmar lengua')))) {
+            setPatientData(prev => ({
+                ...prev,
+                scan_data: {
+                    ...(prev?.scan_data || {}),
+                    ...buildSubstepSyncPatch('EXTERNAL')
+                }
+            }));
             setCurrentStep('EXTERNAL');
             const msgEstudios = {
                 role: 'assistant',
@@ -1102,7 +1219,8 @@ Entramos a la fase de **Validación Bioquímica Exógena**. Si dispone de estudi
                 ...prev,
                 scan_data: {
                     ...(prev?.scan_data || {}),
-                    external_metrics: 'OMITTED'
+                    external_metrics: 'OMITTED',
+                    ...buildSubstepSyncPatch('EXTERNAL')
                 }
             }));
 
@@ -1150,6 +1268,13 @@ Entramos a la fase de **Validación Bioquímica Exógena**. Si dispone de estudi
         }
 
         if (value === 'EXTERNAL_CONFIRM' || (activeStep === 'EXTERNAL' && (lowerVal.includes('sí, es correcto') || lowerVal.includes('si, es correcto')))) {
+            setPatientData(prev => ({
+                ...prev,
+                scan_data: {
+                    ...(prev?.scan_data || {}),
+                    ...buildSubstepSyncPatch('VISUAL')
+                }
+            }));
             setCurrentStep('VISUAL');
             const msgEvidencia = {
                 role: 'assistant',
@@ -1197,7 +1322,8 @@ Seleccione el botón a continuación para tomar o adjuntar la fotografía somát
                 ...prev,
                 scan_data: {
                     ...(prev?.scan_data || {}),
-                    visual_metrics: 'OMITTED'
+                    visual_metrics: 'OMITTED',
+                    ...buildSubstepSyncPatch('VISUAL')
                 }
             }));
 
@@ -1245,14 +1371,21 @@ Seleccione el botón a continuación para tomar o adjuntar la fotografía somát
         }
 
         if (value === 'VISUAL_CONFIRM' || (activeStep === 'VISUAL' && (lowerVal.includes('sí, es correcta') || lowerVal.includes('si, es correcta')))) {
+            setPatientData(prev => ({
+                ...prev,
+                scan_data: {
+                    ...(prev?.scan_data || {}),
+                    ...buildSubstepSyncPatch('FINAL_SEAL')
+                }
+            }));
             setCurrentStep('FINAL_SEAL');
             const finalSealMsg = {
                 role: 'assistant',
                 content: `### 🔒 Evaluación Multimodal Fase 18 Completa
 
-* ✅ **1. Escáner Electret**: Bioseñales verificadas (40+ Sistemas biológicos).
+* ✅ **1. Escáner Electret**: Bioseñales verificadas (37 Sistemas biológicos).
 * ✅ **2. Auditoría Ocular**: Análisis binocular en tiempo real completado.
-* ✅ **3. Evaluación Lingual**: Saburra y textura tisular CYTOS analizada.
+* ✅ **3. Evaluación Lingual**: Topografía glosómica dorsal y sublingual integrada.
 * ✅ **4. Estudios Externos**: Biomarcadores numéricos extraídos vía OCR.
 * ✅ **5. Evidencia Visual**: Foto-documentación completada.
 
@@ -1281,7 +1414,7 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
     };
 
     // ==========================================================================
-    // 🌐 HANDLERS DE SUBIDA MULTIPART A BACKEND (DATOS REALES & GEMINI VISION)
+    // 🌐 HANDLERS DE SUBIDA MULTIPART A BACKEND (DATOS REALES • EQUIPO EN ACCIÓN®)
     // ==========================================================================
     // 🛡️ TROMBOSIS DE RED PREVENTIVA: Compresión ligera en HTML5 Canvas antes del envío (< 1.5MB por foto)
     const compressImageForTelemetry = (file, maxWidth = 1600, maxHeight = 1600, quality = 0.85) => {
@@ -1332,13 +1465,13 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
         setIsUploading(true);
 
         const progressMessages = [
-            "👁️ Analizando microvasculatura conjuntival y epiescleral...",
-            "🩸 Evaluando espectrometría tarsal y hemoglobina tisular...",
-            "🫀 Mapeando calibre arteriolar, cruces vasculares y arco senil...",
-            "🔬 Evaluando biomarcadores glucémicos y microangiopatía...",
-            "⏳ Calculando reloj de edad biológica ocular y senescencia...",
-            "🌊 Inspeccionando edema infraorbitario y cromatismo escleral...",
-            "🛡️ Integrando síntesis de salud estructural y correlación binocular..."
+            "👁️ Analizando microcirculación epiescleral y bulbar...",
+            "🔬 Verificando integridad y perfusión conjuntival...",
+            "🫀 Mapeando calibre vascular epiescleral y halo corneal...",
+            "🧬 Evaluando indicadores morfológicos de Eco Metabólico...",
+            "⏳ Calculando reloj de edad biológica ocular y resiliencia endotelial...",
+            "🌊 Inspeccionando región periorbitaria y estroma escleral...",
+            "🛡️ Integrando síntesis estructural y simetría binocular..."
         ];
         let msgIdx = 0;
         setTelemetryProgressMsg(progressMessages[0]);
@@ -1358,7 +1491,7 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
                 formData.append('leftEye', compLeft);
             }
             formData.append('age', patientData?.profile?.age || patientData?.demographics?.age || patientData?.identificacion?.edad || 34);
-            formData.append('sex', patientData?.demographics?.gender || 'M');
+            formData.append('sex', resolveBiologicalSexCode(patientData));
 
             const response = await fetch(`${apiUrl}/api/bio/scan/binocular-ocular-scan`, {
                 method: 'POST',
@@ -1376,20 +1509,24 @@ Presione el botón a continuación para sellar definitivamente las mediciones y 
                 scan_data: {
                     ...(prev?.scan_data || {}),
                     ocular_metrics: data.ocular_metrics || data.ocular_audit,
-                    correlacion_multimodal: data.correlacion_multimodal || prev?.scan_data?.correlacion_multimodal
+                    correlacion_multimodal: data.correlacion_multimodal || prev?.scan_data?.correlacion_multimodal,
+                    ...buildSubstepSyncPatch('OCULAR')
                 }
             }));
 
             const p = data.pilares || {};
             const relojOcular = p.edad_biologica_longevidad?.edad_biologica_ocular || patientData?.profile?.age || patientData?.demographics?.age || '34';
-            const gapOcular = p.edad_biologica_longevidad?.retinal_age_gap || '0 años';
+            const difOcular = String(p.edad_biologica_longevidad?.retinal_age_gap || '0 años').replace(/^Gap:\s*/i, '');
+            const odConstancia = rightEyeFile ? `Capturado (\`${rightEyeFile.name || 'OD.jpg'}\`)` : 'No aportado';
+            const oiConstancia = leftEyeFile ? `Capturado (\`${leftEyeFile.name || 'OI.jpg'}\`)` : 'No aportado';
             const gateMsg = {
                 role: 'assistant',
                 content: `### 👁️ Telemetría Ocular Binocular Integrada en Dashboard
 
-✅ **6 Biomarcadores Oculómicos Cuantitativos** y el **Reloj Ocular (${relojOcular} años · Gap: ${gapOcular})** han sido desplegados en el panel derecho (**Auditoría Visual Ocular Binocular**).
+* ✅ **Constancia Binocular NOM-004:** Ojo Derecho (**OD**: ${odConstancia}) y Ojo Izquierdo (**OI**: ${oiConstancia}).
+* ✅ **6 Biomarcadores Oculómicos** y **Reloj Ocular (${relojOcular} años · Diferencia: ${difOcular})** desplegados en el panel derecho (**Auditoría Visual Ocular Binocular**).
 
-Revise las tarjetas termodinámicas en su Dashboard. ¿Confirma los hallazgos para avanzar a la Evaluación Lingual?`,
+Revise las tarjetas en su Dashboard. ¿Confirma usted los hallazgos para avanzar a la Evaluación Lingual?`,
                 options: [
                     { label: "✅ Sí, es correcta", value: "OCULAR_CONFIRM" },
                     { label: "❌ Re-capturar Ojos", value: "OCULAR_RETRY" }
@@ -1420,7 +1557,7 @@ Revise las tarjetas termodinámicas en su Dashboard. ¿Confirma los hallazgos pa
             'Examinando integridad de papilas y micro-fisuras...',
             'Mapeando angioarquitectura y venas sublinguales...',
             'Calculando reloj de edad biológica mucosal...',
-            'Integrando fenotipo funcional con Gemini Vision...'
+            'Integrando fenotipo funcional en el Motor de Visión Clínica Equipo en Acción®...'
         ];
         let msgIdx = 0;
         const progressInterval = setInterval(() => {
@@ -1439,7 +1576,7 @@ Revise las tarjetas termodinámicas en su Dashboard. ¿Confirma los hallazgos pa
                 formData.append('ventralImage', compVentral);
             }
             formData.append('age', patientData?.profile?.age || patientData?.demographics?.age || patientData?.identificacion?.edad || 34);
-            formData.append('sex', patientData?.demographics?.gender || 'M');
+            formData.append('sex', resolveBiologicalSexCode(patientData));
 
             const response = await fetch(`${apiUrl}/api/bio/scan/lingual-scan`, {
                 method: 'POST',
@@ -1479,17 +1616,27 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                 scan_data: {
                     ...(prev?.scan_data || {}),
                     lingual_metrics: data.lingual_metrics || data.lingual_topography,
-                    correlacion_multimodal: data.correlacion_multimodal || prev?.scan_data?.correlacion_multimodal
+                    correlacion_multimodal: data.correlacion_multimodal || prev?.scan_data?.correlacion_multimodal,
+                    ...buildSubstepSyncPatch('LINGUAL')
                 }
             }));
+
+            const dorsalConstancia = lingualFile ? `Capturada (\`${lingualFile.name || 'Dorsal.jpg'}\`)` : 'No aportada';
+            const ventralConstancia = ventralFile ? `Capturada (\`${ventralFile.name || 'Ventral.jpg'}\`)` : 'No aportada';
+            const modoLingualLabel = lingualFile && ventralFile
+                ? 'Toma Dual Completa (Dorsal y Ventral)'
+                : lingualFile
+                    ? 'Toma Unilateral Dorsal'
+                    : 'Toma Unilateral Ventral';
 
             const gateMsg = {
                 role: 'assistant',
                 content: `### 👅 Telemetría Lingual Integrada en Dashboard
 
-✅ **6 Ejes Glosómicos (Dorsal y Sublingual)** han sido desplegados en el panel derecho (**Evaluación Lingual CYTOS**).
+* ✅ **Constancia Glosómica NOM-004 (${modoLingualLabel}):** Cara Dorsal (${dorsalConstancia}) y Cara Ventral Sublingual (${ventralConstancia}).
+* ✅ **6 Ejes Glosómicos** desplegados en el panel derecho (**Topografía Lingual de 6 Ejes**).
 
-¿Confirma los hallazgos en el Dashboard para avanzar a Estudios de Laboratorio?`,
+¿Confirma usted los hallazgos en el Dashboard para avanzar a Estudios de Laboratorio?`,
                 options: [
                     { label: "✅ Confirmar Telemetría Lingual", value: "LINGUAL_CONFIRM" },
                     { label: "❌ Re-capturar Lengua", value: "LINGUAL_RETRY" }
@@ -1540,7 +1687,8 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                         totalParameters: totalParams,
                         abnormalCount: totalAlerts,
                         files: extMetrics.files || []
-                    }
+                    },
+                    ...buildSubstepSyncPatch('EXTERNAL')
                 },
                 lab_results: extMetrics.biomarkers || extMetrics.labs || prev.lab_results
             }));
@@ -1615,9 +1763,10 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                         status: 'COMPLETE',
                         severity: data.severity || 'LOW',
                         clinical_flags: data.clinical_flags || [],
-                        findings: data.findings || 'Exploración morfológica somática procesada por Gemini Vision.',
+                        findings: data.findings || 'Exploración morfológica somática procesada por el Motor de Visión Clínica Equipo en Acción®.',
                         items: resolvedItems
-                    }
+                    },
+                    ...buildSubstepSyncPatch('VISUAL')
                 }
             }));
 
@@ -1625,9 +1774,9 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                 role: 'assistant',
                 content: `### 📸 Evidencia Visual Somática Procesada
 
-✅ **${resolvedItems.length} Fotografía(s) Somática(s)** analizadas por Gemini Vision y desplegadas en las **Bento Cards Clínicas** del panel derecho.
+✅ **${resolvedItems.length} Fotografía(s) Somática(s)** analizadas por el Motor de Visión Clínica **Equipo en Acción®** y desplegadas en las **Bento Cards Clínicas** del panel derecho.
 
-¿Confirma que la evaluación acumulada es verídica y completa?`,
+¿Confirma usted que la evaluación acumulada es verídica y completa?`,
                 options: [
                     { label: "✅ Sí, es correcta", value: "VISUAL_CONFIRM" },
                     { label: "❌ Re-capturar Evidencia", value: "VISUAL_RETRY" }
@@ -1666,6 +1815,14 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
 
     return (
         <>
+            <input
+                id="tilo-electret-htm-input"
+                type="file"
+                accept=".htm,.html"
+                className="hidden"
+                onClick={(e) => { e.target.value = ''; }}
+                onChange={handleElectretHtmUpload}
+            />
             {activeModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 border border-slate-200 font-sans space-y-4">
@@ -1726,6 +1883,9 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                                     } else {
                                                         setLingualFile(file);
                                                         setLingualPreview(URL.createObjectURL(file));
+                                                        if (!ventralFile) {
+                                                            setLingualActiveTab('ventral');
+                                                        }
                                                     }
                                                     stopLiveCamera();
                                                 } else if (activeModal === 'VISUAL_SOMATIC') {
@@ -1882,7 +2042,7 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                     <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-left space-y-2 animate-in fade-in">
                                         <div className="flex items-center gap-2">
                                             <div className="w-3.5 h-3.5 border-2 border-[#1C75BC] border-t-transparent rounded-full animate-spin"></div>
-                                            <span className="text-xs font-bold text-blue-900 dark:text-blue-200">Inferencia Oculómica en Curso (Gemini 2.5 Flash)</span>
+                                            <span className="text-xs font-bold text-blue-900 dark:text-blue-200">Inferencia Oculómica en Curso (Equipo en Acción®)</span>
                                         </div>
                                         <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium">
                                             {telemetryProgressMsg || 'Iniciando escaneo óptico multimodal...'}
@@ -1908,12 +2068,12 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                             </div>
                         )}
 
-                        {/* CONTENIDO MODAL LENGUA (DUAL GLOSÓMICA: DORSAL & VENTRAL CON SUTURA ÓPTICA) */}
+                        {/* CONTENIDO MODAL LENGUA (DUAL GLOSÓMICA: DORSAL Y VENTRAL CON SUTURA ÓPTICA) */}
                         {activeModal === 'LINGUAL' && !useLiveCamera && (
                             <div className="space-y-4">
                                 <div className="text-center space-y-1">
                                     <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                        Auditoría Glosómica de 6 Ejes (Cara Dorsal & Ventral Sublingual)
+                                        Auditoría Glosómica de 6 Ejes (Cara Dorsal y Ventral Sublingual)
                                     </p>
                                     <p className="text-[11px] text-slate-500">
                                         Capture o adjunte la superficie superior (saburra) y/o la cara inferior (venas sublinguales).
@@ -1960,7 +2120,7 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                 <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-3 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
                                     <div className="flex items-center justify-between">
                                         <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                                            {lingualActiveTab === 'dorsal' ? 'Dorso (Saburra, Fisuras & Papilas)' : 'Ventral (Venas Raninas & Estasis)'}
+                                            {lingualActiveTab === 'dorsal' ? 'Dorso (Saburra, Fisuras y Papilas)' : 'Ventral (Venas Raninas y Estasis)'}
                                         </span>
                                         {(lingualActiveTab === 'dorsal' ? lingualFile : ventralFile) && (
                                             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
@@ -1980,10 +2140,12 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                         <label className="py-2.5 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer">
                                             <span>📁 Archivo</span>
                                             <input 
+                                                key={`input-lingual-${lingualActiveTab}`}
                                                 type="file" 
                                                 accept="image/*" 
+                                                onClick={(e) => { e.target.value = ''; }}
                                                 onChange={(e) => {
-                                                    const file = e.target.files[0];
+                                                    const file = e.target.files?.[0];
                                                     if (file) {
                                                         if (lingualActiveTab === 'ventral') {
                                                             setVentralFile(file);
@@ -1991,6 +2153,9 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                                         } else {
                                                             setLingualFile(file);
                                                             setLingualPreview(URL.createObjectURL(file));
+                                                            if (!ventralFile) {
+                                                                setLingualActiveTab('ventral');
+                                                            }
                                                         }
                                                     }
                                                 }}
@@ -2050,7 +2215,7 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                     <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-xl space-y-1.5 animate-in fade-in">
                                         <div className="flex items-center gap-2">
                                             <div className="w-2.5 h-2.5 rounded-full bg-[#1C75BC] animate-ping"></div>
-                                            <span className="text-xs font-bold text-blue-900 dark:text-blue-200">Inferencia Glosómica en Curso (Gemini Vision)</span>
+                                            <span className="text-xs font-bold text-blue-900 dark:text-blue-200">Inferencia Glosómica en Curso (Equipo en Acción®)</span>
                                         </div>
                                         <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium">
                                             {telemetryProgressMsg || 'Iniciando glosodiagnóstico funcional...'}
@@ -2212,7 +2377,7 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                                     <button
                                                         type="button"
                                                         onClick={() => setSomaticFiles(prev => prev.filter((_, i) => i !== idx))}
-                                                        className="absolute -top-1.5 -right-1.5 bg-[#E30613] hover:bg-red-700 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center font-bold shadow-sm cursor-pointer"
+                                                        className="absolute -top-1.5 -right-1.5 bg-[#B70E0C] hover:bg-red-800 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center font-bold shadow-sm cursor-pointer"
                                                         title="Quitar esta fotografía"
                                                     >
                                                         ✕
@@ -2230,7 +2395,7 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                             {isUploading ? (
                                                 <>
                                                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                    <span>Analizando {somaticFiles.length} Fotografía(s) en Gemini Vision...</span>
+                                                    <span>Analizando {somaticFiles.length} Fotografía(s) en Equipo en Acción®...</span>
                                                 </>
                                             ) : `📸 Confirmar Registro Somático (${somaticFiles.length} Foto${somaticFiles.length > 1 ? 's' : ''})`}
                                         </button>

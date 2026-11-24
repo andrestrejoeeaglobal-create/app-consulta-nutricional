@@ -270,10 +270,10 @@ export const MedicalDashboard = ({
         childNotes: false,
         childInterventionPlan: false,
 
-        parentCalendar: false,
-        childMetabolicClock: false,
-        childExecutionLogistics: false,
-        childEvolutionRoute: false
+        parentCalendar: true,
+        childMetabolicClock: true,
+        childExecutionLogistics: true,
+        childEvolutionRoute: true
     });
     const toggleSection = (section) => {
         setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -494,7 +494,7 @@ export const MedicalDashboard = ({
                         parentLifestyle: false, childActivity: false,
                         parentNutrition: false, childPreferences: false, childChrononutrition: false, childLogistics: false, childFfq: false,
                         parentDiagnosis: false, childDiagnosisAbcd: false, childGoldArchitecture: false, childNotes: false, childInterventionPlan: false,
-                        parentCalendar: false, childMetabolicClock: false, childExecutionLogistics: false, childEvolutionRoute: false,
+                        parentCalendar: true, childMetabolicClock: true, childExecutionLogistics: true, childEvolutionRoute: true,
                         // Abrimos los que corresponden
                         [targetParent]: true,
                         ...(targetChild ? { [targetChild]: true } : {}),
@@ -507,11 +507,14 @@ export const MedicalDashboard = ({
 
         // --- SCROLL & HIGHLIGHT ---
         if (targetCardId) {
-            console.log(`[Dashboard] Scrolls to: ${targetCardId}`);
             // Small delay to allow Accordion animation to start/finish
             setTimeout(() => {
-                const element = document.getElementById(targetCardId) || 
-                                (targetCardId === 'card-motivo' ? document.getElementById('accordion-motivo') : null);
+                const element =
+                    document.getElementById(targetCardId) ||
+                    (targetCardId === 'card-motivo' ? document.getElementById('accordion-motivo') : null) ||
+                    (targetCardId === 'card-diagnosis'
+                        ? (document.getElementById('card-biosecurity-semaphore') || document.getElementById('card-gold-architecture'))
+                        : null);
                 if (element) {
                     const scrollContainer = element.closest('.overflow-y-auto') || element.closest('[class*="overflow-y-auto"]');
                     if (scrollContainer) {
@@ -532,7 +535,10 @@ export const MedicalDashboard = ({
                         element.classList.remove('ring-4', 'ring-blue-300', 'ring-offset-2');
                     }, 2000);
                 } else {
-                    console.warn(`[Dashboard] Target element ${targetCardId} not found in DOM.`);
+                    const fallbackScroll = document.querySelector('[data-dashboard-scroll="true"]') || document.querySelector('.overflow-y-auto');
+                    if (fallbackScroll && typeof fallbackScroll.scrollTo === 'function') {
+                        fallbackScroll.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
                 }
             }, 300);
         }

@@ -1,25 +1,38 @@
 /**
  * Motor Universal de Ingesta y Parseo de Telemetría Electret (Servidor)
- * Ecosistema T.I.L.O. - Cumplimiento NOM-004-SSA3-2012
+ * Ecosistema T.I.L.O. - Cumplimiento NOM-004-SSA3-2012 y Constitución Sinergix v2.0.2
  */
 
 const cheerio = require('cheerio');
 const { sanitizeClinicalSpanish } = require('./clinicalTextSanitizer');
 
 /**
- * Normaliza cualquier cadena eliminando acentos, caracteres invisibles (&nbsp;), 
+ * Colapsa saltos de línea, tabuladores y espacios múltiples (incluyendo &nbsp;).
+ * @param {string} str
+ * @returns {string}
+ */
+function collapseWhitespace(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[\r\n\t]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Normaliza cualquier cadena eliminando acentos, caracteres invisibles (&nbsp;),
  * saltos de línea y formateando a snake_case / slug canónico.
- * @param {string} str 
+ * @param {string} str
  * @returns {string}
  */
 function normalizeKey(str) {
     if (!str) return '';
-    return String(str)
-        .replace(/&nbsp;/g, ' ')
-        .replace(/[\r\n\t]+/g, ' ')
+    return collapseWhitespace(str)
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '') // Elimina diacríticos/acentos
-        .replace(/[^\w\s-]/g, '') // Quita caracteres especiales manteniendo guiones y espacios
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w\s-]/g, '')
         .trim()
         .toLowerCase()
         .replace(/\s+/g, '_');
@@ -27,11 +40,10 @@ function normalizeKey(str) {
 
 /**
  * Normaliza nombres clínicos para cotejo biométrico NOM-004.
- * Convierte a minúsculas, elimina acentos y diacríticos, y limpia espacios extras.
  */
 function normalizeClinicalName(name) {
     if (!name) return '';
-    return String(name)
+    return collapseWhitespace(name)
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
@@ -45,7 +57,8 @@ function normalizeClinicalName(name) {
  */
 function parseLocalDate(dateStr) {
     if (!dateStr) return null;
-    const parts = String(dateStr).trim().split(/[\sT]+/);
+    const clean = collapseWhitespace(dateStr);
+    const parts = clean.split(/[\sT]+/);
     if (parts.length >= 2) {
         const dParts = parts[0].split(/[/.-]/);
         const tParts = parts[1].split(':');
@@ -66,20 +79,20 @@ function parseLocalDate(dateStr) {
             return new Date(year, month, day, hours, minutes, seconds);
         }
     }
-    const d = new Date(dateStr);
+    const d = new Date(clean);
     return isNaN(d.getTime()) ? null : d;
 }
 
 /**
  * Convierte cualquier representación de número a float puro.
- * Reemplaza comas por puntos, maneja nulos, undefined y cadenas corruptas.
- * @param {any} val 
+ * Reemplaza comas por puntos, maneja nulos, undefined y cadenas cualitativas.
+ * @param {any} val
  * @returns {number|null}
  */
 function cleanFloat(val) {
     if (val === null || val === undefined) return null;
-    const str = String(val).trim().replace(',', '.');
-    // Extraer patrones numéricos flotantes (ej. "1.574", "-0.45", "33%")
+    const str = collapseWhitespace(val).replace(',', '.');
+    if (!str || /^sin\s+direcci/i.test(str) || /^[+-]+$/.test(str)) return null;
     const match = str.match(/-?\d+(?:\.\d+)?/);
     if (!match) return null;
     const num = parseFloat(match[0]);
@@ -87,43 +100,125 @@ function cleanFloat(val) {
 }
 
 /**
- * Evalúa el estado biosemántico del parámetro basado en la imagen del reporte o desviación respecto al rango.
- * @param {string} imgSrc 
- * @param {any} val 
- * @param {string} ref 
- * @returns {string} 'NORMAL' | 'ANORMAL LEVE' | 'ANORMAL MODERADO' | 'ANORMAL SEVERO'
+ * Detecta si un bloque de categorías proviene del antiguo motor sintético QuantumResonanceEngine
+ * (firma inequívoca: body_composition con Clasificación Componencial = 1.000 e ICW = 0.000).
+ * @param {object} categories
+ * @returns {boolean}
+ */
+function isSyntheticElectretPayload(categories) {
+    if (!categories || typeof categories !== 'object') return false;
+    const bc = categories.body_composition;
+    if (!bc) return false;
+    const items = Array.isArray(bc.items) ? bc.items : Object.values(bc.items || bc);
+    if (!Array.isArray(items) || items.length === 0) return false;
+    const hasFakeHeader = items.some((i) =>
+        /clasificaci[oó]n\s+componencial/i.test(String(i?.name || '')) &&
+        String(i?.val ?? i?.value ?? '') === '1.000'
+    );
+    const hasZeroIcw = items.some((i) =>
+        /l[íi]quido\s+intracelular/i.test(String(i?.name || '')) &&
+        String(i?.val ?? i?.value ?? '') === '0.000'
+    );
+    return hasFakeHeader && hasZeroIcw;
+}
+
+/**
+ * Evalúa el estado biosemántico del parámetro basado en el icono oficial del analizador
+ * o en la evaluación matemática/cualitativa del rango (incluyendo rangos invertidos y tablas de 3 columnas).
+ * @param {string} imgSrc
+ * @param {any} val
+ * @param {string} ref
+ * @returns {string} 'NORMAL (-)' | 'ANORMAL LEVE (+)' | 'ANORMAL MODERADO (++)' | 'ANORMAL SEVERO (+++)'
  */
 function evalParamStatus(imgSrc, val, ref) {
     if (imgSrc) {
-        const s = String(imgSrc).toLowerCase();
-        // Mapeo canónico del semáforo cuántico Electret:
-        // YC01 / YC07: Extremos (- - - / + + +) -> ANORMAL SEVERO
-        // YC02 / YC06: Medios (- - / + +) -> ANORMAL MODERADO
-        // YC03 / YC05 / YC09: Ligeros (- / +) -> ANORMAL LEVE
-        // YC04 / YC08: Centro verde (Dentro de rango / Normal) -> NORMAL
-        if (s.includes('yc01') || s.includes('yc07') || s.includes('ycmark1') || s.includes('+++')) return 'ANORMAL SEVERO';
-        if (s.includes('yc02') || s.includes('yc06') || s.includes('ycmark2') || s.includes('++')) return 'ANORMAL MODERADO';
-        if (s.includes('yc03') || s.includes('yc05') || s.includes('yc09') || s.includes('ycmark3') || s.includes('+')) return 'ANORMAL LEVE';
-        if (s.includes('yc04') || s.includes('yc08') || s.includes('ycmark4') || s.includes('normal')) return 'NORMAL';
-    }
-
-    if (ref && String(ref).includes('-')) {
-        const parts = String(ref).split('-');
-        if (parts.length === 2) {
-            const min = cleanFloat(parts[0]);
-            const max = cleanFloat(parts[1]);
-            const v = cleanFloat(val);
-            if (min !== null && max !== null && v !== null) {
-                if (v >= min && v <= max) return 'NORMAL';
-                const rangeLen = Math.abs(max - min) || 1;
-                const dev = Math.abs(v < min ? min - v : v - max) / rangeLen;
-                if (dev > 0.5) return 'ANORMAL SEVERO';
-                if (dev > 0.2) return 'ANORMAL MODERADO';
-                return 'ANORMAL LEVE';
-            }
+        const s = String(imgSrc).toLowerCase().trim();
+        // Mapeo canónico exacto del analizador cuántico:
+        // YC01 / YC07: Extremos (- - - / + + +) -> ANORMAL SEVERO (+++)
+        // YC02 / YC06: Medios (- - / + +) -> ANORMAL MODERADO (++)
+        // YC03 / YC05 / YC09 / YC10: Desviación de primer umbral (- / +) -> ANORMAL LEVE (+)
+        // YC04 / YC08: Centro saludable -> NORMAL (-)
+        if (s.includes('yc01') || s.includes('yc07') || s.includes('ycmark1') || s.includes('+++') || s.includes('---')) {
+            return 'ANORMAL SEVERO (+++)';
+        }
+        if (s.includes('yc02') || s.includes('yc06') || s.includes('ycmark2') || s.includes('++') || s.includes('--')) {
+            return 'ANORMAL MODERADO (++)';
+        }
+        if (
+            s.includes('yc03') ||
+            s.includes('yc05') ||
+            s.includes('yc09') ||
+            s.includes('yc10') ||
+            s.includes('ycmark3') ||
+            s === '+' ||
+            s === '-'
+        ) {
+            return s === '-' ? 'NORMAL (-)' : 'ANORMAL LEVE (+)';
+        }
+        if (s.includes('yc04') || s.includes('yc08') || s.includes('ycmark4') || s.includes('normal')) {
+            return 'NORMAL (-)';
         }
     }
-    return 'NORMAL';
+
+    const valClean = collapseWhitespace(val);
+    const refClean = collapseWhitespace(ref);
+
+    if (!refClean || /^mediciones$|^informativo$|^normativo$/i.test(refClean)) {
+        return 'NORMAL (-)';
+    }
+
+    // 1. Igualdad cualitativa exacta (ej. Padecimientos Óseos: "Sin Dirección" === "Sin Dirección", "+" === "+")
+    if (valClean && refClean && valClean.toLowerCase() === refClean.toLowerCase()) {
+        return 'NORMAL (-)';
+    }
+
+    // 2. Umbral superior con '<' o '<=' (ej. "< u 0,2" vs "u 0.19", "< 0.90" vs "1.04")
+    const ltMatch = refClean.match(/^<=?\s*[a-zA-Z]*\s*(-?\d+(?:[.,]\d+)?)/);
+    if (ltMatch) {
+        const limit = parseFloat(ltMatch[1].replace(',', '.'));
+        const vNum = cleanFloat(valClean);
+        if (!isNaN(limit) && vNum !== null) {
+            if (vNum <= limit) return 'NORMAL (-)';
+            const excessRatio = (vNum - limit) / (Math.abs(limit) || 1);
+            if (excessRatio > 0.5) return 'ANORMAL SEVERO (+++)';
+            if (excessRatio > 0.15) return 'ANORMAL MODERADO (++)';
+            return 'ANORMAL LEVE (+)';
+        }
+    }
+
+    // 3. Umbral inferior con '>' o '>=' (ej. ">= 70" vs "64.6")
+    const gtMatch = refClean.match(/^>=?\s*[a-zA-Z]*\s*(-?\d+(?:[.,]\d+)?)/);
+    if (gtMatch) {
+        const limit = parseFloat(gtMatch[1].replace(',', '.'));
+        const vNum = cleanFloat(valClean);
+        if (!isNaN(limit) && vNum !== null) {
+            if (vNum >= limit) return 'NORMAL (-)';
+            const defRatio = (limit - vNum) / (Math.abs(limit) || 1);
+            if (defRatio > 0.35) return 'ANORMAL SEVERO (+++)';
+            if (defRatio > 0.15) return 'ANORMAL MODERADO (++)';
+            return 'ANORMAL LEVE (+)';
+        }
+    }
+
+    // 4. Rango bilateral (incluyendo porcentajes "10%-40%" y rangos invertidos como DMO "0,796 - 0,433")
+    const rangeMatch = refClean.match(/^\s*(-?\d+(?:[.,]\d+)?)%?\s*[-~]\s*(-?\d+(?:[.,]\d+)?)%?(?:\s*[a-zA-Z/%²2]*)?\s*$/);
+    if (rangeMatch) {
+        const rawA = parseFloat(rangeMatch[1].replace(',', '.'));
+        const rawB = parseFloat(rangeMatch[2].replace(',', '.'));
+        const v = cleanFloat(valClean);
+        if (!isNaN(rawA) && !isNaN(rawB) && v !== null) {
+            const min = Math.min(rawA, rawB);
+            const max = Math.max(rawA, rawB);
+            if (v >= min && v <= max) return 'NORMAL (-)';
+            const rangeLen = Math.abs(max - min) || 1;
+            const dev = Math.abs(v < min ? min - v : v - max) / rangeLen;
+            if (dev > 0.5) return 'ANORMAL SEVERO (+++)';
+            if (dev > 0.2) return 'ANORMAL MODERADO (++)';
+            return 'ANORMAL LEVE (+)';
+        }
+    }
+
+    return 'NORMAL (-)';
 }
 
 /**
@@ -159,6 +254,7 @@ const CATEGORY_MAP = {
     'enfermedad_de_hueso_reumatoide': 'rheumatoid',
     'indice_de_crecimiento_oseo': 'bone_growth',
     'glucosa_en_la_sangre': 'blood_sugar',
+    'blood_glucose': 'blood_sugar',
     'oligoelementos': 'trace_elements',
     'oligoelementos_y_minerales': 'trace_elements',
     'vitamina': 'vitamins',
@@ -187,6 +283,7 @@ const CATEGORY_MAP = {
     'ginecologia': 'gynecology',
     'senos': 'breasts',
     'cyclo_menstrual': 'menstrual_cycle',
+    'ciclo_menstrual': 'menstrual_cycle',
     'elementos_humanos': 'body_composition',
     'prostata': 'prostate',
     'esperma_y_semen': 'sperm_semen',
@@ -194,72 +291,486 @@ const CATEGORY_MAP = {
 };
 
 /**
- * Parsea contenido HTML completo del informe Electret extraído vía ODBC o cargado.
- * @param {string} htmlContent 
- * @returns {object} Payload homogenizado con categorías, total de parámetros y conteo de anormalidades.
+ * Resuelve el contenedor DOM acotado de una sección encabezada por <font size="6">,
+ * incluso cuando la última página (ej. Informe de síntesis) carece de div[style*="page-break"].
+ */
+function resolveSectionTables($, fontEl) {
+    const pageDiv = $(fontEl).closest('div[style*="page-break"]');
+    if (pageDiv.length) {
+        return pageDiv.find('table');
+    }
+    const headerTable = $(fontEl).closest('table');
+    if (!headerTable.length) return $();
+    const collected = [];
+    let next = headerTable.next();
+    while (next.length) {
+        if (next.is('div[style*="page-break"]') || next.find('font[size="6"]').length > 0) {
+            break;
+        }
+        if (next.is('table')) collected.push(next[0]);
+        next.find('table').each((_, t) => collected.push(t));
+        next = next.next();
+    }
+    return $(collected);
+}
+
+/**
+ * Pre-extrae las filas exactas del "Informe de síntesis" / "Informe compuesto" del software original,
+ * soportando celdas con rowspan="2" (filas de 5 columnas y filas continuadas de 3 columnas)
+ * y descartando el 100% de la columna "Consejos de Experto" (cero menciones a cerdo o picante).
+ */
+function extractSynthesisReportItems($) {
+    const synthesisKeys = new Set();
+    const synthesisItems = [];
+
+    $('font[size="6"]').each(function () {
+        const heading = collapseWhitespace($(this).text()).toLowerCase();
+        if (!heading.includes('síntesis') && !heading.includes('sintesis') && !heading.includes('compuesto')) {
+            return;
+        }
+
+        const tables = resolveSectionTables($, this);
+        const targetTable = tables.filter('.table').first();
+        if (!targetTable.length) return;
+
+        let currentSystemTitle = '';
+        let currentCatKey = '';
+
+        targetTable.find('tr').each(function () {
+            const tds = $(this).find('td');
+            if (tds.length < 3) return;
+
+            let sysTitle = '';
+            let paramName = '';
+            let ref = '';
+            let val = '';
+
+            if (tds.length >= 5) {
+                sysTitle = collapseWhitespace($(tds[0]).text());
+                paramName = collapseWhitespace($(tds[1]).text());
+                ref = collapseWhitespace($(tds[2]).text());
+                val = collapseWhitespace($(tds[3]).text());
+                // tds[4] ("Consejos de Experto") se descarta deliberadamente al 100%
+            } else if (tds.length === 4) {
+                // Algunos formatos sin columna de consejos o con una celda fusionada
+                const c0 = collapseWhitespace($(tds[0]).text());
+                const c1 = collapseWhitespace($(tds[1]).text());
+                const c2 = collapseWhitespace($(tds[2]).text());
+                const c3 = collapseWhitespace($(tds[3]).text());
+                if (/\d/.test(c1) && /\d/.test(c2)) {
+                    sysTitle = currentSystemTitle;
+                    paramName = c0;
+                    ref = c1;
+                    val = c2;
+                } else {
+                    sysTitle = c0;
+                    paramName = c1;
+                    ref = c2;
+                    val = c3;
+                }
+            } else if (tds.length === 3) {
+                // Continuación por rowspan="2" de Sistema y Consejos de Experto
+                sysTitle = currentSystemTitle;
+                paramName = collapseWhitespace($(tds[0]).text());
+                ref = collapseWhitespace($(tds[1]).text());
+                val = collapseWhitespace($(tds[2]).text());
+            }
+
+            if (
+                !paramName ||
+                /^sistema$/i.test(sysTitle) ||
+                /^objeto\s+(?:analizado|examinado)/i.test(paramName) ||
+                /^rango\s+normal$/i.test(ref)
+            ) {
+                return;
+            }
+
+            if (sysTitle) {
+                currentSystemTitle = sysTitle;
+                const normSys = normalizeKey(sysTitle);
+                currentCatKey = CATEGORY_MAP[normSys] || normSys;
+            }
+
+            const cleanDisplay = sanitizeClinicalSpanish(paramName);
+            const paramKey = normalizeKey(paramName);
+            const cleanParamKey = normalizeKey(cleanDisplay);
+
+            if (currentCatKey && paramKey) {
+                synthesisKeys.add(`${currentCatKey}::${paramKey}`);
+                synthesisKeys.add(`${currentCatKey}::${cleanParamKey}`);
+            }
+            if (paramKey) synthesisKeys.add(paramKey);
+
+            synthesisItems.push({
+                catKey: currentCatKey || 'general',
+                systemTitle: sanitizeClinicalSpanish(currentSystemTitle),
+                name: cleanDisplay,
+                key: paramKey,
+                reference: ref,
+                value: val,
+                numeric_value: cleanFloat(val)
+            });
+        });
+    });
+
+    return { synthesisKeys, synthesisItems };
+}
+
+/**
+ * Parsea de forma dedicada las múltiples sub-tablas de "(Elementos humanos) Informe del Análisis"
+ * extrayendo los 15 KPIs antropométricos y de composición corporal con exactitud matemática.
+ */
+function parseHumanElementsSection($, sectionTables, patientMetadata = {}) {
+    const isFemale = /^f|mujer|femenin/i.test(String(patientMetadata?.sex || '').trim());
+    const extracted = {};
+
+    const recordVal = (slot, rawVal) => {
+        const cleaned = collapseWhitespace(rawVal);
+        if (cleaned && extracted[slot] === undefined) {
+            extracted[slot] = cleaned;
+        }
+    };
+
+    sectionTables.find('tr').each(function () {
+        const cells = $(this).find('td').map((_, td) => collapseWhitespace($(td).text())).get();
+        if (!cells.length) return;
+        const rowJoined = cells.join(' | ');
+
+        // Sub-tabla 1: Composición hídrica, proteica, mineral, muscular, magra y grasa
+        if (/\(1\)\s*l[íi]quido\s+intracelular/i.test(cells[0] || '')) {
+            recordVal('icw', cells[1]);
+        }
+        if (/\(2\)\s*l[íi]quido\s+extracelular/i.test(cells[0] || '')) {
+            recordVal('ecw', cells[1]);
+        }
+        if (/\(3\)\s*prote[íi]nas/i.test(cells[0] || '')) {
+            recordVal('proteins', cells[1]);
+        }
+        if (/\(4\)\s*sustancias\s+inorg[áa]nicas/i.test(cells[0] || '')) {
+            recordVal('minerals', cells[1]);
+        }
+        if (/\(5\)\s*grasa\s+corporal/i.test(cells[0] || '')) {
+            recordVal('fat_mass', cells[1]);
+        }
+
+        const tbwMatch = rowJoined.match(/\(6\)[^=]*=\(1\)\+\(2\)=\s*(-?\d+(?:[.,]\d+)?)/i);
+        if (tbwMatch) recordVal('tbw', tbwMatch[1]);
+
+        const muscMatch = rowJoined.match(/\(7\)[^=]*=\(6\)\+\(3\)=\s*(-?\d+(?:[.,]\d+)?)/i);
+        if (muscMatch) recordVal('muscle_mass', muscMatch[1]);
+
+        const lbmMatch = rowJoined.match(/\(8\)[^=]*=\(7\)\+\(4\)=\s*(-?\d+(?:[.,]\d+)?)/i);
+        if (lbmMatch) recordVal('lean_mass', lbmMatch[1]);
+
+        const weightSumMatch = rowJoined.match(/\(9\)[^=]*=\(8\)\+\(5\)=\s*(-?\d+(?:[.,]\d+)?)/i);
+        if (weightSumMatch) recordVal('weight_kg', weightSumMatch[1]);
+
+        // Sub-tabla 2: Análisis de grasas y antropometría
+        if (/^2\.\s*peso\s*\(kg\)/i.test(cells[0] || '') && cells[1]) {
+            recordVal('weight_kg', cells[1]);
+        }
+        if (/^3\.\s*masa\s+muscular/i.test(cells[0] || '') && cells[1]) {
+            recordVal('muscle_mass', cells[1]);
+        }
+        if (/^4\.\s*contenido\s+de\s+materias\s+grasas/i.test(cells[0] || '') && cells[1]) {
+            recordVal('fat_mass', cells[1]);
+        }
+        if (/^5\.\s*porcentaje\s+de\s+grasa/i.test(cells[0] || '') && cells[1]) {
+            recordVal('body_fat_pct', cells[1]);
+        }
+        if (/^6\.\s*radio\s+de\s+grasa\s+abdominal/i.test(cells[0] || '') && cells[1]) {
+            recordVal('whr', cells[1]);
+        }
+
+        // Sub-tabla 3: Alimentación / Metabolismo (ODB, IMC, TMB, BCM)
+        if (/grado\s+de\s+obesidad\s+del\s+cuerpo\s*\(odb\)/i.test(cells[0] || '') && cells[1]) {
+            recordVal('odb', cells[1]);
+        }
+        if (/[íiï]ndice\s+de\s+masa\s+corporal\s*\(imc\)/i.test(cells[0] || '') && cells[1]) {
+            recordVal('bmi', cells[1]);
+        }
+        if (/tasa\s+de\s+metabolismo\s+basal\s*\(tmb\)/i.test(cells[0] || '') && cells[1]) {
+            recordVal('bmr', cells[1]);
+        }
+        if (/masa\s+celular\s+corporal\s*\(bcm\)/i.test(cells[0] || '') && cells[1]) {
+            recordVal('bcm', cells[1]);
+        }
+
+        // Sub-tabla 6: Formulario de evaluación del cuerpo (Score global)
+        const scoreMatch = rowJoined.match(/formulario\s+de\s+evaluaci[oó]n\s+del\s+cuerpo\s*:\s*(-?\d+(?:[.,]\d+)?)/i);
+        if (scoreMatch) {
+            recordVal('body_score', scoreMatch[1]);
+        }
+    });
+
+    const weightNum = cleanFloat(extracted.weight_kg) || cleanFloat(patientMetadata?.weight) || null;
+    const minMuscleKg = weightNum ? Number((weightNum * 0.35).toFixed(1)) : null;
+    const maxMuscleKg = weightNum ? Number((weightNum * 0.48).toFixed(1)) : null;
+    const minFatKg = weightNum ? Number((weightNum * (isFemale ? 0.17 : 0.14)).toFixed(1)) : null;
+    const maxFatKg = weightNum ? Number((weightNum * (isFemale ? 0.24 : 0.20)).toFixed(1)) : null;
+
+    const kpiSpecs = [
+        {
+            slot: 'tbw',
+            name: 'Agua Corporal Total (ICW + ECW)',
+            unit: 'L',
+            ref: 'Informativo'
+        },
+        {
+            slot: 'icw',
+            name: 'Líquido Intracelular (ICW)',
+            unit: 'L',
+            ref: 'Informativo'
+        },
+        {
+            slot: 'ecw',
+            name: 'Líquido Extracelular (ECW)',
+            unit: 'L',
+            ref: 'Informativo'
+        },
+        {
+            slot: 'proteins',
+            name: 'Proteínas Corporales',
+            unit: 'Kg',
+            ref: 'Informativo'
+        },
+        {
+            slot: 'minerals',
+            name: 'Sustancias Inorgánicas (Minerales)',
+            unit: 'Kg',
+            ref: 'Informativo'
+        },
+        {
+            slot: 'muscle_mass',
+            name: 'Volumen Muscular Esquelético',
+            unit: 'Kg',
+            ref: (minMuscleKg && maxMuscleKg) ? `${minMuscleKg} - ${maxMuscleKg}` : 'Informativo'
+        },
+        {
+            slot: 'lean_mass',
+            name: 'Peso Corporal Magro (MLG)',
+            unit: 'Kg',
+            ref: 'Informativo'
+        },
+        {
+            slot: 'fat_mass',
+            name: 'Masa Grasa Corporal',
+            unit: 'Kg',
+            ref: (minFatKg && maxFatKg) ? `${minFatKg} - ${maxFatKg}` : 'Informativo'
+        },
+        {
+            slot: 'body_fat_pct',
+            name: 'Porcentaje de Grasa Corporal',
+            unit: '%',
+            ref: isFemale ? '17% - 24%' : '14% - 20%'
+        },
+        {
+            slot: 'whr',
+            name: 'Relación Cintura-Cadera (RCC)',
+            unit: '',
+            ref: isFemale ? '< 0.80' : '< 0.90'
+        },
+        {
+            slot: 'bmi',
+            name: 'Índice de Masa Corporal (IMC)',
+            unit: 'Kg/M²',
+            ref: '18.5 - 24.9'
+        },
+        {
+            slot: 'bmr',
+            name: 'Tasa Metabólica Basal (TMB)',
+            unit: 'kcal',
+            ref: 'Informativo'
+        },
+        {
+            slot: 'bcm',
+            name: 'Masa Celular Corporal (BCM)',
+            unit: 'Kg',
+            ref: 'Informativo'
+        },
+        {
+            slot: 'weight_kg',
+            name: 'Peso Corporal Registrado',
+            unit: 'Kg',
+            ref: 'Informativo'
+        },
+        {
+            slot: 'body_score',
+            name: 'Puntuación de Evaluación Corporal',
+            unit: 'pts',
+            ref: '>= 70'
+        }
+    ];
+
+    const items = [];
+    const itemsDict = {};
+    let abnormalCount = 0;
+
+    for (const spec of kpiSpecs) {
+        const raw = extracted[spec.slot];
+        if (raw === undefined || raw === null || raw === '') continue;
+        const num = cleanFloat(raw);
+        let formattedVal = String(raw);
+        if (num !== null) {
+            if (spec.unit === '%' && !formattedVal.includes('%')) formattedVal = `${num}%`;
+            else if (spec.unit && !new RegExp(spec.unit.replace('²', '[²2]'), 'i').test(formattedVal)) {
+                formattedVal = `${num} ${spec.unit}`;
+            } else {
+                formattedVal = formattedVal.replace(/Kg\/M2/i, 'Kg/M²');
+            }
+        }
+
+        let status = 'NORMAL (-)';
+        if (spec.slot === 'body_fat_pct' && num !== null) {
+            const normMax = isFemale ? 24 : 20;
+            const modMax = isFemale ? 30 : 25;
+            const normMin = isFemale ? 17 : 14;
+            if (num < normMin) status = 'ANORMAL LEVE (+)';
+            else if (num <= normMax) status = 'NORMAL (-)';
+            else if (num <= modMax) status = 'ANORMAL LEVE (+)';
+            else if (num <= modMax + 7) status = 'ANORMAL MODERADO (++)';
+            else status = 'ANORMAL SEVERO (+++)';
+        } else if (spec.slot === 'fat_mass' && num !== null && minFatKg && maxFatKg) {
+            const modFatMax = weightNum * (isFemale ? 0.30 : 0.25);
+            if (num < minFatKg) status = 'ANORMAL LEVE (+)';
+            else if (num <= maxFatKg) status = 'NORMAL (-)';
+            else if (num <= modFatMax) status = 'ANORMAL LEVE (+)';
+            else status = 'ANORMAL MODERADO (++)';
+        } else if (spec.slot === 'bmi' && num !== null) {
+            if (num < 18.5) status = 'ANORMAL LEVE (+)';
+            else if (num <= 24.9) status = 'NORMAL (-)';
+            else if (num <= 29.9) status = 'ANORMAL LEVE (+)';
+            else if (num <= 34.9) status = 'ANORMAL MODERADO (++)';
+            else status = 'ANORMAL SEVERO (+++)';
+        } else if (spec.slot === 'whr' && num !== null) {
+            const whrMax = isFemale ? 0.80 : 0.90;
+            const whrMod = isFemale ? 0.85 : 1.00;
+            if (num <= whrMax) status = 'NORMAL (-)';
+            else if (num <= whrMod) status = 'ANORMAL LEVE (+)';
+            else status = 'ANORMAL MODERADO (++)';
+        } else if (spec.ref !== 'Informativo') {
+            status = evalParamStatus('', num !== null ? String(num) : formattedVal, spec.ref);
+        }
+
+        const paramKey = normalizeKey(spec.name);
+        const paramObj = {
+            name: spec.name,
+            displayName: spec.name,
+            key: paramKey,
+            slot: spec.slot,
+            value: formattedVal,
+            val: formattedVal,
+            raw_value: String(raw),
+            numeric_value: num,
+            unit: spec.unit,
+            reference: spec.ref,
+            ref: spec.ref,
+            status,
+            inSynthesisReport: false
+        };
+
+        itemsDict[paramKey] = paramObj;
+        items.push(paramObj);
+        if (!status.startsWith('NORMAL')) {
+            abnormalCount += 1;
+        }
+    }
+
+    return {
+        title: 'Análisis Componencial Corporal (Elementos Humanos)',
+        key: 'body_composition',
+        total: items.length,
+        abnormalCount,
+        items,
+        itemsDict
+    };
+}
+
+/**
+ * Parsea contenido HTML completo del informe del Analizador Cuántico Bioeléctrico (.htm en latin1/utf8).
+ * @param {string} htmlContent
+ * @returns {object}
  */
 function parseElectretHTML(htmlContent) {
     if (!htmlContent || typeof htmlContent !== 'string') {
-        return { success: false, categories: {}, totalParameters: 0, abnormalCount: 0 };
+        return { success: false, categories: {}, synthesisItems: [], totalParameters: 0, abnormalCount: 0 };
     }
 
-    // Extracción de metadatos clínicos del paciente desde el HTML (NOM-004)
-    const nameMatch = htmlContent.match(/Nombre:\s*([^<&]+)/i);
-    const sexMatch = htmlContent.match(/Sexo:\s*([^<&]+)/i);
-    const ageMatch = htmlContent.match(/Edad:\s*([^<&]+)/i);
-    const dateMatch = htmlContent.match(/Fecha y Hora del An[aá]lisis:\s*([^<&]+)/i);
+    // Extracción limpia de metadatos clínicos del paciente (NOM-004) incluyendo Complexión (Talla y Peso)
+    const nameMatch = htmlContent.match(/Nombre:\s*([^<&\r\n]+)/i);
+    const sexMatch = htmlContent.match(/Sexo:\s*([^<&\r\n]+)/i);
+    const ageMatch = htmlContent.match(/Edad:\s*([^<&\r\n]+)/i);
+    const complexionMatch = htmlContent.match(/Complexi[oó]n:\s*(\d+(?:[.,]\d+)?)\s*cm\s*,\s*(\d+(?:[.,]\d+)?)\s*kg/i);
+    const dateMatch = htmlContent.match(/Fecha\s+y\s+Hora\s+del\s+An[aá]lisis:\s*([^<&]+)/i);
 
-    const rawPatientName = nameMatch ? nameMatch[1].trim() : null;
+    const rawPatientName = nameMatch ? collapseWhitespace(nameMatch[1]) : null;
     const normalizedPatientName = normalizeClinicalName(rawPatientName);
-    const rawScanDate = dateMatch ? dateMatch[1].trim() : null;
+    const rawScanDate = dateMatch ? collapseWhitespace(dateMatch[1]) : null;
     const parsedLocalDate = parseLocalDate(rawScanDate);
+    const heightCm = complexionMatch ? parseFloat(complexionMatch[1].replace(',', '.')) : null;
+    const weightKg = complexionMatch ? parseFloat(complexionMatch[2].replace(',', '.')) : null;
 
     const patientMetadata = {
         name: rawPatientName,
         normalizedName: normalizedPatientName,
-        sex: sexMatch ? sexMatch[1].trim() : null,
-        age: ageMatch ? ageMatch[1].trim() : null,
+        sex: sexMatch ? collapseWhitespace(sexMatch[1]) : null,
+        age: ageMatch ? collapseWhitespace(ageMatch[1]) : null,
+        height: Number.isFinite(heightCm) ? heightCm : null,
+        weight: Number.isFinite(weightKg) ? weightKg : null,
         scanDate: rawScanDate,
         parsedLocalDate: parsedLocalDate ? parsedLocalDate.toISOString() : null
     };
 
     const $ = cheerio.load(htmlContent);
+    const { synthesisKeys, synthesisItems } = extractSynthesisReportItems($);
+
     const resultCategories = {};
     let totalParams = 0;
     let abnormalCount = 0;
 
-    // Iteración canónica sobre cada encabezado de categoría clínica
-    $('font[size="6"]').each(function() {
-        const rawHeading = $(this).text().trim();
-        // Exclusión obligatoria de informes de síntesis/resumen para prevenir colisiones y duplicaciones
-        const lowerHeading = rawHeading.toLowerCase();
-        if (lowerHeading.includes('análisis de expertos') || 
-            lowerHeading.includes('análisis de la mano') || 
-            lowerHeading.includes('síntesis') || 
-            lowerHeading.includes('resumen')) {
+    $('font[size="6"]').each(function () {
+        const rawHeading = collapseWhitespace($(this).text());
+        const lowerHeading = rawHeading
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+
+        // Exclusión estricta de páginas de resumen/expertos/mano/síntesis tras colapsar saltos \r\n
+        if (
+            lowerHeading.includes('analisis de expertos') ||
+            lowerHeading.includes('analisis de la mano') ||
+            lowerHeading.includes('sintesis') ||
+            lowerHeading.includes('compuesto') ||
+            lowerHeading.includes('resumen')
+        ) {
             return;
         }
 
-        // Extracción de categoría: ej. "(Cardiovasculares y Cerebrovasculares)Informe del Análisis" -> "Cardiovasculares y Cerebrovasculares"
         const catMatch = rawHeading.match(/\((.*?)\)/);
-        const catTitle = catMatch ? catMatch[1].trim() : rawHeading.replace(/informe.*$/i, '').trim();
+        const catTitle = catMatch ? collapseWhitespace(catMatch[1]) : collapseWhitespace(rawHeading.replace(/informe.*$/i, ''));
         if (!catTitle) return;
 
         const normKey = normalizeKey(catTitle);
         const catKey = CATEGORY_MAP[normKey] || normKey;
+        const sectionTables = resolveSectionTables($, this);
 
-        // Contenedor delimitado de la página
-        const container = $(this).closest('div[style*="page-break"]').length 
-            ? $(this).closest('div[style*="page-break"]')
-            : $(this).closest('table').parent();
+        // Tratamiento dedicado para Composición Corporal ("Elementos humanos") con 15 KPIs reales
+        if (catKey === 'body_composition') {
+            const humanBlock = parseHumanElementsSection($, sectionTables, patientMetadata);
+            if (humanBlock.total > 0) {
+                resultCategories.body_composition = humanBlock;
+                totalParams += humanBlock.total;
+                abnormalCount += humanBlock.abnormalCount;
+            }
+            return;
+        }
 
-        // Localizar exclusivamente la tabla principal de resultados de este bloque
-        const targetTable = container.find('table.table').first();
+        const targetTable = sectionTables.filter('.table').first();
         if (!targetTable.length) return;
 
         if (!resultCategories[catKey]) {
             resultCategories[catKey] = {
-                title: catTitle,
+                title: sanitizeClinicalSpanish(catTitle),
                 key: catKey,
                 total: 0,
                 abnormalCount: 0,
@@ -268,31 +779,48 @@ function parseElectretHTML(htmlContent) {
             };
         }
 
-        targetTable.find('tr').each(function() {
+        targetTable.find('tr').each(function () {
             const tds = $(this).find('td');
+            // Soporta tablas estándar de 4 columnas y tablas especiales de 3 columnas (ej. Padecimientos Óseos)
             if (tds.length < 3) return;
 
-            let name = $(tds[0]).text().trim();
-            let ref = $(tds[1]).text().trim();
-            let val = $(tds[2]).text().trim();
-            let imgSrc = $(tds[3]).find('img, image').attr('src') || $(this).find('img, image').attr('src') || '';
+            const rawName = collapseWhitespace($(tds[0]).text());
+            const ref = collapseWhitespace($(tds[1]).text());
+            const val = collapseWhitespace($(tds[2]).text());
+            const imgSrc = tds.length >= 4
+                ? ($(tds[3]).find('img, image').attr('src') || $(this).find('img, image').attr('src') || '')
+                : '';
 
-            // Filtrado defensivo estricto contra filas de encabezado o metadatos
-            const lowerName = name.toLowerCase();
-            if (lowerName.includes('objeto') || lowerName.includes('examinado') || lowerName.includes('analizado') || lowerName.includes('rango normal') || lowerName.includes('parámetro')) {
+            const lowerName = rawName.toLowerCase();
+            if (
+                !rawName ||
+                lowerName.includes('objeto') ||
+                lowerName.includes('examinado') ||
+                lowerName.includes('analizado') ||
+                lowerName.includes('rango normal') ||
+                lowerName.includes('parámetro') ||
+                lowerName.includes('parametro')
+            ) {
                 return;
             }
-            if (name.includes(':') && (lowerName.includes('nombre') || lowerName.includes('complexión') || lowerName.includes('sexo') || lowerName.includes('edad'))) {
+            if (rawName.includes(':') && (lowerName.includes('nombre') || lowerName.includes('complex') || lowerName.includes('sexo') || lowerName.includes('edad'))) {
                 return;
             }
 
-            const paramKey = normalizeKey(name);
+            const cleanName = sanitizeClinicalSpanish(rawName);
+            const paramKey = normalizeKey(cleanName);
+            const rawParamKey = normalizeKey(rawName);
             const cleanValNum = cleanFloat(val);
             const status = evalParamStatus(imgSrc, val, ref);
+            const iconFile = imgSrc ? decodeURIComponent(String(imgSrc)).split(/[\\/]/).pop() : '';
+            const inSynthesisReport = Boolean(
+                synthesisKeys.has(`${catKey}::${paramKey}`) ||
+                synthesisKeys.has(`${catKey}::${rawParamKey}`)
+            );
 
             const paramObj = {
-                name,
-                displayName: sanitizeClinicalSpanish(name),
+                name: cleanName,
+                displayName: cleanName,
                 key: paramKey,
                 value: String(val),
                 val: String(val),
@@ -300,17 +828,18 @@ function parseElectretHTML(htmlContent) {
                 numeric_value: cleanValNum,
                 reference: String(ref),
                 ref: String(ref),
-                status
+                iconCode: iconFile || null,
+                status,
+                inSynthesisReport
             };
 
-            // Inserción garantizada libre de duplicados
             if (!resultCategories[catKey].itemsDict[paramKey]) {
                 resultCategories[catKey].itemsDict[paramKey] = paramObj;
                 resultCategories[catKey].items.push(paramObj);
                 resultCategories[catKey].total += 1;
                 totalParams += 1;
 
-                if (status !== 'NORMAL' && status !== 'NORMAL (-)' && status !== '-') {
+                if (!status.startsWith('NORMAL') && status !== '-') {
                     resultCategories[catKey].abnormalCount += 1;
                     abnormalCount += 1;
                 }
@@ -319,18 +848,20 @@ function parseElectretHTML(htmlContent) {
     });
 
     return {
-        success: true,
+        success: Object.keys(resultCategories).length > 0,
         patientMetadata,
         categories: resultCategories,
+        synthesisItems,
+        synthesisCount: synthesisItems.length,
         totalParameters: totalParams,
-        abnormalCount: abnormalCount,
+        abnormalCount,
         parsedAt: new Date().toISOString()
     };
 }
 
 /**
- * Normaliza un objeto JSON telemétrico estructurado previamente.
- * @param {object} rawJson 
+ * Normaliza un objeto JSON telemétrico estructurado previamente preservando banderas de síntesis y unidades.
+ * @param {object} rawJson
  * @returns {object}
  */
 function parseElectretJSON(rawJson) {
@@ -343,11 +874,12 @@ function parseElectretJSON(rawJson) {
     let abnormalCount = 0;
 
     Object.entries(rawJson).forEach(([catKey, catData]) => {
+        if (!catData || typeof catData !== 'object') return;
         const normCatKey = CATEGORY_MAP[normalizeKey(catKey)] || normalizeKey(catKey);
-        
+
         if (!resultCategories[normCatKey]) {
             resultCategories[normCatKey] = {
-                title: catKey,
+                title: sanitizeClinicalSpanish(catData.title || catKey),
                 key: normCatKey,
                 total: 0,
                 abnormalCount: 0,
@@ -360,27 +892,32 @@ function parseElectretJSON(rawJson) {
         if (typeof itemsSource === 'object') {
             const sourceEntries = Array.isArray(itemsSource) ? itemsSource.entries() : Object.entries(itemsSource);
             for (const [itemKey, itemVal] of sourceEntries) {
-                if (['title', 'key', 'total', 'abnormalCount', 'itemsDict'].includes(itemKey)) continue;
+                if (['title', 'key', 'total', 'abnormalCount', 'itemsDict'].includes(String(itemKey))) continue;
                 if (!itemVal || typeof itemVal !== 'object') continue;
 
-                const name = itemVal.name || itemVal.label || itemKey;
-                const ref = itemVal.reference || itemVal.ref || 'Normativo';
-                const val = itemVal.value || itemVal.val || itemVal.raw_value || '';
-                const cleanValNum = cleanFloat(val);
-                const status = itemVal.status || evalParamStatus(null, val, ref);
+                const rawName = itemVal.displayName || itemVal.name || itemVal.label || String(itemKey);
+                const cleanName = sanitizeClinicalSpanish(rawName);
+                const ref = itemVal.reference ?? itemVal.ref ?? 'Informativo';
+                const val = itemVal.value ?? itemVal.val ?? itemVal.raw_value ?? '';
+                const cleanValNum = itemVal.numeric_value !== undefined ? itemVal.numeric_value : cleanFloat(val);
+                const status = itemVal.status || evalParamStatus(itemVal.iconCode || null, val, ref);
 
-                const normItemKey = normalizeKey(name);
+                const normItemKey = itemVal.key || normalizeKey(cleanName);
                 const itemObj = {
-                    name,
-                    displayName: itemVal.displayName || sanitizeClinicalSpanish(name),
+                    name: cleanName,
+                    displayName: cleanName,
                     key: normItemKey,
+                    slot: itemVal.slot || null,
+                    unit: itemVal.unit || '',
                     value: String(val),
                     val: String(val),
-                    raw_value: String(val),
+                    raw_value: String(itemVal.raw_value ?? val),
                     numeric_value: cleanValNum,
                     reference: String(ref),
                     ref: String(ref),
-                    status
+                    iconCode: itemVal.iconCode || null,
+                    status,
+                    inSynthesisReport: Boolean(itemVal.inSynthesisReport)
                 };
 
                 resultCategories[normCatKey].itemsDict[normItemKey] = itemObj;
@@ -388,7 +925,7 @@ function parseElectretJSON(rawJson) {
                 resultCategories[normCatKey].total += 1;
                 totalParams += 1;
 
-                if (status !== 'NORMAL' && status !== 'NORMAL (-)' && status !== '-') {
+                if (!String(status).startsWith('NORMAL') && status !== '-') {
                     resultCategories[normCatKey].abnormalCount += 1;
                     abnormalCount += 1;
                 }
@@ -400,17 +937,19 @@ function parseElectretJSON(rawJson) {
         success: true,
         categories: resultCategories,
         totalParameters: totalParams,
-        abnormalCount: abnormalCount,
+        abnormalCount,
         parsedAt: new Date().toISOString()
     };
 }
 
 module.exports = {
+    collapseWhitespace,
     normalizeKey,
     normalizeClinicalName,
     parseLocalDate,
     cleanFloat,
     evalParamStatus,
+    isSyntheticElectretPayload,
     parseElectretHTML,
     parseElectretJSON,
     CATEGORY_MAP

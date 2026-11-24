@@ -4,6 +4,7 @@ import {
     copySSoTDocument,
     safeCopyTextToClipboard
 } from '../../utils/formatPlanForClipboard';
+import { resolvePatientFriendlyGuide } from '../../utils/patientGuideAdapter';
 import { useClinicalToast } from '../../hooks/useClinicalToast';
 
 export { safeCopyTextToClipboard };
@@ -11,54 +12,63 @@ export { safeCopyTextToClipboard };
 export function buildSSoTExecutiveOptions(isCompleted = false) {
     if (isCompleted) {
         return [
-            { label: '📋 Copiar Guía Paciente', value: 'COPY_SSOT_PATIENT_GUIDE' },
-            { label: '🩺 Copiar Expediente NOM-004', value: 'COPY_SSOT_MEDICAL_DOSSIER' },
-            { label: '📅 Ver Calendario (Fase 21) ➔', value: 'GO_TO_PHASE_21' }
+            { label: 'Copiar Guía Paciente', value: 'COPY_SSOT_PATIENT_GUIDE', iconKey: 'copy' },
+            { label: 'Copiar Expediente NOM-004', value: 'COPY_SSOT_MEDICAL_DOSSIER', iconKey: 'file_text' },
+            { label: 'Ver Calendario (Fase 21)', value: 'GO_TO_PHASE_21', iconKey: 'calendar' }
         ];
     }
     return [
-        { label: '📋 Copiar Guía Paciente', value: 'COPY_SSOT_PATIENT_GUIDE' },
-        { label: '🩺 Copiar Expediente NOM-004', value: 'COPY_SSOT_MEDICAL_DOSSIER' },
-        { label: '📅 Continuar a Calendario (Fase 21) ➔', value: 'PROCEED_TO_PHASE_21' }
+        { label: 'Copiar Guía Paciente', value: 'COPY_SSOT_PATIENT_GUIDE', iconKey: 'copy' },
+        { label: 'Copiar Expediente NOM-004', value: 'COPY_SSOT_MEDICAL_DOSSIER', iconKey: 'file_text' },
+        { label: 'Continuar a Calendario (Fase 21)', value: 'PROCEED_TO_PHASE_21', iconKey: 'calendar' }
     ];
 }
 
 export function buildSSoTExecutiveSummaryContent(patientData) {
-    const dossier = patientData?.clinical_dossier || {};
+    const safeData = patientData || {};
+    const dossier = safeData?.clinical_dossier || {};
     const ortho = dossier?.orthomolecular_prescription || {};
     const bio = dossier?.bioenergetics || ortho?.bioenergetics_summary || {};
-    const sem = ortho?.biosecurity_semaphore || dossier?.biosecurity_semaphore || {};
-    const sups = Array.isArray(ortho?.supplements) ? ortho.supplements : [];
+    const guide = resolvePatientFriendlyGuide(safeData);
+    const sem = guide?.biosecuritySemaphore || ortho?.biosecurity_semaphore || dossier?.biosecurity_semaphore || {};
 
     const semLevel = String(sem?.level || (sem?.isPaused ? 'ROJO' : sem?.isMicroDose ? 'AMARILLO' : 'VERDE')).toUpperCase();
     const semBadge = semLevel === 'ROJO'
-        ? '🔴 Semáforo ROJO — En Pausa Preventiva de Bioseguridad (0 sobres activos)'
+        ? `🔴 Semáforo ROJO — ${sem?.badgeLabel || 'Prioridad Médica • Pausa Preventiva'} (0 sobres activos)`
         : semLevel === 'AMARILLO'
-            ? '🟡 Semáforo AMARILLO — Protocolo de Micro-Dosis Gradual (Semana 1)'
-            : '🟢 Semáforo VERDE — Protocolo Circadiano Estándar';
+            ? `🟡 Semáforo AMARILLO — ${sem?.badgeLabel || 'Inicio Gradual Preventivo • Micro-Dosis Calibrada'}`
+            : `🟢 Semáforo VERDE — ${sem?.badgeLabel || 'Vía Libre Biosegura • Protocolo Completo'}`;
 
-    const rawKcal = Number(bio?.targetKcal);
+    const rawKcal = Number(bio?.targetKcal || guide?.homeActionPlan?.protective_nutrition?.targetKcal);
+    const macros = dossier?.canonical_clinical_plan?.macros || bio?.macros || guide?.homeActionPlan?.protective_nutrition?.macros || null;
+    const macroLabel = macros && macros.carbs
+        ? ` (${macros.carbs}% C / ${macros.protein}% P / ${macros.fat}% L)`
+        : '';
     const formattedKcal = Number.isFinite(rawKcal) && rawKcal > 0
-        ? `${String(Math.round(rawKcal)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')} kcal/día`
+        ? `${String(Math.round(rawKcal)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} kcal/día${macroLabel}`
         : 'Meta personalizada SSoTT';
-    const hydrationStr = ortho?.hydrationTargetLiters
-        ? `${ortho.hydrationTargetLiters} L/día`
+
+    const rawHydration = guide?.homeActionPlan?.smart_hydration?.litersPerDay || ortho?.hydrationTargetLiters;
+    const hydrationStr = rawHydration
+        ? `${rawHydration} L/día`
         : 'Hidratación clínica calculada';
 
-    const sup33 = sups.find(s => s?.id === 'sup_33plus' || /33/.test(String(s?.name || ''))) || null;
-    const sup34 = sups.find(s => s?.id === 'sup_34plus' || /34/.test(String(s?.name || ''))) || null;
-
-    const line33 = sem?.isPaused || sup33?.status === 'paused_by_biosecurity'
+    const line33 = semLevel === 'ROJO' || Boolean(sem?.isPaused)
         ? '0 sobres activos (Diferido hasta valoración médica de estudios de control)'
-        : (sup33?.dosage || 'Prescripción diurna sincronizada al despertar');
+        : (guide?.formula33Card?.dosage || 'Prescripción diurna sincronizada al despertar');
 
-    const line34 = sem?.isPaused || sup34?.status === 'paused_by_biosecurity'
+    const line34 = semLevel === 'ROJO' || Boolean(sem?.isPaused)
         ? '0 sobres activos (Diferido hasta valoración médica de estudios de control)'
-        : (sup34?.dosage || 'Prescripción nocturna en mínimo 500 ml de agua simple 💧');
+        : (guide?.formula34Card?.dosage || 'Prescripción nocturna en mínimo 500 ml de agua simple 💧');
+
+    const patientLine = guide?.patientFullName
+        ? `• **Titular del Expediente:** ${guide.patientFullName}${guide?.ageYears ? ` (${guide.ageYears} años)` : ''}\n\n`
+        : '';
 
     return (
         `📋 **Compuerta Ejecutiva de Despacho y Portapapeles (SSoTT — Fase 20)**\n\n` +
         `El expediente clínico y la prescripción ortomolecular han quedado consolidados y sellados bajo **NOM-004-SSA3-2012**:\n\n` +
+        patientLine +
         `• **Bioseguridad:** ${semBadge}\n\n` +
         `• **Meta Bioenergética e Hidratación:** ${formattedKcal} | ${hydrationStr}\n\n` +
         `• **🔴 33Plus®:** ${line33}\n\n` +
@@ -66,6 +76,14 @@ export function buildSSoTExecutiveSummaryContent(patientData) {
         `Seleccione el formato que desea copiar al portapapeles o continúe a la **Fase 21 (Calendario de 28 Días)**:`
     );
 }
+
+const isStaleRecoveryCardInPhase20 = (m) =>
+    m?.role === 'assistant' &&
+    typeof m?.content === 'string' &&
+    (
+        m.content.includes('Expediente Clínico Recuperado Exitosamente') ||
+        (Array.isArray(m.options) && m.options.some(o => o?.value === 'GO_TO_PHASE_20'))
+    );
 
 const Fase20_Portapapeles = ({
     patientData,
@@ -75,8 +93,21 @@ const Fase20_Portapapeles = ({
     setActiveTab
 }) => {
     const isStudyCompleted = Boolean(patientData?.is_completed);
-    const hasEmittedGateRef = useRef(false);
+    const hasEmittedGateRef = useRef(null);
     const didAutoFocusDiagnosisRef = useRef(false);
+
+    if (!hasEmittedGateRef.current || typeof hasEmittedGateRef.current !== 'object') {
+        hasEmittedGateRef.current = {
+            lastEmittedContent: '',
+            handlerBound: false,
+            props: {}
+        };
+    }
+    hasEmittedGateRef.current.props = {
+        patientData,
+        onPhaseComplete,
+        registerInputHandler
+    };
 
     const executiveContent = useMemo(
         () => buildSSoTExecutiveSummaryContent(patientData),
@@ -92,43 +123,65 @@ const Fase20_Portapapeles = ({
     }, [isStudyCompleted, setActiveTab]);
 
     useEffect(() => {
-        if (isStudyCompleted) {
-            if (registerInputHandler) registerInputHandler(null);
-            return;
-        }
-        if (hasEmittedGateRef.current) return;
-        hasEmittedGateRef.current = true;
+        if (isStudyCompleted) return;
+        if (typeof setMessages !== 'function') return;
+        if (hasEmittedGateRef.current.lastEmittedContent === executiveContent) return;
 
-        if (typeof setMessages === 'function') {
-            setMessages(prev => {
-                const safePrev = Array.isArray(prev) ? prev : [];
-                const alreadyExists = safePrev.some(
-                    m => m?.id === 'phase20_ssot_executive_gate' ||
-                        (typeof m?.content === 'string' && m.content.includes('Compuerta Ejecutiva de Despacho y Portapapeles (SSoTT — Fase 20)'))
-                );
-                if (alreadyExists) return safePrev;
+        hasEmittedGateRef.current.lastEmittedContent = executiveContent;
 
-                return [
-                    ...safePrev,
-                    {
-                        id: 'phase20_ssot_executive_gate',
-                        role: 'assistant',
-                        content: executiveContent,
-                        avatar: tiloImg,
-                        options: buildSSoTExecutiveOptions(false)
-                    }
-                ];
-            });
-        }
-    }, [isStudyCompleted, executiveContent, setMessages, registerInputHandler]);
+        setMessages(prev => {
+            const safePrev = Array.isArray(prev) ? prev : [];
+            const withoutStaleRecovery = safePrev.filter(m => !isStaleRecoveryCardInPhase20(m));
+            const hadStaleRecovery = withoutStaleRecovery.length !== safePrev.length;
+
+            const existingIdx = withoutStaleRecovery.findIndex(
+                m => m?.id === 'phase20_ssot_executive_gate' ||
+                    (typeof m?.content === 'string' && m.content.includes('Compuerta Ejecutiva de Despacho y Portapapeles (SSoTT — Fase 20)'))
+            );
+
+            if (existingIdx !== -1) {
+                const existingMsg = withoutStaleRecovery[existingIdx];
+                if (existingMsg?.content === executiveContent && !hadStaleRecovery) {
+                    return safePrev;
+                }
+                const updated = [...withoutStaleRecovery];
+                updated[existingIdx] = {
+                    ...existingMsg,
+                    id: 'phase20_ssot_executive_gate',
+                    content: executiveContent,
+                    options: buildSSoTExecutiveOptions(false)
+                };
+                return updated;
+            }
+
+            return [
+                ...withoutStaleRecovery,
+                {
+                    id: 'phase20_ssot_executive_gate',
+                    role: 'assistant',
+                    content: executiveContent,
+                    avatar: tiloImg,
+                    options: buildSSoTExecutiveOptions(false)
+                }
+            ];
+        });
+    }, [isStudyCompleted, executiveContent, setMessages]);
 
     const handleSend = useCallback(async (userMsg) => {
         const cmd = String(userMsg || '').trim();
+        const {
+            patientData: livePatientData,
+            onPhaseComplete: liveOnPhaseComplete,
+            registerInputHandler: liveRegisterInputHandler
+        } = hasEmittedGateRef.current?.props || {};
 
         if (cmd === 'PROCEED_TO_PHASE_21' || cmd === 'GO_TO_CALENDAR_SPRINT') {
-            if (registerInputHandler) registerInputHandler(null);
-            if (typeof onPhaseComplete === 'function') {
-                onPhaseComplete('PHASE_21_CALENDARIO');
+            if (typeof liveRegisterInputHandler === 'function') {
+                hasEmittedGateRef.current.handlerBound = false;
+                liveRegisterInputHandler(null);
+            }
+            if (typeof liveOnPhaseComplete === 'function') {
+                liveOnPhaseComplete('PHASE_21_CALENDARIO');
             }
             return;
         }
@@ -136,12 +189,12 @@ const Fase20_Portapapeles = ({
         if (cmd === 'COPY_SSOT_PATIENT_GUIDE' || cmd === 'COPY_SSOT_MEDICAL_DOSSIER') {
             const viewMode = cmd === 'COPY_SSOT_PATIENT_GUIDE' ? 'patient' : 'medical';
             const result = await copySSoTDocument({
-                patientData,
+                patientData: livePatientData,
                 citationId:
-                    patientData?.profile?.citationId ||
-                    patientData?.profile?.citaId ||
-                    patientData?.identificacion?.idCita ||
-                    patientData?.identificacion?.citaId ||
+                    livePatientData?.profile?.citationId ||
+                    livePatientData?.profile?.citaId ||
+                    livePatientData?.identificacion?.idCita ||
+                    livePatientData?.identificacion?.citaId ||
                     null,
                 viewMode
             });
@@ -170,16 +223,25 @@ const Fase20_Portapapeles = ({
                 });
             }
         }
-    }, [patientData, onPhaseComplete, registerInputHandler, setMessages]);
+    }, []);
 
     useEffect(() => {
-        if (!registerInputHandler) return;
+        if (typeof registerInputHandler !== 'function') return undefined;
         if (isStudyCompleted) {
-            registerInputHandler(null);
-            return;
+            if (hasEmittedGateRef.current.handlerBound) {
+                hasEmittedGateRef.current.handlerBound = false;
+                registerInputHandler(null);
+            }
+            return undefined;
         }
-        registerInputHandler(() => handleSend);
+        if (!hasEmittedGateRef.current.handlerBound) {
+            hasEmittedGateRef.current.handlerBound = true;
+            registerInputHandler(() => handleSend);
+        }
         return () => {
+            if (hasEmittedGateRef.current) {
+                hasEmittedGateRef.current.handlerBound = false;
+            }
             registerInputHandler(null);
         };
     }, [registerInputHandler, isStudyCompleted, handleSend]);

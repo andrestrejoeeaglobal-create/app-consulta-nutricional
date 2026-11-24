@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const { db } = require('../db');
 const cryptoVault = require('../utils/cryptoVault');
 const { GoogleGenAI } = require('@google/genai');
-const { parseElectretHTML, parseElectretJSON, normalizeClinicalName, parseLocalDate } = require('../utils/electretParser');
+const { parseElectretHTML, parseElectretJSON, normalizeClinicalName, parseLocalDate, isSyntheticElectretPayload } = require('../utils/electretParser');
 const { samplePhysicalSensor, synthesizePatientStudy } = require('../services/directElectretEngine');
 const { callSensoryHubWithFallback } = require('../services/sensoryBridge');
 
@@ -90,12 +90,20 @@ const storage = multer.diskStorage({
     filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
         let prefix = 'ocular-';
-        if (file.fieldname === 'lingualImage') {
+        if (file.fieldname === 'dorsalImage') {
+            prefix = 'lingual-dorsal-';
+        } else if (file.fieldname === 'ventralImage') {
+            prefix = 'lingual-ventral-';
+        } else if (file.fieldname === 'lingualImage') {
             prefix = 'lingual-';
         } else if (file.fieldname === 'externalDocs') {
             prefix = 'ext-';
-        } else if (file.fieldname === 'visualImage') {
+        } else if (file.fieldname === 'visualImage' || file.fieldname === 'visualImages') {
             prefix = 'visual-';
+        } else if (file.fieldname === 'rightEye') {
+            prefix = 'ocular-od-';
+        } else if (file.fieldname === 'leftEye') {
+            prefix = 'ocular-oi-';
         }
         cb(null, prefix + uniqueSuffix + path.extname(file.originalname));
     }
@@ -445,74 +453,170 @@ function checkUsbHardwareStatus() {
 }
 
 /**
- * Localiza de forma autónoma el expediente/estudio completo del paciente en el sistema de archivos del consultorio.
- * Prioriza estrictamente ResultOne.htm (que consolida las 36 categorías completas) sobre Result01.htm (que solo contiene Cardiovascular).
+ * Decodifica de forma segura un buffer HTML exportado por el Analizador Cuántico
+ * priorizando latin1 (iso-8859-1 / windows-1252) salvo cabecera explícita UTF-8.
  */
-function findPatientStudyOnDisk(targetPatientName) {
+function decodeElectretBuffer(buffer) {
+    if (!buffer || !Buffer.isBuffer(buffer)) return '';
+    const headAscii = buffer.subarray(0, 1024).toString('ascii');
+    if (/charset\s*=\s*["']?utf-?8/i.test(headAscii)) {
+        return buffer.toString('utf8');
+    }
+    return buffer.toString('latin1');
+}
+
+/**
+ * Persiste únicamente el sub-árbol bioeléctrico verificado en session_persistence (AES-256-GCM),
+ * preservando intactos last_active_phase, last_active_block, user_id y datos de Fases 0–17.
+ */
+function persistVerifiedElectretToSession({ citationId, patientName, parsed, source = 'NATIVE_HTM_INGESTION' }) {
+    if (!parsed?.success || !parsed?.categories) return false;
+    const cleanCita = String(citationId || '').trim();
+    const cleanName = String(patientName || parsed?.patientMetadata?.name || '').trim();
+    // 🛡️ REGLA 8 NOM-004: Solo persistir cuando exista citationId explícito (prohibido adivinar folio histórico por nombre)
+    if (!cleanCita) return false;
+
+    try {
+        const rows = db.prepare('SELECT citation_id, patient_data_snapshot FROM session_persistence WHERE citation_id = ? AND patient_data_snapshot IS NOT NULL').all(cleanCita);
+
+        for (const row of rows) {
+            const decStr = cryptoVault.decryptClinicalData(row.patient_data_snapshot);
+            if (!decStr) continue;
+            const snap = typeof decStr === 'string' ? JSON.parse(decStr) : decStr;
+            const snapName = (snap?.profile?.name || snap?.identificacion?.nombre || '').trim();
+            const matchesRow = cleanCita
+                ? String(row.citation_id) === cleanCita
+                : (snapName && checkPatientMatch(cleanName, snapName));
+            if (!matchesRow) continue;
+
+            if (snapName && parsed.patientMetadata?.name && !checkPatientMatch(snapName, parsed.patientMetadata.name)) {
+                console.warn(`🛡️ [NOM-004] Persistencia bloqueada: el estudio "${parsed.patientMetadata.name}" no coincide con "${snapName}" (Cita #${row.citation_id}).`);
+                return false;
+            }
+
+            const bodyFatItem = (parsed.categories?.body_composition?.items || []).find((i) => i.slot === 'body_fat_pct');
+            if (bodyFatItem?.numeric_value && !snap?.vitals?.body_fat) {
+                snap.vitals = {
+                    ...(snap.vitals || {}),
+                    body_fat: bodyFatItem.numeric_value
+                };
+            }
+
+            snap.scan_data = {
+                ...(snap.scan_data || {}),
+                electret_metrics: parsed.categories,
+                electret_scanned: true,
+                electret_skipped: false,
+                electret_patient_name: parsed.patientMetadata?.name || snapName || cleanName,
+                electret_metadata: parsed.patientMetadata || null,
+                electret_synthesis: parsed.synthesisItems || []
+            };
+
+            snap.electretTelemetry = {
+                isScanned: true,
+                scannedAt: parsed.patientMetadata?.parsedLocalDate || new Date().toISOString(),
+                citationId: row.citation_id,
+                patientName: parsed.patientMetadata?.name || snapName || cleanName,
+                patientMetadata: parsed.patientMetadata || null,
+                categories: parsed.categories,
+                synthesisItems: parsed.synthesisItems || [],
+                totalParameters: parsed.totalParameters,
+                abnormalCount: parsed.abnormalCount,
+                source
+            };
+
+            snap._server_rewind_nonce = Date.now();
+            const encSnap = cryptoVault.encryptClinicalData(snap);
+            db.prepare('UPDATE session_persistence SET patient_data_snapshot = ?, last_updated = CURRENT_TIMESTAMP WHERE citation_id = ?').run(encSnap, row.citation_id);
+            return true;
+        }
+    } catch (persistErr) {
+        console.warn('⚠️ [ELECTRET PERSIST] Aviso no bloqueante:', persistErr.message);
+    }
+    return false;
+}
+
+/**
+ * Localiza de forma autónoma el estudio .htm completo más reciente del paciente en el consultorio,
+ * ordenando por fecha de modificación descendente (mtimeMs) y validando identidad NOM-004.
+ */
+function findPatientStudyOnDisk(targetPatientName, options = {}) {
     if (!targetPatientName) return null;
-    const desktopPaths = [
+    const minMtimeMs = Number(options.minMtimeMs) || 0;
+    const userHome = process.env.USERPROFILE || 'C:\\Users\\andre';
+    const searchDirs = [
         'C:\\Program Files (x86)\\Sistema Cuántico Bio-Eléctrico (4)',
-        path.join(process.env.USERPROFILE || 'C:\\Users\\andre', 'OneDrive', 'Escritorio'),
-        path.join(process.env.USERPROFILE || 'C:\\Users\\andre', 'Escritorio')
+        'C:\\Program Files (x86)\\Sistema Cuántico Bio-Eléctrico',
+        'C:\\Program Files (x86)\\Electret',
+        path.join(userHome, 'OneDrive', 'Escritorio'),
+        path.join(userHome, 'Escritorio'),
+        path.join(userHome, 'OneDrive', 'Desktop'),
+        path.join(userHome, 'Desktop'),
+        path.join(userHome, 'Downloads'),
+        path.join(userHome, 'Descargas'),
+        path.join(userHome, 'OneDrive', 'Documentos'),
+        path.join(userHome, 'Documents')
     ];
 
-    console.log(`🔍 [AUTONOMOUS TELEMETRY] Buscando estudio completo para "${targetPatientName}"...`);
+    console.log(`🔍 [AUTONOMOUS TELEMETRY] Buscando estudio .htm real para "${targetPatientName}"${minMtimeMs > 0 ? ` (posterior a ${new Date(minMtimeMs).toLocaleTimeString('es-MX')})` : ''}...`);
 
-    let bestCandidate = null;
-    let bestCatCount = 0;
+    const allCandidateFiles = [];
+    const seenPaths = new Set();
 
-    for (const dir of desktopPaths) {
+    for (const dir of searchDirs) {
         if (!fs.existsSync(dir)) continue;
-
         try {
-            const rawFiles = fs.readdirSync(dir).filter(f => {
+            const rawFiles = fs.readdirSync(dir);
+            for (const f of rawFiles) {
                 const low = f.toLowerCase();
-                return low.endsWith('.htm') && !low.startsWith('contrast') && low !== 'resultall.htm';
-            });
+                if ((!low.endsWith('.htm') && !low.endsWith('.html')) || low.startsWith('contrast') || low === 'resultall.htm') {
+                    continue;
+                }
+                const fullPath = path.join(dir, f);
+                const normFull = fullPath.toLowerCase();
+                if (seenPaths.has(normFull)) continue;
+                seenPaths.add(normFull);
 
-            // Ordenar priorizando ResultOne.htm primero, y luego por tamaño de archivo descendente (el reporte completo pesa ~470KB vs ~15KB de una sola categoría)
-            const sortedFiles = rawFiles
-                .map(f => {
-                    const fullPath = path.join(dir, f);
-                    let stat = { size: 0, mtimeMs: 0 };
-                    try { stat = fs.statSync(fullPath); } catch (e) {}
-                    return { name: f, fullPath, size: stat.size, mtimeMs: stat.mtimeMs };
-                })
-                .sort((a, b) => {
-                    const aIsOne = a.name.toLowerCase() === 'resultone.htm' ? 1 : 0;
-                    const bIsOne = b.name.toLowerCase() === 'resultone.htm' ? 1 : 0;
-                    if (aIsOne !== bIsOne) return bIsOne - aIsOne;
-                    return b.size - a.size;
-                });
-
-            for (const item of sortedFiles) {
                 try {
-                    const sample = fs.readFileSync(item.fullPath, { encoding: 'latin1', flag: 'r' });
-                    if (sample.includes('Informe del An')) {
-                        const parsed = parseElectretHTML(sample);
-                        const catCount = Object.keys(parsed.categories || {}).length;
-                        if (parsed.success && checkPatientMatch(targetPatientName, parsed.patientMetadata?.name)) {
-                            if (catCount > bestCatCount) {
-                                bestCatCount = catCount;
-                                bestCandidate = { file: item.fullPath, parsed };
-                            }
-                            // Si ya encontramos el reporte consolidado completo (>= 20 categorías), retornamos de inmediato
-                            if (catCount >= 20) {
-                                console.log(`✅ [AUTONOMOUS TELEMETRY] Estudio completo (${catCount} categorías, ${parsed.totalParameters} parámetros) hallado en: ${item.fullPath} para "${parsed.patientMetadata?.name}"`);
-                                return bestCandidate;
-                            }
-                        }
-                    }
-                } catch (e) {}
+                    const stat = fs.statSync(fullPath);
+                    if (!stat.isFile() || stat.size < 80000) continue; // Descarta reportes parciales de 1 sola categoría (~15KB)
+                    if (minMtimeMs > 0 && stat.mtimeMs < minMtimeMs) continue;
+                    allCandidateFiles.push({ name: f, fullPath, size: stat.size, mtimeMs: stat.mtimeMs });
+                } catch (_) {}
             }
-        } catch (e) {}
+        } catch (_) {}
     }
 
-    if (bestCandidate) {
-        console.log(`✅ [AUTONOMOUS TELEMETRY] Mejor estudio hallado (${bestCatCount} categorías) en: ${bestCandidate.file}`);
+    // Ordenar estrictamente del archivo más reciente al más antiguo
+    allCandidateFiles.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    let freshMismatchName = null;
+
+    for (const item of allCandidateFiles) {
+        try {
+            const rawBuf = fs.readFileSync(item.fullPath);
+            const htmlText = decodeElectretBuffer(rawBuf);
+            if (!htmlText.includes('Informe del An') && !htmlText.includes('Informe de prueba')) {
+                continue;
+            }
+            const parsed = parseElectretHTML(htmlText);
+            const catCount = Object.keys(parsed.categories || {}).length;
+            if (!parsed.success || catCount < 20) continue;
+
+            if (checkPatientMatch(targetPatientName, parsed.patientMetadata?.name)) {
+                console.log(`✅ [AUTONOMOUS TELEMETRY] Estudio nativo verificado (${catCount} categorías, ${parsed.totalParameters} parámetros, ${parsed.synthesisCount || 0} síntesis) en: ${item.fullPath}`);
+                return { file: item.fullPath, mtimeMs: item.mtimeMs, parsed };
+            } else if (minMtimeMs > 0 && item.name.toLowerCase() === 'resultone.htm' && parsed.patientMetadata?.name) {
+                freshMismatchName = parsed.patientMetadata.name;
+            }
+        } catch (_) {}
     }
 
-    return bestCandidate;
+    if (freshMismatchName) {
+        return { crossPatientMismatch: true, scannedPatientName: freshMismatchName };
+    }
+
+    return null;
 }
 
 /**
@@ -530,11 +634,9 @@ router.get('/hardware/status', async (req, res) => {
 
 /**
  * POST & GET /api/bio/scan/electret/sync
- * Sincronización autónoma y control de hardware para toma de estudio cuántico bioeléctrico
- * 🛡️ SUTURA 1: Inmune a la trombosis de caché en V8 / Chromium (POST + Cabeceras anti-caché)
+ * Sincronización autónoma de reporte .htm real con blindaje de identidad NOM-004 (Cero Datos Sintéticos).
  */
 const handleElectretSync = async (req, res) => {
-    // 🛡️ SUTURA 1: Inyección de cabeceras agresivas anti-caché
     res.set({
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
         'Pragma': 'no-cache',
@@ -544,39 +646,21 @@ const handleElectretSync = async (req, res) => {
 
     const targetPatientName = (req.body?.patientName || req.body?.name || req.query?.patientName || req.query?.name || '').trim();
     const targetCitationId = String(req.body?.citationId || req.query?.citationId || '').trim();
-    console.log(`🔄 [ODBC SYNC v5.0] Petición de sincronización y control de hardware para: "${targetPatientName || `Cita #${targetCitationId}`}"`);
+    const minMtimeMs = Number(req.body?.minMtimeMs || req.query?.minMtimeMs || 0) || 0;
+    const forceFresh = req.query.forceFresh === 'true' || req.body?.forceFresh === true || minMtimeMs > 0;
+    const storedOnly = req.query.storedOnly === 'true' || req.body?.storedOnly === true;
 
-    // 1. Detección de hardware USB conectado
-    let hwStatus = { sensorConnected: true, dongleConnected: true, hardwareReady: true, status: "ONLINE" };
+    console.log(`🔄 [ELECTRET SYNC] Sincronización solicitada para: "${targetPatientName || `Cita #${targetCitationId}`}" (forceFresh=${forceFresh}, storedOnly=${storedOnly})`);
+
+    let hwStatus = { sensorConnected: false, dongleConnected: false, hardwareReady: false, status: 'OFFLINE' };
     try {
         hwStatus = await checkUsbHardwareStatus();
     } catch (hwErr) {
-        console.warn("⚠️ No se pudo sondear hardware PnP:", hwErr.message);
-    }
-    console.log(`🔌 [HARDWARE] Sensor: ${hwStatus.sensorConnected ? 'ACTIVO' : 'NO DETECTADO'}, Llave USB: ${hwStatus.dongleConnected ? 'ACTIVA' : 'NO DETECTADA'}`);
-
-    const forceFresh = req.query.forceFresh === 'true' || req.body?.forceFresh === true;
-    const storedOnly = req.query.storedOnly === 'true' || req.body?.storedOnly === true;
-    if (forceFresh) {
-        lastDirectScanResult = null;
+        console.warn('⚠️ No se pudo sondear hardware PnP:', hwErr.message);
     }
 
-    // 1b. Si existe un estudio directo reciente en memoria para este paciente, devolverlo de inmediato (a menos que se fuerce refresco)
-    if (!forceFresh && lastDirectScanResult && checkPatientMatch(targetPatientName, lastDirectScanResult.patientMetadata?.name)) {
-        console.log(`🧬 [DIRECT HARDWARE SYNC] Inyectando estudio directo en memoria para "${lastDirectScanResult.patientMetadata?.name}"`);
-        return res.json({
-            success: true,
-            hardware: lastDirectScanResult.hardware || hwStatus,
-            patientMetadata: lastDirectScanResult.patientMetadata,
-            electret_metrics: lastDirectScanResult.categories,
-            totalParameters: lastDirectScanResult.totalParameters,
-            abnormalCount: lastDirectScanResult.abnormalCount,
-            electret_scanned: true,
-            source: "DIRECT_HARDWARE_INTERFACE"
-        });
-    }
-
-    // 1c. Recuperación desde bóveda SQLite (session_persistence cifrada AES-256-GCM) si el expediente activo ya tenía escaneo registrado
+    // 1. Recuperación desde bóveda SQLite (session_persistence) únicamente si contiene telemetría real no sintética
+    let needsRealHtmUpgrade = false;
     if (!forceFresh && (targetCitationId || targetPatientName)) {
         try {
             const persistedRows = targetCitationId
@@ -591,118 +675,222 @@ const handleElectretSync = async (req, res) => {
                 const matchesIdentity = targetCitationId
                     ? String(row.citation_id) === targetCitationId
                     : (snapName && checkPatientMatch(targetPatientName, snapName));
+
                 if (storedMetrics && Object.keys(storedMetrics).length > 0 && matchesIdentity) {
-                    console.log(`🧬 [SQLITE TELEMETRY RECOVERY] Restaurando telemetría cifrada para "${snapName || `Cita #${row.citation_id}`}" (Cita #${row.citation_id})`);
+                    if (isSyntheticElectretPayload(storedMetrics)) {
+                        console.warn(`🛑 [NOM-004] Detectado snapshot sintético legado en Cita #${row.citation_id}; resolviendo estudio .htm real automáticamente.`);
+                        needsRealHtmUpgrade = true;
+                        continue;
+                    }
                     return res.json({
                         success: true,
                         hardware: hwStatus,
-                        patientMetadata: {
+                        patientMetadata: snap?.scan_data?.electret_metadata || snap?.electretTelemetry?.patientMetadata || {
                             name: snapName,
-                            scanDate: snap?.electretTelemetry?.scannedAt || new Date().toLocaleString('es-MX', { hour12: false })
+                            scanDate: snap?.electretTelemetry?.scannedAt || null
                         },
                         electret_metrics: storedMetrics,
-                        totalParameters: snap?.electretTelemetry?.totalParameters || 253,
+                        synthesisItems: snap?.scan_data?.electret_synthesis || snap?.electretTelemetry?.synthesisItems || [],
+                        totalParameters: snap?.electretTelemetry?.totalParameters || 262,
                         abnormalCount: snap?.electretTelemetry?.abnormalCount || 0,
                         electret_scanned: true,
-                        source: "SQLITE_SESSION_PERSISTENCE"
+                        source: 'SQLITE_SESSION_PERSISTENCE'
                     });
                 }
             }
         } catch (sqliteSyncErr) {
-            console.warn("⚠️ [SQLITE TELEMETRY RECOVERY] Aviso:", sqliteSyncErr.message);
+            console.warn('⚠️ [SQLITE TELEMETRY RECOVERY] Aviso:', sqliteSyncErr.message);
         }
     }
 
-    if (storedOnly) {
+    if (storedOnly && !needsRealHtmUpgrade) {
         return res.json({
             success: false,
-            status: "NO_STORED_STUDY",
+            status: 'NO_STORED_STUDY',
             electret_scanned: false
         });
     }
 
-    // 2. RESOLUCIÓN DIRECTA AUTÓNOMA: Buscar expediente clínico existente para el paciente en el consultorio
-    const patientStudy = findPatientStudyOnDisk(targetPatientName);
+    // 2. Resolución directa autónoma desde archivo .htm real en disco (ordenado por mtimeMs más reciente)
+    const patientStudy = findPatientStudyOnDisk(targetPatientName, { minMtimeMs });
+    if (patientStudy?.crossPatientMismatch) {
+        return res.status(409).json({
+            success: false,
+            error: 'CROSS_PATIENT_CONTAMINATION_PREVENTED',
+            scannedPatientName: patientStudy.scannedPatientName,
+            message: `El informe recién generado en Electret pertenece a "${patientStudy.scannedPatientName}", el cual no coincide con el paciente activo ("${targetPatientName}"). Verifique el nombre en Electret y vuelva a generar el informe.`
+        });
+    }
+
     if (patientStudy && patientStudy.parsed?.success) {
         const { parsed } = patientStudy;
-        console.log(`🧬 [AUTONOMOUS TELEMETRY] Telemetría inyectada con éxito para "${parsed.patientMetadata?.name}". Categorías: ${Object.keys(parsed.categories).length}, Parámetros: ${parsed.totalParameters}, Alertas: ${parsed.abnormalCount}`);
-        
+        persistVerifiedElectretToSession({
+            citationId: targetCitationId,
+            patientName: targetPatientName,
+            parsed,
+            source: 'AUTONOMOUS_HTM_SYNC'
+        });
+
         return res.json({
             success: true,
             hardware: hwStatus,
-            patientMetadata: {
-                ...parsed.patientMetadata,
-                scanDate: new Date().toLocaleString('es-MX', { hour12: false }),
-                parsedLocalDate: new Date().toISOString()
-            },
+            patientMetadata: parsed.patientMetadata,
             electret_metrics: parsed.categories,
+            synthesisItems: parsed.synthesisItems || [],
+            synthesisCount: parsed.synthesisCount || 0,
             totalParameters: parsed.totalParameters,
             abnormalCount: parsed.abnormalCount,
             electret_scanned: true,
-            source: "AUTONOMOUS_HARDWARE_INTEGRATION",
+            source: 'AUTONOMOUS_HTM_SYNC',
             studyFile: path.basename(patientStudy.file)
         });
     }
 
-    // 3. Vía Secundaria: Ejecución del puente nativo read_electret.exe (si el software original acaba de escribir)
+    // 3. Vía secundaria: Puente nativo read_electret.exe (únicamente cuando no se exige mtime nuevo estricto o acaba de generarse)
     const { execFile } = require('child_process');
     const exePath = path.join(__dirname, '..', 'read_electret.exe');
 
-    if (fs.existsSync(exePath)) {
+    if (minMtimeMs === 0 && fs.existsSync(exePath)) {
         execFile(exePath, [], { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout: 5000 }, (error, stdout) => {
             if (!error && stdout) {
                 try {
                     const rawData = JSON.parse(stdout.trim());
                     if (rawData.success && rawData.html_content) {
                         const parsedResult = parseElectretHTML(rawData.html_content);
-                        if (parsedResult.success && parsedResult.patientMetadata?.name) {
-                            if (checkPatientMatch(targetPatientName, parsedResult.patientMetadata.name)) {
-                                console.log(`🧬 [ODBC SYNC v5.0] Estudio vivo detectado en hardware para "${parsedResult.patientMetadata.name}"`);
-                                return res.json({
-                                    success: true,
-                                    hardware: hwStatus,
-                                    patientMetadata: {
-                                        ...parsedResult.patientMetadata,
-                                        scanDate: new Date().toLocaleString('es-MX', { hour12: false }),
-                                        parsedLocalDate: new Date().toISOString()
-                                    },
-                                    electret_metrics: parsedResult.categories,
-                                    totalParameters: parsedResult.totalParameters,
-                                    abnormalCount: parsedResult.abnormalCount,
-                                    electret_scanned: true,
-                                    source: "LIVE_ELECTRET_SOFTWARE"
-                                });
-                            }
+                        if (
+                            parsedResult.success &&
+                            Object.keys(parsedResult.categories || {}).length >= 20 &&
+                            parsedResult.patientMetadata?.name &&
+                            checkPatientMatch(targetPatientName, parsedResult.patientMetadata.name)
+                        ) {
+                            persistVerifiedElectretToSession({
+                                citationId: targetCitationId,
+                                patientName: targetPatientName,
+                                parsed: parsedResult,
+                                source: 'LIVE_ELECTRET_SOFTWARE'
+                            });
+                            return res.json({
+                                success: true,
+                                hardware: hwStatus,
+                                patientMetadata: parsedResult.patientMetadata,
+                                electret_metrics: parsedResult.categories,
+                                synthesisItems: parsedResult.synthesisItems || [],
+                                synthesisCount: parsedResult.synthesisCount || 0,
+                                totalParameters: parsedResult.totalParameters,
+                                abnormalCount: parsedResult.abnormalCount,
+                                electret_scanned: true,
+                                source: 'LIVE_ELECTRET_SOFTWARE'
+                            });
                         }
                     }
-                } catch (e) {}
+                } catch (_) {}
             }
 
-            // 4. Si no hay estudio específico previo ni en el software Electret, NO inventar datos (Regla Inmutable CERO DATOS INVENTADOS)
-            console.log(`ℹ️ [ODBC SYNC v5.0] No hay estudio activo en este momento para "${targetPatientName}". Esperando adquisición real.`);
             return res.json({
                 success: false,
                 hardware: hwStatus,
-                error: "NO_ACTIVE_STUDY",
-                message: `No se detectó un estudio generado en este momento para ${targetPatientName || 'el paciente'}. Conecte al paciente a los electrodos cilíndricos y genere el escaneo.`
+                error: 'NO_ACTIVE_STUDY',
+                message: `No se encontró un informe .htm verificado para ${targetPatientName || 'el paciente'}. Realice el escaneo en Electret, presione "Obtener Informe" o cargue el archivo .htm exportado.`
             });
         });
         return;
     }
 
-    // 4b. Sin estudio en disco ni en base de datos
     return res.json({
         success: false,
         hardware: hwStatus,
-        error: "NO_ACTIVE_STUDY",
-        message: `No se detectó un estudio generado para ${targetPatientName || 'el paciente'}. Conecte al paciente a los electrodos cilíndricos y genere el escaneo.`
+        error: 'NO_ACTIVE_STUDY',
+        message: `Aguardando generación del informe .htm para ${targetPatientName || 'el paciente'} en el software del analizador.`
     });
 };
 
 /**
+ * POST /api/bio/scan/electret/upload-htm
+ * Carga manual asistida de archivo .htm/.html exportado por el software original del analizador cuántico
+ * con decodificación latin1 segura, candado biométrico NOM-004 y persistencia cifrada.
+ */
+router.post('/electret/upload-htm', upload.single('htmFile'), (req, res) => {
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    });
+
+    const uploadedFile = req.file;
+    const targetPatientName = String(req.body?.patientName || '').trim();
+    const targetCitationId = String(req.body?.citationId || '').trim();
+
+    if (!uploadedFile || !uploadedFile.path) {
+        return res.status(400).json({
+            success: false,
+            error: 'MISSING_HTM_FILE',
+            message: 'No se recibió ningún archivo .htm o .html para analizar.'
+        });
+    }
+
+    try {
+        const rawBuf = fs.readFileSync(uploadedFile.path);
+        const htmlContent = decodeElectretBuffer(rawBuf);
+        const parsed = parseElectretHTML(htmlContent);
+        const catCount = Object.keys(parsed.categories || {}).length;
+
+        if (!parsed.success || catCount < 15) {
+            return res.status(422).json({
+                success: false,
+                error: 'INVALID_ELECTRET_HTM',
+                message: 'El archivo seleccionado no corresponde a un informe completo válido del analizador cuántico bioeléctrico.'
+            });
+        }
+
+        if (targetPatientName && parsed.patientMetadata?.name && !checkPatientMatch(targetPatientName, parsed.patientMetadata.name)) {
+            return res.status(409).json({
+                success: false,
+                error: 'CROSS_PATIENT_CONTAMINATION_PREVENTED',
+                scannedPatientName: parsed.patientMetadata.name,
+                message: `El informe cargado pertenece a "${parsed.patientMetadata.name}", el cual no coincide con el titular del expediente actual ("${targetPatientName}"). Carga bloqueada por bioseguridad NOM-004.`
+            });
+        }
+
+        persistVerifiedElectretToSession({
+            citationId: targetCitationId,
+            patientName: targetPatientName || parsed.patientMetadata?.name,
+            parsed,
+            source: 'MANUAL_HTM_UPLOAD'
+        });
+
+        return res.json({
+            success: true,
+            patientMetadata: parsed.patientMetadata,
+            electret_metrics: parsed.categories,
+            synthesisItems: parsed.synthesisItems || [],
+            synthesisCount: parsed.synthesisCount || 0,
+            totalParameters: parsed.totalParameters,
+            abnormalCount: parsed.abnormalCount,
+            electret_scanned: true,
+            source: 'MANUAL_HTM_UPLOAD',
+            studyFile: uploadedFile.originalname
+        });
+    } catch (err) {
+        console.error('🔥 [UPLOAD HTM] Error procesando archivo .htm:', err.message);
+        return res.status(500).json({
+            success: false,
+            error: 'HTM_PARSE_EXCEPTION',
+            message: 'Error al leer o decodificar el archivo .htm seleccionado.'
+        });
+    } finally {
+        try {
+            if (uploadedFile?.path && fs.existsSync(uploadedFile.path)) {
+                fs.unlinkSync(uploadedFile.path);
+            }
+        } catch (_) {}
+    }
+});
+
+/**
  * POST /api/bio/scan/electret/direct-acquire
- * Control directo del sensor USB (VID_5608 PID_0808) y síntesis autónoma de 450+ biomarcadores
- * Sin depender de Electret.exe ni intervenciones de ventanas externas
+ * 🛡️ REGLA 8 NOM-004 (CERO DATOS INVENTADOS):
+ * Se elimina la síntesis algorítmica de 253 parámetros sobre catálogo estático.
+ * Lanza el puente RPA autónomo hacia Electret.exe y deriva al Centinela de Sincronización .htm real.
  */
 router.post('/electret/direct-acquire', async (req, res) => {
     res.set({
@@ -715,103 +903,349 @@ router.post('/electret/direct-acquire', async (req, res) => {
     const {
         name = 'Paciente',
         age = 51,
-        sex = 'M',
         height = 172,
-        weight = 78,
-        duration = 4.0
+        weight = 78
     } = req.body || {};
 
-    console.log(`⚡ [DIRECT HARDWARE SCAN] Iniciando toma física directa para "${name}" (Duración: ${duration}s)...`);
+    const scanStartedAtMs = Date.now() - 3000;
+    let bridgeLaunched = false;
 
     try {
-        const hwTelemetry = await samplePhysicalSensor(duration);
-        console.log(`🔌 [DIRECT HARDWARE SCAN] Muestreo completado:`, hwTelemetry);
+        const pythonBridgePath = path.join(__dirname, '..', '..', 'bio_bridge_agent.py');
+        const venvPythonPath = path.join(__dirname, '..', '..', '.venv', 'Scripts', 'python.exe');
+        const pythonExe = fs.existsSync(venvPythonPath) ? venvPythonPath : 'python';
 
-        // 🛡️ REGLA 8 NOM-004 (FAIL-CLOSED): Prohibido sintetizar 253 parámetros basales si el sensor USB físico no respondió
-        if (!hwTelemetry || hwTelemetry.success !== true) {
-            const hwError = hwTelemetry?.error || 'DEVICE_NOT_FOUND';
-            console.warn(`🛑 [DIRECT HARDWARE SCAN — FAIL-CLOSED] Sensor USB físico no disponible (${hwError}). Derivando a centinela o contingencia.`);
-            return res.status(503).json({
-                success: false,
-                error: hwError,
-                fallbackToSentinel: true,
-                message: 'Sensor bioeléctrico USB no detectado o sin contacto activo. Sincronice reporte real o continúe por contingencia.'
+        if (fs.existsSync(pythonBridgePath)) {
+            const tempScanId = `launch_${Date.now()}`;
+            const tempJsonPath = path.join(__dirname, '..', 'uploads', `temp_patient_${tempScanId}.json`);
+            fs.writeFileSync(tempJsonPath, JSON.stringify({ name, age, height, weight }, null, 2), 'utf8');
+            const child = spawn(pythonExe, [pythonBridgePath, tempJsonPath], {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: false
             });
+            child.unref();
+            bridgeLaunched = true;
         }
-
-        const study = synthesizePatientStudy({ name, age, sex, height, weight }, hwTelemetry);
-        if (!study || !study.success) {
-            return res.status(500).json({
-                success: false,
-                error: study?.error || 'SYNTHESIS_FAILED',
-                message: 'No se pudo generar el estudio clínico desde el hardware.'
-            });
-        }
-
-        lastDirectScanResult = study;
-
-        // Persistir de inmediato en session_persistence (SQLite cifrado) si existe sesión activa del paciente
-        try {
-            const persistedRows = db.prepare('SELECT citation_id, patient_data_snapshot FROM session_persistence WHERE patient_data_snapshot IS NOT NULL ORDER BY last_updated DESC').all();
-            for (const row of persistedRows) {
-                const decStr = cryptoVault.decryptClinicalData(row.patient_data_snapshot);
-                if (!decStr) continue;
-                const snap = typeof decStr === 'string' ? JSON.parse(decStr) : decStr;
-                const snapName = (snap?.profile?.name || snap?.identificacion?.nombre || '').trim();
-                if (snapName && checkPatientMatch(name, snapName)) {
-                    snap.scan_data = {
-                        ...(snap.scan_data || {}),
-                        electret_metrics: study.categories,
-                        electret_scanned: true,
-                        electret_patient_name: snapName
-                    };
-                    snap.electretTelemetry = {
-                        isScanned: true,
-                        scannedAt: new Date().toISOString(),
-                        citationId: row.citation_id,
-                        patientName: snapName,
-                        categories: study.categories,
-                        totalParameters: study.totalParameters,
-                        abnormalCount: study.abnormalCount
-                    };
-                    const encSnap = cryptoVault.encryptClinicalData(snap);
-                    db.prepare('UPDATE session_persistence SET patient_data_snapshot = ?, last_updated = CURRENT_TIMESTAMP WHERE citation_id = ?').run(encSnap, row.citation_id);
-                    break;
-                }
-            }
-        } catch (persistErr) {
-            console.warn("⚠️ [DIRECT HARDWARE SCAN] No se pudo respaldar en session_persistence:", persistErr.message);
-        }
-
-        console.log(`✅ [DIRECT HARDWARE SCAN] Telemetría inyectada con éxito: ${study.totalParameters} parámetros, ${study.abnormalCount} anomalías.`);
-
-        return res.json({
-            success: true,
-            hardware: study.hardware,
-            patientMetadata: study.patientMetadata,
-            electret_metrics: study.categories,
-            totalParameters: study.totalParameters,
-            abnormalCount: study.abnormalCount,
-            electret_scanned: true,
-            source: "DIRECT_HARDWARE_INTERFACE"
-        });
-    } catch (err) {
-        console.error("🔥 [DIRECT HARDWARE SCAN] Error en escaneo directo:", err);
-        return res.status(500).json({
-            success: false,
-            error: 'SCAN_EXCEPTION',
-            message: err.message
-        });
+    } catch (bridgeErr) {
+        console.warn('⚠️ [ELECTRET BRIDGE] No se pudo iniciar RPA automático:', bridgeErr.message);
     }
+
+    return res.status(202).json({
+        success: false,
+        error: 'AWAITING_ELECTRET_REPORT',
+        fallbackToSentinel: true,
+        bridgeLaunched,
+        scanStartedAtMs,
+        message: 'Software del analizador cuántico iniciado. Aguardando la generación del informe .htm real.'
+    });
 });
 
 router.post('/electret/sync', handleElectretSync);
 router.get('/electret/sync', handleElectretSync);
 router.post('/electret/acquire', handleElectretSync);
 
+// ============================================================================
+// 🛡️ GUARDIAS SSoTT DE FASE 18 (EGM-36, EGM-38, EGM-39, EGM-41, EGM-45)
+// Honestidad biológica, Marca Blanca Equipo en Acción® y Blindaje COFEPRIS
+// ============================================================================
+function normalizeCornealArcusScale(rawArco) {
+    const s = String(rawArco || '').trim();
+    if (!s || /negativ|ausent|sin\s+arco|normal/i.test(s)) {
+        return 'Ausente';
+    }
+    if (/grado\s*(ii|iii|2|3)|circunferencial|denso|severo|marcado/i.test(s)) {
+        return 'Grado II–III (Circunferencial)';
+    }
+    return 'Grado I (Incipiente)';
+}
+
+function sanitizeWhiteLabelClinicalText(rawText) {
+    if (!rawText || typeof rawText !== 'string') return rawText;
+    return rawText
+        .replace(/Gemini\s*2\.5\s*Flash\s*Vision|Gemini\s*2\.5\s*Flash|Gemini\s*Vision|Google\s*Gemini|CYTOS\s*Spectrum|Topograf[ií]a\s*CYTOS|\bCYTOS\b/gi, 'Motor de Visión Clínica Equipo en Acción®')
+        .replace(/microcirculaci[oó]n\s+foveal/gi, 'microcirculación epiescleral y bulbar')
+        .replace(/&/g, 'y')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+function sanitizeOcularPredictionSSoT(rawPred, patientAge = 60) {
+    if (!rawPred || typeof rawPred !== 'object') return rawPred;
+    const pilares = rawPred.pilares && typeof rawPred.pilares === 'object' ? { ...rawPred.pilares } : {};
+    const tipoToma = sanitizeWhiteLabelClinicalText(rawPred.tipo_toma_detectada || 'Segmento Anterior (Superficie Ocular Externa)');
+    const isPosteriorRetina = /fondo\s+de\s+ojo|retinograf/i.test(tipoToma);
+
+    if (pilares.diabetes_glucosa) {
+        const dg = { ...pilares.diabetes_glucosa };
+        const riesgoUpper = String(dg.riesgo || 'BAJO').toUpperCase();
+        const ecoLabel = riesgoUpper.includes('ELEV') || riesgoUpper.includes('ALT')
+            ? 'Sobrecarga Microvascular Activa'
+            : riesgoUpper.includes('MOD')
+                ? 'Vigilancia Microvascular Moderada'
+                : 'Equilibrio Microvascular Fisiológico';
+        dg.titulo = 'Eco Metabólico y Microvasculatura Epiescleral';
+        dg.indice_eco_metabolico = dg.indice_eco_metabolico || ecoLabel;
+        delete dg.hba1c_estimada;
+        dg.edema_macular = isPosteriorRetina ? (dg.edema_macular || 'Ausente') : 'No valorable en toma externa de segmento anterior';
+        dg.retinopatia_microangiopatia = sanitizeWhiteLabelClinicalText(
+            dg.retinopatia_microangiopatia || 'Microcirculación epiescleral y bulbar conservada'
+        ).replace(/diab[eé]tic[ao]s?/gi, 'microvascular');
+        dg.hallazgos = sanitizeWhiteLabelClinicalText(
+            dg.hallazgos || 'Lecho microvascular epiescleral y bulbar sin signos morfológicos de congestión reactiva.'
+        )
+            .replace(/HbA1c(?:\s*(?:estimad[ao]|est\.?|[<>≥≤=:\-])*\s*\d+(?:[.,]\d+)?\s*%)?/gi, 'indicador morfológico de Eco Metabólico')
+            .replace(/diab[eé]tic[ao]s?/gi, 'microvascular')
+            .replace(/\bdiabetes\b/gi, 'desequilibrio metabólico')
+            .replace(/\bglucosa\b/gi, 'Eco Metabólico');
+        pilares.diabetes_glucosa = dg;
+    }
+
+    if (pilares.cardiovascular_lipidos) {
+        const cv = { ...pilares.cardiovascular_lipidos };
+        cv.titulo = 'Salud Cardiovascular y Lípidos';
+        cv.arco_senil_corneal = normalizeCornealArcusScale(cv.arco_senil_corneal);
+        cv.angioarquitectura_hipertensiva = sanitizeWhiteLabelClinicalText(cv.angioarquitectura_hipertensiva || 'Calibre microvascular conservado');
+        cv.hallazgos = sanitizeWhiteLabelClinicalText(cv.hallazgos || 'Calibre vascular epiescleral y transparencia perilímbica evaluados.');
+        pilares.cardiovascular_lipidos = cv;
+    }
+
+    const csa = { ...(pilares.conteo_sanguineo_anemia || {}) };
+    const palidezRaw = String(csa.palidez_conjuntival_tarsal || '');
+    const hallazgosRaw = String(csa.hallazgos || '');
+    const explicitTarsalEversion =
+        csa.tiene_eversion_tarsal === true &&
+        !/no\s+evaluable|falta\s+de\s+eversi[oó]n|sin\s+eversi[oó]n/i.test(`${palidezRaw} ${hallazgosRaw}`);
+
+    csa.titulo = 'Perfusión Conjuntival Tarsal';
+    csa.hemoglobina_estimada_gdl = null;
+    if (!explicitTarsalEversion) {
+        csa.tiene_eversion_tarsal = false;
+        csa.estado_anemia = 'NO_EVALUABLE';
+        csa.palidez_conjuntival_tarsal = 'No evaluable sin eversión palpebral tarsal';
+        csa.hallazgos = 'Determinación morfológica tarsal no evaluable en fotografía bulbar frontal sin eversión del párpado inferior. La cuantificación de hemoglobina requiere biometría hemática venosa.';
+    } else {
+        csa.estado_anemia = /palidez|anemia|hipocrom/i.test(String(csa.estado_anemia || palidezRaw)) ? 'OBSERVACIÓN TARSAL' : 'NORMOCRÓMICA TARSAL';
+        csa.palidez_conjuntival_tarsal = sanitizeWhiteLabelClinicalText(palidezRaw || 'Coloración tarsal conservada');
+        csa.hallazgos = sanitizeWhiteLabelClinicalText(hallazgosRaw || 'Perfusión microvascular tarsal evaluada cualitativamente; requiere biometría hemática venosa para cuantificación de hemoglobina.')
+            .replace(/\b\d+(?:\.\d+)?\s*g\/dL\b/gi, 'valor cuantitativo sujeto a laboratorio venoso');
+    }
+    pilares.conteo_sanguineo_anemia = csa;
+
+    if (pilares.funcion_renal_hepatica) {
+        pilares.funcion_renal_hepatica = {
+            ...pilares.funcion_renal_hepatica,
+            titulo: 'Función Renal y Hepatobiliar (Morfología Periorbital)',
+            hallazgos: sanitizeWhiteLabelClinicalText(pilares.funcion_renal_hepatica.hallazgos || 'Región periorbitaria y estroma escleral evaluados.')
+        };
+    }
+
+    if (pilares.edad_biologica_longevidad) {
+        const eb = { ...pilares.edad_biologica_longevidad };
+        eb.titulo = 'Edad Biológica Ocular y Resiliencia Endotelial';
+        eb.edad_cronologica = eb.edad_cronologica || patientAge;
+        eb.edad_biologica_ocular = eb.edad_biologica_ocular || patientAge;
+        eb.retinal_age_gap = sanitizeWhiteLabelClinicalText(String(eb.retinal_age_gap || '0 años (Acorde a edad cronológica)').replace(/^Gap:\s*/i, ''));
+        eb.hallazgos = sanitizeWhiteLabelClinicalText(eb.hallazgos || 'Morfología microvascular ocular acorde a edad cronológica.');
+        pilares.edad_biologica_longevidad = eb;
+    }
+
+    if (pilares.salud_visual_estructural) {
+        pilares.salud_visual_estructural = {
+            ...pilares.salud_visual_estructural,
+            titulo: 'Medios Refringentes y Simetría Binocular',
+            hallazgos: sanitizeWhiteLabelClinicalText(pilares.salud_visual_estructural.hallazgos || 'Transparencia corneal y simetría binocular evaluadas.')
+        };
+    }
+
+    return {
+        ...rawPred,
+        tipo_toma_detectada: tipoToma,
+        pilares,
+        sintesis_fisiopatologica: sanitizeWhiteLabelClinicalText(rawPred.sintesis_fisiopatologica || '')
+            ?.replace(/\b(?:Hb|hemoglobina)\s*(?:estimad[ao]\s*)?:?\s*\d+(?:[.,]\d+)?\s*g\/dL\b|\b\d+(?:[.,]\d+)?\s*g\/dL\b/gi, 'perfusión conjuntival sujeta a biometría venosa')
+            ?.replace(/HbA1c(?:\s*(?:estimad[ao]|est\.?|[<>≥≤=:\-])*\s*\d+(?:[.,]\d+)?\s*%)?/gi, 'Eco Metabólico microvascular')
+            ?.trim() || null,
+        disclaimer_legal: 'Tamizaje bio-óptico no invasivo mediante el Motor de Visión Clínica Equipo en Acción® conforme a la NOM-004-SSA3-2012 y directrices de COFEPRIS. No sustituye la exploración oftalmológica ni la biometría venosa.'
+    };
+}
+
+function normalizeSaburraOrthography(text) {
+    if (!text || typeof text !== 'string') return text;
+    return sanitizeWhiteLabelClinicalText(text)
+        .replace(/Moderada\s*\(\s*Blanquecina\s*\)/gi, 'Moderada (blanquecina)')
+        .replace(/Delgada\s*\(\s*Blanquecina\s*\)/gi, 'Delgada (blanquecina)')
+        .replace(/Delgada\s*\(\s*Blanca\s*\)/gi, 'Delgada (blanquecina)')
+        .replace(/\b([A-Za-záéíóúñÁÉÍÓÚÑ]+)\(\s*([A-Za-záéíóúñÁÉÍÓÚÑ\s]+)\)/g, (_, a, b) => `${a} (${b.trim().toLowerCase()})`)
+        .replace(/\bEutrofico\b/g, 'Eutrófico')
+        .replace(/\beutrofico\b/g, 'eutrófico');
+}
+
+function sanitizeLingualPredictionSSoT(rawPred, patientAge = 60) {
+    if (!rawPred || typeof rawPred !== 'object') return rawPred;
+    const pilares = rawPred.pilares && typeof rawPred.pilares === 'object' ? { ...rawPred.pilares } : {};
+
+    if (pilares.gastrointestinal_microbioma) {
+        const gm = { ...pilares.gastrointestinal_microbioma };
+        gm.titulo = 'Salud Gastrointestinal y Microbioma';
+        gm.saburra_grosor = normalizeSaburraOrthography(gm.saburra_grosor || 'Delgada Fisiológica');
+        gm.saburra_color = normalizeSaburraOrthography(gm.saburra_color || 'blanquecina fisiológica');
+        gm.hallazgos = normalizeSaburraOrthography(gm.hallazgos || 'Mucosa lingual y biopelícula evaluadas dentro de parámetros funcionales.');
+        pilares.gastrointestinal_microbioma = gm;
+    }
+    if (pilares.cardiovascular_oxigenacion) {
+        pilares.cardiovascular_oxigenacion = {
+            ...pilares.cardiovascular_oxigenacion,
+            titulo: 'Sistema Cardiovascular y Venas Sublinguales',
+            hallazgos: normalizeSaburraOrthography(pilares.cardiovascular_oxigenacion.hallazgos || 'Perfusión y retorno venoso sublingual evaluados.')
+        };
+    }
+    if (pilares.conteo_sanguineo_nutricion) {
+        pilares.conteo_sanguineo_nutricion = {
+            ...pilares.conteo_sanguineo_nutricion,
+            titulo: 'Nutrición Celular y Sustrato Mucoso',
+            hallazgos: normalizeSaburraOrthography(pilares.conteo_sanguineo_nutricion.hallazgos || 'Coloración del sustrato lingual y papilas evaluadas.')
+        };
+    }
+    if (pilares.funcion_hepatica_renal_hidratacion) {
+        pilares.funcion_hepatica_renal_hidratacion = {
+            ...pilares.funcion_hepatica_renal_hidratacion,
+            titulo: 'Equilibrio Hepatorrenal e Hidratación',
+            hallazgos: normalizeSaburraOrthography(pilares.funcion_hepatica_renal_hidratacion.hallazgos || 'Hidratación salival y bordes linguales evaluados.')
+        };
+    }
+    if (pilares.inmune_inflamacion) {
+        pilares.inmune_inflamacion = {
+            ...pilares.inmune_inflamacion,
+            titulo: 'Reactividad Mucosa e Inmunotolerancia',
+            hallazgos: normalizeSaburraOrthography(pilares.inmune_inflamacion.hallazgos || 'Superficie lingual sin lesiones inflamatorias activas.')
+        };
+    }
+    if (pilares.edad_biologica_mucosal) {
+        const em = { ...pilares.edad_biologica_mucosal };
+        em.titulo = 'Edad Biológica Mucosal y Trofismo';
+        em.trofismo_muscular = normalizeSaburraOrthography(em.trofismo_muscular || 'Eutrófico (tono óptimo)');
+        em.edad_mucosal_estimada = em.edad_mucosal_estimada || patientAge;
+        em.hallazgos = normalizeSaburraOrthography(em.hallazgos || 'Trofismo muscular lingual eutrófico y resiliencia epitelial conservada.');
+        pilares.edad_biologica_mucosal = em;
+    }
+
+    return {
+        ...rawPred,
+        tipo_toma_detectada: normalizeSaburraOrthography(rawPred.tipo_toma_detectada || 'Toma Dual Completa'),
+        pilares,
+        sintesis_fisiopatologica: normalizeSaburraOrthography(rawPred.sintesis_fisiopatologica || '') || null,
+        disclaimer_legal: 'Tamizaje glosómico funcional no invasivo mediante el Motor de Visión Clínica Equipo en Acción® conforme a la NOM-004-SSA3-2012 y COFEPRIS. Requiere correlación clínica presencial.'
+    };
+}
+
+const SOMATIC_ACCENT_DICTIONARY = {
+    CRONICA: 'Crónica',
+    CRONICO: 'Crónico',
+    CUTANEO: 'Cutáneo',
+    CUTANEA: 'Cutánea',
+    DERMICO: 'Dérmico',
+    DERMICA: 'Dérmica',
+    PERIFERICO: 'Periférico',
+    PERIFERICA: 'Periférica',
+    MACULAS: 'Máculas',
+    MACULA: 'Mácula',
+    ERUPCION: 'Erupción',
+    ULCERA: 'Úlcera',
+    ULCERAS: 'Úlceras',
+    PIGMENTACION: 'Pigmentación',
+    HIPERPIGMENTACION: 'Hiperpigmentación',
+    CIRCULACION: 'Circulación',
+    MICROCIRCULACION: 'Microcirculación',
+    INFLAMACION: 'Inflamación',
+    LESION: 'Lesión',
+    LESIONES: 'Lesiones',
+    LIQUIDO: 'Líquido',
+    LIQUIDOS: 'Líquidos',
+    ESTASIS: 'Estasis',
+    VARICOSAS: 'Varicosas',
+    VENOSA: 'Venosa',
+    VENOSO: 'Venoso',
+    EUTROFICO: 'Eutrófico',
+    HIPOTROFICO: 'Hipotrófico',
+    HIPERQUERATOSIS: 'Hiperqueratosis',
+    TELANGIECTASIAS: 'Telangiectasias'
+};
+
+function sanitizeSomaticFlagEs(rawFlag) {
+    if (!rawFlag) return '';
+    let cleaned = String(rawFlag)
+        .trim()
+        .replace(/^#+/, '')
+        .replace(/autoinmun[ea]s?/gi, 'Reactividad Microvascular')
+        .replace(/([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])/g, '$1 $2')
+        .replace(/([A-ZÁÉÍÓÚÑ]+)([A-ZÁÉÍÓÚÑ][a-záéíóúñ])/g, '$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+    const lowerConnectors = new Set(['de', 'del', 'por', 'en', 'con', 'sin', 'y', 'o', 'la', 'el', 'los', 'las']);
+    return cleaned
+        .split(' ')
+        .filter(Boolean)
+        .map((word, idx) => {
+            const plainUpper = word.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+            if (SOMATIC_ACCENT_DICTIONARY[plainUpper]) {
+                return SOMATIC_ACCENT_DICTIONARY[plainUpper];
+            }
+            const lower = word.toLowerCase();
+            if (idx > 0 && lowerConnectors.has(lower)) return lower;
+            return lower.charAt(0).toUpperCase() + lower.slice(1);
+        })
+        .join(' ');
+}
+
+function sanitizeSomaticProseCofepris(rawText) {
+    if (!rawText || typeof rawText !== 'string') return rawText;
+    return sanitizeWhiteLabelClinicalText(rawText)
+        .replace(/\b(?:origen\s+|etiolog[ií]a\s+|patolog[ií]a\s+|proceso\s+|enfermedad\s+)?autoinmun[ea]s?\b/gi, 'reactividad microvascular cutánea sujeta a valoración clínica')
+        .replace(/\b(?:lupus|vasculitis\s+autoinmune|psoriasis\s+confirmada|melanoma\s+confirmado)\b/gi, 'alteración morfológica cutánea sujeta a valoración dermatológica')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+function sanitizeSomaticMorphologyAndFlags(rawRes) {
+    if (!rawRes || typeof rawRes !== 'object') return rawRes;
+    const cleanFlags = Array.isArray(rawRes.clinical_flags)
+        ? [...new Set(rawRes.clinical_flags.map(sanitizeSomaticFlagEs).filter(Boolean))]
+        : [];
+    const cleanItems = Array.isArray(rawRes.items)
+        ? rawRes.items.map((it) => ({
+            ...it,
+            region: sanitizeSomaticProseCofepris(it?.region || ''),
+            finding: sanitizeSomaticProseCofepris(it?.finding || ''),
+            clinical_flags: Array.isArray(it?.clinical_flags)
+                ? [...new Set(it.clinical_flags.map(sanitizeSomaticFlagEs).filter(Boolean))]
+                : cleanFlags
+        }))
+        : [];
+    return {
+        ...rawRes,
+        findings: sanitizeSomaticProseCofepris(rawRes.findings || ''),
+        clinical_flags: cleanFlags,
+        items: cleanItems
+    };
+}
+
+function applyOcularVitalsGuard(patientDataObj, ocularBiomarkers) {
+    if (!patientDataObj || typeof patientDataObj !== 'object') return patientDataObj;
+    patientDataObj.vitals = patientDataObj.vitals || {};
+    if (ocularBiomarkers) {
+        // 🔒 EGM-36 (Regla 8 NOM-004): PROHIBIDO escribir estimaciones fotográficas sobre vitals.hemoglobin, vitals.egfr o vitals.acr.
+        // vitals.hemoglobin pertenece exclusivamente a biometría hemática venosa certificada.
+        patientDataObj.vitals.ocular_tarsal_status = ocularBiomarkers.hemoglobin?.status || 'NO_EVALUABLE';
+    }
+    return patientDataObj;
+}
+
 /**
  * POST /api/bio/scan/binocular-ocular-scan
- * Recibe simultáneamente las fotos del Ojo Derecho e Izquierdo para análisis binocular con Gemini Vision.
+ * Recibe simultáneamente las fotos del Ojo Derecho e Izquierdo para análisis binocular con el Motor de Visión Clínica Equipo en Acción®.
  */
 router.post('/binocular-ocular-scan', upload.fields([
     { name: 'rightEye', maxCount: 1 },
@@ -869,21 +1303,19 @@ Evalúa estrictamente los biomarcadores observables en las imágenes reales.
 
 ## DEBES EVALUAR EN PROFUNDIDAD LOS SIGUIENTES 6 PILARES CLÍNICOS:
 
-1. DIABETES Y CONTROL DE GLUCOSA:
-   - Retinopatía diabética (microaneurismas, exudados lípidos duros, microhemorragias).
-   - Edema macular / engrosamiento foveal si aplica.
-   - Predicción de descontrol glucémico crónico (probabilidad de HbA1c ≥ 9.0% vs control fisiológico < 6.0% vs alerta 6.0-8.9%).
-   - Microangiopatía visible en lecho epiescleral o perilímbico.
+1. ECO METABÓLICO Y MICROVASCULATURA EPIESCLERAL:
+   - Morfología microvascular en segmento anterior (tortuosidad perilímbica, congestión epiescleral y bulbar).
+   - Solo si la toma es retinografía de fondo de ojo real, describir hallazgos retinianos; en toma frontal externa declarar edema macular como "No valorable en toma externa de segmento anterior".
+   - PROHIBIDO estimar porcentajes de HbA1c ni glucosa sérica a partir de fotografía ocular. Clasificar únicamente el índice morfológico como: "Equilibrio Microvascular Fisiológico | Vigilancia Microvascular Moderada | Sobrecarga Microvascular Activa".
 
 2. SALUD CARDIOVASCULAR Y LÍPIDOS:
-   - Riesgo cardiovascular relativo (Bajo, Moderado, Elevado).
-   - Angioarquitectura hipertensiva: calibre arteriolar vs venular (relación A/V), tortuosidad vascular, muescas/cruces patológicos de Gunn o Salus.
-   - Depósitos lipídicos: Arco Senil Corneal (Gerontoxon: Grado I incipiente / Grado II denso circunferencial / Negativo), xantelasmas o depósitos periorbitarios, estimación de hipercolesterolemia/hipertrigliceridemia.
+   - Riesgo microvascular relativo (Bajo, Moderado, Elevado).
+   - Angioarquitectura epiescleral y bulbar: calibre vascular y tortuosidad reactiva.
+   - Depósitos lipídicos corneales (Arco Senil / Gerontoxon) usando EXCLUSIVAMENTE esta escala: "Ausente | Grado I (Incipiente) | Grado II–III (Circunferencial)".
 
-3. CONTEO SANGUÍNEO Y ANEMIA:
-   - Detección no invasiva de síndrome anémico.
-   - Estimación de concentración de hemoglobina (Hb en g/dL aproximada).
-   - Rigor anatómico en conjuntiva tarsal (verificar si hubo eversión o si se evalúa por perfusión de lecho microvascular epiescleral).
+3. PERFUSIÓN CONJUNTIVAL TARSAL (HONESTIDAD BIOLÓGICA ESTRICTA):
+   - PROHIBIDO estimar valores numéricos de hemoglobina en g/dL por fotografía (jamás emitir cifras cuantitativas en g/dL ni rangos numéricos).
+   - Indica booleano estricto "tiene_eversion_tarsal": true SOLO si se observa eversión física real del párpado inferior mostrando la conjuntiva tarsal; en toma frontal normal sin eversión, responde false y reporta "No evaluable sin eversión palpebral tarsal" y estado "NO_EVALUABLE".
 
 4. FUNCIÓN DE ÓRGANOS (RIÑÓN E HÍGADO):
    - Eje Renal: edema infraorbitario bilateral, bolsas palpebrales / festón malar, laxitud septal (retención hidrosalina / fuga proteica / microangiopatía renal).
@@ -906,29 +1338,30 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
   "calidad_optica": "Óptima | Adecuada | Subóptima",
   "pilares": {
     "diabetes_glucosa": {
-      "titulo": "Diabetes y Control de Glucosa",
+      "titulo": "Eco Metabólico y Microvasculatura Epiescleral",
       "riesgo": "BAJO | MODERADO | ELEVADO",
-      "hba1c_estimada": "< 6.0% (Control Fisiológico) | 6.0 - 8.9% (Alerta Glucémica) | ≥ 9.0% (Descontrol Crónico)",
-      "edema_macular": "Ausente | Sospecha | Evidente | No Valorable en Segmento Anterior",
-      "retinopatia_microangiopatia": "Sin microangiopatía visible | Microaneurismas incipientes | Microangiopatía epiescleral reactiva",
-      "hallazgos": "Descripción anatómica detallada de los signos glucémicos observados..."
+      "indice_eco_metabolico": "Equilibrio Microvascular Fisiológico | Vigilancia Microvascular Moderada | Sobrecarga Microvascular Activa",
+      "edema_macular": "No valorable en toma externa de segmento anterior | Ausente | Sospecha",
+      "retinopatia_microangiopatia": "Microcirculación epiescleral y bulbar conservada | Tortuosidad perilímbica reactiva | Congestión epiescleral marcada",
+      "hallazgos": "Descripción morfológica objetiva de la microcirculación epiescleral y bulbar..."
     },
     "cardiovascular_lipidos": {
       "titulo": "Salud Cardiovascular y Lípidos",
       "riesgo_cardiovascular": "BAJO | MODERADO | ELEVADO",
-      "perfil_lipidico_estimado": "Fisiológico | Probable Hipercolesterolemia / Dislipidemia",
-      "arco_senil_corneal": "Negativo | Grado I (Incipiente) | Grado II (Circunferencial)",
-      "angioarquitectura_hipertensiva": "Calibre conservado | Estrechamiento arteriolar leve | Tortuosidad venular reactiva",
-      "relacion_av": "2:3 (Fisiológico) | Estrechamiento arteriolar focal | No valorable en superficie",
-      "hallazgos": "Descripción detallada del árbol vascular y depósitos lipídicos corneales/periorbitales..."
+      "perfil_lipidico_estimado": "Fisiológico | Depósito lipídico corneal observable",
+      "arco_senil_corneal": "Ausente | Grado I (Incipiente) | Grado II–III (Circunferencial)",
+      "angioarquitectura_hipertensiva": "Calibre conservado | Estrechamiento microvascular leve | Tortuosidad venular reactiva",
+      "relacion_av": "No valorable en superficie externa | 2:3 (Fisiológico)",
+      "hallazgos": "Descripción morfológica del lecho vascular epiescleral y halo corneal..."
     },
     "conteo_sanguineo_anemia": {
-      "titulo": "Conteo Sanguíneo y Anemia",
-      "hemoglobina_estimada_gdl": "14.0 g/dL (Rango aproximado 13.5-15.0)",
-      "estado_anemia": "NORMAL | SOSPECHA DE ANEMIA LEVE | ANEMIA MODERADA/SEVERA",
-      "palidez_conjuntival_tarsal": "Normocrómica | No Evaluable por Falta de Eversión Tarsal | Palidez Patológica",
-      "perfusion_escleral": "Perfusión de lecho microvascular adecuada",
-      "hallazgos": "Evaluación espectrométrica de la perfusión tisular conjuntival y escleral..."
+      "titulo": "Perfusión Conjuntival Tarsal",
+      "tiene_eversion_tarsal": false,
+      "hemoglobina_estimada_gdl": null,
+      "estado_anemia": "NO_EVALUABLE | NORMOCRÓMICA TARSAL | OBSERVACIÓN TARSAL",
+      "palidez_conjuntival_tarsal": "No evaluable sin eversión palpebral tarsal | Coloración tarsal conservada | Palidez tarsal observable",
+      "perfusion_escleral": "Perfusión microvascular epiescleral conservada",
+      "hallazgos": "Evaluación morfológica estricta de conjuntiva tarsal..."
     },
     "funcion_renal_hepatica": {
       "titulo": "Función de Órganos (Riñón e Hígado)",
@@ -958,7 +1391,7 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
   },
   "sintesis_fisiopatologica": "Síntesis integrativa de la telemetría bio-óptica ocular...",
   "prioridad_clinica_global": "Baja | Moderada | Elevada",
-  "disclaimer_legal": "Tamizaje oculómico biofotónico no invasivo asistido por IA (Gemini 2.5 Flash Vision) conforme a la NOM-004 y directrices de COFEPRIS. Requiere correlación oftalmológica presencial."
+  "disclaimer_legal": "Tamizaje bio-óptico no invasivo mediante el Motor de Visión Clínica Equipo en Acción® conforme a la NOM-004-SSA3-2012 y directrices de COFEPRIS. No sustituye la exploración oftalmológica ni la biometría venosa."
 }
                 `;
                 parts.push(prompt);
@@ -1012,30 +1445,31 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
         if (!aiPrediction) {
             return res.status(500).json({
                 success: false,
-                error: "No fue posible completar la inferencia bio-óptica con Gemini Vision. Verifique la conectividad con Google AI o la resolución de las fotos."
+                error: "No fue posible completar la inferencia bio-óptica en el Motor de Visión Clínica Equipo en Acción®. Verifique la conectividad o la nitidez de las fotografías."
             });
         }
 
+        aiPrediction = sanitizeOcularPredictionSSoT(aiPrediction, patientAge);
         const pilares = aiPrediction.pilares || {};
 
         // Adaptadores retrocompatibles para legacy code
         const ocularAuditLegacy = {
             palidez_conjuntival: {
-                estado: pilares.conteo_sanguineo_anemia?.palidez_conjuntival_tarsal || "Normocrómica",
-                descripcion_clinica: pilares.conteo_sanguineo_anemia?.hallazgos || "Sin palidez patológica detectable."
+                estado: pilares.conteo_sanguineo_anemia?.palidez_conjuntival_tarsal || "No evaluable sin eversión palpebral tarsal",
+                descripcion_clinica: pilares.conteo_sanguineo_anemia?.hallazgos || "Determinación fotográfica no evaluable sin eversión palpebral tarsal."
             },
             microcirculacion_escleral: {
                 calibre_vascular: pilares.cardiovascular_lipidos?.angioarquitectura_hipertensiva || "Calibre conservado",
-                densidad_capilar: pilares.conteo_sanguineo_anemia?.perfusion_escleral || "Perfusión microvascular conservada",
+                densidad_capilar: pilares.conteo_sanguineo_anemia?.perfusion_escleral || "Perfusión microvascular epiescleral conservada",
                 hallazgos_especificos: [
                     pilares.diabetes_glucosa?.retinopatia_microangiopatia,
-                    pilares.cardiovascular_lipidos?.arco_senil_corneal !== "Negativo" ? `Arco Senil: ${pilares.cardiovascular_lipidos?.arco_senil_corneal}` : null
+                    pilares.cardiovascular_lipidos?.arco_senil_corneal !== "Ausente" ? `Arco Senil: ${pilares.cardiovascular_lipidos?.arco_senil_corneal}` : null
                 ].filter(Boolean)
             },
             tejido_periorbital: {
                 edema_infraorbitario: pilares.funcion_renal_hepatica?.edema_infraorbitario_renal || "Normal",
                 estasis_venosa_pigmentaria: pilares.funcion_renal_hepatica?.hallazgos || "Sin hallazgos patológicos",
-                deposito_lipidico_corneal: pilares.cardiovascular_lipidos?.arco_senil_corneal || "Negativo"
+                deposito_lipidico_corneal: pilares.cardiovascular_lipidos?.arco_senil_corneal || "Ausente"
             },
             asimetria_binocular: {
                 es_simetrico: !pilares.salud_visual_estructural?.asimetria_binocular?.toLowerCase().includes('asimetría'),
@@ -1043,27 +1477,28 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
             }
         };
 
+        const isHbNoEvaluable = !pilares.conteo_sanguineo_anemia?.tiene_eversion_tarsal || pilares.conteo_sanguineo_anemia?.estado_anemia === "NO_EVALUABLE";
         const predictions = {
             hemoglobin: {
-                name: "Hemoglobina Estimada (Hb)",
-                raw_value: pilares.conteo_sanguineo_anemia?.hemoglobina_estimada_gdl || "14.0 g/dL",
-                value: pilares.conteo_sanguineo_anemia?.hemoglobina_estimada_gdl || "14.0 g/dL",
-                status: pilares.conteo_sanguineo_anemia?.estado_anemia === "NORMAL" ? "NORMAL" : "WARNING",
-                translation: pilares.conteo_sanguineo_anemia?.hallazgos || "Nivel de hemoglobina y perfusión tisular estimados no invasivamente."
+                name: "Perfusión Conjuntival Tarsal",
+                raw_value: null,
+                value: isHbNoEvaluable ? "NO_EVALUABLE" : (pilares.conteo_sanguineo_anemia?.estado_anemia || "NORMOCRÓMICA TARSAL"),
+                status: isHbNoEvaluable ? "NO_EVALUABLE" : (pilares.conteo_sanguineo_anemia?.estado_anemia === "NORMOCRÓMICA TARSAL" ? "NORMAL" : "WARNING"),
+                translation: pilares.conteo_sanguineo_anemia?.hallazgos || "Determinación fotográfica no evaluable sin eversión palpebral tarsal verificada."
             },
             foveal_microcirculation: {
-                name: "Microcirculación & Angioarquitectura",
+                name: "Microcirculación Epiescleral y Bulbar",
                 raw_value: pilares.cardiovascular_lipidos?.angioarquitectura_hipertensiva || "Normal",
                 value: pilares.cardiovascular_lipidos?.riesgo_cardiovascular || "BAJO",
                 status: pilares.cardiovascular_lipidos?.riesgo_cardiovascular === "ELEVADO" ? "WARNING" : "NORMAL",
-                translation: pilares.cardiovascular_lipidos?.hallazgos || "Calibre vascular y relación arteriola/vénula conservadas."
+                translation: pilares.cardiovascular_lipidos?.hallazgos || "Calibre microvascular epiescleral y bulbar conservado."
             },
             metabolic_risk: {
-                name: "Control Glucémico & Riesgo Ocular",
-                raw_value: pilares.diabetes_glucosa?.hba1c_estimada || "< 6.0%",
+                name: "Eco Metabólico y Microvasculatura",
+                raw_value: pilares.diabetes_glucosa?.indice_eco_metabolico || "Equilibrio Microvascular Fisiológico",
                 value: pilares.diabetes_glucosa?.riesgo || "BAJO",
                 status: pilares.diabetes_glucosa?.riesgo === "ELEVADO" ? "WARNING" : "NORMAL",
-                translation: pilares.diabetes_glucosa?.hallazgos || "Sin signos de microangiopatía diabética."
+                translation: pilares.diabetes_glucosa?.hallazgos || "Lecho microvascular epiescleral sin congestión reactiva."
             }
         };
 
@@ -1257,7 +1692,7 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
   },
   "sintesis_fisiopatologica": "Síntesis integrativa del glosodiagnóstico funcional...",
   "prioridad_clinica_global": "Baja | Moderada | Elevada",
-  "disclaimer_legal": "Tamizaje biofotónico lingual funcional asistido por IA (Gemini Vision) conforme a la NOM-004-SSA3-2012 y COFEPRIS. Requiere correlación clínica presencial."
+  "disclaimer_legal": "Tamizaje glosómico funcional no invasivo mediante el Motor de Visión Clínica Equipo en Acción® conforme a la NOM-004-SSA3-2012 y COFEPRIS. Requiere correlación clínica presencial."
 }
             `;
             parts.push(prompt);
@@ -1312,9 +1747,11 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
     if (!aiPrediction) {
         return res.status(500).json({
             success: false,
-            error: "No fue posible completar la inferencia glosómica con Gemini Vision. Verifique la conectividad con Google AI o la calidad de las fotografías."
+            error: "No fue posible completar la inferencia glosómica en el Motor de Visión Clínica Equipo en Acción®. Verifique la conectividad o la calidad de las fotografías."
         });
     }
+
+    aiPrediction = sanitizeLingualPredictionSSoT(aiPrediction, patientAge);
 
     // SUTURA DE CALIDAD ÓPTICA (RECHAZO AMIGABLE ANTE FLASH DIRECTO O DESENFOQUE SEVERO)
     if (aiPrediction.tipo_toma_detectada === "Calidad Insuficiente" || aiPrediction.requiere_recaptura === true) {
@@ -1361,14 +1798,14 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
             translation: pilares.funcion_hepatica_renal_hidratacion?.hallazgos || "Evaluación hepatobiliar funcional."
         },
         glycemic_alteration: {
-            name: "Salud Gastrointestinal & Microbioma",
-            raw_value: `${pilares.gastrointestinal_microbioma?.saburra_grosor || 'Delgada'} (${pilares.gastrointestinal_microbioma?.saburra_color || 'Blanca'})`,
+            name: "Salud Gastrointestinal y Microbioma",
+            raw_value: normalizeSaburraOrthography(`${pilares.gastrointestinal_microbioma?.saburra_grosor || 'Delgada'} (${(pilares.gastrointestinal_microbioma?.saburra_color || 'blanquecina').toLowerCase()})`),
             value: pilares.gastrointestinal_microbioma?.sospecha_disbiosis || "BAJO",
             status: pilares.gastrointestinal_microbioma?.sospecha_disbiosis === "Elevada" ? "WARNING" : "NORMAL",
             translation: pilares.gastrointestinal_microbioma?.hallazgos || "Biopelícula y mucosa en balance."
         },
         perfusion_motility: {
-            name: "Cardiovascular & Oxigenación Ranina",
+            name: "Cardiovascular y Oxigenación Sublingual",
             raw_value: pilares.cardiovascular_oxigenacion?.estasis_venosa_sublingual || "Fisiológica",
             value: pilares.cardiovascular_oxigenacion?.riesgo_vascular_congestivo || "BAJO",
             status: pilares.cardiovascular_oxigenacion?.riesgo_vascular_congestivo === "ELEVADO" ? "WARNING" : "NORMAL",
@@ -1471,9 +1908,9 @@ router.post('/visual-scan', upload.any(), async (req, res) => {
 Analiza las ${processedFiles.length} imagen(es) médica(s) somática(s) adjunta(s) cargadas durante la consulta presencial.
 Realiza una descripción puramente objetiva y morfológica de los hallazgos visuales observados en cada fotografía y una síntesis global (ej. várices prominentes, pigmentación ocre por hemosiderina, eritema, edema, distribución adiposa/postural, trofismo cutáneo o lesiones dérmicas).
 
-REGLAS CLÍNICAS Y LINGÜÍSTICAS OBLIGATORIAS (NOM-004):
-1. NO emitas diagnósticos categóricos definitivos. Usa lenguaje descriptivo morfológico y de compatibilidad clínica ("Los hallazgos morfológicos observados son compatibles con...", "Se aprecia hiperpigmentación sugerente de...").
-2. PROHIBIDO USAR INGLÉS O GUIONES BAJOS: Todos los valores de "severity" y todas las etiquetas en "clinical_flags" deben estar redactados ESTRICTAMENTE EN ESPAÑOL CLÍNICO (ej. "Eritema Reticular", "Máculas Puntiformes", "Erupción Micropapular", "Compromiso Perifolicular", "Edema Cutáneo Superficial", "Insuficiencia Venosa Crónica").
+REGLAS CLÍNICAS, REGULATORIAS (COFEPRIS) Y LINGÜÍSTICAS OBLIGATORIAS (NOM-004):
+1. NO emitas diagnósticos categóricos ni etiológicos definitivos. QUEDA ESTRICTAMENTE PROHIBIDO utilizar el término "autoinmune" (ni variantes como "lupus", "vasculitis autoinmune" o "etiología autoinmune"). Limítate exclusivamente a semiología morfológica microvascular y cutánea objetiva ("Los hallazgos morfológicos observados son compatibles con...", "Se aprecia reactividad microvascular cutánea o hiperpigmentación sugerente de...").
+2. PROHIBIDO USAR INGLÉS, HASHTAGS #CAMELCASE O GUIONES BAJOS: Todos los valores de "severity" y todas las etiquetas en "clinical_flags" deben estar redactados ESTRICTAMENTE EN ESPAÑOL CLÍNICO CON ORTOGRAFÍA Y ACENTUACIÓN COMPLETAS, separados por espacios (ej. "Eritema Reticular", "Máculas Puntiformes", "Erupción Micropapular", "Compromiso Perifolicular", "Edema Cutáneo Superficial", "Insuficiencia Venosa Crónica").
 3. Los valores permitidos para "severity" (tanto global como por cada elemento en "items") son exclusivamente: "Baja", "Moderada", "Alta" o "Crítica".
 
 Genera la respuesta estrictamente en formato JSON con la siguiente estructura:
@@ -1495,7 +1932,7 @@ Genera la respuesta estrictamente en formato JSON con la siguiente estructura:
 Responde ÚNICAMENTE con el objeto JSON válido.`);
 
                 console.log(`🤖 Consultando a Gemini Vision para análisis somático de ${processedFiles.length} foto(s)...`);
-                const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-pro', 'gemini-flash-lite-latest'];
+                const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.8-flash', 'gemini-flash-latest'];
                 let response = null;
                 for (const targetModel of candidateModels) {
                     try {
@@ -1537,26 +1974,29 @@ Responde ÚNICAMENTE con el objeto JSON válido.`);
 
     // ⚡ Conmutador Sensory Processing Hub con timeout de 3500ms y fallback local enriquecido
     let analysisResults = await callSensoryHubWithFallback('/api/bio/scan/visual-scan', hubPayload, runLocalVisual);
+    analysisResults = sanitizeSomaticMorphologyAndFlags(analysisResults || {});
 
         const normalizedItems = processedFiles.map((pf, idx) => {
             const aiItem = (Array.isArray(analysisResults?.items) && (analysisResults.items.find(it => Number(it.index) === idx + 1) || analysisResults.items[idx])) || null;
-            const fallbackSingle = runOfflineVisualMock(pf.fileName);
+            const fallbackSingle = sanitizeSomaticMorphologyAndFlags(runOfflineVisualMock(pf.fileName));
+            const rawItemFlags = Array.isArray(aiItem?.clinical_flags) ? aiItem.clinical_flags : (analysisResults?.clinical_flags || []);
             return {
                 index: idx + 1,
                 fileName: pf.fileName,
-                region: aiItem?.region || `Evidencia Somática #${idx + 1}`,
-                finding: aiItem?.finding || analysisResults?.findings || fallbackSingle.findings,
+                region: sanitizeSomaticProseCofepris(aiItem?.region || `Evidencia Somática #${idx + 1}`),
+                finding: sanitizeSomaticProseCofepris(aiItem?.finding || analysisResults?.findings || fallbackSingle.findings),
                 severity: aiItem?.severity || analysisResults?.severity || fallbackSingle.severity || "Baja",
-                clinical_flags: Array.isArray(aiItem?.clinical_flags) ? aiItem.clinical_flags : (analysisResults?.clinical_flags || []),
+                clinical_flags: [...new Set(rawItemFlags.map(sanitizeSomaticFlagEs).filter(Boolean))],
                 imageUrl: pf.dataUrl
             };
         });
 
+        const mergedGlobalFlags = [...new Set((analysisResults?.clinical_flags || []).map(sanitizeSomaticFlagEs).filter(Boolean))];
         res.json({
             success: true,
             totalPhotos: processedFiles.length,
-            findings: analysisResults?.findings || normalizedItems.map(i => `Foto #${i.index} (${i.region}): ${i.finding}`).join(' '),
-            clinical_flags: analysisResults?.clinical_flags || [],
+            findings: sanitizeSomaticProseCofepris(analysisResults?.findings || normalizedItems.map(i => `Foto #${i.index} (${i.region}): ${i.finding}`).join(' ')),
+            clinical_flags: mergedGlobalFlags,
             severity: analysisResults?.severity || "Baja",
             imageUrl: processedFiles[0].dataUrl,
             items: normalizedItems
@@ -1679,44 +2119,68 @@ router.post('/external-docs', upload.array('externalDocs', 10), async (req, res)
             external_metrics.exercise_log = xmlExerciseLog;
         }
 
-        // 2. Procesar imágenes/PDFs con Gemini o fallback offline
+        // 2. Procesar PDFs determinísticamente con pdf-parse + Study Grouping (analyte_uid) y fallback Vision solo para imágenes/escaneos sin capa de texto
         if (nonXmlFiles.length > 0) {
+            const {
+                buildAnalyteUid,
+                sanitizeLabReferenceRange,
+                classifyAndParsePdfFile,
+                consolidateUniversalExternalStudies
+            } = require('../utils/universalExternalStudiesParser');
+
             const runLocalDocs = async () => {
                 let localMetrics = { ...external_metrics };
+                const deterministicDocs = [];
+                const visionFiles = [];
+
+                for (const file of nonXmlFiles) {
+                    const ext = path.extname(file.originalname || '').toLowerCase();
+                    if (ext === '.pdf') {
+                        const parsedDoc = await classifyAndParsePdfFile(file.path, file.originalname);
+                        if (parsedDoc && parsedDoc.domain !== 'NEEDS_VISION_OCR') {
+                            deterministicDocs.push(parsedDoc);
+                        } else {
+                            visionFiles.push(file);
+                        }
+                    } else {
+                        visionFiles.push(file);
+                    }
+                }
+
+                const consolidated = consolidateUniversalExternalStudies(deterministicDocs, new Date());
+
+                if (visionFiles.length === 0) {
+                    return {
+                        ...consolidated,
+                        body_comp: {},
+                        allergies_detected: [],
+                        exercise_log: xmlExerciseLog || null
+                    };
+                }
+
                 if (process.env.GEMINI_API_KEY) {
                 try {
                     const { GoogleGenAI } = require('@google/genai');
                     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
                     const contents = [
-                        `Eres un "Clinical Data Extractor" (Extractor Forense de Datos Clínicos) del Ecosistema T.I.L.O.
-Tu tarea es analizar exhaustivamente los estudios de laboratorio clínico (PDF o imágenes), reportes de composición corporal (InBody), electrocardiogramas (ECG), pruebas de alergia o notas médicas adjuntas.
-
-REGLA DE ORO DE EXTRACCIÓN EXHAUSTIVA:
-- Extrae EL 100% DE LOS PARÁMETROS ANALÍTICOS presentes en el documento sin omitir ninguno (ej. si el estudio tiene 64 analitos en Química Sanguínea, Perfil Lipídico, Función Hepática, Hierro, Inmunoglobulinas y Biometría Hemática, debes extraer los 64 analitos completos).
-- Agrupa los analitos dentro de "sections" respetando las secciones clínicas del laboratorio (ej. "quimica_renal_electrolitos", "riesgo_cardiovascular_lipidos", "funcionamiento_hepatico", "metabolismo_hierro", "respuesta_inmunologica", "biometria_hematica").
-- Para cada analito incluye:
-  * "name": Nombre clínico exacto (ej. "Colesterol LDL directo", "sd LDL", "Glucosa").
-  * "val": Valor numérico obtenido como string (ej. "168", "1.95", "88").
-  * "unit": Unidad de medida (ej. "mg/dL", "%", "miles/µL", "U/L").
-  * "ref": Rango o límite de referencia exacto reportado (ej. "55 - 99", "< 100", "0 - 1.35", "> 60").
-  * "status": "NORMAL" si está dentro del rango de referencia, "ELEVADO" si supera el límite superior, o "BAJO" si está por debajo del límite inferior.
+                        `Eres un "Clinical Data Extractor" del Ecosistema Equipo en Acción®.
+Tu tarea es extraer el 100% de los parámetros analíticos, fecha de toma (YYYY-MM-DD) y hallazgos de gabinete (ECG, RX, US, RM, DMO) de los documentos adjuntos sin omitir analitos homónimos con distinta unidad (% vs miles/µL).
 
 El JSON resultante debe tener esta estructura exacta:
 {
   "external_metrics": {
-    "patient_name": "Nombre del paciente detectado en el estudio (si existe)",
+    "patient_name": "Nombre completo detectado (si existe)",
+    "study_date_iso": "YYYY-MM-DD",
     "sections": {
       "quimica_renal_electrolitos": {
-        "title": "Química Integral / Función Renal y Electrolitos",
+        "title": "Química Integral, Función Renal y Electrolitos",
         "items": [
           { "name": "Glucosa", "val": "88", "unit": "mg/dL", "ref": "55 - 99", "status": "NORMAL" }
         ]
       }
     },
-    "labs": {
-      "glucosa": "88 mg/dL"
-    },
+    "labs": {},
     "imaging": {},
     "body_comp": {},
     "allergies_detected": [],
@@ -1727,7 +2191,7 @@ El JSON resultante debe tener esta estructura exacta:
 Responde ÚNICAMENTE con el objeto JSON válido.`
                     ];
 
-                    for (const file of nonXmlFiles) {
+                    for (const file of visionFiles) {
                         const dataBase64 = fs.readFileSync(file.path).toString("base64");
                         contents.push({
                             inlineData: {
@@ -1738,15 +2202,13 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
                     }
 
                     const candidateModels = [
-                        'gemini-flash-lite-latest',
                         'gemini-flash-latest',
-                        'gemini-2.5-flash',
-                        'gemini-2.5-pro'
+                        'gemini-flash-lite-latest'
                     ];
                     let response = null;
                     for (const targetModel of candidateModels) {
                         try {
-                            console.log(`🤖 Consultando ${targetModel} para extracción OCR exhaustiva de documentos externos...`);
+                            console.log(`🤖 Consultando ${targetModel} para documentos escaneados sin capa de texto (${visionFiles.length})...`);
                             response = await ai.models.generateContent({
                                 model: targetModel,
                                 contents,
@@ -1754,34 +2216,64 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
                                     responseMimeType: "application/json",
                                 }
                             });
-                            if (response?.text) {
-                                console.log(`✅ Extracción OCR completada con éxito usando ${targetModel}`);
-                                break;
-                            }
+                            if (response?.text) break;
                         } catch (mErr) {
                             console.warn(`⚠️ Modelo ${targetModel} no disponible en external-docs (${mErr.message}), probando siguiente...`);
                         }
                     }
 
                     if (!response || !response.text) {
-                        throw new Error("Ningún modelo de Gemini respondió en external-docs.");
+                        if (deterministicDocs.length > 0) {
+                            return {
+                                ...consolidated,
+                                body_comp: {},
+                                allergies_detected: [],
+                                exercise_log: xmlExerciseLog || null
+                            };
+                        }
+                        throw new Error("Ningún modelo respondió para documentos escaneados.");
                     }
 
                     const cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
                     const parsed = JSON.parse(cleanText);
                     const rawMetrics = parsed.external_metrics || parsed;
+                    const normalized = normalizeExtractedLabMetrics(rawMetrics, buildAnalyteUid, sanitizeLabReferenceRange);
 
-                    const normalized = normalizeExtractedLabMetrics(rawMetrics);
+                    const mergedSections = [
+                        ...(Array.isArray(consolidated.sections) ? consolidated.sections : []),
+                        ...(Array.isArray(normalized.sections) ? normalized.sections : Object.values(normalized.sections || {}))
+                    ];
                     localMetrics = {
                         ...normalized,
+                        ...consolidated,
+                        sections: mergedSections,
+                        biomarkers: { ...(normalized.biomarkers || {}), ...(consolidated.biomarkers || {}) },
+                        labs: { ...(normalized.labs || {}), ...(consolidated.labs || {}) },
+                        totalParameters: (consolidated.totalParameters || 0) + (normalized.totalParameters || 0),
+                        abnormalCount: (consolidated.abnormalCount || 0) + (normalized.abnormalCount || 0),
                         exercise_log: xmlExerciseLog || normalized.exercise_log || null
                     };
                 } catch (geminiErr) {
+                    if (deterministicDocs.length > 0) {
+                        return {
+                            ...consolidated,
+                            body_comp: {},
+                            allergies_detected: [],
+                            exercise_log: xmlExerciseLog || null
+                        };
+                    }
                     console.error("🛑 [NOM-004 FAIL-CLOSED] Error en extracción OCR de documentos externos:", geminiErr.message);
                     const ocrErr = new Error("Servicio de extracción OCR no disponible temporalmente. Verifique conexión o reintente.");
                     ocrErr.code = 'OCR_UNAVAILABLE';
                     throw ocrErr;
                 }
+            } else if (deterministicDocs.length > 0) {
+                return {
+                    ...consolidated,
+                    body_comp: {},
+                    allergies_detected: [],
+                    exercise_log: xmlExerciseLog || null
+                };
             } else {
                 console.error("🛑 [NOM-004 FAIL-CLOSED] GEMINI_API_KEY no configurada para extracción OCR.");
                 const ocrErr = new Error("Motor OCR no configurado en el servidor.");
@@ -1832,16 +2324,31 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
     }
 });
 
-// Normalizador universal que construye sections, biomarkers y labs desde la respuesta de Gemini OCR
-function normalizeExtractedLabMetrics(raw) {
-    const sections = raw?.sections && typeof raw.sections === 'object' ? raw.sections : {};
+// Normalizador universal con llave compuesta analyte_uid = slug(nombre)::slug(unidad)::fecha_iso (cero colisión de homónimos)
+function normalizeExtractedLabMetrics(raw, buildAnalyteUidFn = null, sanitizeRefFn = null) {
+    const rawSectionsObj = raw?.sections && typeof raw.sections === 'object' ? raw.sections : {};
+    const studyDateIso = raw?.study_date_iso || null;
+    const sectionsArray = [];
     const biomarkers = {};
     const labs = raw?.labs && typeof raw.labs === 'object' ? { ...raw.labs } : {};
     let totalParameters = 0;
     let abnormalCount = 0;
 
-    for (const [secKey, secObj] of Object.entries(sections)) {
+    const entries = Array.isArray(rawSectionsObj)
+        ? rawSectionsObj.map((s, i) => [s.id || `sec_${i}`, s])
+        : Object.entries(rawSectionsObj);
+
+    const allItemsFlat = entries.flatMap(([, s]) => (Array.isArray(s?.items) ? s.items : []));
+    const nameFreq = new Map();
+    for (const it of allItemsFlat) {
+        if (!it?.name) continue;
+        const baseSlug = String(it.name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        nameFreq.set(baseSlug, (nameFreq.get(baseSlug) || 0) + 1);
+    }
+
+    for (const [secKey, secObj] of entries) {
         const items = Array.isArray(secObj?.items) ? secObj.items : [];
+        const normItems = [];
         for (const item of items) {
             if (!item || !item.name) continue;
             totalParameters++;
@@ -1849,55 +2356,50 @@ function normalizeExtractedLabMetrics(raw) {
             if (statusUpper !== 'NORMAL' && statusUpper !== '-') {
                 abnormalCount++;
             }
-            const slug = item.name
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, '_')
-                .replace(/^_|_$/g, '');
-            biomarkers[slug] = {
-                name: item.name,
-                value: item.val !== undefined ? item.val : item.value,
-                unit: item.unit || '',
-                ref: item.ref || '',
-                status: item.status || 'NORMAL',
-                section: secObj.title || secKey
-            };
-            labs[slug] = `${item.val !== undefined ? item.val : item.value} ${item.unit || ''}`.trim();
-        }
-    }
+            const baseSlug = String(item.name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+            const unitStr = String(item.unit || '').trim();
+            let displayName = item.name;
+            if ((nameFreq.get(baseSlug) || 0) > 1 && !/\(/.test(displayName) && unitStr) {
+                displayName = unitStr === '%' ? `${displayName} (%)` : `${displayName} (${unitStr})`;
+            }
+            const cleanRef = sanitizeRefFn ? sanitizeRefFn(item.ref || item.reference || '') : (item.ref || item.reference || '');
+            const uid = buildAnalyteUidFn
+                ? buildAnalyteUidFn(displayName, unitStr, studyDateIso)
+                : `${baseSlug}::${unitStr.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'indice'}::${studyDateIso || 'sin_fecha'}`;
+            const valRaw = item.val !== undefined ? item.val : item.value;
+            const numVal = parseFloat(String(valRaw).replace(',', '.'));
+            const isThousandCells = /miles\/[µu]l|10\^3\/[µu]l/i.test(unitStr) && Number.isFinite(numVal);
+            const isPcrMgDl = /prote[íi]na\s+c\s+reactiva|\bpcr\b/i.test(displayName) && /^mg\/dl$/i.test(unitStr) && Number.isFinite(numVal);
 
-    // Si Gemini sólo devolvió labs planos sin sections, construir una sección general
-    if (Object.keys(sections).length === 0 && Object.keys(labs).length > 0) {
-        const items = [];
-        for (const [k, v] of Object.entries(labs)) {
-            const valStr = typeof v === 'object' ? (v.value || v.val || '') : String(v);
-            items.push({
-                name: k.replace(/_/g, ' ').toUpperCase(),
-                val: valStr,
-                unit: typeof v === 'object' ? (v.unit || '') : '',
-                ref: typeof v === 'object' ? (v.ref || '-') : '-',
-                status: typeof v === 'object' ? (v.status || 'NORMAL') : 'NORMAL'
-            });
-            biomarkers[k] = {
-                name: k.replace(/_/g, ' '),
-                value: valStr,
-                unit: typeof v === 'object' ? (v.unit || '') : '',
-                ref: typeof v === 'object' ? (v.ref || '-') : '-',
-                status: typeof v === 'object' ? (v.status || 'NORMAL') : 'NORMAL',
-                section: 'Química Sanguínea y Biomarcadores'
+            const enriched = {
+                analyte_uid: uid,
+                name: displayName,
+                val: String(valRaw ?? ''),
+                value: Number.isFinite(numVal) ? numVal : valRaw,
+                unit: unitStr,
+                ref: cleanRef,
+                reference: cleanRef,
+                status: item.status || 'NORMAL',
+                section: secObj.title || secKey,
+                ...(isThousandCells ? { value_cells_per_ul: Math.round(numVal * 1000) } : {}),
+                ...(isPcrMgDl ? { value_mg_l: Number((numVal * 10).toFixed(3)) } : {})
             };
-            totalParameters++;
+            normItems.push(enriched);
+            biomarkers[uid] = enriched;
+            labs[`${baseSlug}_${unitStr.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`.replace(/_+$/, '')] = `${valRaw} ${unitStr}`.trim();
         }
-        sections.quimica_general = {
-            title: 'Química Sanguínea y Biomarcadores',
-            items
-        };
+        if (normItems.length > 0) {
+            sectionsArray.push({
+                id: secKey,
+                title: secObj.title || secKey,
+                items: normItems
+            });
+        }
     }
 
     return {
         patient_name: raw?.patient_name || null,
-        sections,
+        sections: sectionsArray,
         biomarkers,
         labs,
         totalParameters,
@@ -2023,11 +2525,7 @@ router.post('/sync-cortex', (req, res) => {
             patientDataObj.safety.allergies = Array.from(currentSafetyAllergies);
         }
 
-        if (ocularBiomarkers) {
-            if (ocularBiomarkers.hemoglobin) patientDataObj.vitals.hemoglobin = ocularBiomarkers.hemoglobin.raw_value;
-            if (ocularBiomarkers.egfr) patientDataObj.vitals.egfr = ocularBiomarkers.egfr.raw_value;
-            if (ocularBiomarkers.acr) patientDataObj.vitals.acr = ocularBiomarkers.acr.raw_value;
-        }
+        applyOcularVitalsGuard(patientDataObj, ocularBiomarkers);
         if (lingualBiomarkers) {
             if (lingualBiomarkers.hepatic_stress) patientDataObj.vitals.lingual_hepatic_stress = lingualBiomarkers.hepatic_stress.value;
             if (lingualBiomarkers.glycemic_alteration) patientDataObj.vitals.lingual_glycemic_alteration = lingualBiomarkers.glycemic_alteration.value;
@@ -2055,19 +2553,28 @@ router.post('/sync-cortex', (req, res) => {
                 }
             }
 
-            // Glucosa y Hemoglobina de Labs externos
+            // Glucosa y Hemoglobina de Labs externos (soporte bilingüe español/inglés)
             if (externalMetrics.labs) {
-                if (externalMetrics.labs.glucose) {
-                    const match = String(externalMetrics.labs.glucose).match(/\d+/);
+                const rawGluc = externalMetrics.labs.glucose || externalMetrics.labs.glucosa || externalMetrics.labs.glucosa_mg_dl;
+                if (rawGluc) {
+                    const match = String(rawGluc).match(/\d+(?:\.\d+)?/);
                     if (match) {
-                        const glucoseVal = parseInt(match[0]);
+                        const glucoseVal = parseFloat(match[0]);
                         patientDataObj.vitals.glucose = glucoseVal;
-                        patientDataObj.signosVitales.glucosa = glucoseVal.toString() + " mg/dL";
+                        patientDataObj.signosVitales = patientDataObj.signosVitales || {};
+                        patientDataObj.signosVitales.glucosa = `${glucoseVal} mg/dL`;
                     }
                 }
-                if (externalMetrics.labs.hemoglobin) {
-                    patientDataObj.vitals.hemoglobin = externalMetrics.labs.hemoglobin;
+                const rawHgb = externalMetrics.labs.hemoglobin || externalMetrics.labs.hemoglobina || externalMetrics.labs.hemoglobina_g_dl;
+                if (rawHgb) {
+                    patientDataObj.vitals.hemoglobin = rawHgb;
                 }
+            }
+
+            if (Array.isArray(externalMetrics.cabinet_flags) && externalMetrics.cabinet_flags.length > 0) {
+                const mergedFlags = new Set(patientDataObj.clinical_flags || []);
+                externalMetrics.cabinet_flags.forEach(f => mergedFlags.add(f));
+                patientDataObj.clinical_flags = Array.from(mergedFlags);
             }
 
             // Inyección Crítica de Alergias
@@ -2335,5 +2842,17 @@ function haversine(lat1, lon1, lat2, lon2) {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
 }
+
+router._egmPhase18Guards = {
+    normalizeCornealArcusScale,
+    sanitizeWhiteLabelClinicalText,
+    sanitizeOcularPredictionSSoT,
+    normalizeSaburraOrthography,
+    sanitizeLingualPredictionSSoT,
+    sanitizeSomaticFlagEs,
+    sanitizeSomaticProseCofepris,
+    sanitizeSomaticMorphologyAndFlags,
+    applyOcularVitalsGuard
+};
 
 module.exports = router;
