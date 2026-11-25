@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { db } = require('../db');
 const cryptoVault = require('../utils/cryptoVault');
 const { FORMULA_33PLUS, FORMULA_34PLUS, formatScaledActives } = require('../utils/pharmacopeiaCatalogSSoT');
@@ -161,39 +162,533 @@ function resolveBackendPatientIsFemale(patientData) {
 }
 
 // ============================================================================
-// UTILITARIOS UNIVERSALES SSoTT (EGM-50 + EGM-51 v2): LOGÍSTICA, ADHERENCIA, ALTITUD, 17 RUTAS Y UNIDADES SI
+// UTILITARIOS UNIVERSALES SSoTT (EGM-50 + EGM-51 v2 + EGM-56): CANDADO TEMPORAL 18-DIC-2026, FICHA NOM-004, R24H+FFQ, LOGÍSTICA, ALTITUD Y UNIDADES SI
 // ============================================================================
+const SINERGIX_PUBLIC_RELEASE_MS = new Date('2026-12-18T00:00:00-06:00').getTime();
+
+function isPostSinergixEmbargoDate(referenceDate = new Date()) {
+    try {
+        const dt = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+        const ts = dt.getTime();
+        if (!Number.isFinite(ts)) return false;
+        return ts >= SINERGIX_PUBLIC_RELEASE_MS;
+    } catch (_) {
+        return false;
+    }
+}
+
+function resolveBiometricMonitorLabel(referenceDate = new Date()) {
+    return isPostSinergixEmbargoDate(referenceDate)
+        ? 'EcoSinergix'
+        : 'monitoreo biométrico de Ritmo Vital';
+}
+
+function formatBiometricMonitorPrepClause(referenceDate = new Date()) {
+    return isPostSinergixEmbargoDate(referenceDate)
+        ? 'con EcoSinergix'
+        : 'mediante monitoreo biométrico de Ritmo Vital';
+}
+
+function enforceTemporalEmbargoOnText(rawText = '', referenceDate = new Date()) {
+    const str = String(rawText || '');
+    if (!str || isPostSinergixEmbargoDate(referenceDate)) return str;
+    return str
+        .replace(/monitoreo\s+(?:cronotr[óo]pico\s+|de\s+FC\s+)?con\s+EcoSinergix/giu, 'monitoreo biométrico de Ritmo Vital')
+        .replace(/monitoread[oa]\s+con\s+EcoSinergix/giu, 'bajo monitoreo biométrico de Ritmo Vital')
+        .replace(/\bcon\s+EcoSinergix\b/giu, 'mediante monitoreo biométrico de Ritmo Vital')
+        .replace(/\bEcoSinergix\b/giu, 'monitoreo biométrico de Ritmo Vital');
+}
+
 function translateLogisticsProfile(patientData = {}) {
-    const rawVenue = String(
-        patientData?.logistics_profile?.environment?.venue ||
-        patientData?.logistics?.environment?.venue ||
-        'HOME'
-    ).trim().toUpperCase();
-    const rawCook = String(
-        patientData?.logistics_profile?.cook_type ||
-        patientData?.logistics?.cook_type ||
-        'SELF'
-    ).trim().toUpperCase();
+    try {
+        const lp = patientData?.logistics_profile || patientData?.logistics || {};
+        const savedSummary = patientData?.clinical_dossier?.logistics_summary || {};
+        const rawVenue = String(
+            lp?.environment?.venue ||
+            savedSummary?.venueCode ||
+            'HOME'
+        ).trim().toUpperCase();
+        const rawCook = String(
+            lp?.cook_type ||
+            savedSummary?.cookCode ||
+            'SELF'
+        ).trim().toUpperCase();
 
-    const venueMap = {
-        HOME: 'Casa',
-        WORK: 'Oficina',
-        STREET: 'Calle / Restaurante'
-    };
-    const cookMap = {
-        STAFF: 'Personal de apoyo en casa',
-        FAMILY: 'Familiar',
-        SELF: 'Preparación propia',
-        BUYING: 'Alimentos preparados externos'
-    };
+        const venueMap = {
+            HOME: 'Casa',
+            WORK: 'Oficina',
+            STREET: 'Calle / Restaurante'
+        };
+        const cookMap = {
+            STAFF: 'Personal de apoyo en casa',
+            FAMILY: 'Familiar',
+            SELF: 'Preparación propia',
+            BUYING: 'Alimentos preparados externos'
+        };
 
-    return {
-        venueCode: rawVenue,
-        venueLabel: venueMap[rawVenue] || sanitizeClinicalSpanish(rawVenue || 'Casa'),
-        cookCode: rawCook,
-        cookLabel: cookMap[rawCook] || sanitizeClinicalSpanish(rawCook || 'Preparación propia'),
-        dinersCount: Number(patientData?.logistics_profile?.sharing_diners_count || 0) || null
-    };
+        const venueLabel = venueMap[rawVenue] || sanitizeClinicalSpanish(rawVenue || 'Casa');
+        const cookLabel = cookMap[rawCook] || sanitizeClinicalSpanish(rawCook || 'Preparación propia');
+        const cookingTimeMinutes = Number(lp?.cooking_time_minutes || savedSummary?.cookingTimeMinutes || 0) || null;
+        const dinersCount = Number(lp?.sharing_diners_count || savedSummary?.dinersCount || 0) || null;
+        const sharingDynamicsCode = String(lp?.sharing_dynamics || savedSummary?.sharingDynamicsCode || '').trim().toUpperCase();
+        const sharingDemographicsCode = String(lp?.sharing_demographics || savedSummary?.sharingDemographicsCode || '').trim().toUpperCase();
+
+        const sharingDynamicsLabel = sharingDynamicsCode === 'SHARED_MENU'
+            ? 'Menú familiar compartido'
+            : sharingDynamicsCode === 'INDIVIDUAL'
+                ? 'Menú individual'
+                : '';
+
+        let intergenerationalNote = '';
+        if (/ELDERLY|ADULTO_MAYOR|SENIOR/.test(sharingDemographicsCode)) {
+            intergenerationalNote = 'adaptación intergeneracional de textura suave y sazón cardioprotectora apta para adultos mayores en mesa';
+        } else if (/CHILD|KIDS|PEDIATR|MINOR/.test(sharingDemographicsCode)) {
+            intergenerationalNote = 'adaptación familiar apta para menores en casa';
+        } else if (/FAMILY|MIXED|ALL/.test(sharingDemographicsCode)) {
+            intergenerationalNote = 'adaptación intergeneracional para toda la familia';
+        }
+
+        const opSegments = [
+            `Entorno: ${venueLabel}`,
+            `Preparación: ${cookLabel}${cookingTimeMinutes ? ` (<= ${cookingTimeMinutes} min por tiempo)` : ''}`
+        ];
+        if (dinersCount && dinersCount > 1) {
+            opSegments.push(
+                `${sharingDynamicsLabel || 'Mesa compartida'}: ${dinersCount} comensales${intergenerationalNote ? ` (${intergenerationalNote})` : ''}`
+            );
+        } else if (intergenerationalNote) {
+            opSegments.push(capitalizeLeadingSpanishLetter(intergenerationalNote));
+        }
+
+        return {
+            venueCode: rawVenue,
+            venueLabel,
+            cookCode: rawCook,
+            cookLabel,
+            cookingTimeMinutes,
+            dinersCount,
+            sharingDynamicsCode,
+            sharingDynamicsLabel,
+            sharingDemographicsCode,
+            intergenerationalNote,
+            operationalSummary: opSegments.join(' | ')
+        };
+    } catch (_) {
+        return {
+            venueCode: 'HOME',
+            venueLabel: 'Casa',
+            cookCode: 'SELF',
+            cookLabel: 'Preparación propia',
+            cookingTimeMinutes: null,
+            dinersCount: null,
+            sharingDynamicsCode: '',
+            sharingDynamicsLabel: '',
+            sharingDemographicsCode: '',
+            intergenerationalNote: '',
+            operationalSummary: 'Entorno: Casa | Preparación: Preparación propia'
+        };
+    }
+}
+
+function resolveScheduledAppointmentSummary(patientData = {}) {
+    try {
+        const raw = patientData?.scheduledAppointment || patientData?.clinical_dossier?.scheduled_appointment_summary || {};
+        const rawDate = sanitizeClinicalSpanish(String(raw?.chosenDate || raw?.dateLabel || '').trim());
+        const rawTime = sanitizeClinicalSpanish(String(raw?.chosenTime || raw?.timeLabel || '').trim());
+        const rawFolio = String(raw?.folio || '').replace(/^#/, '').trim();
+        if (!rawDate) {
+            return {
+                hasScheduled: false,
+                dateLabel: null,
+                timeLabel: null,
+                folio: null,
+                formattedLine: 'Revaloración clínica comparativa al cierre del Ciclo 1 (Día 28)'
+            };
+        }
+        const normalizedDate = rawDate.replace(
+            /^(Lunes|Martes|Mi[ée]rcoles|Jueves|Viernes|S[áa]bado|Domingo),?\s+/iu,
+            (_, wd) => `${wd.toLowerCase()} `
+        );
+        const parts = [normalizedDate];
+        if (rawTime) parts.push(rawTime);
+        if (rawFolio) parts.push(`Folio #${rawFolio}`);
+        return {
+            hasScheduled: true,
+            dateLabel: normalizedDate,
+            rawDateLabel: rawDate,
+            timeLabel: rawTime || null,
+            folio: rawFolio || null,
+            formattedLine: parts.join(' • ')
+        };
+    } catch (_) {
+        return {
+            hasScheduled: false,
+            dateLabel: null,
+            timeLabel: null,
+            folio: null,
+            formattedLine: 'Revaloración clínica comparativa al cierre del Ciclo 1 (Día 28)'
+        };
+    }
+}
+
+function extractNom004IdentificationSheet(patientData = {}, serum = null, bioenergetics = null) {
+    try {
+        const verifiedAge = resolveVerifiedPatientAge(patientData, 35);
+        const isFemale = resolveBackendPatientIsFemale(patientData);
+        const altitudeInfo = serum?.altitudeInfo || resolvePatientAltitudeMsnm(patientData);
+        const curp = String(
+            patientData?.profile?.curp ||
+            patientData?.demographics?.curp ||
+            patientData?.identificacion?.curp ||
+            ''
+        ).trim().toUpperCase();
+        const birthDate = String(
+            patientData?.profile?.birthdate ||
+            patientData?.identificacion?.fechanac ||
+            patientData?.demographics?.birthdate ||
+            ''
+        ).trim();
+
+        const emg = patientData?.emergencia || patientData?.profile?.emergencyContact || {};
+        const emgName = sanitizeClinicalSpanish(String(emg?.nombre || emg?.name || '').trim());
+        const emgKin = sanitizeClinicalSpanish(String(emg?.parentesco || emg?.kin || '').trim());
+        const emgPhone = String(emg?.telefono || emg?.phone || '').trim();
+        const emergencyContactText = emgName
+            ? `${emgName}${emgKin || emgPhone ? ` (${[emgKin, emgPhone ? `Tel. ${emgPhone}` : ''].filter(Boolean).join(' • ')})` : ''}`
+            : 'No registrado';
+
+        const primaryMotive = sanitizeClinicalSpanish(
+            String(
+                patientData?.clinical_context?.primary_motive ||
+                patientData?.motivo_consulta ||
+                patientData?.motivo ||
+                patientData?.reason_for_consultation ||
+                patientData?.clinical_context?.ai_analysis?.gem_reasoning ||
+                'Evaluación nutricional preventiva integral'
+            ).trim()
+        );
+
+        const rawFamily = Array.isArray(patientData?.history?.family_structured) && patientData.history.family_structured.length > 0
+            ? patientData.history.family_structured
+            : (Array.isArray(patientData?.familyTree?.antecedentes) ? patientData.familyTree.antecedentes : []);
+        const ahfMap = new Map();
+        rawFamily.forEach((it) => {
+            const cond = sanitizeClinicalSpanish(String(it?.condition || it?.patologia || it?.disease || '').trim());
+            const kin = sanitizeClinicalSpanish(String(it?.relative || it?.familiar || it?.relationship || '').trim());
+            if (!cond || /^(ningun[oa]?|niega|negad[oa]s?|no|n\/a)$/i.test(cond)) return;
+            const k = normalizeForMatch(cond);
+            if (!ahfMap.has(k)) ahfMap.set(k, { cond, kins: new Set() });
+            if (kin) ahfMap.get(k).kins.add(kin);
+        });
+        const ahfList = Array.from(ahfMap.values()).map((x) =>
+            x.kins.size > 0 ? `${x.cond} (${Array.from(x.kins).join(', ')})` : x.cond
+        );
+        const ahfText = ahfList.length > 0 ? ahfList.join('; ') : 'Negados';
+
+        const rawPaths = Array.isArray(patientData?.history?.pathologies) ? patientData.history.pathologies : [];
+        const appItems = rawPaths
+            .map((p) => sanitizeClinicalSpanish(String(typeof p === 'object' ? (p?.name || p?.patologia || p?.label || '') : p || '').trim()))
+            .filter((s) => s && !/^(ningun[oa]?|niega|negad[oa]s?|no)$/i.test(s));
+        const appText = appItems.length > 0 ? appItems.join(', ') : 'Niega patológicos crónicos';
+
+        const rawSurg = Array.isArray(patientData?.history?.surgical) ? patientData.history.surgical : [];
+        const surgItems = rawSurg
+            .map((s) => sanitizeClinicalSpanish(String(typeof s === 'object' ? (s?.label || s?.name || s?.procedure || '') : s || '').trim()))
+            .filter((s) => s && !/^(ningun[oa]?|niega|negad[oa]s?|no)$/i.test(s));
+        const surgicalText = surgItems.length > 0 ? surgItems.join(', ') : 'Negados';
+
+        const foodAllergies = (patientData?.history?.allergies?.food || [])
+            .map((a) => sanitizeClinicalSpanish(String(typeof a === 'object' ? (a?.agent || a?.name || '') : a || '').trim()))
+            .filter(Boolean);
+        const drugAllergies = (patientData?.history?.allergies?.drug || [])
+            .map((a) => sanitizeClinicalSpanish(String(typeof a === 'object' ? (a?.agent || a?.name || '') : a || '').trim()))
+            .filter(Boolean);
+        const hasClinicalAllergies = foodAllergies.length > 0 || drugAllergies.length > 0;
+        const allergiesText = hasClinicalAllergies
+            ? [
+                foodAllergies.length > 0 ? `Alimentarias: ${foodAllergies.join(', ')}` : null,
+                drugAllergies.length > 0 ? `Farmacológicas: ${drugAllergies.join(', ')}` : null
+            ].filter(Boolean).join(' | ')
+            : 'Negadas (0 alergias clínicas)';
+
+        const rawMeds = Array.isArray(patientData?.history?.medications) ? patientData.history.medications : [];
+        const medItems = rawMeds
+            .map((m) => sanitizeClinicalSpanish(String(typeof m === 'object' ? (m?.name || m?.drug || '') : m || '').trim()))
+            .filter((s) => s && !/^(ningun[oa]?|niega|no)$/i.test(s));
+        const medicationsText = medItems.length > 0 ? medItems.join(', ') : 'Ninguno (0 fármacos activos)';
+
+        const priorAdh = serum?.priorAdherence || detectPriorInstitutionalAdherence(patientData);
+        const priorSupplementsText = priorAdh?.hasPriorAdherence
+            ? `${priorAdh.publicSafeLabel || '33Plus® y 34Plus®'}${priorAdh.durationText ? ` (adherencia previa de ${priorAdh.durationText})` : ''}`
+            : 'Ninguna declarada';
+
+        const digProfile = patientData?.digestive_profile || {};
+        const digSymptoms = [
+            ...(Array.isArray(digProfile?.symptoms) ? digProfile.symptoms : []),
+            ...(Array.isArray(patientData?.history?.digestive_symptoms) ? patientData.history.digestive_symptoms : [])
+        ]
+            .map((s) => sanitizeClinicalSpanish(String(s || '').trim()))
+            .filter((s) => s && !/^(ningun[oa]?|niega|no)$/i.test(s));
+        const isClinicalEubiosis = !digProfile?.has_issues && digSymptoms.length === 0;
+        const digestivePhenotypeText = isClinicalEubiosis
+            ? 'Eubiosis clínica (0 síntomas digestivos)'
+            : `Sintomatología reportada: ${digSymptoms.join(', ') || sanitizeClinicalSpanish(digProfile?.phenotype || 'Sensibilidad digestiva')}`;
+
+        const v = patientData?.vitals || {};
+        const bp = v?.blood_pressure || v?.bloodPressure || {};
+        const sysBp = Number(bp?.systolic || 0) || null;
+        const diaBp = Number(bp?.diastolic || 0) || null;
+        const fcVal = Number(v?.heart_rate ?? v?.hr ?? 0) || null;
+        const frVal = Number(v?.respiratory_rate ?? v?.rr ?? 0) || null;
+        const spo2Val = Number(v?.spo2 ?? 0) || null;
+        const tempVal = Number(v?.temperature ?? 0) || null;
+        const gluVal = Number(v?.glucose ?? serum?.labValues?.glucose ?? 0) || null;
+
+        const vitalsParts = [
+            sysBp && diaBp ? `PA ${sysBp}/${diaBp} mmHg` : null,
+            fcVal ? `FC ${fcVal} lpm` : null,
+            frVal ? `FR ${frVal} rpm` : null,
+            spo2Val ? `SpO2 ${spo2Val} %${altitudeInfo?.msnm >= 1500 ? ` (${altitudeInfo.msnm} msnm)` : ''}` : null,
+            tempVal ? `Temp ${tempVal} °C` : null,
+            gluVal ? `Glucosa basal ${gluVal} mg/dL` : null
+        ].filter(Boolean);
+
+        const weightKg = Number(v?.weight || bioenergetics?.weightKg || patientData?.peso || 0) || null;
+        const rawHeight = Number(v?.height || bioenergetics?.heightCm || patientData?.talla || 0) || null;
+        const heightCm = rawHeight ? (rawHeight < 3 ? Number((rawHeight * 100).toFixed(1)) : rawHeight) : null;
+        const bmi = (weightKg && heightCm)
+            ? Number((weightKg / Math.pow(heightCm / 100, 2)).toFixed(1))
+            : (Number(v?.bmi || bioenergetics?.bmi || 0) || null);
+        const bmiClass = sanitizeClinicalSpanish(String(v?.bmi_class || (bmi >= 30 ? 'Obesidad' : bmi >= 25 ? 'Sobrepeso' : bmi ? 'Normopeso' : '')).trim());
+        const bodyFatPct = Number(v?.body_fat || bioenergetics?.bodyFatPct || 0) || null;
+        const leanMassKg = (weightKg && bodyFatPct)
+            ? Number((weightKg * (1 - bodyFatPct / 100)).toFixed(1))
+            : (Number(bioenergetics?.leanBodyMassKg || 0) ? Number(Number(bioenergetics.leanBodyMassKg).toFixed(1)) : null);
+        const waistCm = Number(v?.waist || patientData?.cintura || 0) || null;
+        const hipCm = Number(v?.hip || patientData?.cadera || 0) || null;
+        const icc = (waistCm && hipCm) ? Number((waistCm / hipCm).toFixed(2)) : (Number(v?.whr || patientData?.icc || 0) || null);
+        const ica = (waistCm && heightCm) ? Number((waistCm / heightCm).toFixed(2)) : null;
+
+        const somaParts = [
+            weightKg ? `Peso ${weightKg} kg` : null,
+            heightCm ? `Talla ${heightCm} cm` : null,
+            bmi ? `IMC ${bmi} kg/m²${bmiClass ? ` (${bmiClass})` : ''}` : null,
+            bodyFatPct ? `Grasa ${bodyFatPct} %` : null,
+            leanMassKg ? `MLG ${leanMassKg} kg` : null,
+            waistCm ? `Cintura ${waistCm} cm` : null,
+            hipCm ? `Cadera ${hipCm} cm` : null,
+            icc ? `ICC físico ${icc}` : null,
+            ica ? `ICA ${ica}` : null
+        ].filter(Boolean);
+
+        const scheduledAppointment = resolveScheduledAppointmentSummary(patientData);
+
+        return {
+            ageYears: verifiedAge.ageYears,
+            sexLabel: isFemale ? 'Femenino' : 'Masculino',
+            birthDate: birthDate || null,
+            curp: curp || null,
+            altitudeMsnm: altitudeInfo?.msnm || 0,
+            altitudeLabel: altitudeInfo?.label || 'Nivel basal',
+            emergencyContactText,
+            primaryMotive,
+            ahfList,
+            ahfText,
+            appText,
+            surgicalText,
+            allergiesText,
+            hasClinicalAllergies,
+            medicationsText,
+            priorSupplementsText,
+            digestivePhenotypeText,
+            isClinicalEubiosis,
+            vitals: {
+                pa: sysBp && diaBp ? `${sysBp}/${diaBp} mmHg` : null,
+                fc: fcVal ? `${fcVal} lpm` : null,
+                fr: frVal ? `${frVal} rpm` : null,
+                spo2: spo2Val ? `${spo2Val} %` : null,
+                temp: tempVal ? `${tempVal} °C` : null,
+                glucose: gluVal ? `${gluVal} mg/dL` : null,
+                summaryLine: vitalsParts.join(' | ') || 'En registro clínico'
+            },
+            somatometry: {
+                weightKg,
+                heightCm,
+                bmi,
+                bmiClass: bmiClass || null,
+                bodyFatPct,
+                leanMassKg,
+                waistCm,
+                hipCm,
+                icc,
+                ica,
+                summaryLine: somaParts.join(' | ') || 'En registro antropométrico'
+            },
+            scheduledAppointment
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+function extractDietaryAndEpigeneticSynthesis(patientData = {}, serum = null, bioenergetics = null) {
+    try {
+        const evalDiet = patientData?.evaluacionDietetica || {};
+        const r24hList = Array.isArray(evalDiet?.r24h)
+            ? evalDiet.r24h
+            : (Array.isArray(patientData?.r24h) ? patientData.r24h : []);
+        const ffq = evalDiet?.ffq || patientData?.nutrition?.ffq || patientData?.frecuenciaConsumo || {};
+        const labs = serum?.labValues || {};
+        const subAxes = serum?.subAxisFlags || {};
+        const vitalsSnap = serum?.vitalsSnapshot || {};
+        const logistics = translateLogisticsProfile(patientData);
+
+        const protectiveHabits = [];
+        const vegDays = Number(ffq?.verduras ?? 0);
+        const fruitDays = Number(ffq?.frutas ?? 0);
+        const healthyFatsDays = Number(ffq?.grasas ?? 0);
+        const leanMeatDays = Number(ffq?.carne_magra ?? 0);
+        const poultryDays = Number(ffq?.pollo ?? 0);
+        const legumeDays = Number(ffq?.leguminosas ?? 0);
+        const dairyDays = Number(ffq?.leche ?? 0);
+        const waterGlasses = Number(ffq?.agua ?? 0);
+        const sugarsDays = Number(ffq?.azucares ?? -1);
+        const junkDays = Number(ffq?.chatarra ?? -1);
+        const procMeatDays = Number(ffq?.carne_procesada ?? -1);
+
+        if (vegDays >= 5) protectiveHabits.push(`verduras (${vegDays}/7 días)`);
+        if (fruitDays >= 5) protectiveHabits.push(`frutas naturales (${fruitDays}/7 días)`);
+        if (healthyFatsDays >= 5) protectiveHabits.push(`grasas saludables (${healthyFatsDays}/7 días)`);
+        if (waterGlasses >= 6) protectiveHabits.push(`hidratación base de ${waterGlasses} vasos/día de agua simple`);
+        if (sugarsDays >= 0 && sugarsDays <= 1 && junkDays >= 0 && junkDays <= 1 && procMeatDays >= 0 && procMeatDays <= 1) {
+            protectiveHabits.push('baja exposición a ultraprocesados, embutidos y azúcares simples (<= 1/7 días)');
+        } else if (legumeDays >= 3 || leanMeatDays >= 3 || poultryDays >= 3) {
+            protectiveHabits.push('aporte regular de proteínas magras y leguminosas');
+        }
+
+        const r24Text = r24hList.map((m) => String(m?.alimento || m?.descripcion || m?.meal || '')).join(' | ');
+        const r24Hours = r24hList.map((m) => String(m?.hora || m?.time || '').trim()).filter(Boolean);
+        const mealWindowText = r24Hours.length >= 2 ? `${r24Hours[0]} a ${r24Hours[r24Hours.length - 1]}` : '';
+        const r24DishExemplars = r24hList
+            .slice(0, 4)
+            .map((m) => {
+                const hr = String(m?.hora || m?.time || '').trim();
+                const rawDish = sanitizeClinicalSpanish(String(m?.alimento || m?.descripcion || m?.meal || '').trim());
+                if (!rawDish) return null;
+                const words = rawDish.split(/\s+/);
+                const conciseDish = words.length > 9 ? `${words.slice(0, 9).join(' ')}…` : rawDish;
+                return hr ? `${hr}: ${conciseDish}` : conciseDish;
+            })
+            .filter(Boolean);
+        const r24Highlights = [];
+        if (/salm[óo]n|mojarra|pescado|at[úu]n|huachinango|trucha/i.test(r24Text)) r24Highlights.push('pescado rico en ácidos grasos cardioprotectores');
+        if (/nopal|calabacit|espinaca|br[óo]coli|ensalada|verdura|pimiento/i.test(r24Text)) r24Highlights.push('fibra vegetal fresca (nopal/hortalizas)');
+        if (/huevo/i.test(r24Text)) r24Highlights.push('proteína de alto valor biológico');
+        const hasDairySatFatInDiet = dairyDays >= 5 || /queso\s+manchego|mantequilla|crema|gratinad|queso\s+maduro/i.test(r24Text);
+
+        const hasAtheroLipids = Boolean(
+            subAxes?.hasAtherogenicCholesterol ||
+            Number(labs.ldl) >= 130 ||
+            Number(labs.sdLdl) > 1.35 ||
+            Number(labs.totalCholesterol) >= 200
+        );
+
+        let lipidCulinaryBridge = '';
+        if (hasAtheroLipids && hasDairySatFatInDiet) {
+            lipidCulinaryBridge = `moderar grasas saturadas lácteas identificadas en su registro (${dairyDays >= 5 ? `lácteos ${dairyDays}/7 días` : 'lácteos frecuentes'}${/manchego|mantequilla/i.test(r24Text) ? ', queso manchego y mantequilla en cocción' : ''}), sustituyéndolas por aceite de oliva extra virgen en crudo, aguacate, semillas y mayor fibra soluble (nopal, avena, chía y leguminosas) para favorecer el descenso de colesterol LDL y partículas sdLDL`;
+        } else if (hasAtheroLipids) {
+            lipidCulinaryBridge = 'priorizar grasas monoinsaturadas (aceite de oliva extra virgen, aguacate) y fibra soluble viscosa en cada comida principal para optimizar el transporte de colesterol LDL y sdLDL';
+        }
+
+        const ahfList = Array.isArray(serum?.anamnesis360Context?.epigeneticSurveillance)
+            ? serum.anamnesis360Context.epigeneticSurveillance
+            : [];
+        const hasMetabolicAhf = ahfList.some((x) => /diabet|obesidad|sobrepeso|colesterol|cardio/i.test(String(x)));
+        const effGlu = Number(labs.glucose || vitalsSnap?.glu || patientData?.vitals?.glucose || 0);
+        const effTg = Number(labs.triglycerides || 0);
+        const icaVal = vitalsSnap?.ica || (Number(patientData?.vitals?.waist) && Number(patientData?.vitals?.height) ? Number((Number(patientData.vitals.waist) / Number(patientData.vitals.height)).toFixed(2)) : null);
+        const iccVal = vitalsSnap?.icc || Number(patientData?.vitals?.whr || 0) || null;
+
+        let epigeneticClinicalNote = '';
+        let epigeneticPatientNote = '';
+        if (hasMetabolicAhf) {
+            const ahfClean = ahfList.join('; ');
+            if (effGlu > 0 && effGlu < 100 && (effTg === 0 || effTg < 150)) {
+                epigeneticClinicalNote = `Contexto Epigenético AHF (${ahfClean}): Glucosa basal (${effGlu} mg/dL)${effTg > 0 ? ` y Triglicéridos (${effTg} mg/dL)` : ''} conservados en rango óptimo protector frente a carga heredofamiliar; se vincula el ajuste energético con la reducción preventiva de adiposidad central${icaVal ? ` (ICA ${icaVal}` : ''}${iccVal ? `${icaVal ? ' / ' : ' ('}ICC ${iccVal})` : (icaVal ? ')' : '')}.`;
+                epigeneticPatientNote = `Frente a sus antecedentes familiares (${ahfClean}), hoy sus niveles de glucosa (${effGlu} mg/dL)${effTg > 0 ? ` y triglicéridos (${effTg} mg/dL)` : ''} se mantienen en rango óptimo saludable, protegiendo su metabolismo mientras reducimos gradualmente el perímetro abdominal${iccVal ? ` (ICC ${iccVal})` : ''}.`;
+            } else {
+                epigeneticClinicalNote = `Contexto Epigenético AHF (${ahfClean}): Vigilancia metabólica prioritaria integrada a la distribución macronutrimental y control de adiposidad central.`;
+                epigeneticPatientNote = `Acompañamos de forma preventiva sus antecedentes familiares (${ahfClean}) cuidando la calidad de sus carbohidratos, grasas nobles y cintura abdominal.`;
+            }
+        }
+
+        const r24SummaryClause = r24hList.length > 0
+            ? `${r24hList.length} tiempos registrados${mealWindowText ? ` (ventana ${mealWindowText})` : ''}${r24DishExemplars.length > 0 ? ` [${r24DishExemplars.join(' | ')}]` : ''}${r24Highlights.length > 0 ? ` con presencia de ${joinSpanishList(r24Highlights)}` : ''}`
+            : '';
+
+        const clinicalParts = [];
+        if (protectiveHabits.length > 0 || r24SummaryClause) {
+            clinicalParts.push(
+                `Evaluación Dietética Integrada (R24h + FFQ): Se reconocen hábitos protectores actuales (${[r24SummaryClause, ...protectiveHabits].filter(Boolean).join('; ')})`
+            );
+        }
+        if (lipidCulinaryBridge) {
+            clinicalParts.push(`Puente nutricional terapéutico: ${lipidCulinaryBridge}`);
+        }
+        if (epigeneticClinicalNote) {
+            clinicalParts.push(epigeneticClinicalNote);
+        }
+
+        const patientParts = [];
+        if (protectiveHabits.length > 0 || r24Highlights.length > 0) {
+            const strengths = [
+                r24Highlights.length > 0 ? `preparaciones caseras con ${joinSpanishList(r24Highlights)}${mealWindowText ? ` en horarios ordenados (${mealWindowText})` : ''}` : null,
+                protectiveHabits.length > 0 ? `consumo constante de ${joinSpanishList(protectiveHabits.slice(0, 3))}` : null
+            ].filter(Boolean);
+            if (strengths.length > 0) {
+                patientParts.push(`Reconocemos sus fortalezas alimentarias actuales (${strengths.join(' y ')}).`);
+            }
+        }
+        if (lipidCulinaryBridge) {
+            patientParts.push(`Como ajuste clave de precisión: vamos a ${lipidCulinaryBridge}.`);
+        }
+        if (epigeneticPatientNote) {
+            patientParts.push(epigeneticPatientNote);
+        }
+
+        const normalizedClinicalParts = clinicalParts.map((p) => String(p || '').trim().replace(/\.+$/g, '')).filter(Boolean);
+
+        return {
+            hasDietaryData: Boolean(r24hList.length > 0 || Object.keys(ffq).length > 0),
+            r24MealsCount: r24hList.length,
+            mealWindowText,
+            r24DishExemplars,
+            protectiveHabits,
+            r24Highlights,
+            hasDairySatFatInDiet,
+            lipidCulinaryBridge,
+            epigeneticClinicalNote,
+            epigeneticPatientNote,
+            logistics,
+            clinicalSummaryText: normalizedClinicalParts.length > 0 ? `${normalizedClinicalParts.join('. ')}.` : '',
+            patientSummaryText: patientParts.join(' ')
+        };
+    } catch (_) {
+        return {
+            hasDietaryData: false,
+            r24MealsCount: 0,
+            mealWindowText: '',
+            protectiveHabits: [],
+            r24Highlights: [],
+            hasDairySatFatInDiet: false,
+            lipidCulinaryBridge: '',
+            epigeneticClinicalNote: '',
+            epigeneticPatientNote: '',
+            logistics: translateLogisticsProfile(patientData),
+            clinicalSummaryText: '',
+            patientSummaryText: ''
+        };
+    }
 }
 
 function detectPriorInstitutionalAdherence(patientData = {}) {
@@ -1969,6 +2464,22 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
 
     // D. Hallazgos de Auditoría Ocular Binocular (Paso 2 de Fase 18)
     const ocular = patientData?.scan_data?.ocular_metrics || patientData?.ocular_metrics || patientData?.oculomics;
+    const flattenVisionObjectClauses = (node, prefix = '') => {
+        if (node === null || node === undefined) return [];
+        if (typeof node === 'string' || typeof node === 'number') {
+            return [`${prefix ? `${prefix}: ` : ''}${String(node)}`];
+        }
+        if (Array.isArray(node)) {
+            return node.flatMap((it) => flattenVisionObjectClauses(it, prefix));
+        }
+        if (typeof node === 'object') {
+            return Object.entries(node).flatMap(([k, v]) => {
+                if (/url$|disclaimer|titulo/i.test(k)) return [];
+                return flattenVisionObjectClauses(v, k);
+            });
+        }
+        return [];
+    };
     const hasAffirmativeOpticalSign = (rawStr, posRe, negRe) => {
         const s = String(rawStr || '');
         if (!s || !posRe.test(s)) return false;
@@ -1977,14 +2488,16 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
     };
 
     if (ocular && ocular.status !== 'SKIPPED') {
-        const ocSeverity = String(ocular.severity || 'LOW').toUpperCase();
-        const ocFindings = ocular.findings || ocular.summary || '';
-        const ocFlags = Array.isArray(ocular.clinical_flags) ? ocular.clinical_flags.join(', ') : '';
-        const ocPilaresValues = ocular.pilares && typeof ocular.pilares === 'object'
-            ? Object.values(ocular.pilares).map((p) => (typeof p === 'object' ? Object.values(p || {}).join(' ') : String(p || ''))).join(' . ')
-            : '';
-        const fullOcText = `${ocFindings} . ${ocFlags} . ${ocPilaresValues}`;
-        const negOpticalRe = /\b(?:sin\s+|no\s+se\s+observa|no\s+evaluable|falta\s+de\s+eversi[óo]n|ausente|normal|transparente|conservad[oa]|descartad[oa]|libre\s+de)\b/i;
+        const ocSeverity = String(ocular.severity || ocular.prioridad_clinica_global || 'LOW').toUpperCase();
+        const ocFindings = ocular.findings || ocular.summary || ocular.sintesis_fisiopatologica || '';
+        const ocFlags = Array.isArray(ocular.clinical_flags) ? ocular.clinical_flags.join(' . ') : '';
+        const ocStructuredClauses = flattenVisionObjectClauses({
+            pilares: ocular.pilares,
+            microcirculacion_escleral: ocular.microcirculacion_escleral,
+            tejido_periorbital: ocular.tejido_periorbital
+        }).join(' . ');
+        const fullOcText = `${ocFindings} . ${ocFlags} . ${ocStructuredClauses}`;
+        const negOpticalRe = /\b(?:sin\s+|no\s+se\s+observa|no\s+evaluable|falta\s+de\s+eversi[óo]n|ausentes?|normal|transparente|conservad[oa]s?|descartad[oa]s?|libre\s+de)\b/i;
 
         // 1. Palidez conjuntival real (excluyendo "No evaluable" o "Sin palidez") -> Nodo 5 y Nodo 1
         const hasTruePallor = hasAffirmativeOpticalSign(fullOcText, /\b(?:palidez\s+conjuntival|conjunctival_pallor|hipocrom[íi]a\s+marcada|anemia\s+moderada)\b/i, negOpticalRe);
@@ -2003,35 +2516,59 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         }
 
         // 3. Arco corneal / Xantelasmas reales (excluyendo "Ausente") -> Nodo 3 y Nodo 5
-        const hasTrueCornealArcus = hasAffirmativeOpticalSign(fullOcText, /\b(?:arco\s+senil|arco\s+corneal|gerontoxon|xantelasma|grado\s+i+)\b/i, negOpticalRe);
+        const explicitArcoField = String(
+            ocular?.pilares?.cardiovascular_lipidos?.arco_senil_corneal ||
+            ocular?.tejido_periorbital?.deposito_lipidico_corneal ||
+            ''
+        );
+        const hasExplicitArcusField = Boolean(explicitArcoField && !/ausente|sin\s+arco|negativo/i.test(explicitArcoField) && /grado|incipiente|presente|leve|moderad|sever|arco/i.test(explicitArcoField));
+        const hasTrueCornealArcus = hasExplicitArcusField || hasAffirmativeOpticalSign(fullOcText, /\b(?:arco\s+senil|arco\s+corneal|deposito_lipidico_corneal|gerontoxon|xantelasma)\b/i, negOpticalRe);
         if (hasTrueCornealArcus) {
-            pushAnomaly('NODO_3_ENERGIA', 'OCULAR_VISION', 'Halo Lipídico Limbar Corneal',
-                'Depósito lipídico periférico en limbo corneal correlacionable con transporte lipoproteico', 'MODERADA');
-            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Correlación Microvascular Limbar Ocular',
-                'Hallazgo óptico de halo limbar con correlación endotelial y reológica', 'MODERADA');
+            const arcusGradeNote = explicitArcoField ? ` (${sanitizeClinicalSpanish(explicitArcoField)})` : '';
+            const lipidCorrSuffix = (Number(labValues.ldl) >= 130 || Number(labValues.sdLdl) > 1.35)
+                ? ` correlacionado con perfil lipoproteico sérico (LDL ${labValues.ldl || '--'} mg/dL${labValues.sdLdl ? ` • sdLDL ${labValues.sdLdl}` : ''})`
+                : ' correlacionable con transporte lipoproteico';
+            pushAnomaly('NODO_3_ENERGIA', 'OCULAR_VISION', `Arco Corneal Limbar${arcusGradeNote}`,
+                `Depósito lipídico periférico en limbo corneal bilateral (OD+OI)${lipidCorrSuffix}`, 'MODERADA');
+            pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', `Arco Corneal Limbar${arcusGradeNote} y Microvasculatura Epiescleral`,
+                `Hallazgo óptico bilateral en limbo corneal${lipidCorrSuffix}`, 'MODERADA');
         }
 
-        const hasMicrovascularHyperemia = hasAffirmativeOpticalSign(fullOcText, /\b(?:tortuosidad|hiperemia|congesti[óo]n\s+epiescleral|microvascular)\b/i, negOpticalRe);
+        const hasMicrovascularHyperemia = hasAffirmativeOpticalSign(fullOcText, /\b(?:tortuosidad|hiperemia|congesti[óo]n\s+epiescleral)\b/i, negOpticalRe);
         if (ocFindings && !isPhysiologicallyNormal(ocSeverity) && (hasMicrovascularHyperemia || (!hasTruePallor && !hasTrueScleralIcterus && !hasTrueCornealArcus && ocFlags))) {
             pushAnomaly('NODO_5_TRANSPORTE', 'OCULAR_VISION', 'Trofismo Microvascular Epiescleral y Bulbar', `${ocFindings} ${ocFlags ? `[${ocFlags}]` : ''}`.trim(), ocSeverity === 'HIGH' ? 'ALTA' : 'MODERADA');
         }
     }
 
     // E. Hallazgos de Glosodiagnóstico 6 Ejes (Paso 3 de Fase 18)
+    const isDigestiveEubiosisInSerum = !digestiveProfile.has_issues &&
+        (!Array.isArray(digestiveProfile.symptoms) || digestiveProfile.symptoms.length === 0) &&
+        (!Array.isArray(patientData?.history?.digestive_symptoms) || patientData.history.digestive_symptoms.length === 0);
     const lingual = patientData?.scan_data?.lingual_metrics || patientData?.lingual_metrics || patientData?.glosodiagnostico;
     if (lingual && lingual.status !== 'SKIPPED') {
-        const lgFindings = lingual.findings || lingual.summary || '';
-        const lgFlags = Array.isArray(lingual.clinical_flags) ? lingual.clinical_flags.join(', ') : '';
-        const lgPilaresValues = lingual.pilares && typeof lingual.pilares === 'object'
-            ? Object.values(lingual.pilares).map((p) => (typeof p === 'object' ? Object.values(p || {}).join(' ') : String(p || ''))).join(' . ')
-            : '';
-        const fullLgText = `${lgFindings} . ${lgFlags} . ${lgPilaresValues}`;
-        const negLingualRe = /\b(?:sin\s+|no\s+se\s+observa|ausente|normal|fisiol[óo]gic[oa]|conservad[oa]|adecuad[oa]|libre\s+de)\b/i;
+        const lgFindings = lingual.findings || lingual.summary || lingual.sintesis_fisiopatologica || '';
+        const lgFlags = Array.isArray(lingual.clinical_flags) ? lingual.clinical_flags.join(' . ') : '';
+        const lgStructuredClauses = flattenVisionObjectClauses({
+            pilares: lingual.pilares,
+            cuerpo_lingual: lingual.cuerpo_lingual,
+            saburra_microbiota: lingual.saburra_microbiota
+        }).join(' . ');
+        const fullLgText = `${lgFindings} . ${lgFlags} . ${lgStructuredClauses}`;
+        const negLingualRe = /\b(?:sin\s+|no\s+se\s+observa|ausentes?|normal|fisiol[óo]gic[oa]s?|conservad[oa]s?|adecuad[oa]s?|libre\s+de)\b/i;
 
         // 1. Saburra espesa / amarilla / blanca moderada-marcada y marcas dentales -> Nodo 1
-        if (hasAffirmativeOpticalSign(fullLgText, /\b(?:saburra\s+(?:espesa|moderada|blanquecina|amarillenta)|marcas\s+dentales|scalloped|festonead[oa]|indentaci[óo]n)\b/i, negLingualRe)) {
-            pushAnomaly('NODO_1_ASIMILACION', 'LINGUAL_VISION', 'Saburra Lingual o Indentación Marginal Mucosa',
-                'Topografía lingual con capa saburral o bordes festoneados sugestivos de tránsito digestivo lento y demanda prebiótica', 'MODERADA');
+        const explicitIndent = String(lingual?.cuerpo_lingual?.indentaciones_dentales || lingual?.pilares?.funcion_hepatica_renal_hidratacion?.marcas_dentales_festoneado || '');
+        const explicitSaburra = String(lingual?.saburra_microbiota?.grosor || lingual?.pilares?.gastrointestinal_microbioma?.saburra_grosor || '');
+        const hasExplicitLingualTopo =
+            (!/ausent|sin\s+/i.test(explicitIndent) && /marcad|festonead|bilateral|edema|leve|moderad/i.test(explicitIndent)) ||
+            (!/ausent|liger|delgad|normal/i.test(explicitSaburra) && /moderad|espes|abundante/i.test(explicitSaburra));
+        const hasLingualCoatingOrScalloping = hasExplicitLingualTopo || hasAffirmativeOpticalSign(fullLgText, /\b(?:saburra\s+(?:espesa|moderada|amarillenta)|marcas_dentales_festoneado|indentaciones_dentales|scalloped|festonead[oa]|indentaci[óo]n)\b/i, negLingualRe);
+        if (hasLingualCoatingOrScalloping) {
+            pushAnomaly('NODO_1_ASIMILACION', 'LINGUAL_VISION', 'Topografía Lingual: Saburra Dorsal e Indentación Marginal',
+                isDigestiveEubiosisInSerum
+                    ? 'Saburra dorsal moderada e indentaciones marginales bilaterales por equilibrio hidrosalino y tránsito digestivo pausado (en paciente asintomático con eubiosis clínica)'
+                    : 'Topografía lingual con capa saburral o bordes festoneados sugestivos de tránsito digestivo lento y demanda prebiótica',
+                'MODERADA');
         }
 
         // 2. Bordes eritematosos reales -> Nodo 2
@@ -2047,9 +2584,11 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         }
 
         // 4. Venas sublinguales ingurgitadas -> Nodo 5
-        if (hasAffirmativeOpticalSign(fullLgText, /\b(?:ingurgitaci[óo]n|varices\s+sublinguales|várices\s+sublinguales|estasis\s+sublingual|viol[áa]ce[oa])\b/i, negLingualRe)) {
-            pushAnomaly('NODO_5_TRANSPORTE', 'LINGUAL_VISION', 'Congestión Venosa Sublingual',
-                'Dilatación microvascular sublingual compatible con demanda de retorno venoso y reología periférica', 'MODERADA');
+        const explicitSublingual = String(lingual?.pilares?.cardiovascular_oxigenacion?.estasis_venosa_sublingual || '');
+        const hasExplicitSublingual = Boolean(explicitSublingual && !/ausent|normal|sin\s+/i.test(explicitSublingual) && /tortuos|ingurgit|marcad|moderad|varic|várices|estasis/i.test(explicitSublingual));
+        if (hasExplicitSublingual || hasAffirmativeOpticalSign(fullLgText, /\b(?:ingurgitaci[óo]n|varices\s+sublinguales|várices\s+sublinguales|estasis\s+sublingual|venas\s+raninas|viol[áa]ce[oa])\b/i, negLingualRe)) {
+            pushAnomaly('NODO_5_TRANSPORTE', 'LINGUAL_VISION', 'Ingurgitación y Tortuosidad de Venas Raninas Sublinguales',
+                'Dilatación microvascular en cara ventral lingual compatible con estasis venosa sublingual y demanda de retorno venoso', 'MODERADA');
         }
     }
 
@@ -2083,10 +2622,14 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
     }
 
     if (allSomaticItems.length > 0) {
+        const globalVisFlags = Array.isArray(visual?.clinical_flags) ? visual.clinical_flags.join(', ') : '';
         allSomaticItems.forEach((it, idx) => {
             const region = it.region || `Zona #${idx + 1}`;
             const desc = it.finding || '';
-            const flags = Array.isArray(it.clinical_flags) ? it.clinical_flags.join(', ') : (it.clinical_flags || '');
+            const flags = [
+                Array.isArray(it.clinical_flags) ? it.clinical_flags.join(', ') : (it.clinical_flags || ''),
+                globalVisFlags
+            ].filter(Boolean).join(', ');
             const fullSomText = `${region} ${desc} ${flags}`.toUpperCase();
             const sev = String(it.severity || 'MODERADA').toUpperCase();
 
@@ -2096,18 +2639,20 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
                     `${desc} ${flags ? `[${flags}]` : ''}. Marcador cutáneo de hiperinsulinemia y resistencia a la insulina`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
             }
 
-            // 2. Edema maleolar, insuficiencia venosa, várices o cianosis -> Nodo 5
-            if (fullSomText.includes('EDEMA') || fullSomText.includes('MALEOLAR') || fullSomText.includes('VENOSA') || fullSomText.includes('VARICES') || fullSomText.includes('VÁRICES') || fullSomText.includes('HEMOSIDERINA') || fullSomText.includes('CIANOSIS')) {
-                pushAnomaly('NODO_5_TRANSPORTE', 'SOMATIC_VISION', `Insuficiencia Venosa / Edema Periférico (${region})`,
-                    `${desc} ${flags ? `[${flags}]` : ''}. Compromiso del retorno venoso y reología vascular`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
+            // 2. Edema maleolar, insuficiencia/estasis venosa, pigmentación ocre/hemosiderínica o extravasación distal -> Nodo 5
+            if (/(?:EDEMA|MALEOLAR|VENOS[OA]|VARICES|VÁRICES|HEMOSIDER[IÍ]N|ESTASI|OCRE|EXTRAVASACI[ÓO]N|CIANOSIS)/i.test(fullSomText)) {
+                pushAnomaly('NODO_5_TRANSPORTE', 'SOMATIC_VISION', `Estasis Venosa Cutánea y Cambios Hemosiderínicos (${region})`,
+                    `${desc}. Compromiso microcirculatorio de retorno venoso periférico`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
             }
 
-            // 3. Dermatitis, eccema, psoriasis o lesiones en piel -> Nodo 6 (Defensa) y Nodo 1 (Intestino-Piel)
+            // 3. Dermatitis, eccema, psoriasis o lesiones en piel -> Nodo 6 (Defensa) y Nodo 1 (solo cuando no exista eubiosis clínica estricta o sea mucocutánea generalizada)
             if (fullSomText.includes('DERMATITIS') || fullSomText.includes('ECCEMA') || fullSomText.includes('ECZEMA') || fullSomText.includes('PSORIASIS') || fullSomText.includes('ERITEMA') || fullSomText.includes('ERUPCION') || fullSomText.includes('ERUPCIÓN') || fullSomText.includes('PRURITO') || fullSomText.includes('LESION') || fullSomText.includes('LESIÓN')) {
-                pushAnomaly('NODO_6_DEFENSA', 'SOMATIC_VISION', `Reactividad Cutánea Inflamatoria (${region})`,
-                    `${desc} ${flags ? `[${flags}]` : ''}. Activación de respuesta inmunológica dérmica`, 'MODERADA');
-                pushAnomaly('NODO_1_ASIMILACION', 'SOMATIC_VISION', `Eje Intestino-Piel (${region})`,
-                    'Manifestación dérmica vinculada a hiperpermeabilidad mucosa e inmunotolerancia alterada', 'MODERADA');
+                pushAnomaly('NODO_6_DEFENSA', 'SOMATIC_VISION', `Reactividad Cutánea Microvascular (${region})`,
+                    `${desc}. Demanda de reparación epitelial y antioxidante dérmica`, 'MODERADA');
+                if (!isDigestiveEubiosisInSerum) {
+                    pushAnomaly('NODO_1_ASIMILACION', 'SOMATIC_VISION', `Eje Intestino-Piel (${region})`,
+                        'Manifestación dérmica vinculada a sensibilidad mucosa e inmunotolerancia', 'MODERADA');
+                }
             }
 
             // 4. Inflamación o dolor articular / musculoesquelético -> Nodo 7
@@ -2323,8 +2868,16 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
 
     const priorAdherence = detectPriorInstitutionalAdherence(patientData);
     const logisticsSummary = translateLogisticsProfile(patientData);
+    const hasClinicalAllergies = foodAllergies.length > 0 || drugAllergies.length > 0;
+    const n5Anoms = nodesMap.NODO_5_TRANSPORTE.anomalies || [];
+    const multimodalTriad = {
+        hasCornealArcus: n5Anoms.some((a) => a.source === 'OCULAR_VISION' && /arco\s+corneal|limbar/i.test(a.label)),
+        hasSublingualVenousStasis: n5Anoms.some((a) => a.source === 'LINGUAL_VISION' && /raninas|sublingual/i.test(a.label)),
+        hasLowerLimbVenousStasis: n5Anoms.some((a) => a.source === 'SOMATIC_VISION' && /estasis|hemosider/i.test(a.label)),
+        hasCirculatoryCollagenLow: (nodesMap.NODO_7_ESTRUCTURAL.anomalies || []).some((a) => /col[áa]geno.*circulatorio/i.test(a.label))
+    };
 
-    return {
+    const baseSerumReturn = {
         nodes,
         hasHighSerumCalciumOrCalcification,
         combinedExclusions,
@@ -2342,6 +2895,9 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         routeContext,
         priorAdherence,
         logisticsSummary,
+        isClinicalEubiosis: isDigestiveEubiosisInSerum,
+        hasClinicalAllergies,
+        multimodalTriad,
         vitalsSnapshot: {
             sys,
             dia,
@@ -2370,6 +2926,10 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
             gestationWeeks
         }
     };
+    baseSerumReturn.nom004Sheet = extractNom004IdentificationSheet(patientData, baseSerumReturn, null);
+    baseSerumReturn.dietaryEpigeneticSynthesis = extractDietaryAndEpigeneticSynthesis(patientData, baseSerumReturn, null);
+    baseSerumReturn.scheduledAppointmentSummary = resolveScheduledAppointmentSummary(patientData);
+    return baseSerumReturn;
 }
 
 // ============================================================================
@@ -3197,8 +3757,10 @@ function buildCanonicalTherapeuticContract({
         const scaled34 = formatScaledActives('34PLUS', doseFactor34);
 
         const hasCardioConductionCaution = Boolean(serum?.cabinetSignals?.hasCardiacConductionOrBradycardia);
+        const monitorPrepClause = formatBiometricMonitorPrepClause();
+        const biometricMonitorLabel = resolveBiometricMonitorLabel();
         const ecoMonitorClause = hasCardioConductionCaution
-            ? ' bajo vigilancia de frecuencia cardiaca con EcoSinergix y corte horario estricto antes de las 14:00 h'
+            ? ` bajo vigilancia de frecuencia cardiaca ${monitorPrepClause} y corte horario estricto antes de las 14:00 h`
             : ' (corte horario antes de las 14:00 h)';
 
         const phrase33ForNode = isPaused
@@ -3274,7 +3836,7 @@ function buildCanonicalTherapeuticContract({
                             title: 'Escalamiento Gradual según Tolerancia y Modulación Metabólica',
                             description: isSelective33Paused
                                 ? `Continuidad de pausa selectiva en 33Plus® (0 sobres activos) y valoración de tolerancia digestiva para escalar 34Plus® vespertino/nocturno (${FORMULA_34PLUS.halfSachetGramsDisplay} a ${FORMULA_34PLUS.sachetGramsDisplay}) en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple.`
-                                : `Valoración de tolerancia digestiva y respuesta cardiovascular (EcoSinergix) a partir del Día 8 para mantener micro-dosis o integrar toma de media mañana (${FORMULA_33PLUS.halfSachetGramsDisplay} antes de las 14:00 h).`
+                                : `Valoración de tolerancia digestiva y respuesta cardiovascular (${biometricMonitorLabel}) a partir del Día 8 para mantener micro-dosis o integrar toma de media mañana (${FORMULA_33PLUS.halfSachetGramsDisplay} antes de las 14:00 h).`
                         },
                         {
                             phase: 3,
@@ -3312,10 +3874,14 @@ function buildCanonicalTherapeuticContract({
         const resolvedMetabolicAge = metabolicAgeStudy || calculateBidirectionalMetabolicAge(patientData, serum, bioenergetics);
         const priorAdherence = serum?.priorAdherence || detectPriorInstitutionalAdherence(patientData);
         const logisticsSummary = serum?.logisticsSummary || translateLogisticsProfile(patientData);
+        const nom004Sheet = extractNom004IdentificationSheet(patientData, serum, bioenergetics);
+        const dietaryEpigeneticSynthesis = extractDietaryAndEpigeneticSynthesis(patientData, serum, bioenergetics);
+        const scheduledAppointmentSummary = resolveScheduledAppointmentSummary(patientData);
         const isRecalibrationMode = Boolean(isMicroDose && !isPaused && priorAdherence?.hasPriorAdherence);
 
         return {
-            contractVersion: '3.3.0-EGM51-SSOTT',
+            contractVersion: '3.3.0-EGM56-SSOTT',
+            biometricMonitorLabel,
             regimen,
             regimenBadge,
             caloricDeltaType,
@@ -3334,9 +3900,15 @@ function buildCanonicalTherapeuticContract({
             selective33ReasonText: selGuard.reasonText || '',
             isPediatricExplicit,
             isLactanteExplicit,
+            isClinicalEubiosis: Boolean(serum?.isClinicalEubiosis ?? nom004Sheet?.isClinicalEubiosis),
+            hasClinicalAllergies: Boolean(serum?.hasClinicalAllergies ?? nom004Sheet?.hasClinicalAllergies),
+            multimodalTriad: serum?.multimodalTriad || {},
             semaphoreLevel: biosecuritySemaphore?.level || 'VERDE',
             priorAdherence,
             logisticsSummary,
+            nom004Sheet,
+            dietaryEpigeneticSynthesis,
+            scheduledAppointmentSummary,
             metabolicAgeStudy: resolvedMetabolicAge,
             posology: {
                 doseFactor33,
@@ -3360,6 +3932,7 @@ function buildCanonicalTherapeuticContract({
         console.warn('⚠️ [Canonical Plan Safe Catch]:', planErr.message);
         return {
             contractVersion: '3.2.0-EGM49-FALLBACK',
+            biometricMonitorLabel: resolveBiometricMonitorLabel(),
             regimen: 'Alimentación Funcional Antiinflamatoria Personalizada',
             regimenBadge: 'Alimentación Antiinflamatoria (0 Picante • 0 Cerdo • 0 Azúcares refinados)',
             caloricDeltaType: 'MANTENIMIENTO_RECOMPOSICION',
@@ -3393,7 +3966,7 @@ function buildCanonicalTherapeuticContract({
 
 /**
  * Compila `therapeutic_focus` de cada Nodo IFM (Sección 1 y Sección 3 CDSS 3.1–3.7)
- * interpolando 100% desde `canonicalClinicalPlan` (`posology`, `bioenergetics`, `movement`).
+ * interpolando 100% desde `canonicalClinicalPlan` (`posology`, `bioenergetics`, `movement`, `multimodalTriad`).
  */
 function resolveNodeTherapeuticFocus(nodeId, contract = null) {
     const c = contract || buildCanonicalTherapeuticContract({});
@@ -3402,6 +3975,7 @@ function resolveNodeTherapeuticFocus(nodeId, contract = null) {
     const liters = c.hydrationTargetLiters || 2.2;
     const dose33Phrase = c.posology?.phrase33ForNode || 'hidratación matutina supervisada';
     const dose34Phrase = c.posology?.phrase34ForNode || 'hidratación nocturna supervisada';
+    const monitorPrep = formatBiometricMonitorPrepClause();
 
     let caloricPhrase = `pauta normocalórica personalizada (${kcal} kcal/día; ${m.carbs}% CHO / ${m.protein}% P / ${m.fat}% L)`;
     if (String(c.caloricDeltaType || '').includes('DEFICIT')) {
@@ -3415,17 +3989,34 @@ function resolveNodeTherapeuticFocus(nodeId, contract = null) {
         : '';
 
     const cardioMoveClause = c.movement?.hasCardioConductionCaution
-        ? 'actividad aeróbica sin impacto en Zona 1–2 monitoreada con EcoSinergix (FC <= 130 lpm)'
+        ? `actividad aeróbica sin impacto en Zona 1–2 ${monitorPrep} (FC <= 130 lpm)`
         : 'caminata aeróbica conversacional sin impactos bruscos';
 
     const structuralMoveClause = c.movement?.hasPostsurgicalInguinalWall
         ? 'movilidad articular controlada con prohibición estricta de maniobras de Valsalva pesadas (protección de pared inguinal postquirúrgica)'
         : 'movilidad articular progresiva sin impacto';
 
+    const triad = c.multimodalTriad || {};
+    const triadSigns = [
+        triad.hasCornealArcus ? 'arco corneal limbar asociado a transporte lipoproteico' : null,
+        triad.hasSublingualVenousStasis ? 'ingurgitación venosa sublingual (venas raninas)' : null,
+        triad.hasLowerLimbVenousStasis ? 'estasis venosa y cambios hemosiderínicos distales en extremidades inferiores' : null
+    ].filter(Boolean);
+    const triadClause = triadSigns.length > 0
+        ? ` —integrando la correlación morfológica de ${joinSpanishList(triadSigns)} mediante proantocianidinas de Semilla de Uva 95 % (MP040), Coenzima Q10 (MP104) y Vitamina C (MP048) de 33Plus® junto con Colágeno Hidrolizado (MP009) de 34Plus®—`
+        : '';
+
+    const dietSynth = c.dietaryEpigeneticSynthesis || {};
+    const dietBridgeClause = dietSynth.lipidCulinaryBridge
+        ? `, aplicando el ajuste alimentario personalizado (${dietSynth.lipidCulinaryBridge})`
+        : ', ácidos grasos monoinsaturados y fibra soluble';
+
     switch (nodeId) {
         case 'NODO_1_ASIMILACION':
             return sanitizeClinicalSpanish(
-                `Restauración de barrera mucosa digestiva mediante exclusión estricta de irritantes (0 picante, 0 cerdo, 0 azúcares refinados${exclText}), tiempos pausados de masticación, hidratación fraccionada (${liters} L/día) y soporte prebiótico con ${dose34Phrase}.`
+                c.isClinicalEubiosis
+                    ? `Optimización preventiva de absorción mucosa y equilibrio hidrosalino lingual —preservando su estado actual de eubiosis clínica (0 síntomas digestivos)— mediante exclusión preventiva de irritantes (0 picante, 0 cerdo, 0 azúcares refinados${exclText}), masticación pausada, hidratación fraccionada (${liters} L/día) y soporte prebiótico con ${dose34Phrase}.`
+                    : `Restauración de barrera mucosa digestiva mediante exclusión estricta de irritantes (0 picante, 0 cerdo, 0 azúcares refinados${exclText}), tiempos pausados de masticación, hidratación fraccionada (${liters} L/día) y soporte prebiótico con ${dose34Phrase}.`
             );
         case 'NODO_2_BIOTRANSFORMACION':
             return sanitizeClinicalSpanish(
@@ -3433,7 +4024,7 @@ function resolveNodeTherapeuticFocus(nodeId, contract = null) {
             );
         case 'NODO_3_ENERGIA':
             return sanitizeClinicalSpanish(
-                `Modulación metabólica y transporte saludable de lipoproteínas mediante ${caloricPhrase}, ácidos grasos monoinsaturados, fibra soluble y soporte bioenergético con ${dose33Phrase}.`
+                `Modulación metabólica y transporte saludable de lipoproteínas mediante ${caloricPhrase}${dietBridgeClause} y soporte bioenergético con ${dose33Phrase}.${dietSynth.epigeneticClinicalNote ? ` ${dietSynth.epigeneticClinicalNote}` : ''}`
             );
         case 'NODO_4_COMUNICACION':
             return sanitizeClinicalSpanish(
@@ -3441,11 +4032,13 @@ function resolveNodeTherapeuticFocus(nodeId, contract = null) {
             );
         case 'NODO_5_TRANSPORTE':
             return sanitizeClinicalSpanish(
-                `Optimización endotelial, fluidez microcirculatoria y oxigenación tisular mediante hidratación constante (${liters} L/día), ${cardioMoveClause} y protección antioxidante vascular con ${dose33Phrase}.`
+                `Optimización endotelial, fluidez microcirculatoria y retorno venoso periférico${triadClause} mediante hidratación constante (${liters} L/día), ${cardioMoveClause}, activación de bomba muscular gemelar y protección antioxidante vascular con ${dose33Phrase}.`
             );
         case 'NODO_6_DEFENSA':
             return sanitizeClinicalSpanish(
-                `Modulación inmunológica antiinflamatoria y protección antioxidante celular (retiro de irritantes y alérgenos detectados${exclText}), acompañada de descanso reparador y ${dose34Phrase}.`
+                c.hasClinicalAllergies
+                    ? `Modulación inmunológica antiinflamatoria y protección antioxidante celular (retiro estricto de irritantes y alérgenos clínicos acreditados${exclText}), acompañada de descanso reparador y ${dose34Phrase}.`
+                    : `Modulación inmunológica antiinflamatoria y reparación epitelial (exclusión preventiva de irritantes mucosos; 0 alergias clínicas declaradas, con vigilancia orientativa ante reactividad biofísica${exclText}), acompañada de descanso reparador y ${dose34Phrase}.`
             );
         case 'NODO_7_ESTRUCTURAL':
             if (c.calciumLocked) {
@@ -3525,13 +4118,27 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
     let summary = 'Función conservada. Sin alteraciones detectadas.';
     if (count > 0) {
         const listClause = topDescriptors.join(', ') + (remainingCount > 0 ? ` y ${remainingCount} parámetros complementarios` : '');
+        const triad = contract?.multimodalTriad || {};
+        const triadDetParts = node.id === 'NODO_5_TRANSPORTE'
+            ? [
+                triad.hasCornealArcus ? 'arco corneal limbar (OD+OI)' : null,
+                triad.hasSublingualVenousStasis ? 'ingurgitación de venas raninas sublinguales' : null,
+                triad.hasLowerLimbVenousStasis ? 'estasis venosa con cambios hemosiderínicos en extremidades inferiores' : null
+            ].filter(Boolean)
+            : [];
+        const triadDetSuffix = triadDetParts.length > 0
+            ? ` Triangulación semiológica convergente: ${joinSpanishList(triadDetParts)}.`
+            : '';
+        const eubiosisDetSuffix = (node.id === 'NODO_1_ASIMILACION' && contract?.isClinicalEubiosis)
+            ? ' Se documenta en coexistencia con eubiosis clínica (0 síntomas digestivos referidos).'
+            : '';
         if (hasConfirmedLabOrCabinet) {
             summary = sanitizeClinicalSpanish(
-                `Correlación clínica y paraclínica en ${cleanNodeTitle} (${count} hallazgos integrados), destacando ${listClause}. El perfil sugiere demanda adaptativa prioritaria dentro del ${node.preAssignedLabel || 'eje funcional evaluado'}.`
+                `Correlación clínica y paraclínica en ${cleanNodeTitle} (${count} hallazgos integrados), destacando ${listClause}.${triadDetSuffix} El perfil sugiere demanda adaptativa prioritaria dentro del ${node.preAssignedLabel || 'eje funcional evaluado'}.`
             );
         } else {
             summary = sanitizeClinicalSpanish(
-                `Se registran ${count} bioseñales funcionales orientativas en ${cleanNodeTitle}, con predominio en ${listClause}. Hallazgos compatibles con sobrecarga adaptativa funcional sujeta a correlación clínica.`
+                `Se registran ${count} bioseñales funcionales orientativas en ${cleanNodeTitle}, con predominio en ${listClause}.${eubiosisDetSuffix} Hallazgos compatibles con sobrecarga adaptativa funcional sujeta a correlación clínica.`
             );
         }
     }
@@ -3715,9 +4322,28 @@ ${nodesDigestText}`;
         }
         const hasForbiddenTherapeuticClaim = FORBIDDEN_SUMMARY_CLAIMS_REGEX.test(sanitizedSummary);
         const hasUnconfirmedNosology = !resolvedContract.hasLabResultsLoaded && UNCONFIRMED_NOSOLOGY_WITHOUT_LABS_REGEX.test(sanitizedSummary);
-        const validSummary = (!hasForbiddenTherapeuticClaim && !hasUnconfirmedNosology && sanitizedSummary.length >= 25)
+        let validSummary = (!hasForbiddenTherapeuticClaim && !hasUnconfirmedNosology && sanitizedSummary.length >= 25)
             ? sanitizedSummary
             : deterministicNode.summary;
+
+        if (node.id === 'NODO_5_TRANSPORTE') {
+            const triad = resolvedContract.multimodalTriad || {};
+            const missingTriadItems = [
+                (triad.hasCornealArcus && !/arco\s+corneal|limbar/i.test(validSummary)) ? 'arco corneal limbar (OD+OI)' : null,
+                (triad.hasSublingualVenousStasis && !/raninas|sublingual/i.test(validSummary)) ? 'ingurgitación de venas raninas sublinguales' : null,
+                (triad.hasLowerLimbVenousStasis && !/hemosider|estasis\s+venosa|extremidades\s+inferiores/i.test(validSummary)) ? 'estasis venosa con cambios hemosiderínicos en extremidades inferiores' : null
+            ].filter(Boolean);
+            if (missingTriadItems.length > 0) {
+                validSummary = sanitizeClinicalSpanish(
+                    `${validSummary.replace(/\.+$/, '')}. Triangulación semiológica multimodal convergente: ${joinSpanishList(missingTriadItems)}.`
+                );
+            }
+        }
+        if (node.id === 'NODO_1_ASIMILACION' && resolvedContract.isClinicalEubiosis && !/eubiosis/i.test(validSummary)) {
+            validSummary = sanitizeClinicalSpanish(
+                `${validSummary.replace(/\.+$/, '')} (en coexistencia con eubiosis clínica asintomática: 0 síntomas digestivos).`
+            );
+        }
 
         const validStatus = (llmCandidate.status && ['ALERTA_MODERADA', 'PRIORIDAD_ALTA', 'CRÍTICO'].includes(llmCandidate.status))
             ? llmCandidate.status
@@ -4266,7 +4892,7 @@ function evaluateBiosecurityAndTitration(
         yellowReasons.push(
             addr.isTutorMode
                 ? `el estudio electrocardiográfico de ${addr.childShortRef} registra conducción eléctrica que amerita inicio gradual`
-                : `su electrocardiograma en reposo registra bradicardia sinusal${cabinet.ecgHrBpm ? ` (${cabinet.ecgHrBpm} lpm)` : ''} y bloqueo de rama derecha, por lo que cuidamos su respuesta cardiovascular paso a paso con EcoSinergix`
+                : `su electrocardiograma en reposo registra bradicardia sinusal${cabinet.ecgHrBpm ? ` (${cabinet.ecgHrBpm} lpm)` : ''} y bloqueo de rama derecha, por lo que cuidamos su respuesta cardiovascular paso a paso ${formatBiometricMonitorPrepClause()}`
         );
     }
     if (cabinet.recommendsEchocardiogram) {
@@ -4355,7 +4981,7 @@ function evaluateBiosecurityAndTitration(
         }
 
         const cardioCutoffClause = cabinet.hasCardiacConductionOrBradycardia
-            ? ' Corte matutino estricto antes de las 14:00 h y monitoreo de FC con EcoSinergix.'
+            ? ` Corte matutino estricto antes de las 14:00 h y vigilancia de FC ${formatBiometricMonitorPrepClause()}.`
             : '';
         const priorAdherence = serum?.priorAdherence || detectPriorInstitutionalAdherence(patientData);
         const hasPriorSupplementAdherence = Boolean(!addr.isTutorMode && priorAdherence?.hasPriorAdherence);
@@ -4688,7 +5314,7 @@ function buildOrthomolecularPrescription(
             ? 'Protocolo de Recalibración Preventiva de Dosis (Ajuste Calibrado 33Plus® y 34Plus®)'
             : 'Protocolo de Inicio Gradual Calibrado (Micro-Dosis Protectora 33Plus® y 34Plus®)';
         const cardioTimingNote = hasConductionCaution
-            ? ' • Corte estricto antes de las 14:00 h y monitoreo de FC con EcoSinergix'
+            ? ` • Corte estricto antes de las 14:00 h y vigilancia de FC ${formatBiometricMonitorPrepClause()}`
             : '';
         circadianSchedule = [
             {
@@ -4715,7 +5341,7 @@ function buildOrthomolecularPrescription(
                 phase: 'FASE MATUTINA — Hidratación Preparatoria y Escalamiento Gradual',
                 formula: '💧 Hidratación Preparatoria (Agua Simple en Semana 1)',
                 dosage: `Iniciar solo con 300 ml de agua natural (Semana 1) • Valorar 1/2 sobre adicional (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® en Semana 2 según tolerancia`,
-                clinicalObjective: 'Ventana de hidratación preparatoria en Semana 1; titulación escalonada en Semana 2 sujeta a tolerancia digestiva, respuesta cardiovascular con EcoSinergix y seguimiento clínico.',
+                clinicalObjective: `Ventana de hidratación preparatoria en Semana 1; titulación escalonada en Semana 2 sujeta a tolerancia digestiva, respuesta cardiovascular ${formatBiometricMonitorPrepClause()} y seguimiento clínico.`,
                 patientObjective: addr.isTutorMode
                     ? `Hidratar a ${addr.childShortRef} con agua natural la primera semana antes de valorar una segunda toma matutina.`
                     : 'Hidratar su organismo con agua simple durante la primera semana antes de valorar una segunda toma matutina.',
@@ -4764,8 +5390,8 @@ function buildOrthomolecularPrescription(
                 : FORMULA_33PLUS.dosageByMode.MICRO_DOSE,
             timing: addr.isTutorMode
                 ? `Sincronizado al despertar de ${addr.childShortRef} (evitar ofrecerlo después de las 2:00 PM)`
-                : `Sincronizado a su despertar real (corte estricto antes de las 2:00 PM${hasConductionCaution ? ' y monitoreo con EcoSinergix' : ''})`,
-            clinical_timing: `Sincronizado al despertar del paciente en ayunas (corte horario estricto antes de las 14:00 h${hasConductionCaution ? ' y monitoreo cronotrópico con EcoSinergix' : ''})`,
+                : `Sincronizado a su despertar real (corte estricto antes de las 2:00 PM${hasConductionCaution ? ` y vigilancia ${formatBiometricMonitorPrepClause()}` : ''})`,
+            clinical_timing: `Sincronizado al despertar del paciente en ayunas (corte horario estricto antes de las 14:00 h${hasConductionCaution ? ` y vigilancia cronotrópica ${formatBiometricMonitorPrepClause()}` : ''})`,
             rationale: `${scaled33.regulatorySummary}.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${energyBiomarkers.length}): ${energyBiomarkers.join(' | ')}.` : ''}`,
             patient_rationale: addr.isTutorMode
                 ? `Acompaña a ${addr.childShortRef} por la mañana con L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva, vitamina C y cromo para apoyar su energía diaria y circulación, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre de ${FORMULA_33PLUS.sachetGramsDisplay}—) para cuidar su adaptación.`
@@ -4906,9 +5532,24 @@ function buildOrthomolecularPrescription(
  * Traduce etiquetas crudas de bioimpedancia/clínica a lenguaje ciudadano empático,
  * filtrando marcadores esotéricos o alarmantes (p. ej. Radiación Electromagnética, Mercurio, Arsénico).
  */
+function stripBalancedParenthesesSafe(str) {
+    let out = String(str || '');
+    let prev = '';
+    while (out !== prev) {
+        prev = out;
+        out = out.replace(/\([^()]*\)/g, '');
+    }
+    return out.replace(/[()]/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     if (!rawLabel) return '';
-    const base = cleanClinicalLabel(String(rawLabel).split(':')[0].trim());
+    const fullStr = sanitizeClinicalSpanish(String(rawLabel).trim());
+    const iccMatch = fullStr.match(/relaci[óo]n\s+cintura[-\s]*cadera\s+f[íi]sica\s*\(\s*icc\s*:\s*([0-9.]+)\s*\)/i);
+    if (iccMatch) {
+        return `relación cintura-cadera física [ICC ${iccMatch[1]}]`;
+    }
+    const base = cleanClinicalLabel(fullStr.split(':')[0].trim());
     if (!base) return '';
 
     // Excluir marcadores ambientales no-orgánicos de las tarjetas fisiológicas del paciente
@@ -4917,6 +5558,18 @@ function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     }
     if (/vigilancia\s+epigen[ée]tica|heredo[-\s]*familiar|carga\s+familiar/i.test(base)) {
         return 'prevención personalizada por antecedentes familiares';
+    }
+    if (/arco\s+corneal|halo\s+lip[íi]dico|limbar/i.test(base)) {
+        return 'halo lipídico incipiente en córnea asociado a colesterol';
+    }
+    if (/venas\s+raninas|sublingual/i.test(base)) {
+        return 'retorno venoso sublingual e hidratación microvascular';
+    }
+    if (/estasis\s+venosa|hemosider[ií]n|extremidad\s+inferior/i.test(base)) {
+        return 'retorno venoso en piernas y microcirculación cutánea';
+    }
+    if (/relaci[óo]n\s+cintura[-\s]*cadera|\bicc\b/i.test(base)) {
+        return 'relación cintura-cadera física [ICC]';
     }
 
     if (/mercurio|ars[ée]nico|plomo|cadmio|pesticida|metales?\s+pesados?|toxina/i.test(base)) {
@@ -4943,6 +5596,9 @@ function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     if (/grasa\s+en\s+el\s+h[íi]gado|h[íi]gado|hep[áa]tic|ves[íi]cula|biliar|bilirrubina|\bglobulina\b|desintoxicaci[óo]n|energ[íi]a\s+del\s+h[íi]gado/i.test(base)) {
         return 'procesamiento de grasas y limpieza en hígado';
     }
+    if (/filtraci[óo]n\s+glomerular|\btfge\b/i.test(base)) {
+        return 'tasa de filtración renal preventiva';
+    }
     if (/proteinuria|[áa]cido\s+[úu]rico|urobilin[óo]geno|nitr[óo]geno|urea|creatinina|renal|ri[ñn][óo]n/i.test(base)) {
         return 'filtración de minerales y proteínas en riñón';
     }
@@ -4953,19 +5609,16 @@ function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
         return 'recuperación frente al estrés y calidad de descanso';
     }
     if (/alergia|sensibilidad|polen|polvo|leche|l[áa]cteo|marisco|pintura|fibra\s+qu[íi]mica|antibi[óo]tico|alcohol|tabaco/i.test(base)) {
-        return 'sensibilidad digestiva o ambiental';
+        return 'reactividad ambiental o alimentaria orientativa';
     }
     if (/c[íi]rculos\s+oscuros|bolsas\s+en\s+los\s+ojos|ojeras|fatiga\s+visual/i.test(base)) {
         return 'oxigenación microvascular y descanso visual';
     }
-    if (/sublingual/i.test(base)) {
-        return 'hidratación y microcirculación digestiva';
-    }
     if (systemId === 'digestion_absorcion' && /treonina|histidina|lisina|valina|leucina|isoleucina|tript[óo]fano|metionina|fenilalanina|arginina|amino[áa]cido/i.test(base)) {
         return 'aprovechamiento digestivo de aminoácidos y proteínas';
     }
-    if (systemId === 'circulacion_energia' && /coenzima|vitamina\s+b|hierro|mitocondri/i.test(base)) {
-        return 'producción de energía celular';
+    if (systemId === 'circulacion_energia' && /coenzima|vitamina\s+b|nicotinamida|biotina|pantot[ée]nic|hierro|mitocondri/i.test(base)) {
+        return 'producción de energía celular diaria';
     }
     if (/vitamina|zinc|selenio|hierro|magnesio|potasio|calcio|coenzima|treonina|histidina|lisina|valina|leucina|isoleucina|tript[óo]fano|metionina|fenilalanina|arginina|amino[áa]cido|inmunoglobulina|linf[áa]tic|am[íi]gdala|bazo|m[ée]dula|respiratori|mucosa/i.test(base)) {
         return 'reservas de vitaminas, minerales y defensas naturales';
@@ -5000,23 +5653,153 @@ function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     if (/peristalsis|intestin|col[óo]nic|colon|flora|microbiota|estre[ñn]imiento|evacuaci/i.test(base)) {
         return 'ritmo de movimiento del estómago e intestino';
     }
-    if (/absorci[óo]n|g[áa]stric|pepsina|est[óo]mago|saburra|lingual|digestiv|amilasa/i.test(base)) {
+    if (/saburra|indentaci[óo]n|festonead|topograf[íi]a\s+lingual/i.test(base)) {
+        return 'equilibrio hidrosalino y recubrimiento lingual';
+    }
+    if (/absorci[óo]n|g[áa]stric|pepsina|est[óo]mago|lingual|digestiv|amilasa/i.test(base)) {
         return 'producción de jugos digestivos y absorción de nutrientes';
     }
 
-    return base
-        .replace(/^(?:grado|coeficiente|[íi]ndice|s[íi]ndrome|factor|tasa)\s+de\s+/i, '')
-        .replace(/\([^)]*\)/g, '')
-        .trim()
-        .toLowerCase();
+    return stripBalancedParenthesesSafe(
+        base.replace(/^(?:grado|coeficiente|[íi]ndice|s[íi]ndrome|factor|tasa)\s+de\s+/i, '')
+    ).toLowerCase();
+}
+
+function deduplicateFriendlyTopicList(topics = []) {
+    const out = [];
+    const seenStems = new Set();
+    for (const raw of (Array.isArray(topics) ? topics : [])) {
+        const clean = stripBalancedParenthesesSafe(String(raw || '').trim()) === String(raw || '').trim()
+            ? String(raw || '').trim()
+            : String(raw || '').replace(/[()]/g, '').trim();
+        if (!clean) continue;
+        const stem = normalizeForMatch(clean).replace(/_diari[oa]s?$/g, '');
+        if (seenStems.has(stem)) continue;
+        seenStems.add(stem);
+        out.push(clean);
+    }
+    return out;
+}
+
+/**
+ * Clasificador Clínico Honesto de Severidad en los 5 Sistemas de la Guía del Paciente (`EGM-56`):
+ * Erradica la inflación artificial 5/5 🔴 por simples bioseñales orientativas del Electret cuando
+ * la química sanguínea venosa, escalas de estilo de vida y gabinete confirman estabilidad.
+ */
+function resolvePatientSystemSeverity(sysId, sourceNodes, serum = {}, patientData = {}) {
+    try {
+        const mergedBiomarkers = sourceNodes.flatMap((n) => Array.isArray(n.key_biomarkers) ? n.key_biomarkers : []);
+        const hasAny = mergedBiomarkers.length > 0;
+        if (!hasAny) {
+            return { status: 'EN_EQUILIBRIO', statusLabel: 'Fortaleza consolidada' };
+        }
+
+        const labs = serum?.labValues || {};
+        const subAxes = serum?.subAxisFlags || {};
+        const cab = serum?.cabinetSignals || {};
+        const prec = serum?.precedence || {};
+        const vSnap = serum?.vitalsSnapshot || {};
+        const isEubiosis = Boolean(serum?.isClinicalEubiosis);
+        const hasAllergies = Boolean(serum?.hasClinicalAllergies);
+
+        if (sysId === 'circulacion_energia') {
+            const hasMajorCardioOrMetabolic = Boolean(
+                subAxes.hasAtherogenicCholesterol ||
+                subAxes.hasHypertriglyceridemia ||
+                subAxes.hasTrueDysglycemia ||
+                cab.hasCardiacConductionOrBradycardia ||
+                Number(vSnap.sys) >= 140 ||
+                Number(vSnap.dia) >= 90 ||
+                (Number(vSnap.spo2) > 0 && Number(vSnap.spo2) < (serum?.altitudeInfo?.spo2NormalFloor || 92))
+            );
+            if (hasMajorCardioOrMetabolic) {
+                return { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' };
+            }
+            return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+        }
+
+        if (sysId === 'digestion_absorcion') {
+            const rawPaths = Array.isArray(patientData?.history?.pathologies) ? patientData.history.pathologies : [];
+            const hasActiveGiDisease = rawPaths.some((p) =>
+                /gastritis|colitis|reflujo|[úu]lcera|colecist|crohn|celiaq/i.test(String(typeof p === 'object' ? (p?.name || p?.patologia) : p || ''))
+            );
+            if (!isEubiosis || hasActiveGiDisease) {
+                return { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' };
+            }
+            return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+        }
+
+        if (sysId === 'filtros_naturales') {
+            const hasTrueHepatoRenalLabAlert = Boolean(
+                (Number(labs.creatinine) > 1.2) ||
+                (Number(labs.gfr) > 0 && Number(labs.gfr) < 60) ||
+                (Number(labs.uricAcid) > 7.0) ||
+                (Number(labs.alt) > 61) ||
+                (Number(labs.ast) > 40) ||
+                (Number(labs.ggt) > 61) ||
+                (Number(labs.bilirubin) > 1.2)
+            );
+            if (hasTrueHepatoRenalLabAlert) {
+                return { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' };
+            }
+            if (prec.venousRenalNormal && prec.venousHepaticNormal && !prec.hasGfrStageG2 && mergedBiomarkers.length <= 1) {
+                return { status: 'EN_EQUILIBRIO', statusLabel: 'Fortaleza consolidada • vigilancia focal' };
+            }
+            return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+        }
+
+        if (sysId === 'descanso_defensas') {
+            const sleepObj = patientData?.habits?.sleep || patientData?.lifestyle_profile?.sleep || {};
+            const sleepHours = Number(sleepObj?.hours ?? sleepObj?.hours_avg ?? 0);
+            const sleepGood = sleepHours >= 6.5 && !/mala|poor|insomnio/i.test(String(sleepObj?.quality || ''));
+            const rawStress = String(patientData?.habits?.stress || patientData?.lifestyle_profile?.stress?.level || '').toUpperCase();
+            const stressLow = !/ALTO|HIGH|SEVER/.test(rawStress);
+            const hasMajorNeuroImmuneAlert = Boolean(
+                subAxes.hasAcutePhaseInflammation ||
+                hasAllergies ||
+                Number(labs.tsh) > 4.5 ||
+                (Number(labs.tsh) > 0 && Number(labs.tsh) < 0.4) ||
+                Number(labs.cortisol) > 20 ||
+                Number(labs.leukocytes) > 11600 ||
+                (Number(labs.leukocytes) > 0 && Number(labs.leukocytes) < 3800) ||
+                (!sleepGood && sleepHours > 0 && sleepHours < 5.5)
+            );
+            if (hasMajorNeuroImmuneAlert) {
+                return { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' };
+            }
+            const hscrpCalm = !labs.hscrpMgL || Number(labs.hscrpMgL) <= 1.5;
+            if (sleepGood && stressLow && hscrpCalm && !hasAllergies) {
+                return { status: 'EN_EQUILIBRIO', statusLabel: 'Fortaleza consolidada • vigilancia focal' };
+            }
+            return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+        }
+
+        if (sysId === 'huesos_musculos') {
+            const hasMajorStructuralAlert = Boolean(
+                Number(labs.serumCalcium) > 10.2 ||
+                (Number(labs.vitaminD) > 0 && Number(labs.vitaminD) < 20) ||
+                Number(vSnap.bmi) >= 35 ||
+                Number(vSnap.ica) >= 0.65
+            );
+            if (hasMajorStructuralAlert) {
+                return { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' };
+            }
+            return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+        }
+
+        return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+    } catch (_) {
+        return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+    }
 }
 
 /**
  * Construye la Guía Empática para el Paciente ("Carta de su Director Clínico"),
  * traduciendo la Matriz IFM a 5 grandes sistemas humanos sin códigos CIE-10 ni jerga intimidante,
- * cumpliendo 100% `MODO_TUTOR (< 13 años)` y `Usted Global (13+ años)`.
+ * cumpliendo 100% `MODO_TUTOR (< 13 años)`, `Usted Global (13+ años)` y Semaforización Real `🔴/🟡/🟢`.
  */
 function buildPatientFriendlyGuide({
+    patientData = {},
     patientName,
     ageYears,
     isFemale = false,
@@ -5044,17 +5827,19 @@ function buildPatientFriendlyGuide({
     const sampleBalancedFriendlyTopics = (sourceNodes, systemId) => {
         const perNodeTopics = sourceNodes.map((n) => {
             const rawList = Array.isArray(n.key_biomarkers) ? n.key_biomarkers : [];
-            return Array.from(new Set(rawList.map((b) => humanizeBiomarkerTopicForPatient(b, systemId)).filter(Boolean)));
+            return deduplicateFriendlyTopicList(rawList.map((b) => humanizeBiomarkerTopicForPatient(b, systemId)).filter(Boolean));
         });
 
         if (perNodeTopics.length <= 1) {
-            return (perNodeTopics[0] || []).slice(0, 4);
+            return deduplicateFriendlyTopicList(perNodeTopics[0] || []).slice(0, 4);
         }
 
         // Muestreo balanceado round-robin 2 + 2 para sistemas fusionados ([N5 + N3], [N4 + N6])
         const selected = [];
         const addUnique = (topic) => {
-            if (topic && !selected.includes(topic) && selected.length < 4) {
+            if (!topic || selected.length >= 4) return;
+            const stem = normalizeForMatch(topic).replace(/_diari[oa]s?$/g, '');
+            if (!selected.some((s) => normalizeForMatch(s).replace(/_diari[oa]s?$/g, '') === stem)) {
                 selected.push(topic);
             }
         };
@@ -5063,10 +5848,9 @@ function buildPatientFriendlyGuide({
             let takenFromNode = 0;
             for (const t of nodeTopics) {
                 if (takenFromNode >= 2 || selected.length >= 4) break;
-                if (!selected.includes(t)) {
-                    selected.push(t);
-                    takenFromNode++;
-                }
+                const beforeLen = selected.length;
+                addUnique(t);
+                if (selected.length > beforeLen) takenFromNode++;
             }
         });
 
@@ -5083,15 +5867,8 @@ function buildPatientFriendlyGuide({
 
     const makeSystemCard = ({ id, title, subtitle, iconKey, sourceNodes, observedWhenActive, meaningWhenActive, healthyObserved, healthyMeaning }) => {
         const mergedBiomarkers = sourceNodes.flatMap(n => Array.isArray(n.key_biomarkers) ? n.key_biomarkers : []);
-        const hasPriority = sourceNodes.some(n => n.status === 'CRÍTICO' || n.status === 'PRIORIDAD_ALTA');
         const hasAny = mergedBiomarkers.length > 0;
-
-        const status = !hasAny
-            ? 'EN_EQUILIBRIO'
-            : (hasPriority ? 'ATENCION_PRIORITARIA' : 'VIGILANCIA_PREVENTIVA');
-        const statusLabel = !hasAny
-            ? 'En equilibrio'
-            : (hasPriority ? 'Atención prioritaria' : 'Cuidado preventivo');
+        const resolvedSev = resolvePatientSystemSeverity(id, sourceNodes, serum, patientData);
 
         const topFriendlyTopics = sampleBalancedFriendlyTopics(sourceNodes, id);
 
@@ -5100,12 +5877,12 @@ function buildPatientFriendlyGuide({
             title,
             subtitle,
             iconKey,
-            status,
-            statusLabel,
+            status: resolvedSev.status,
+            statusLabel: resolvedSev.statusLabel,
             findingsCount: mergedBiomarkers.length,
             cleanHighlights: topFriendlyTopics,
             whatWeObserved: hasAny
-                ? observedWhenActive(topFriendlyTopics.length > 0 ? topFriendlyTopics : ['equilibrio funcional preventivo'])
+                ? observedWhenActive(topFriendlyTopics.length > 0 ? topFriendlyTopics : ['equilibrio funcional preventivo'], resolvedSev.status)
                 : healthyObserved,
             whatItMeans: hasAny ? meaningWhenActive : healthyMeaning
         };
@@ -5121,13 +5898,18 @@ function buildPatientFriendlyGuide({
 
     const subAxes = serum?.subAxisFlags || {};
     const cabinet = serum?.cabinetSignals || {};
+    const triad = serum?.multimodalTriad || {};
+    const isClinicalEubiosis = Boolean(serum?.isClinicalEubiosis);
+    const dietSynth = orthomolecularPrescription?.therapeutic_contract?.dietaryEpigeneticSynthesis ||
+        serum?.dietaryEpigeneticSynthesis ||
+        extractDietaryAndEpigeneticSynthesis(patientData, serum, bioenergetics);
 
     const adultCardioMeaning = (() => {
         const clauses = [];
         if (subAxes.hasAtherogenicCholesterol) {
             clauses.push(
                 subAxes.hasVenousNormoglycemia && subAxes.hasVenousNormalTriglycerides
-                    ? 'sus estudios muestran colesterol LDL y partículas pequeñas (sdLDL) elevadas mientras su glucosa y triglicéridos se mantienen en rango saludable'
+                    ? `sus análisis muestran colesterol LDL${serum?.labValues?.ldl ? ` (${serum.labValues.ldl} mg/dL)` : ''} y partículas pequeñas sdLDL elevadas mientras su glucosa y triglicéridos se mantienen en rango óptimo saludable`
                     : 'existe carga de partículas de colesterol circulando en sus arterias'
             );
         } else if (subAxes.hasHypertriglyceridemia) {
@@ -5139,15 +5921,23 @@ function buildPatientFriendlyGuide({
         if (cabinet.hasCardiacConductionOrBradycardia || cabinet.hasAorticOrThoracicRemodeling) {
             clauses.push('sus estudios de gabinete cardiovascular sugieren acompañar el ritmo y la elasticidad arterial sin esfuerzos bruscos');
         }
+        const visualTriadParts = [
+            triad.hasCornealArcus ? 'halo lipídico incipiente en córnea' : null,
+            triad.hasSublingualVenousStasis ? 'congestión venosa sublingual' : null,
+            triad.hasLowerLimbVenousStasis ? 'signos de retorno venoso lento en piernas' : null
+        ].filter(Boolean);
+        if (visualTriadParts.length > 0) {
+            clauses.push(`la exploración visual converge en ${joinSpanishList(visualTriadParts)}`);
+        }
         const detailLead = clauses.length > 0
             ? `En sus resultados observamos que ${joinSpanishList(clauses)}. `
             : 'Imagine sus arterias como tuberías flexibles y a sus células como pequeñas baterías: ';
-        return `${detailLead}Con hidratación constante, grasas nobles, fibra soluble y protección antioxidante diurna (33Plus®) ayudaremos a proteger el recubrimiento de sus vasos sanguíneos y mantener una circulación fluida.`;
+        return `${detailLead}Con hidratación constante, grasas nobles, fibra soluble, los polifenoles de semilla de uva, Coenzima Q10 y Vitamina C de 33Plus® por la mañana y el colágeno hidrolizado de 34Plus® por la noche apoyaremos el recubrimiento y retorno de sus vasos sanguíneos.`;
     })();
 
     const adultDefenseMeaning = subAxes.hasAcutePhaseInflammation
         ? 'Sus marcadores muestran activación inflamatoria sistémica que requiere descanso reparador nocturno, hidratación y nutrición desinflamatoria.'
-        : 'Su organismo se repara a profundidad cuando usted descansa bien y baja el ritmo por la noche (con proteína C reactiva sistémica en rango tranquilo y solo sensibilidad inmunológica leve). Al ordenar sus horarios de cena y nutrir su mucosa, fortalecemos su equilibrio natural.';
+        : 'Usted cuenta con una base sólida de sueño reparador, buen manejo del estrés y proteína C reactiva sistémica en rango tranquilo (con 0 alergias clínicas declaradas). Acompañamos de forma preventiva las bioseñales menores de vitaminas, minerales y sensibilidad histamínica leve manteniendo cena temprana y nutrición celular nocturna.';
 
     const fiveSystems = addr.isTutorMode
         ? [
@@ -5229,7 +6019,7 @@ function buildPatientFriendlyGuide({
                         ? topics.filter(t => !/az[úu]car|glucosa/i.test(t))
                         : topics;
                     const safeTopics = filteredTopics.length > 0 ? filteredTopics : topics;
-                    return `Notamos atención prioritaria en indicadores cardiovasculares y lipídicos (${safeTopics.join(', ')}).`;
+                    return `Notamos atención prioritaria en indicadores cardiovasculares, microcirculatorios y lipídicos (${safeTopics.join(', ')}).`;
                 },
                 meaningWhenActive: adultCardioMeaning,
                 healthyObserved: 'Sus indicadores principales de circulación, oxigenación y manejo de energía se mantienen estables.',
@@ -5242,9 +6032,13 @@ function buildPatientFriendlyGuide({
                 iconKey: 'utensils',
                 sourceNodes: [n1],
                 observedWhenActive: (topics) =>
-                    `Observamos señales de digestión lenta o sensibilidad en el recubrimiento digestivo (${topics.join(', ')}).`,
+                    isClinicalEubiosis
+                        ? `Con base en su evaluación preventiva integral —aun cursando hoy sin molestias digestivas (eubiosis)—, registramos bioseñales orientativas de tránsito digestivo pausado y topografía lingual hidrosalina (${topics.join(', ')}).`
+                        : `Observamos señales de digestión lenta o sensibilidad en el recubrimiento digestivo (${topics.join(', ')}).`,
                 meaningWhenActive:
-                    'Aunque usted consuma buenos alimentos, si el estómago y el intestino trabajan lento o están irritados, no logramos absorber al 100 % las vitaminas y minerales. Retirar irritantes (picante, cerdo y azúcares refinados) y comer sin prisa le dará un respiro inmediato a su digestión.',
+                    isClinicalEubiosis
+                        ? 'Usted goza hoy de confort digestivo sin inflamación ni reflujo; retirar preventivamente irritantes (picante, cerdo y azúcares refinados), masticar con calma y nutrir su mucosa por la noche con fibra prebiótica (34Plus® en mínimo 500 ml de agua simple) optimizará al 100 % la absorción de vitaminas, minerales y líquidos.'
+                        : 'Aunque usted consuma buenos alimentos, si el estómago y el intestino trabajan lento o están irritados, no logramos absorber al 100 % las vitaminas y minerales. Retirar irritantes (picante, cerdo y azúcares refinados) y comer sin prisa le dará un respiro inmediato a su digestión.',
                 healthyObserved: 'Su sistema digestivo muestra buena capacidad general de asimilación.',
                 healthyMeaning: 'Su intestino está listo para aprovechar los nutrientes de su plan de alimentación.'
             }),
@@ -5258,7 +6052,7 @@ function buildPatientFriendlyGuide({
                     `Sus filtros naturales muestran indicadores preventivos que acompañamos con hidratación medida (${topics.join(', ')}).`,
                 meaningWhenActive:
                     serum?.precedence?.venousRenalNormal && serum?.precedence?.venousHepaticNormal
-                        ? 'Sus análisis de sangre confirman enzimas hepáticas, creatinina y ácido úrico en rango normal; acompañamos su tasa de filtración renal con hidratación fraccionada constante y dilución amplia para mantener sus filtros despejados sin sobrecargarlos.'
+                        ? 'Sus análisis de sangre confirman enzimas hepáticas, creatinina y ácido úrico en rango normal; acompañamos preventivamente su tasa de filtración renal (estadio intermedio KDIGO G2) con hidratación fraccionada constante y dilución amplia para mantener sus filtros despejados sin sobrecargarlos.'
                         : 'Su hígado y sus riñones funcionan como los filtros de agua de casa: limpian todos los días lo que su organismo ya no necesita. Por eso cuidamos tanto la cantidad de agua simple que usted ingiere y ajustamos su suplementación con prudencia.',
                 healthyObserved: 'Sus filtros hepático y renal se observan despejados y trabajando a buen ritmo en sus análisis de sangre.',
                 healthyMeaning: 'Sus órganos depuradores cuentan con buen margen funcional; mantendremos su hidratación diaria constante para conservarlos así.'
@@ -5269,8 +6063,10 @@ function buildPatientFriendlyGuide({
                 subtitle: 'Su reloj interno, manejo del estrés y escudo protector',
                 iconKey: 'shield',
                 sourceNodes: [n4, n6],
-                observedWhenActive: (topics) =>
-                    `Identificamos señales en su ritmo de descanso, manejo de estrés o sensibilidad inmunológica (${topics.join(', ')}).`,
+                observedWhenActive: (topics, sevStatus) =>
+                    sevStatus === 'EN_EQUILIBRIO'
+                        ? `Su descanso nocturno, manejo del estrés y marcadores inflamatorios sanguíneos muestran fortaleza consolidada, manteniendo vigilancia preventiva tranquila sobre bioseñales menores (${topics.join(', ')}).`
+                        : `Identificamos señales en su ritmo de descanso, manejo de estrés o sensibilidad inmunológica (${topics.join(', ')}).`,
                 meaningWhenActive: adultDefenseMeaning,
                 healthyObserved: 'Su comunicación hormonal y sus defensas mantienen un equilibrio favorable.',
                 healthyMeaning: 'Su escudo protector responde de forma ordenada; cuidar su sueño mantendrá esta fortaleza.'
@@ -5282,10 +6078,10 @@ function buildPatientFriendlyGuide({
                 iconKey: 'bone',
                 sourceNodes: [n7],
                 observedWhenActive: (topics) =>
-                    `Observamos demanda de soporte estructural, colágeno y cuidado biomecánico (${topics.join(', ')}).`,
+                    `Observamos oportunidad preventiva en composición abdominal, soporte de colágeno y cuidado biomecánico (${topics.join(', ')}).`,
                 meaningWhenActive:
                     cabinet.hasPostsurgicalInguinalOrAbdominalWall
-                        ? 'El colágeno, el magnesio, la vitamina K2 y los aminoácidos mantienen firmes sus tejidos, articulaciones y su pared inguinal con antecedente quirúrgico (hoy íntegra sin hernia). Los nutriremos por la noche y cuidaremos su postura evitando cargar peso con pujo abdominal.'
+                        ? 'El colágeno, el magnesio, la vitamina K2 y los aminoácidos mantienen firmes sus tejidos, articulaciones y su pared inguinal con antecedente quirúrgico (hoy íntegra sin hernia en su ultrasonido Doppler). Los nutriremos por la noche y cuidaremos su postura evitando cargar peso con pujo abdominal mientras optimizamos su cintura.'
                         : 'Los aminoácidos, minerales, vitamina K2 y el colágeno mantienen firmes sus huesos, músculos y articulaciones. Vamos a nutrirlos con proteína de fácil digestión y movimiento seguro sin impacto.',
                 healthyObserved: 'Su estructura ósea, muscular y de colágeno conserva buena firmeza funcional.',
                 healthyMeaning: 'Mantendremos un buen aporte de proteína y movimiento diario para proteger su masa muscular.'
@@ -5307,8 +6103,9 @@ function buildPatientFriendlyGuide({
     const buildSafeAdultMovementGuidance = () => {
         const parts = [];
         const tcxMetaGuide = orthomolecularPrescription?.therapeutic_contract?.confirmedTcxMeta || null;
+        const monitorPrep = formatBiometricMonitorPrepClause();
         if (cabinet.hasCardiacConductionOrBradycardia || cabinet.hasAorticOrThoracicRemodeling) {
-            parts.push('Ejercicio aeróbico sin impacto (elíptica suave, natación o caminata en terreno plano) manteniendo un techo cardioprotector seguro de FC <= 130 lpm monitoreado con EcoSinergix y valoración ecocardiográfica de seguimiento');
+            parts.push(`Ejercicio aeróbico sin impacto (elíptica suave, natación o caminata en terreno plano) manteniendo un techo cardioprotector seguro de FC <= 130 lpm ${monitorPrep} y valoración ecocardiográfica de seguimiento`);
         } else if (addr.ageYears >= 55) {
             parts.push('Caminata suave o elíptica sin impacto de 20 a 30 minutos a ritmo conversacional');
         } else {
@@ -5317,7 +6114,19 @@ function buildPatientFriendlyGuide({
 
         if (tcxMetaGuide) {
             const devName = sanitizeClinicalSpanish(tcxMetaGuide.device_name || 'su reloj inteligente');
-            parts.push(`dando continuidad segura a su rutina registrada en ${devName}`);
+            const discNames = Array.isArray(tcxMetaGuide.disciplines) && tcxMetaGuide.disciplines.length > 0
+                ? tcxMetaGuide.disciplines.map((d) => sanitizeClinicalSpanish(d.sport)).filter(Boolean).join(', ')
+                : '';
+            const wkMins = Number(tcxMetaGuide.weekly_minutes || 0);
+            const wkKcal = Number(tcxMetaGuide.weekly_calories || 0);
+            const avgHr = Number(tcxMetaGuide.average_hr || 0);
+            const maxHr = Number(tcxMetaGuide.max_hr || 0);
+            const hrProof = maxHr > 0 && maxHr <= 130
+                ? ` —acreditando que su FC media (${avgHr || '--'} lpm) y FC máxima medida (${maxHr} lpm) ya operan de forma ejemplar dentro de la ventana cardioprotectora <= 130 lpm—`
+                : (maxHr > 0 ? ` (FC media ${avgHr || '--'} lpm / máxima ${maxHr} lpm)` : '');
+            parts.push(
+                `dando continuidad calibrada a su rutina validada en ${devName}${discNames ? ` (${discNames}${wkMins ? ` • ${wkMins} min/sem` : ''}${wkKcal ? ` • ${wkKcal} kcal/sem` : ''})` : ''}${hrProof}`
+            );
         }
 
         if (cabinet.hasPostsurgicalInguinalOrAbdominalWall) {
@@ -5326,8 +6135,8 @@ function buildPatientFriendlyGuide({
             parts.push('evitando cargas axiales verticales o saltos sobre columna y rodillas');
         }
 
-        if (subAxes.hasDistalVenousStasis) {
-            parts.push('sumando ejercicios rítmicos de tobillo y pantorrilla para activar el retorno venoso hacia el corazón');
+        if (subAxes.hasDistalVenousStasis || triad.hasLowerLimbVenousStasis || triad.hasSublingualVenousStasis) {
+            parts.push('sumando ejercicios rítmicos de tobillo y pantorrilla para activar la bomba venosa de retorno hacia el corazón');
         } else {
             parts.push('acompañada de movilidad articular progresiva');
         }
@@ -5346,19 +6155,33 @@ function buildPatientFriendlyGuide({
             ? `Estimada madre, padre o tutor: lectura clara de la salud de ${ref}`
             : `${addr.estimadoLabel} ${addr.fullVocativeName || addr.cleanFullName}: esta es la lectura clara de su salud hoy`;
 
+    const hasExplicitComplaints = Boolean(
+        !isClinicalEubiosis ||
+        String(patientData?.clinical_context?.specific_ailment || '').trim() ||
+        (Array.isArray(patientData?.clinical_context?.pain_zones) && patientData.clinical_context.pain_zones.length > 0)
+    );
+
     const empatheticLead = addr.isLactante
         ? `Integramos con todo cuidado la valoración de crecimiento, tolerancia digestiva y desarrollo de ${addr.childSubjectWithKinship} para explicarle con claridad qué observamos y acompañarle paso a paso en casa.`
         : addr.isTutorChild
-            ? `Reunimos los síntomas, la historia clínica y las mediciones de ${addr.childSubjectWithKinship} para explicarle con total claridad qué observamos en su organismo y cómo vamos a acompañar a ${ref} paso a paso en casa, sin prisas ni sobrecargas.`
+            ? `Con base en la historia clínica y las mediciones integrales de ${addr.childSubjectWithKinship}, le explicamos con total claridad qué observamos en su organismo y cómo vamos a acompañar a ${ref} paso a paso en casa, sin prisas ni sobrecargas.`
             : addr.isAdolescent
-                ? `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso junto con su madre, padre o tutor legal.`
-                : `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso, sin prisas ni sobrecargas.`;
+                ? `Con base en su historia clínica y las mediciones de su evaluación integral, le explicamos con total claridad cómo se encuentra su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso junto con su madre, padre o tutor legal.`
+                : hasExplicitComplaints
+                    ? `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso, sin prisas ni sobrecargas.`
+                    : `Con base en su historia clínica, su evaluación preventiva integral y las mediciones obtenidas —aun cursando hoy sin molestias digestivas (eubiosis)—, le explicamos con total claridad cómo se encuentra su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso, sin prisas ni sobrecargas.`;
 
     const resolvedMacros = orthomolecularPrescription?.therapeutic_contract?.macros || bioenergetics?.macros || { carbs: 40, protein: 30, fat: 30 };
     const resolvedRegimen = orthomolecularPrescription?.dietaryPlan?.regimen || bioenergetics?.regimen || 'Alimentación Funcional Antiinflamatoria Personalizada';
     const macroDistributionNote = !addr.isLactante
         ? ` Distribución equilibrada: ${resolvedMacros.carbs}% carbohidratos integrales, ${resolvedMacros.protein}% proteínas limpias y ${resolvedMacros.fat}% grasas saludables.`
         : '';
+    const personalizedDietTail = !addr.isLactante && !addr.isTutorMode && dietSynth?.patientSummaryText
+        ? ` ${dietSynth.patientSummaryText}`
+        : '';
+
+    const resolvedLogistics = orthomolecularPrescription?.therapeutic_contract?.logisticsSummary || serum?.logisticsSummary || translateLogisticsProfile(patientData);
+    const resolvedAppointment = orthomolecularPrescription?.therapeutic_contract?.scheduledAppointmentSummary || serum?.scheduledAppointmentSummary || resolveScheduledAppointmentSummary(patientData);
 
     return {
         greetingTitle,
@@ -5366,7 +6189,9 @@ function buildPatientFriendlyGuide({
         ui_labels: uiLabels,
         biosecurity_semaphore: biosecuritySemaphore,
         metabolic_age_study: orthomolecularPrescription?.therapeutic_contract?.metabolicAgeStudy || null,
-        logistics_summary: orthomolecularPrescription?.therapeutic_contract?.logisticsSummary || serum?.logisticsSummary || null,
+        logistics_summary: resolvedLogistics,
+        dietary_epigenetic_synthesis: dietSynth || null,
+        scheduled_appointment_summary: resolvedAppointment,
         calcium_alert_text: orthomolecularPrescription?.calcium_alert_text || null,
         five_systems: fiveSystems,
         home_action_plan: {
@@ -5379,7 +6204,7 @@ function buildPatientFriendlyGuide({
                     ? `Mantener lactancia materna o fórmula indicada por su pediatra e introducción gradual de alimentos naturales para ${ref}, sin sal añadida ni azúcares.`
                     : addr.isTutorChild
                         ? `El plan alimentario de ${ref} (${bioenergetics?.targetKcal || 1600} kcal al día • ${resolvedRegimen}) está calculado acorde a su crecimiento, priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva), fruta natural y proteínas limpias como pescado, pollo o huevo.${macroDistributionNote}`
-                        : `Su plan (${resolvedRegimen}) está calculado a la medida de su organismo (${bioenergetics?.targetKcal || 1800} kcal al día), priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva, semillas), fibra soluble y proteínas limpias como pescado, pollo o huevo.${macroDistributionNote}`,
+                        : `Su plan (${resolvedRegimen}) está calculado a la medida de su organismo (${bioenergetics?.targetKcal || 1800} kcal al día), priorizando verduras frescas, grasas nobles (aguacate, aceite de oliva, semillas), fibra soluble y proteínas limpias como pescado, pollo o huevo.${macroDistributionNote}${personalizedDietTail}`,
                 universalRules: addr.isTutorMode
                     ? ['0 Picante (protege la mucosa digestiva)', '0 Carne de cerdo y embutidos', '0 Azúcares refinados ni refrescos']
                     : ['0 Picante (protege su mucosa digestiva)', '0 Carne de cerdo y embutidos', '0 Azúcares refinados ni refrescos'],
@@ -5594,20 +6419,32 @@ const synthesizeDossier = async (req, res) => {
             physicalStrategyText = "Acondicionamiento Físico Juvenil Guiado: Actividad aeróbica recreativa, coordinación neuromuscular y movilidad articular progresiva acorde a etapa adolescente.";
         } else if (cabSig.hasCardiacConductionOrBradycardia || cabSig.hasPostsurgicalInguinalOrAbdominalWall || cabSig.hasAorticOrThoracicRemodeling) {
             const rxSegments = [];
+            const monitorPrepRx = formatBiometricMonitorPrepClause();
             if (cabSig.hasCardiacConductionOrBradycardia || cabSig.hasAorticOrThoracicRemodeling) {
                 rxSegments.push(
-                    `Ejercicio aeróbico sin impacto (elíptica controlada, natación o caminata llana) en Zona 1–2 cardioprotectora con techo estricto de FC <= 130 lpm monitoreado con EcoSinergix${cabSig.recommendsEchocardiogram ? ' e interconsulta/ecocardiograma transtorácico de correlación' : ''}`
+                    `Ejercicio aeróbico sin impacto (elíptica controlada, natación o caminata llana) en Zona 1–2 cardioprotectora con techo estricto de FC <= 130 lpm ${monitorPrepRx}${cabSig.recommendsEchocardiogram ? ' e interconsulta/ecocardiograma transtorácico de correlación' : ''}`
                 );
             }
             if (cabSig.hasPostsurgicalInguinalOrAbdominalWall) {
                 rxSegments.push("protección de pared inguinal postquirúrgica (prohibición estricta de maniobras de Valsalva pesadas o apneas isométricas)");
             }
-            if (subAx.hasDistalVenousStasis) {
+            if (subAx.hasDistalVenousStasis || serum?.multimodalTriad?.hasLowerLimbVenousStasis || serum?.multimodalTriad?.hasSublingualVenousStasis) {
                 rxSegments.push("activación rítmica de bomba muscular gemelar (pantorrilla-corazón) para retorno venoso distal");
             }
             if (confirmedTcxMeta) {
                 const devLabel = confirmedTcxMeta.device_name || "Wearable .TCX";
-                rxSegments.push(`continuidad calibrada de rutina registrada (${devLabel})`);
+                const discNamesRx = Array.isArray(confirmedTcxMeta.disciplines) && confirmedTcxMeta.disciplines.length > 0
+                    ? confirmedTcxMeta.disciplines.map((d) => d.sport).filter(Boolean).join(' + ')
+                    : 'Rutina Multicomponente';
+                const wkKcalRx = Number(confirmedTcxMeta.weekly_calories || 0);
+                const avgHrRx = Number(confirmedTcxMeta.average_hr || 0);
+                const maxHrRx = Number(confirmedTcxMeta.max_hr || 0);
+                const hrAccreditation = maxHrRx > 0 && maxHrRx <= 130
+                    ? `, acreditando empíricamente entrenamiento dentro de ventana cardioprotectora (FC media ${avgHrRx || '--'} lpm / FC máxima ${maxHrRx} lpm <= 130 lpm)`
+                    : (maxHrRx > 0 ? ` (FC media ${avgHrRx || '--'} lpm / FC máxima ${maxHrRx} lpm)` : '');
+                rxSegments.push(
+                    `continuidad calibrada de telemetría ${devLabel} (${discNamesRx} • ${weeklyMinutesSynthesize || confirmedTcxMeta.daily_minutes} min${weeklyMinutesSynthesize ? '/sem' : '/día'}${wkKcalRx ? ` • ${wkKcalRx} kcal/sem` : ''}${hrAccreditation})`
+                );
             }
             physicalStrategyText = `Prescripción Multimodal Guiada por Gabinete: ${rxSegments.join(' + ')}.`;
         } else if (isExerciseRestricted) {
@@ -5617,7 +6454,7 @@ const synthesizeDossier = async (req, res) => {
             const discNames = Array.isArray(confirmedTcxMeta.disciplines) && confirmedTcxMeta.disciplines.length > 0
                 ? confirmedTcxMeta.disciplines.map(d => d.sport).join(' + ')
                 : 'Rutina Multicomponente';
-            physicalStrategyText = `Continuidad de Rutina Telemétrica Validada (${devLabel}: ${discNames} • ${weeklyMinutesSynthesize || confirmedTcxMeta.daily_minutes} min${weeklyMinutesSynthesize ? '/sem' : '/día'} • FC media ${confirmedTcxMeta.average_hr || '--'} BPM / pico ${confirmedTcxMeta.max_hr || '--'} BPM) en Zona Aeróbica Controlada 1–2 con protección articular.`;
+            physicalStrategyText = `Continuidad de Rutina Telemétrica Validada (${devLabel}: ${discNames} • ${weeklyMinutesSynthesize || confirmedTcxMeta.daily_minutes} min${weeklyMinutesSynthesize ? '/sem' : '/día'} • FC media ${confirmedTcxMeta.average_hr || '--'} lpm / FC máxima ${confirmedTcxMeta.max_hr || '--'} lpm) en Zona Aeróbica Controlada 1–2 con protección articular.`;
         } else {
             physicalStrategyText = "Acondicionamiento Aeróbico Moderado + Fortalecimiento Muscular Progresivo en 3 Fases con control biomecánico.";
         }
@@ -5693,6 +6530,7 @@ const synthesizeDossier = async (req, res) => {
         const activeNodesWithAnomalies = processedIfmNodes.filter(n => n.status !== 'HOMEOSTASIS');
 
         const rawFriendlyGuide = buildPatientFriendlyGuide({
+            patientData,
             patientName: pName,
             ageYears,
             isFemale: isFemalePatient,
@@ -5764,7 +6602,7 @@ const synthesizeDossier = async (req, res) => {
             "4. Soporte Nutricional Pediátrico bajo Supervisión del Pediatra Tratante"
         ] : [
             ...activeNodesWithAnomalies.map((n, idx) => `${idx + 1}. [${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')} • ${n.accredited_cie10 || n.functionalCode || 'IFM'}] ${n.therapeutic_focus}`),
-            `${activeNodesWithAnomalies.length + 1}. [Bioenergética ${bioenergetics.equationUsed} • ${canonicalContract.regimen}] TMB: ${bioenergetics.bmr} kcal | TDEE: ${bioenergetics.tdee} kcal | Meta Prescrita: ${bioenergetics.targetKcal} kcal (${bioenergetics.macros.carbs}% C / ${bioenergetics.macros.protein}% P / ${bioenergetics.macros.fat}% L) | Hidratación Meta: ${canonicalContract.hydrationTargetLiters} L/día | Logística: ${canonicalContract.logisticsSummary?.venueLabel || 'Casa'} (${canonicalContract.logisticsSummary?.cookLabel || 'Preparación propia'})${canonicalContract.patientSpecificExclusions.length > 0 ? ` | Exclusiones personalizadas: ${canonicalContract.patientSpecificExclusions.join(', ')}` : ''}.`,
+            `${activeNodesWithAnomalies.length + 1}. [Bioenergética ${bioenergetics.equationUsed} • ${canonicalContract.regimen}] TMB: ${bioenergetics.bmr} kcal | TDEE: ${bioenergetics.tdee} kcal | Meta Prescrita: ${bioenergetics.targetKcal} kcal (${bioenergetics.macros.carbs}% C / ${bioenergetics.macros.protein}% P / ${bioenergetics.macros.fat}% L) | Hidratación Meta: ${canonicalContract.hydrationTargetLiters} L/día | ${canonicalContract.logisticsSummary?.operationalSummary || `Logística: ${canonicalContract.logisticsSummary?.venueLabel || 'Casa'} (${canonicalContract.logisticsSummary?.cookLabel || 'Preparación propia'})`}${canonicalContract.patientSpecificExclusions.length > 0 ? ` | Exclusiones personalizadas: ${canonicalContract.patientSpecificExclusions.join(', ')}` : ''}.${canonicalContract.dietaryEpigeneticSynthesis?.clinicalSummaryText ? ` ${canonicalContract.dietaryEpigeneticSynthesis.clinicalSummaryText}` : ''}`,
             `${activeNodesWithAnomalies.length + 2}. [Readaptación Biomecánica y Prescripción de Movimiento] ${physicalStrategyText}`,
             `${activeNodesWithAnomalies.length + 3}. [Bioseguridad y Posología (${biosecuritySemaphore.level})] ${biosecuritySemaphore.titrationPlanText}`,
             `${activeNodesWithAnomalies.length + 4}. [Estudio de Edad Metabólica SSoTT] ${metabolicAgeStudy.clinicalSummary}`
@@ -5784,6 +6622,9 @@ const synthesizeDossier = async (req, res) => {
             })),
             bioenergetics,
             metabolic_age_study: metabolicAgeStudy,
+            nom004_identification_sheet: canonicalContract.nom004Sheet,
+            dietary_epigenetic_synthesis: canonicalContract.dietaryEpigeneticSynthesis,
+            scheduled_appointment_summary: canonicalContract.scheduledAppointmentSummary,
             logistics_summary: canonicalContract.logisticsSummary,
             prior_adherence: canonicalContract.priorAdherence,
             biosecurity_semaphore: biosecuritySemaphore,
@@ -5800,7 +6641,7 @@ const synthesizeDossier = async (req, res) => {
             estrategia_terapeutica: {
                 nutricion_defensora: isLactanteExplicit
                     ? "Matriz de Nutrición Celular 34Plus® Pediátrica: Leche Materna / Fórmula de Continuación + Introducción Guiada de Sólidos (BLW / Papillas caseras)."
-                    : `${canonicalContract.regimen} — Prescripción Bioenergética (${bioenergetics.equationUsed}): TDEE ${bioenergetics.tdee} kcal → Meta ${bioenergetics.targetKcal} kcal/día (${bioenergetics.macros.carbs}% Carbohidratos / ${bioenergetics.macros.protein}% Proteínas / ${bioenergetics.macros.fat}% Lípidos) + Hidratación diaria ${canonicalContract.hydrationTargetLiters} L/día + Regla 0 Picante, 0 Cerdo, 0 Azúcares refinados${canonicalContract.patientSpecificExclusions.length > 0 ? ` (Exclusiones personalizadas: ${canonicalContract.patientSpecificExclusions.join(', ')})` : ''}.`,
+                    : `${canonicalContract.regimen} — Prescripción Bioenergética (${bioenergetics.equationUsed}): TDEE ${bioenergetics.tdee} kcal → Meta ${bioenergetics.targetKcal} kcal/día (${bioenergetics.macros.carbs}% Carbohidratos / ${bioenergetics.macros.protein}% Proteínas / ${bioenergetics.macros.fat}% Lípidos) + Hidratación diaria ${canonicalContract.hydrationTargetLiters} L/día + Regla 0 Picante, 0 Cerdo, 0 Azúcares refinados${canonicalContract.patientSpecificExclusions.length > 0 ? ` (Exclusiones personalizadas: ${canonicalContract.patientSpecificExclusions.join(', ')})` : ''}.${canonicalContract.dietaryEpigeneticSynthesis?.clinicalSummaryText ? ` ${canonicalContract.dietaryEpigeneticSynthesis.clinicalSummaryText}` : ''}`,
                 readaptacion_fisica: physicalStrategyText
             },
             guia_paciente_whatsapp: {
@@ -5814,7 +6655,16 @@ const synthesizeDossier = async (req, res) => {
             },
             human_approved_diagnosis: preliminary_diagnosis,
             human_approved_management: suggested_management,
-            ssot_contract_version: "3.3.0-EGM51-SSOTT",
+            dossier_seal_sha256: crypto
+                .createHash('sha256')
+                .update(JSON.stringify({
+                    citationId: String(citationId),
+                    diagnosis: preliminary_diagnosis,
+                    management: suggested_management,
+                    metabolicAge: metabolicAgeStudy?.metabolicAgeExact ?? null
+                }))
+                .digest('hex'),
+            ssot_contract_version: "3.3.0-EGM56-SSOTT",
             status: "SYNTHESIZED_READY_FOR_REVIEW"
         };
 
@@ -5964,6 +6814,7 @@ const approveDossier = async (req, res) => {
             const pName = isLact ? 'su bebé' : formatInstitutionalFullName(patientData);
             const serumSnap = distillClinicalSerum(patientData, isLact);
             const rawGuide = buildPatientFriendlyGuide({
+                patientData,
                 patientName: pName,
                 ageYears: ageNum,
                 isFemale: isFem,
@@ -5997,11 +6848,24 @@ const approveDossier = async (req, res) => {
             ifm_nodes_matrix: mergedIfmNodes,
             bioenergetics: mergedBioenergetics,
             orthomolecular_prescription: mergedOrtho,
+            nom004_identification_sheet: existingDossier.nom004_identification_sheet || extractNom004IdentificationSheet(patientData, null, mergedBioenergetics),
+            dietary_epigenetic_synthesis: existingDossier.dietary_epigenetic_synthesis || extractDietaryAndEpigeneticSynthesis(patientData, null, mergedBioenergetics),
+            scheduled_appointment_summary: resolveScheduledAppointmentSummary(patientData),
             patient_friendly_guide: updatedFriendlyGuide,
             additional_symptoms_reported: sanitizeClinicalSpanish(additionalSymptoms || ""),
             rlhf_deltas,
             doctor_approval_timestamp: new Date().toISOString(),
-            ssot_contract_version: "2.8.2",
+            dossier_seal_sha256: crypto
+                .createHash('sha256')
+                .update(JSON.stringify({
+                    citationId: String(citationId),
+                    diagnosis: (approvedDiagnosis || []).map(sanitizeClinicalSpanish),
+                    management: (approvedManagement || []).map(sanitizeClinicalSpanish),
+                    metabolicAge: existingDossier?.metabolic_age_study?.metabolicAgeExact ?? null,
+                    status: 'approved'
+                }))
+                .digest('hex'),
+            ssot_contract_version: "3.3.0-EGM56-SSOTT",
             status: "approved"
         };
 
@@ -6159,6 +7023,12 @@ module.exports = {
     resolveActiveClinicalRoutes,
     detectPriorInstitutionalAdherence,
     translateLogisticsProfile,
+    resolveBiometricMonitorLabel,
+    enforceTemporalEmbargoOnText,
+    resolveScheduledAppointmentSummary,
+    extractNom004IdentificationSheet,
+    extractDietaryAndEpigeneticSynthesis,
+    resolvePatientSystemSeverity,
     buildCanonicalTherapeuticContract,
     detectSelective33PlusContraindication,
     resolveDynamicMacronutrientsAndRegimen,

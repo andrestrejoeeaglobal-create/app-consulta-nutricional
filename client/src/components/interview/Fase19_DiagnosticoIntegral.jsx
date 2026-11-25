@@ -316,7 +316,7 @@ export function formatClinicalText(text) {
         .replace(/SAFEGUARD\s*(?:DE)?/giu, 'Salvaguarda de')
         .replace(/\s+([.,;:])/g, (_, p) => p)
         .replace(/[^\S\u00A0]+/g, ' ')
-        .replace(/\(Matriz IFM SSoTT v2\.[456]\)/giu, '(Matriz IFM SSoTT v2.7)')
+        .replace(/\(Matriz IFM SSoTT v2\.[456]\)/giu, '(Matriz IFM SSoTT v3.3)')
         .replace(/\[Readaptaci[óo]n F[íi]sica\]/giu, '[Readaptación Biomecánica y Prescripción de Movimiento]')
         .replace(/6,000[–-]8,000\s*pasos\/d[íi]a/giu, '6\u00A0000 a 8\u00A0000 pasos/día')
         .replace(/(?<![\p{L}\p{N}_])Ref:\s*N\/A(?![\p{L}\p{N}_])/giu, 'Rango Observacional')
@@ -613,7 +613,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
             <div className="bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200/90 dark:border-[#334155] p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] space-y-2">
                 <div className="flex flex-wrap items-center gap-2 tabular-nums">
                     <span className="px-2.5 py-0.5 rounded-md bg-[#1C75BC]/10 text-[#1C75BC] text-[10px] font-extrabold tracking-wider">
-                        {activeNodeMeta ? `NODO IFM 0${activeNodeMeta.indexOrder}` : 'DOCTRINA CORTEX SSoTT v2.7'}
+                        {activeNodeMeta ? `NODO IFM 0${activeNodeMeta.indexOrder}` : 'DOCTRINA CORTEX SSoTT v3.3'}
                     </span>
                     <span className="text-xs font-bold text-[#334155] dark:text-[#CBD5E1]">
                         #IFM-{activeNodeMeta ? `700${activeNodeMeta.indexOrder}` : '7000'}

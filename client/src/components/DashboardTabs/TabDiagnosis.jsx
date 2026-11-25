@@ -19,9 +19,16 @@ import {
     Copy
 } from 'lucide-react';
 import { DiagnosticoRenderizado } from '../interview/Fase19_DiagnosticoIntegral';
-import { resolvePatientFriendlyGuide, resolveVerifiedPatientAge, sanitizeClinicalSpanish } from '../../utils/patientGuideAdapter';
+import {
+    resolvePatientFriendlyGuide,
+    resolveVerifiedPatientAge,
+    sanitizeClinicalSpanish,
+    resolveBiometricMonitorLabel,
+    resolveNom004IdentificationSheet,
+    resolveScheduledAppointmentSummary
+} from '../../utils/patientGuideAdapter';
 import { isSyntheticElectretPayload } from '../../utils/electretParser';
-import { copySSoTDocument } from '../../utils/formatPlanForClipboard';
+import { copySSoTDocument, resolveDossierSealSha256 } from '../../utils/formatPlanForClipboard';
 import { useClinicalToast } from '../../hooks/useClinicalToast';
 
 function renderSystemSvgIcon(iconKey, className = 'w-4 h-4') {
@@ -359,19 +366,21 @@ export const TabDiagnosis = ({
             const tcxActivity = patientData?.lifestyle_profile?.activity;
             const hasWearableTcx = Boolean(
                 tcxActivity?.source_type === 'TELEMETRY_TCX' ||
+                tcxActivity?.telemetry_metadata ||
                 tcxActivity?.tcx_meta ||
                 scan.wearable_telemetry
             );
             if (hasWearableTcx) {
                 const devName = sanitizeClinicalSpanish(
+                    tcxActivity?.telemetry_metadata?.device_name ||
                     tcxActivity?.tcx_meta?.device_name ||
                     scan.wearable_telemetry?.device_name ||
-                    'EcoSinergix / Reloj Inteligente'
+                    `${resolveBiometricMonitorLabel()} / Reloj Inteligente`
                 );
                 list.push({
                     id: 'wearable_tcx',
                     icon: '⌚',
-                    badge: 'Telemetría Deportiva (Fase 12)',
+                    badge: 'Telemetría Deportiva (Fase 11)',
                     title: `Telemetría Wearable (${devName})`,
                     summary: sanitizeClinicalSpanish(
                         `Registro cardiovascular y volumen aeróbico sincronizado desde ${devName} para calibrar sus zonas seguras de movimiento.`
@@ -413,6 +422,9 @@ export const TabDiagnosis = ({
     const cleanKeyRule34Plus = hydrationCard.keyRule34Plus
         ? String(hydrationCard.keyRule34Plus).replace(/💧\s*/g, '').replace(/\s+([.,;:])/g, '$1').trim()
         : '';
+    const nom004SheetView = patientGuide?.nom004Sheet || resolveNom004IdentificationSheet(patientData || {});
+    const scheduledApptView = patientGuide?.scheduledAppointmentSummary || resolveScheduledAppointmentSummary(patientData || {});
+    const dossierSealSha = resolveDossierSealSha256(patientData || {}, citationId || patientData?.citaId || '');
 
     return (
         <div className="space-y-6 font-sans">
@@ -1146,6 +1158,12 @@ export const TabDiagnosis = ({
                                             {nutritionCard.summary}
                                         </p>
 
+                                        {patientGuide?.logisticsSummary?.operationalSummary && (
+                                            <div className="bg-[#1C75BC]/5 dark:bg-[#1C75BC]/15 border border-[#1C75BC]/25 rounded-xl px-3 py-2 text-[11px] font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
+                                                🏠 <strong className="font-extrabold text-[#1C75BC] dark:text-[#93C5FD]">Logística familiar:</strong> {patientGuide.logisticsSummary.operationalSummary}
+                                            </div>
+                                        )}
+
                                         {nutritionPillars.length > 0 && (
                                             <div className="grid grid-cols-1 gap-1.5 mt-auto pt-2">
                                                 {nutritionPillars.map((rule, rIdx) => (
@@ -1226,6 +1244,39 @@ export const TabDiagnosis = ({
                                         )}
                                     </div>
                                 </div>
+
+                                {/* Tarjeta 4: Próxima Cita de Seguimiento y Sello NOM-004 */}
+                                {scheduledApptView?.formattedLine && (
+                                    <div className="bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-[#334155] border-l-4 border-l-[#1C75BC] rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] space-y-2 tabular-nums">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-8 h-8 rounded-xl bg-[#1C75BC]/10 border border-[#1C75BC]/25 flex items-center justify-center shrink-0">
+                                                    <Calendar className="w-4 h-4 text-[#1C75BC]" />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
+                                                        Continuidad de su Ciclo 1 • Fase 21
+                                                    </span>
+                                                    <h4 className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+                                                        Próxima Cita de Evaluación y Seguimiento
+                                                    </h4>
+                                                </div>
+                                            </div>
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30 text-[10.5px] font-extrabold">
+                                                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                                <span>{scheduledApptView.hasScheduled ? 'Cita Confirmada' : 'Seguimiento a 28 Días'}</span>
+                                            </span>
+                                        </div>
+                                        <p className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                                            {scheduledApptView.formattedLine}
+                                        </p>
+                                        {dossierSealSha && (
+                                            <p className="text-[10px] font-mono text-[#334155] dark:text-[#CBD5E1] pt-1.5 border-t border-slate-100 dark:border-[#334155] break-all">
+                                                Sello NOM-004 (SHA-256): {dossierSealSha}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (
@@ -1265,6 +1316,52 @@ export const TabDiagnosis = ({
                                     ))}
                                 </div>
                             </div>
+
+                            {/* BLOQUE 00: FICHA REGLAMENTARIA NOM-004 (IDENTIFICACIÓN, ANTECEDENTES, VITALES Y SOMATOMETRÍA) */}
+                            {nom004SheetView && (
+                                <div className="bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-[#334155] border-l-4 border-l-[#1C75BC] rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] space-y-3 tabular-nums">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-[#334155]">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/25">
+                                                00. FICHA REGLAMENTARIA NOM-004
+                                            </span>
+                                            <h3 className="text-xs sm:text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+                                                Identificación, Antecedentes, Signos Vitales y Somatometría
+                                            </h3>
+                                        </div>
+                                        <span className="text-[10.5px] font-bold text-[#334155] dark:text-[#CBD5E1] bg-slate-100 dark:bg-[#0F172A] px-2.5 py-0.5 rounded-lg border border-slate-200/80 dark:border-[#334155]">
+                                            {sanitizeClinicalSpanish(nom004SheetView.altitudeLabel)}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[11.5px] text-[#334155] dark:text-[#CBD5E1]">
+                                        <div className="bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-200/80 dark:border-[#334155] rounded-xl p-3 space-y-1">
+                                            <span className="text-[9.5px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">Demografía, Emergencia y Motivo</span>
+                                            <p><strong className="text-[#0F172A] dark:text-[#F8FAFC]">Titular:</strong> {nom004SheetView.sexLabel} • {nom004SheetView.ageYears} años{nom004SheetView.birthDate ? ` (${nom004SheetView.birthDate})` : ''}{nom004SheetView.curp ? ` • CURP: ${nom004SheetView.curp}` : ''}</p>
+                                            <p><strong className="text-[#0F172A] dark:text-[#F8FAFC]">Contacto Emergencia:</strong> {sanitizeClinicalSpanish(nom004SheetView.emergencyContactText)}</p>
+                                            <p><strong className="text-[#0F172A] dark:text-[#F8FAFC]">Motivo Primario:</strong> {sanitizeClinicalSpanish(nom004SheetView.primaryMotive)}</p>
+                                        </div>
+
+                                        <div className="bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-200/80 dark:border-[#334155] rounded-xl p-3 space-y-1">
+                                            <span className="text-[9.5px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">Antecedentes, Alergias y Farmacología</span>
+                                            <p><strong className="text-[#0F172A] dark:text-[#F8FAFC]">AHF:</strong> {sanitizeClinicalSpanish(nom004SheetView.ahfText)}</p>
+                                            <p><strong className="text-[#0F172A] dark:text-[#F8FAFC]">APP / Cirugías:</strong> {sanitizeClinicalSpanish(nom004SheetView.appText)} • Quirúrgicos: {sanitizeClinicalSpanish(nom004SheetView.surgicalText)}</p>
+                                            <p><strong className="text-[#0F172A] dark:text-[#F8FAFC]">Alergias / Fármacos:</strong> {sanitizeClinicalSpanish(nom004SheetView.allergiesText)} • {sanitizeClinicalSpanish(nom004SheetView.medicationsText)}</p>
+                                            <p><strong className="text-[#0F172A] dark:text-[#F8FAFC]">Digestivo / Suplementos:</strong> {sanitizeClinicalSpanish(nom004SheetView.digestivePhenotypeText)} • {sanitizeClinicalSpanish(nom004SheetView.priorSupplementsText)}</p>
+                                        </div>
+
+                                        <div className="bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-200/80 dark:border-[#334155] rounded-xl p-3 space-y-1">
+                                            <span className="text-[9.5px] font-extrabold uppercase tracking-wider text-[#3AAA35] block">Signos Vitales Completos (Fase 17)</span>
+                                            <p className="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">{sanitizeClinicalSpanish(nom004SheetView.vitals?.summaryLine || '')}</p>
+                                        </div>
+
+                                        <div className="bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-200/80 dark:border-[#334155] rounded-xl p-3 space-y-1">
+                                            <span className="text-[9.5px] font-extrabold uppercase tracking-wider text-[#3AAA35] block">Somatometría Física Completa (Fase 16)</span>
+                                            <p className="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">{sanitizeClinicalSpanish(nom004SheetView.somatometry?.summaryLine || '')}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {Array.isArray(ifmNodes) && ifmNodes.length > 0 ? (
                                 <DiagnosticoRenderizado cortexSynthesis={patientData.clinical_dossier} />
@@ -1478,25 +1575,18 @@ export const TabDiagnosis = ({
                                 </div>
                             </div>
 
-                            {/* Sección Logística */}
-                            <div className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-[#334155] rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
+                            {/* Sección Logística y Cierre Seguimiento Fase 21 */}
+                            <div className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-[#334155] rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] tabular-nums">
                                 <h3 className="text-[#0F172A] dark:text-[#F8FAFC] text-xs font-extrabold uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-100 dark:border-[#334155] pb-3">
                                     <Calendar className="w-4 h-4 text-[#3AAA35]" />
-                                    <span>Logística y Planificación de Ejecución</span>
+                                    <span>Logística, Seguimiento (Fase 21) y Trazabilidad NOM-004</span>
                                     <span className="sr-only">{' — '}</span>
                                 </h3>
                                 <div className="grid grid-cols-1 gap-3 text-xs bg-slate-50 dark:bg-[#0F172A] border border-slate-200/80 dark:border-[#334155] p-4 rounded-xl font-medium">
                                     <div>
-                                        <span className="text-[9.5px] uppercase font-extrabold text-[#334155] dark:text-[#CBD5E1] block mb-1 tracking-wider">Entorno Principal: </span>
+                                        <span className="text-[9.5px] uppercase font-extrabold text-[#334155] dark:text-[#CBD5E1] block mb-1 tracking-wider">Logística Familiar y Operativa: </span>
                                         <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC] text-xs">
-                                            {patientGuide?.logisticsSummary?.venueLabel || (patientData?.logistics_profile?.environment?.venue === 'WORK' ? 'Oficina' : patientData?.logistics_profile?.environment?.venue === 'STREET' ? 'Calle / Restaurante' : 'Casa')}
-                                        </span>
-                                    </div>
-                                    <div className="border-t border-slate-200/80 dark:border-[#334155] pt-2.5">
-                                        <span className="sr-only">{' | '}</span>
-                                        <span className="text-[9.5px] uppercase font-extrabold text-[#334155] dark:text-[#CBD5E1] block mb-1 tracking-wider">Preparación de Alimentos: </span>
-                                        <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC] text-xs">
-                                            {patientGuide?.logisticsSummary?.cookLabel || (patientData?.logistics_profile?.cook_type === 'SELF' ? 'Preparación propia' : patientData?.logistics_profile?.cook_type === 'FAMILY' ? 'Familiar' : patientData?.logistics_profile?.cook_type === 'STAFF' ? 'Personal de apoyo en casa' : 'Preparación propia')}
+                                            {patientGuide?.logisticsSummary?.operationalSummary || `${patientGuide?.logisticsSummary?.venueLabel || 'Casa'} | Preparación: ${patientGuide?.logisticsSummary?.cookLabel || 'Preparación propia'}`}
                                         </span>
                                     </div>
                                     <div className="border-t border-slate-200/80 dark:border-[#334155] pt-2.5">
@@ -1509,6 +1599,22 @@ export const TabDiagnosis = ({
                                             )}
                                         </span>
                                     </div>
+                                    {scheduledApptView?.formattedLine && (
+                                        <div className="border-t border-slate-200/80 dark:border-[#334155] pt-2.5">
+                                            <span className="text-[9.5px] uppercase font-extrabold text-[#1C75BC] dark:text-[#93C5FD] block mb-1 tracking-wider">Próxima Cita Programada (Fase 21): </span>
+                                            <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC] text-xs tabular-nums">
+                                                {scheduledApptView.formattedLine}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {dossierSealSha && (
+                                        <div className="border-t border-slate-200/80 dark:border-[#334155] pt-2.5">
+                                            <span className="text-[9.5px] uppercase font-extrabold text-[#334155] dark:text-[#CBD5E1] block mb-1 tracking-wider">Huella Criptográfica NOM-004 (SHA-256): </span>
+                                            <span className="font-mono text-[10.5px] text-[#334155] dark:text-[#CBD5E1] break-all">
+                                                {dossierSealSha}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

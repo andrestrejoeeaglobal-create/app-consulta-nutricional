@@ -12,39 +12,379 @@ import { FORMULA_33PLUS, FORMULA_34PLUS, formatScaledActives } from './pharmacop
 
 export { enforcePatientGenderConcordance };
 
+const SINERGIX_PUBLIC_RELEASE_MS = new Date('2026-12-18T00:00:00-06:00').getTime();
+
+export function isPostSinergixEmbargoDate(referenceDate = new Date()) {
+    try {
+        const dt = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+        const ts = dt.getTime();
+        if (!Number.isFinite(ts)) return false;
+        return ts >= SINERGIX_PUBLIC_RELEASE_MS;
+    } catch (_) {
+        return false;
+    }
+}
+
+export function resolveBiometricMonitorLabel(referenceDate = new Date()) {
+    return isPostSinergixEmbargoDate(referenceDate)
+        ? 'EcoSinergix'
+        : 'monitoreo biométrico de Ritmo Vital';
+}
+
+export function enforceTemporalEmbargoOnText(rawText = '', referenceDate = new Date()) {
+    const str = String(rawText || '');
+    if (!str || isPostSinergixEmbargoDate(referenceDate)) return str;
+    return str
+        .replace(/monitoreo\s+(?:cronotr[óo]pico\s+|de\s+FC\s+)?con\s+EcoSinergix/giu, 'monitoreo biométrico de Ritmo Vital')
+        .replace(/monitoread[oa]\s+con\s+EcoSinergix/giu, 'bajo monitoreo biométrico de Ritmo Vital')
+        .replace(/\bcon\s+EcoSinergix\b/giu, 'mediante monitoreo biométrico de Ritmo Vital')
+        .replace(/\bEcoSinergix\b/giu, 'monitoreo biométrico de Ritmo Vital');
+}
+
 export function translateLogisticsProfile(patientData = {}) {
-    const rawVenue = String(
-        patientData?.logistics_profile?.environment?.venue ||
-        patientData?.logistics?.environment?.venue ||
-        patientData?.clinical_dossier?.logistics_summary?.venueCode ||
-        'HOME'
-    ).trim().toUpperCase();
-    const rawCook = String(
-        patientData?.logistics_profile?.cook_type ||
-        patientData?.logistics?.cook_type ||
-        patientData?.clinical_dossier?.logistics_summary?.cookCode ||
-        'SELF'
-    ).trim().toUpperCase();
+    try {
+        const lp = patientData?.logistics_profile || patientData?.logistics || {};
+        const saved = patientData?.clinical_dossier?.logistics_summary || {};
+        const rawVenue = String(
+            lp?.environment?.venue ||
+            saved?.venueCode ||
+            'HOME'
+        ).trim().toUpperCase();
+        const rawCook = String(
+            lp?.cook_type ||
+            saved?.cookCode ||
+            'SELF'
+        ).trim().toUpperCase();
 
-    const venueMap = {
-        HOME: 'Casa',
-        WORK: 'Oficina',
-        STREET: 'Calle / Restaurante'
-    };
-    const cookMap = {
-        STAFF: 'Personal de apoyo en casa',
-        FAMILY: 'Familiar',
-        SELF: 'Preparación propia',
-        BUYING: 'Alimentos preparados externos'
-    };
+        const venueMap = {
+            HOME: 'Casa',
+            WORK: 'Oficina',
+            STREET: 'Calle / Restaurante'
+        };
+        const cookMap = {
+            STAFF: 'Personal de apoyo en casa',
+            FAMILY: 'Familiar',
+            SELF: 'Preparación propia',
+            BUYING: 'Alimentos preparados externos'
+        };
 
-    return {
-        venueCode: rawVenue,
-        venueLabel: venueMap[rawVenue] || 'Casa',
-        cookCode: rawCook,
-        cookLabel: cookMap[rawCook] || 'Preparación propia',
-        dinersCount: Number(patientData?.logistics_profile?.sharing_diners_count || 0) || null
-    };
+        const venueLabel = venueMap[rawVenue] || 'Casa';
+        const cookLabel = cookMap[rawCook] || 'Preparación propia';
+        const cookingTimeMinutes = Number(lp?.cooking_time_minutes || saved?.cookingTimeMinutes || 0) || null;
+        const dinersCount = Number(lp?.sharing_diners_count || saved?.dinersCount || 0) || null;
+        const sharingDynamicsCode = String(lp?.sharing_dynamics || saved?.sharingDynamicsCode || '').trim().toUpperCase();
+        const sharingDemographicsCode = String(lp?.sharing_demographics || saved?.sharingDemographicsCode || '').trim().toUpperCase();
+
+        const sharingDynamicsLabel = sharingDynamicsCode === 'SHARED_MENU'
+            ? 'Menú familiar compartido'
+            : sharingDynamicsCode === 'INDIVIDUAL'
+                ? 'Menú individual'
+                : '';
+
+        let intergenerationalNote = '';
+        if (/ELDERLY|ADULTO_MAYOR|SENIOR/.test(sharingDemographicsCode)) {
+            intergenerationalNote = 'adaptación intergeneracional de textura suave y sazón cardioprotectora apta para adultos mayores en mesa';
+        } else if (/CHILD|KIDS|PEDIATR|MINOR/.test(sharingDemographicsCode)) {
+            intergenerationalNote = 'adaptación familiar apta para menores en casa';
+        } else if (/FAMILY|MIXED|ALL/.test(sharingDemographicsCode)) {
+            intergenerationalNote = 'adaptación intergeneracional para toda la familia';
+        }
+
+        const opSegments = [
+            `Entorno: ${venueLabel}`,
+            `Preparación: ${cookLabel}${cookingTimeMinutes ? ` (<= ${cookingTimeMinutes} min por tiempo)` : ''}`
+        ];
+        if (dinersCount && dinersCount > 1) {
+            opSegments.push(
+                `${sharingDynamicsLabel || 'Mesa compartida'}: ${dinersCount} comensales${intergenerationalNote ? ` (${intergenerationalNote})` : ''}`
+            );
+        } else if (intergenerationalNote) {
+            opSegments.push(intergenerationalNote);
+        }
+
+        return {
+            venueCode: rawVenue,
+            venueLabel,
+            cookCode: rawCook,
+            cookLabel,
+            cookingTimeMinutes,
+            dinersCount,
+            sharingDynamicsCode,
+            sharingDynamicsLabel,
+            sharingDemographicsCode,
+            intergenerationalNote,
+            operationalSummary: opSegments.join(' | ')
+        };
+    } catch (_) {
+        return {
+            venueCode: 'HOME',
+            venueLabel: 'Casa',
+            cookCode: 'SELF',
+            cookLabel: 'Preparación propia',
+            cookingTimeMinutes: null,
+            dinersCount: null,
+            sharingDynamicsCode: '',
+            sharingDynamicsLabel: '',
+            sharingDemographicsCode: '',
+            intergenerationalNote: '',
+            operationalSummary: 'Entorno: Casa | Preparación: Preparación propia'
+        };
+    }
+}
+
+export function resolveScheduledAppointmentSummary(patientData = {}) {
+    try {
+        const raw = patientData?.scheduledAppointment ||
+            patientData?.clinical_dossier?.scheduled_appointment_summary ||
+            patientData?.clinical_dossier?.patient_friendly_guide?.scheduled_appointment_summary ||
+            {};
+        const rawDate = String(raw?.chosenDate || raw?.rawDateLabel || raw?.dateLabel || '').trim();
+        const rawTime = String(raw?.chosenTime || raw?.timeLabel || '').trim();
+        const rawFolio = String(raw?.folio || '').replace(/^#/, '').trim();
+        if (!rawDate) {
+            return {
+                hasScheduled: false,
+                dateLabel: null,
+                timeLabel: null,
+                folio: null,
+                formattedLine: 'Revaloración clínica comparativa al cierre del Ciclo 1 (Día 28)'
+            };
+        }
+        const normalizedDate = rawDate.replace(
+            /^(Lunes|Martes|Mi[ée]rcoles|Jueves|Viernes|S[áa]bado|Domingo),?\s+/iu,
+            (_, wd) => `${wd.toLowerCase()} `
+        );
+        const parts = [normalizedDate];
+        if (rawTime) parts.push(rawTime);
+        if (rawFolio) parts.push(`Folio #${rawFolio}`);
+        return {
+            hasScheduled: true,
+            dateLabel: normalizedDate,
+            rawDateLabel: rawDate,
+            timeLabel: rawTime || null,
+            folio: rawFolio || null,
+            formattedLine: parts.join(' • ')
+        };
+    } catch (_) {
+        return {
+            hasScheduled: false,
+            dateLabel: null,
+            timeLabel: null,
+            folio: null,
+            formattedLine: 'Revaloración clínica comparativa al cierre del Ciclo 1 (Día 28)'
+        };
+    }
+}
+
+export function resolveNom004IdentificationSheet(patientData = {}) {
+    try {
+        const saved = patientData?.clinical_dossier?.nom004_identification_sheet;
+        const appt = resolveScheduledAppointmentSummary(patientData);
+        if (saved && typeof saved === 'object' && saved.vitals && saved.somatometry) {
+            return {
+                ...saved,
+                scheduledAppointment: appt
+            };
+        }
+
+        const verifiedAge = resolveVerifiedPatientAge(patientData, 35);
+        const { isFemale } = resolvePatientSex(patientData);
+        const alt = resolveClientAltitudeMsnm(patientData);
+        const curp = String(
+            patientData?.profile?.curp ||
+            patientData?.demographics?.curp ||
+            patientData?.identificacion?.curp ||
+            ''
+        ).trim().toUpperCase();
+        const birthDate = String(
+            patientData?.profile?.birthdate ||
+            patientData?.identificacion?.fechanac ||
+            patientData?.demographics?.birthdate ||
+            ''
+        ).trim();
+
+        const emg = patientData?.emergencia || patientData?.profile?.emergencyContact || {};
+        const emgName = String(emg?.nombre || emg?.name || '').trim();
+        const emgKin = String(emg?.parentesco || emg?.kin || '').trim();
+        const emgPhone = String(emg?.telefono || emg?.phone || '').trim();
+        const emergencyContactText = emgName
+            ? `${emgName}${emgKin || emgPhone ? ` (${[emgKin, emgPhone ? `Tel. ${emgPhone}` : ''].filter(Boolean).join(' • ')})` : ''}`
+            : 'No registrado';
+
+        const primaryMotive = String(
+            patientData?.clinical_context?.primary_motive ||
+            patientData?.motivo_consulta ||
+            patientData?.motivo ||
+            patientData?.reason_for_consultation ||
+            patientData?.clinical_context?.ai_analysis?.gem_reasoning ||
+            'Evaluación nutricional preventiva integral'
+        ).trim();
+
+        const rawFamily = Array.isArray(patientData?.history?.family_structured) && patientData.history.family_structured.length > 0
+            ? patientData.history.family_structured
+            : (Array.isArray(patientData?.familyTree?.antecedentes) ? patientData.familyTree.antecedentes : []);
+        const ahfMap = new Map();
+        rawFamily.forEach((it) => {
+            const cond = String(it?.condition || it?.patologia || it?.disease || '').trim();
+            const kin = String(it?.relative || it?.familiar || it?.relationship || '').trim();
+            if (!cond || /^(ningun[oa]?|niega|negad[oa]s?|no|n\/a)$/i.test(cond)) return;
+            const k = cond.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            if (!ahfMap.has(k)) ahfMap.set(k, { cond, kins: new Set() });
+            if (kin) ahfMap.get(k).kins.add(kin);
+        });
+        const ahfList = Array.from(ahfMap.values()).map((x) =>
+            x.kins.size > 0 ? `${x.cond} (${Array.from(x.kins).join(', ')})` : x.cond
+        );
+        const ahfText = ahfList.length > 0 ? ahfList.join('; ') : 'Negados';
+
+        const rawPaths = Array.isArray(patientData?.history?.pathologies) ? patientData.history.pathologies : [];
+        const appItems = rawPaths
+            .map((p) => String(typeof p === 'object' ? (p?.name || p?.patologia || p?.label || '') : p || '').trim())
+            .filter((s) => s && !/^(ningun[oa]?|niega|negad[oa]s?|no)$/i.test(s));
+        const appText = appItems.length > 0 ? appItems.join(', ') : 'Niega patológicos crónicos';
+
+        const rawSurg = Array.isArray(patientData?.history?.surgical) ? patientData.history.surgical : [];
+        const surgItems = rawSurg
+            .map((s) => String(typeof s === 'object' ? (s?.label || s?.name || '') : s || '').trim())
+            .filter((s) => s && !/^(ningun[oa]?|niega|negad[oa]s?|no)$/i.test(s));
+        const surgicalText = surgItems.length > 0 ? surgItems.join(', ') : 'Negados';
+
+        const foodAllergies = (patientData?.history?.allergies?.food || [])
+            .map((a) => String(typeof a === 'object' ? (a?.agent || a?.name || '') : a || '').trim())
+            .filter(Boolean);
+        const drugAllergies = (patientData?.history?.allergies?.drug || [])
+            .map((a) => String(typeof a === 'object' ? (a?.agent || a?.name || '') : a || '').trim())
+            .filter(Boolean);
+        const hasClinicalAllergies = foodAllergies.length > 0 || drugAllergies.length > 0;
+        const allergiesText = hasClinicalAllergies
+            ? [
+                foodAllergies.length > 0 ? `Alimentarias: ${foodAllergies.join(', ')}` : null,
+                drugAllergies.length > 0 ? `Farmacológicas: ${drugAllergies.join(', ')}` : null
+            ].filter(Boolean).join(' | ')
+            : 'Negadas (0 alergias clínicas)';
+
+        const rawMeds = Array.isArray(patientData?.history?.medications) ? patientData.history.medications : [];
+        const medItems = rawMeds
+            .map((m) => String(typeof m === 'object' ? (m?.name || m?.drug || '') : m || '').trim())
+            .filter((s) => s && !/^(ningun[oa]?|niega|no)$/i.test(s));
+        const medicationsText = medItems.length > 0 ? medItems.join(', ') : 'Ninguno (0 fármacos activos)';
+
+        const rawSups = Array.isArray(patientData?.history?.supplements) ? patientData.history.supplements : [];
+        const supBrands = [];
+        let supDur = '';
+        rawSups.forEach((s) => {
+            const nm = String(typeof s === 'object' ? (s?.name || '') : s || '');
+            if (/33\s*plus/i.test(nm) && !supBrands.includes('33Plus®')) supBrands.push('33Plus®');
+            if (/34\s*plus/i.test(nm) && !supBrands.includes('34Plus®')) supBrands.push('34Plus®');
+            if (typeof s === 'object' && s?.duration && String(s.duration).length > supDur.length) supDur = String(s.duration).trim();
+        });
+        const priorSupplementsText = supBrands.length > 0
+            ? `${supBrands.join(' y ')}${supDur ? ` (adherencia previa de ${supDur})` : ''}`
+            : 'Ninguna declarada';
+
+        const digProfile = patientData?.digestive_profile || {};
+        const digSymptoms = [
+            ...(Array.isArray(digProfile?.symptoms) ? digProfile.symptoms : []),
+            ...(Array.isArray(patientData?.history?.digestive_symptoms) ? patientData.history.digestive_symptoms : [])
+        ].map((s) => String(s || '').trim()).filter((s) => s && !/^(ningun[oa]?|niega|no)$/i.test(s));
+        const isClinicalEubiosis = !digProfile?.has_issues && digSymptoms.length === 0;
+        const digestivePhenotypeText = isClinicalEubiosis
+            ? 'Eubiosis clínica (0 síntomas digestivos)'
+            : `Sintomatología reportada: ${digSymptoms.join(', ') || digProfile?.phenotype || 'Sensibilidad digestiva'}`;
+
+        const v = patientData?.vitals || {};
+        const bp = v?.blood_pressure || v?.bloodPressure || {};
+        const sysBp = Number(bp?.systolic || 0) || null;
+        const diaBp = Number(bp?.diastolic || 0) || null;
+        const fcVal = Number(v?.heart_rate ?? v?.hr ?? 0) || null;
+        const frVal = Number(v?.respiratory_rate ?? v?.rr ?? 0) || null;
+        const spo2Val = Number(v?.spo2 ?? 0) || null;
+        const tempVal = Number(v?.temperature ?? 0) || null;
+        const gluVal = Number(v?.glucose ?? 0) || null;
+
+        const vitalsParts = [
+            sysBp && diaBp ? `PA ${sysBp}/${diaBp} mmHg` : null,
+            fcVal ? `FC ${fcVal} lpm` : null,
+            frVal ? `FR ${frVal} rpm` : null,
+            spo2Val ? `SpO2 ${spo2Val} %${alt?.msnm >= 1500 ? ` (${alt.msnm} msnm)` : ''}` : null,
+            tempVal ? `Temp ${tempVal} °C` : null,
+            gluVal ? `Glucosa basal ${gluVal} mg/dL` : null
+        ].filter(Boolean);
+
+        const weightKg = Number(v?.weight || patientData?.clinical_dossier?.bioenergetics?.weightKg || patientData?.peso || 0) || null;
+        const rawH = Number(v?.height || patientData?.clinical_dossier?.bioenergetics?.heightCm || patientData?.talla || 0) || null;
+        const heightCm = rawH ? (rawH < 3 ? Number((rawH * 100).toFixed(1)) : rawH) : null;
+        const bmi = (weightKg && heightCm)
+            ? Number((weightKg / Math.pow(heightCm / 100, 2)).toFixed(1))
+            : (Number(v?.bmi || 0) || null);
+        const bmiClass = String(v?.bmi_class || (bmi >= 30 ? 'Obesidad' : bmi >= 25 ? 'Sobrepeso' : bmi ? 'Normopeso' : '')).trim();
+        const bodyFatPct = Number(v?.body_fat || patientData?.clinical_dossier?.bioenergetics?.bodyFatPct || 0) || null;
+        const leanMassKg = (weightKg && bodyFatPct)
+            ? Number((weightKg * (1 - bodyFatPct / 100)).toFixed(1))
+            : (Number(patientData?.clinical_dossier?.bioenergetics?.leanBodyMassKg || 0) ? Number(Number(patientData.clinical_dossier.bioenergetics.leanBodyMassKg).toFixed(1)) : null);
+        const waistCm = Number(v?.waist || patientData?.cintura || 0) || null;
+        const hipCm = Number(v?.hip || patientData?.cadera || 0) || null;
+        const icc = (waistCm && hipCm) ? Number((waistCm / hipCm).toFixed(2)) : (Number(v?.whr || patientData?.icc || 0) || null);
+        const ica = (waistCm && heightCm) ? Number((waistCm / heightCm).toFixed(2)) : null;
+
+        const somaParts = [
+            weightKg ? `Peso ${weightKg} kg` : null,
+            heightCm ? `Talla ${heightCm} cm` : null,
+            bmi ? `IMC ${bmi} kg/m²${bmiClass ? ` (${bmiClass})` : ''}` : null,
+            bodyFatPct ? `Grasa ${bodyFatPct} %` : null,
+            leanMassKg ? `MLG ${leanMassKg} kg` : null,
+            waistCm ? `Cintura ${waistCm} cm` : null,
+            hipCm ? `Cadera ${hipCm} cm` : null,
+            icc ? `ICC físico ${icc}` : null,
+            ica ? `ICA ${ica}` : null
+        ].filter(Boolean);
+
+        return {
+            ageYears: verifiedAge.ageYears,
+            sexLabel: isFemale ? 'Femenino' : 'Masculino',
+            birthDate: birthDate || null,
+            curp: curp || null,
+            altitudeMsnm: alt?.msnm || 0,
+            altitudeLabel: alt?.label || 'Nivel basal',
+            emergencyContactText,
+            primaryMotive,
+            ahfList,
+            ahfText,
+            appText,
+            surgicalText,
+            allergiesText,
+            hasClinicalAllergies,
+            medicationsText,
+            priorSupplementsText,
+            digestivePhenotypeText,
+            isClinicalEubiosis,
+            vitals: {
+                pa: sysBp && diaBp ? `${sysBp}/${diaBp} mmHg` : null,
+                fc: fcVal ? `${fcVal} lpm` : null,
+                fr: frVal ? `${frVal} rpm` : null,
+                spo2: spo2Val ? `${spo2Val} %` : null,
+                temp: tempVal ? `${tempVal} °C` : null,
+                glucose: gluVal ? `${gluVal} mg/dL` : null,
+                summaryLine: vitalsParts.join(' | ') || 'En registro clínico'
+            },
+            somatometry: {
+                weightKg,
+                heightCm,
+                bmi,
+                bmiClass: bmiClass || null,
+                bodyFatPct,
+                leanMassKg,
+                waistCm,
+                hipCm,
+                icc,
+                ica,
+                summaryLine: somaParts.join(' | ') || 'En registro antropométrico'
+            },
+            scheduledAppointment: appt
+        };
+    } catch (_) {
+        return null;
+    }
 }
 
 function resolveClientAltitudeMsnm(patientData = {}) {
@@ -576,6 +916,7 @@ export function sanitizeClinicalSpanish(rawText) {
         .replace(/\(\s*Variante\s+(?:Suave\s+)?(?:Libre|Sin)\s+de\s+Estimulantes\s*\)/giu, '(Energía Celular y Circulación)')
         .replace(/\(\s*Variante\s+Suave\s+Sin\s+Estimulantes\s*\)/giu, '(Energía Celular y Circulación)')
         .replace(/\s*&\s*/gu, ' y ');
+    text = enforceTemporalEmbargoOnText(text);
     text = text.replace(/\(Ref:\s*([^)]+)\)/giu, (_, inner) => `(Ref: ${inner.replace(/(\d),(\d)/g, '$1.$2')})`);
     text = deduplicateRepeatedClauseVerbs(text);
     return text.replace(/\s{2,}/g, ' ').trim();
@@ -883,13 +1224,44 @@ function humanizeLegacyTimeSlot(rawSlot, idx) {
     return s || defaults[idx] || `Momento ${idx + 1}`;
 }
 
+function stripBalancedParenthesesSafe(str) {
+    let out = String(str || '');
+    let prev = '';
+    while (out !== prev) {
+        prev = out;
+        out = out.replace(/\([^()]*\)/g, '');
+    }
+    return out.replace(/[()]/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 export function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     if (!rawLabel) return '';
-    const base = sanitizeClinicalSpanish(String(rawLabel).split(':')[0].trim());
+    const fullStr = sanitizeClinicalSpanish(String(rawLabel).trim());
+    const iccMatch = fullStr.match(/relaci[óo]n\s+cintura[-\s]*cadera\s+f[íi]sica\s*(?:\(\s*icc\s*:?\s*([0-9.]+)\s*\)|\[\s*icc\s*:?\s*([0-9.]+)\s*\])/i);
+    if (iccMatch) {
+        const iccNum = iccMatch[1] || iccMatch[2];
+        return `relación cintura-cadera física [ICC ${iccNum}]`;
+    }
+    if (/relaci[óo]n\s+cintura[-\s]*cadera\s+f[íi]sica\s*\(\s*icc/i.test(fullStr)) {
+        return 'relación cintura-cadera física [ICC]';
+    }
+    const base = sanitizeClinicalSpanish(fullStr.split(':')[0].trim());
     if (!base) return '';
 
     if (/radiaci[óo]n\s+electromagn[ée]tica|electromagn[ée]tic/i.test(base)) {
         return '';
+    }
+    if (/arco\s+corneal|halo\s+lip[íi]dico|limbar/i.test(base)) {
+        return 'halo lipídico incipiente en córnea asociado a colesterol';
+    }
+    if (/venas\s+raninas|sublingual/i.test(base)) {
+        return 'retorno venoso sublingual e hidratación microvascular';
+    }
+    if (/estasis\s+venosa|hemosider[ií]n|extremidad\s+inferior/i.test(base)) {
+        return 'retorno venoso en piernas y microcirculación cutánea';
+    }
+    if (/relaci[óo]n\s+cintura[-\s]*cadera|\bicc\b/i.test(base)) {
+        return 'relación cintura-cadera física [ICC]';
     }
     if (/mercurio|ars[ée]nico|plomo|cadmio|pesticida|metales?\s+pesados?|toxina/i.test(base)) {
         return 'depuración de desechos ambientales';
@@ -915,6 +1287,9 @@ export function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     if (/grasa\s+en\s+el\s+h[íi]gado|h[íi]gado|hep[áa]tic|ves[íi]cula|biliar|bilirrubina|\bglobulina\b|desintoxicaci[óo]n|energ[íi]a\s+del\s+h[íi]gado/i.test(base)) {
         return 'procesamiento de grasas y limpieza en hígado';
     }
+    if (/filtraci[óo]n\s+glomerular|\btfge\b/i.test(base)) {
+        return 'tasa de filtración renal preventiva';
+    }
     if (/proteinuria|[áa]cido\s+[úu]rico|urobilin[óo]geno|nitr[óo]geno|urea|creatinina|renal|ri[ñn][óo]n/i.test(base)) {
         return 'filtración de minerales y proteínas en riñón';
     }
@@ -925,19 +1300,16 @@ export function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
         return 'recuperación frente al estrés y calidad de descanso';
     }
     if (/alergia|sensibilidad|polen|polvo|leche|l[áa]cteo|marisco|pintura|fibra\s+qu[íi]mica|antibi[óo]tico|alcohol|tabaco/i.test(base)) {
-        return 'sensibilidad digestiva o ambiental';
+        return 'reactividad ambiental o alimentaria orientativa';
     }
     if (/c[íi]rculos\s+oscuros|bolsas\s+en\s+los\s+ojos|ojeras|fatiga\s+visual/i.test(base)) {
         return 'oxigenación microvascular y descanso visual';
-    }
-    if (/sublingual/i.test(base)) {
-        return 'hidratación y microcirculación digestiva';
     }
     if (systemId === 'digestion_absorcion' && /treonina|histidina|lisina|valina|leucina|isoleucina|tript[óo]fano|metionina|fenilalanina|arginina|amino[áa]cido/i.test(base)) {
         return 'aprovechamiento digestivo de aminoácidos y proteínas';
     }
     if (systemId === 'circulacion_energia' && /coenzima|vitamina\s+b|hierro|mitocondri/i.test(base)) {
-        return 'producción de energía celular';
+        return 'producción de energía celular diaria';
     }
     if (/vitamina|zinc|selenio|hierro|magnesio|potasio|calcio|coenzima|treonina|histidina|lisina|valina|leucina|isoleucina|tript[óo]fano|metionina|fenilalanina|arginina|amino[áa]cido|inmunoglobulina|linf[áa]tic|am[íi]gdala|bazo|m[ée]dula|respiratori|mucosa/i.test(base)) {
         return 'reservas de vitaminas, minerales y defensas naturales';
@@ -969,15 +1341,16 @@ export function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
     if (/peristalsis|intestin|col[óo]nic|colon|flora|microbiota|estre[ñn]imiento|evacuaci/i.test(base)) {
         return 'ritmo de movimiento del estómago e intestino';
     }
-    if (/absorci[óo]n|g[áa]stric|pepsina|est[óo]mago|saburra|lingual|digestiv|amilasa/i.test(base)) {
+    if (/saburra|indentaci[óo]n|festonead|topograf[íi]a\s+lingual/i.test(base)) {
+        return 'equilibrio hidrosalino y recubrimiento lingual';
+    }
+    if (/absorci[óo]n|g[áa]stric|pepsina|est[óo]mago|lingual|digestiv|amilasa/i.test(base)) {
         return 'producción de jugos digestivos y absorción de nutrientes';
     }
 
-    return base
-        .replace(/^(?:grado|coeficiente|[íi]ndice|s[íi]ndrome|factor|tasa)\s+de\s+/i, '')
-        .replace(/\([^)]*\)/g, '')
-        .trim()
-        .toLowerCase();
+    return stripBalancedParenthesesSafe(
+        base.replace(/^(?:grado|coeficiente|[íi]ndice|s[íi]ndrome|factor|tasa)\s+de\s+/i, '')
+    ).toLowerCase();
 }
 
 const RAW_ALARMING_PATIENT_LABEL_RE = /(mercurio|ars[ée]nico|plomo|radiaci[óo]n\s+electromagn[ée]tica|prostatitis|tiroglobulina|hiperplasia\s+[óo]sea|coeficiente\s+de\s+reumatismo|\(ojos\)|\[electret\]|\[ocr_lab\])/i;
@@ -1231,6 +1604,29 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         });
     });
 
+    const normalizeTopicStem = (str) =>
+        String(str || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/_diari[oa]s?$/g, '')
+            .replace(/^_|_$/g, '');
+
+    const dedupeClientTopics = (arr = []) => {
+        const out = [];
+        const seen = new Set();
+        for (const item of arr) {
+            const clean = String(item || '').replace(/[()]/g, '').trim();
+            if (!clean) continue;
+            const stem = normalizeTopicStem(clean);
+            if (seen.has(stem)) continue;
+            seen.add(stem);
+            out.push(clean);
+        }
+        return out;
+    };
+
     const sampleBalancedFriendlyTopicsForSystem = (sysId) => {
         const nodePairs = {
             circulacion_energia: ['NODO_5_TRANSPORTE', 'NODO_3_ENERGIA'],
@@ -1241,11 +1637,11 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         }[sysId] || [];
 
         const perNode = nodePairs.map((nid) =>
-            Array.from(new Set((bucketsByNode[nid] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean)))
+            dedupeClientTopics((bucketsByNode[nid] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean))
         );
 
         if (perNode.every((arr) => arr.length === 0)) {
-            return Array.from(new Set((bucketsBySystem[sysId] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean))).slice(0, 4);
+            return dedupeClientTopics((bucketsBySystem[sysId] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean)).slice(0, 4);
         }
 
         if (perNode.length <= 1) {
@@ -1253,20 +1649,26 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         }
 
         const selected = [];
+        const addTopicUnique = (t) => {
+            if (!t || selected.length >= 4) return false;
+            const st = normalizeTopicStem(t);
+            if (selected.some((x) => normalizeTopicStem(x) === st)) return false;
+            selected.push(t);
+            return true;
+        };
+
         perNode.forEach((arr) => {
             let taken = 0;
             for (const t of arr) {
                 if (taken >= 2 || selected.length >= 4) break;
-                if (!selected.includes(t)) {
-                    selected.push(t);
-                    taken++;
-                }
+                if (addTopicUnique(t)) taken++;
             }
         });
         if (selected.length < 4) {
             perNode.forEach((arr) => {
                 for (const t of arr) {
-                    if (!selected.includes(t) && selected.length < 4) selected.push(t);
+                    if (selected.length >= 4) break;
+                    addTopicUnique(t);
                 }
             });
         }
@@ -1580,24 +1982,95 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     const escapedFirst = firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const adultThirdPersonLeakRe = new RegExp(`\\bde\\s+${escapedFirst}\\b|\\bmientras\\s+${escapedFirst}\\b|\\ben\\s+${escapedFirst}\\b|en\\s+crecimiento|desarrollo\\s+y\\s+defensas`, 'i');
 
+    const nom004Sheet = resolveNom004IdentificationSheet(patientData);
+    const isClinicalEubiosisClient = Boolean(nom004Sheet?.isClinicalEubiosis);
+    const hasClinicalAllergiesClient = Boolean(nom004Sheet?.hasClinicalAllergies);
+
+    const resolveClientSystemSeverity = (sysId, countVal, rawSys = null) => {
+        try {
+            if (rawSys?.status && dossier?.ssot_contract_version === '3.3.0-EGM56-SSOTT') {
+                return {
+                    status: rawSys.status,
+                    statusLabel: sanitizeClinicalSpanish(String(rawSys.statusLabel || (
+                        rawSys.status === 'ATENCION_PRIORITARIA'
+                            ? 'Atención prioritaria'
+                            : rawSys.status === 'VIGILANCIA_PREVENTIVA'
+                                ? 'Optimización preventiva'
+                                : 'Fortaleza consolidada'
+                    )).replace(/\(\s*con\s+vigilancia\s+focal\s*\)/giu, '• vigilancia focal'))
+                };
+            }
+            if (countVal === 0) {
+                return { status: 'EN_EQUILIBRIO', statusLabel: 'Fortaleza consolidada' };
+            }
+            const sysText = (bucketsBySystem[sysId] || []).join(' | ');
+            if (sysId === 'circulacion_energia') {
+                const hasMajor = /(?:Estado:\s*ELEVADO|colesterol|ldl|electrocardiograma|bradicardia|rama\s+derecha|tensi[óo]n\s+arterial)/i.test(sysText);
+                return hasMajor
+                    ? { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' }
+                    : { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+            }
+            if (sysId === 'digestion_absorcion') {
+                return !isClinicalEubiosisClient
+                    ? { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' }
+                    : { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+            }
+            if (sysId === 'filtros_naturales') {
+                const hasMajorRenalHep = /(?:Sobrecarga\s+de\s+Biotransformaci[óo]n|Creatinina:.*ELEVADO|ALT.*ELEVADO|AST.*ELEVADO)/i.test(sysText);
+                return hasMajorRenalHep
+                    ? { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' }
+                    : { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+            }
+            if (sysId === 'descanso_defensas') {
+                const sleepObj = patientData?.habits?.sleep || patientData?.lifestyle_profile?.sleep || {};
+                const sleepHours = Number(sleepObj?.hours ?? sleepObj?.hours_avg ?? 0);
+                const sleepGood = sleepHours >= 6.5 && !/mala|poor|insomnio/i.test(String(sleepObj?.quality || ''));
+                const rawStress = String(patientData?.habits?.stress || patientData?.lifestyle_profile?.stress?.level || '').toUpperCase();
+                const stressLow = !/ALTO|HIGH|SEVER/.test(rawStress);
+                const hasAcute = /(?:Reactantes\s+de\s+Fase\s+Aguda|Alergia\s+Alimentaria|Alergia\s+Farmacol[óo]gica|TSH:.*ELEVADO)/i.test(sysText);
+                if (hasAcute || hasClinicalAllergiesClient) {
+                    return { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' };
+                }
+                if (sleepGood && stressLow) {
+                    return { status: 'EN_EQUILIBRIO', statusLabel: 'Fortaleza consolidada • vigilancia focal' };
+                }
+                return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+            }
+            if (sysId === 'huesos_musculos') {
+                const hasMajorBone = /(?:Calcio\s+S[ée]rico\s+Elevado)/i.test(sysText) || Number(nom004Sheet?.somatometry?.bmi) >= 35;
+                return hasMajorBone
+                    ? { status: 'ATENCION_PRIORITARIA', statusLabel: 'Atención prioritaria' }
+                    : { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+            }
+            return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+        } catch (_) {
+            return { status: 'VIGILANCIA_PREVENTIVA', statusLabel: 'Optimización preventiva' };
+        }
+    };
+
     let fiveSystems = [];
     if (Array.isArray(existingGuide?.five_systems) && existingGuide.five_systems.length > 0) {
         fiveSystems = existingGuide.five_systems.map((sys) => {
             const rawTitle = sanitizeClinicalSpanish(sys.title);
             const rawSub = sanitizeClinicalSpanish(sys.subtitle);
-            const rawObs = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(sys.whatWeObserved));
-            const rawMean = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(sys.whatItMeans));
+            let rawObs = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(sys.whatWeObserved))
+                .replace(/\(\s*relaci[óo]n\s+cintura[-\s]*cadera\s+f[íi]sica\s*\(\s*icc\s*,/giu, '(relación cintura-cadera física [ICC],')
+                .replace(/producci[óo]n\s+de\s+energ[íi]a\s+celular\s+diaria,\s*producci[óo]n\s+de\s+energ[íi]a\s+celular\b/giu, 'producción de energía celular diaria');
+            let rawMean = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(sys.whatItMeans));
             const hasRawAlarmingLabel = RAW_ALARMING_PATIENT_LABEL_RE.test(rawObs);
             const balancedTopics = sampleBalancedFriendlyTopicsForSystem(sys.id);
             const safeHighlights = hasRawAlarmingLabel && balancedTopics.length > 0
                 ? balancedTopics
-                : (Array.isArray(sys.cleanHighlights) ? sys.cleanHighlights : [])
-                    .map((h) => humanizeBiomarkerTopicForPatient(h, sys.id))
-                    .filter((h) => Boolean(h) && !hasLegacyTuteo(h));
+                : dedupeClientTopics(
+                    (Array.isArray(sys.cleanHighlights) ? sys.cleanHighlights : [])
+                        .map((h) => humanizeBiomarkerTopicForPatient(h, sys.id))
+                        .filter((h) => Boolean(h) && !hasLegacyTuteo(h))
+                );
 
-            const finalHighlights = safeHighlights.length > 0 ? Array.from(new Set(safeHighlights)) : balancedTopics;
+            const finalHighlights = safeHighlights.length > 0 ? safeHighlights : balancedTopics;
             const countVal = Number(sys.findingsCount) || (bucketsBySystem[sys.id] || []).length;
-            const hasAny = sys.status !== 'EN_EQUILIBRIO' && (countVal > 0 || finalHighlights.length > 0);
+            const calibratedSev = resolveClientSystemSeverity(sys.id, countVal, sys);
+            const hasAny = countVal > 0 || finalHighlights.length > 0;
             const canonicalSys = getCanonicalSystemMeta(sys.id, finalHighlights, hasAny);
             const mismatchTutorSys = addr.isTutorMode && /^(su|sus)\s+(circulaci|digesti|filtros|descanso|huesos)/i.test(rawTitle);
             const mismatchAdultSys = !addr.isTutorMode && (
@@ -1606,8 +2079,15 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             );
             const mismatchNormoglycemicSugarClaim = sys.id === 'circulacion_energia' && isNormoglycemicVenous && /exceso\s+de\s+grasas\s+y\s+az[úu]cares/i.test(rawMean);
 
+            if (sys.id === 'digestion_absorcion' && isClinicalEubiosisClient && /est[áa]n\s+irritados/i.test(rawMean)) {
+                rawObs = `Con base en su evaluación preventiva integral —aun cursando hoy sin molestias digestivas (eubiosis)—, registramos bioseñales orientativas de tránsito digestivo pausado y topografía lingual hidrosalina (${finalHighlights.join(', ')}).`;
+                rawMean = 'Usted goza hoy de confort digestivo sin inflamación ni reflujo; retirar preventivamente irritantes (picante, cerdo y azúcares refinados), masticar con calma y nutrir su mucosa por la noche con fibra prebiótica (34Plus® en mínimo 500 ml de agua simple) optimizará al 100 % la absorción de vitaminas, minerales y líquidos.';
+            }
+
             return {
                 ...sys,
+                status: calibratedSev.status,
+                statusLabel: calibratedSev.statusLabel,
                 title: (!rawTitle || hasLegacyTuteo(rawTitle) || mismatchTutorSys || mismatchAdultSys) ? canonicalSys.title : rawTitle,
                 subtitle: (!rawSub || hasLegacyTuteo(rawSub) || mismatchTutorSys || mismatchAdultSys) ? canonicalSys.subtitle : rawSub,
                 whatWeObserved: (!rawObs || hasRawAlarmingLabel || hasLegacyTuteo(rawObs) || mismatchTutorSys || mismatchAdultSys)
@@ -1631,15 +2111,15 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         fiveSystems = systemDefs.map(({ id, iconKey, list }) => {
             const highlights = sampleBalancedFriendlyTopicsForSystem(id);
             const hasAny = list.length > 0;
-            const isHigh = list.length >= 3;
+            const calibratedSev = resolveClientSystemSeverity(id, list.length, null);
             const canonicalSys = getCanonicalSystemMeta(id, highlights, hasAny);
             return {
                 id,
                 title: canonicalSys.title,
                 subtitle: canonicalSys.subtitle,
                 iconKey,
-                status: !hasAny ? 'EN_EQUILIBRIO' : (isHigh ? 'ATENCION_PRIORITARIA' : 'VIGILANCIA_PREVENTIVA'),
-                statusLabel: !hasAny ? 'En equilibrio' : (isHigh ? 'Atención prioritaria' : 'Cuidado preventivo'),
+                status: calibratedSev.status,
+                statusLabel: calibratedSev.statusLabel,
                 findingsCount: list.length,
                 cleanHighlights: highlights,
                 whatWeObserved: canonicalSys.observed,
@@ -2114,22 +2594,31 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             ? `Estimada madre, padre o tutor: lectura clara de la salud de ${ref}`
             : `${addr.estimadoLabel} ${vocativeAdultName}: esta es la lectura clara de su salud hoy`;
 
+    const hasExplicitComplaintsClient = Boolean(
+        !isClinicalEubiosisClient ||
+        String(patientData?.clinical_context?.specific_ailment || '').trim() ||
+        (Array.isArray(patientData?.clinical_context?.pain_zones) && patientData.clinical_context.pain_zones.length > 0)
+    );
+
     const canonicalLead = addr.isLactante
         ? `Integramos con todo cuidado la valoración de crecimiento, tolerancia digestiva y desarrollo de ${addr.childSubjectWithKinship} para explicarle con claridad qué observamos y acompañarle paso a paso en casa.`
         : addr.isTutorChild
-            ? `Reunimos los síntomas, la historia clínica y las mediciones de ${addr.childSubjectWithKinship} para explicarle con total claridad qué observamos en su organismo y cómo vamos a acompañar a ${ref} paso a paso en casa, sin prisas ni sobrecargas.`
+            ? `Con base en la historia clínica y las mediciones integrales de ${addr.childSubjectWithKinship}, le explicamos con total claridad qué observamos en su organismo y cómo vamos a acompañar a ${ref} paso a paso en casa, sin prisas ni sobrecargas.`
             : addr.isAdolescent
-                ? `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso junto con su madre, padre o tutor legal.`
-                : `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso, sin prisas ni sobrecargas.`;
+                ? `Con base en su historia clínica y las mediciones de su evaluación integral, le explicamos con total claridad cómo se encuentra su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso junto con su madre, padre o tutor legal.`
+                : hasExplicitComplaintsClient
+                    ? `Reunimos sus síntomas, su historia clínica y las mediciones de su evaluación para explicarle con total claridad qué está ocurriendo en su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso, sin prisas ni sobrecargas.`
+                    : `Con base en su historia clínica, su evaluación preventiva integral y las mediciones obtenidas —aun cursando hoy sin molestias digestivas (eubiosis)—, le explicamos con total claridad cómo se encuentra su organismo y cómo vamos a ${addr.directObjLower === 'la' ? 'acompañarla' : 'acompañarlo'} paso a paso, sin prisas ni sobrecargas.`;
 
     const rawGreeting = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(existingGuide?.greetingTitle || ''));
     const rawLead = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(existingGuide?.empatheticLead || ''));
+    const hasSymptomContradictionOnEubiosis = !hasExplicitComplaintsClient && /\bsus\s+s[íi]ntomas\b/i.test(rawLead);
     const isLegacyHolaGreeting = /^hola\b/i.test(rawGreeting.trim());
     const hasMultiWordFullName = fullName.trim().split(/\s+/).length >= 2;
     const isTruncatedSingleNameGreeting = !addr.isTutorMode && hasMultiWordFullName && !rawGreeting.toLowerCase().includes(fullName.toLowerCase());
     const mismatchTutorGreeting = addr.isTutorMode && !/madre,\s*padre\s+o\s+tutor/i.test(rawGreeting);
     const mismatchAdultGreeting = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(rawGreeting) || adultThirdPersonLeakRe.test(rawGreeting) || isTruncatedSingleNameGreeting);
-    const mismatchAdultLead = !addr.isTutorMode && !addr.isAdolescent && (PEDIATRIC_CONTAMINATION_RE.test(rawLead) || adultThirdPersonLeakRe.test(rawLead));
+    const mismatchAdultLead = !addr.isTutorMode && !addr.isAdolescent && (PEDIATRIC_CONTAMINATION_RE.test(rawLead) || adultThirdPersonLeakRe.test(rawLead) || hasSymptomContradictionOnEubiosis);
     const missingTeenLeadTutor = addr.isAdolescent && !/tutor|madre|padre/i.test(rawLead);
 
     const uiLabels = buildPatientUiLabels({
@@ -2161,6 +2650,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
 
     const metabolicAgeStudy = resolveMetabolicAgeStudySSoT(patientData);
     const logisticsSummary = translateLogisticsProfile(patientData);
+    const scheduledAppointmentSummary = resolveScheduledAppointmentSummary(patientData);
 
     return applyGenderDeep({
         patientFullName: fullName,
@@ -2180,7 +2670,9 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             : rawLead,
         biosecuritySemaphore: semaphore,
         metabolicAgeStudy,
+        nom004Sheet,
         logisticsSummary,
+        scheduledAppointmentSummary,
         fiveSystems,
         formula33Card,
         formula34Card,
