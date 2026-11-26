@@ -397,7 +397,10 @@ export const formatPlanForClipboard = function (options) {
 
     return flattenNestedParenthesesToBrackets(
       sanitizeSupplementPosologyLexiconEgm74(text.replace(/\s*&\s*/g, ' y '))
-    ).trim();
+    )
+      .replace(/\[\s*\[([^\[\]]+)\]\s*\]/g, '[$1]')
+      .replace(/\.\s*\.+/g, '.')
+      .trim();
   }
 
   // --- VISTA MÉDICA (NOM-004 — SSoTT v3.2) ---
@@ -698,7 +701,10 @@ export const formatPlanForClipboard = function (options) {
 
   return flattenNestedParenthesesToBrackets(
     sanitizeSupplementPosologyLexiconEgm74(text.replace(/\s*&\s*/g, ' y '))
-  ).trim();
+  )
+    .replace(/\[\s*\[([^\[\]]+)\]\s*\]/g, '[$1]')
+    .replace(/\.\s*\.+/g, '.')
+    .trim();
 };
 
 /**

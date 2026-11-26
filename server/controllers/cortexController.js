@@ -2993,41 +2993,63 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
     if (allSomaticItems.length > 0) {
         const globalVisFlags = Array.isArray(visual?.clinical_flags) ? visual.clinical_flags.join(', ') : '';
         allSomaticItems.forEach((it, idx) => {
-            const region = it.region || `Zona #${idx + 1}`;
-            const desc = it.finding || '';
-            const flags = [
-                Array.isArray(it.clinical_flags) ? it.clinical_flags.join(', ') : (it.clinical_flags || ''),
-                globalVisFlags
-            ].filter(Boolean).join(', ');
-            const fullSomText = `${region} ${desc} ${flags}`.toUpperCase();
+            const region = String(it.region || `Zona #${idx + 1}`).trim().replace(/\.\s*\.+/g, '.').replace(/\.+$/, '');
+            const cleanDesc = String(it.finding || '').trim().replace(/\.\s*\.+/g, '.').replace(/\.+$/, '');
+            const rawFlagTokens = [
+                ...(Array.isArray(it.clinical_flags) ? it.clinical_flags : String(it.clinical_flags || '').split(',')),
+                ...String(globalVisFlags || '').split(',')
+            ]
+                .map((tok) => String(tok || '').trim().replace(/^#+/, '').replace(/\.+$/, ''))
+                .filter(Boolean);
+            const seenFlagKeys = new Set();
+            const uniqueFlagTokens = [];
+            for (const tok of rawFlagTokens) {
+                const normKey = tok.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+                if (!seenFlagKeys.has(normKey)) {
+                    seenFlagKeys.add(normKey);
+                    uniqueFlagTokens.push(tok);
+                }
+            }
+            const flags = uniqueFlagTokens.join(', ');
+            const fullSomText = `${region} ${cleanDesc} ${flags}`.toUpperCase();
             const sev = String(it.severity || 'MODERADA').toUpperCase();
 
             // 1. Acantosis nigricans o adiposidad localizada -> Nodo 3
             if (fullSomText.includes('ACANTOSIS') || fullSomText.includes('NIGRICANS') || fullSomText.includes('ADIPOSIDAD') || fullSomText.includes('GRASA LOCALIZADA') || (fullSomText.includes('CUELLO') && fullSomText.includes('OSCURA'))) {
                 pushAnomaly('NODO_3_ENERGIA', 'SOMATIC_VISION', `Acantosis Nigricans / Adiposidad (${region})`,
-                    `${desc} ${flags ? `[${flags}]` : ''}. Marcador cutáneo de hiperinsulinemia y resistencia a la insulina`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
+                    `${cleanDesc}${flags ? ` [${flags}]` : ''}. Marcador cutáneo de hiperinsulinemia y resistencia a la insulina`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
             }
 
             // 2. Edema maleolar, insuficiencia/estasis venosa, pigmentación ocre/hemosiderínica o extravasación distal -> Nodo 5
             if (/(?:EDEMA|MALEOLAR|VENOS[OA]|VARICES|VÁRICES|HEMOSIDER[IÍ]N|ESTASI|OCRE|EXTRAVASACI[ÓO]N|CIANOSIS)/i.test(fullSomText)) {
                 pushAnomaly('NODO_5_TRANSPORTE', 'SOMATIC_VISION', `Estasis Venosa Cutánea y Cambios Hemosiderínicos (${region})`,
-                    `${desc}. Compromiso microcirculatorio de retorno venoso periférico`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
+                    `${cleanDesc}. Compromiso microcirculatorio de retorno venoso periférico`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
             }
 
             // 3. Dermatitis, eccema, psoriasis o lesiones en piel -> Nodo 6 (Defensa) y Nodo 1 (solo cuando no exista eubiosis clínica estricta o sea mucocutánea generalizada)
             if (fullSomText.includes('DERMATITIS') || fullSomText.includes('ECCEMA') || fullSomText.includes('ECZEMA') || fullSomText.includes('PSORIASIS') || fullSomText.includes('ERITEMA') || fullSomText.includes('ERUPCION') || fullSomText.includes('ERUPCIÓN') || fullSomText.includes('PRURITO') || fullSomText.includes('LESION') || fullSomText.includes('LESIÓN')) {
                 pushAnomaly('NODO_6_DEFENSA', 'SOMATIC_VISION', `Reactividad Cutánea Microvascular (${region})`,
-                    `${desc}. Demanda de reparación epitelial y antioxidante dérmica`, 'MODERADA');
+                    `${cleanDesc}. Demanda de reparación epitelial y antioxidante dérmica`, 'MODERADA');
                 if (!isDigestiveEubiosisInSerum) {
                     pushAnomaly('NODO_1_ASIMILACION', 'SOMATIC_VISION', `Eje Intestino-Piel (${region})`,
                         'Manifestación dérmica vinculada a sensibilidad mucosa e inmunotolerancia', 'MODERADA');
                 }
             }
 
-            // 4. Inflamación o dolor articular / musculoesquelético -> Nodo 7
-            if (fullSomText.includes('ARTICULAR') || fullSomText.includes('RODILLA') || fullSomText.includes('DOLOR') || fullSomText.includes('INFLAMACION') || fullSomText.includes('INFLAMACIÓN') || fullSomText.includes('ARTROSIS') || fullSomText.includes('ARTRITIS') || fullSomText.includes('COLUMNA') || fullSomText.includes('LUMBAR') || fullSomText.includes('CERVICAL') || fullSomText.includes('HOMBRO')) {
+            // 4. Hallazgos genuinamente osteoarticulares vs integridad dérmica/trofismo cutáneo -> Nodo 7 (EGM-77 Directiva 1)
+            const isTrueArticularOrSkeletalSomatic =
+                /\b(ARTICULAR|ARTICULACI[ÓO]N|RODILLA|TOBILLO|CADERA|HOMBRO|CODO|MUÑECA|COLUMNA|LUMBAR|CERVICAL|DORSAL|ARTROSIS|ARTRITIS|SINOVITIS|TENDIN\w*|ESGUINCE|CONTRACTURA)\b/i.test(fullSomText) ||
+                (/\bDOLOR\b/i.test(fullSomText) && !/\b(DERMATITIS|ERITEMA|HIPERPIGMENTACI[ÓO]N|HEMOSIDER\w*|MICROP[ÁA]PUL\w*|DERMIS|SUPERFICIE\s+CUT[ÁA]NEA)\b/i.test(fullSomText));
+            const isCutaneousTrophicCollagenDemand =
+                !isTrueArticularOrSkeletalSomatic &&
+                /\b(CAMBIOS\s+TR[ÓO]FICOS|HIPERPIGMENTACI[ÓO]N\s+CR[ÓO]NICA|DERMIS|CUT[ÁA]NE[OA]|PIEL|DESCAMACI[ÓO]N|ESTR[ÍI]AS|CICATRIZ|LAXITUD)\b/i.test(fullSomText);
+
+            if (isTrueArticularOrSkeletalSomatic) {
                 pushAnomaly('NODO_7_ESTRUCTURAL', 'SOMATIC_VISION', `Compromiso Estructural / Articular (${region})`,
-                    `${desc} ${flags ? `[${flags}]` : ''}. Alteración de la integridad biomecánica y articular`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
+                    `${cleanDesc}${flags ? ` [${flags}]` : ''}. Alteración de la integridad biomecánica y articular`, sev === 'ALTA' || sev === 'CRÍTICA' ? 'ALTA' : 'MODERADA');
+            } else if (isCutaneousTrophicCollagenDemand) {
+                pushAnomaly('NODO_7_ESTRUCTURAL', 'SOMATIC_VISION', `Integridad Dérmica y Trofismo Cutáneo (${region})`,
+                    `${cleanDesc}${flags ? ` [${flags}]` : ''}. Demanda estructural de colágeno y reparación trófica dérmica`, 'MODERADA');
             }
         });
     }
@@ -4213,6 +4235,8 @@ function stripUnaccreditedCodesAndFlags(rawText) {
         .replace(/(\d+(?:\.\d+)?)\s+[íi]ndice(?![\p{L}\p{N}_])/giu, '$1')
         .replace(/elevaci[óo]n\s+(?:leve\s+|moderada\s+)?en\s+los\s+niveles\s+de\s+metales\s+pesados/giu, 'bioseñales bioeléctricas orientativas de depuración ambiental')
         .replace(/niveles\s+(?:elevados\s+|alterados\s+)?de\s+metales\s+pesados/giu, 'bioseñales bioeléctricas orientativas de depuración ambiental')
+        .replace(/\[\s*\[([^\[\]]+)\]\s*\]/g, '[$1]')
+        .replace(/\.\s*\.+/g, '.')
         .replace(/\s{2,}/g, ' ')
         .trim();
 }
@@ -4238,6 +4262,8 @@ function formatMedicalBiomarkerSummary(rawItem) {
         .replace(/ANORMAL\s+MODERADO\s*(?:(\(\+\+\))|(\[\+\+\]))?/gi, (_, p1, b1) => `Alerta Moderada ${b1 || p1 || '[++]'}`)
         .replace(/ANORMAL\s+LEVE\s*(?:(\(\+\))|(\[\+\]))?/gi, (_, p1, b1) => `Desviación Leve ${b1 || p1 || '[+]'}`)
         .replace(/(\d),(\d)/g, '$1.$2')
+        .replace(/\[\s*\[([^\[\]]+)\]\s*\]/g, '[$1]')
+        .replace(/\.\s*\.+/g, '.')
         .replace(/\s{2,}/g, ' ')
         .trim();
 }
@@ -4271,7 +4297,11 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
 
     let summary = orphanHomeostasisSummary;
     if (count > 0) {
-        const listClause = topDescriptors.join(', ') + (remainingCount > 0 ? ` y ${remainingCount} parámetros complementarios` : '');
+        const countLabel = count === 1 ? '1 hallazgo integrado' : `${count} hallazgos integrados`;
+        const remClause = remainingCount > 0
+            ? ` y ${remainingCount === 1 ? '1 parámetro complementario' : `${remainingCount} parámetros complementarios`}`
+            : '';
+        const listClause = topDescriptors.join(', ') + remClause;
         const triad = contract?.multimodalTriad || {};
         const triadDetParts = node.id === 'NODO_5_TRANSPORTE'
             ? [
@@ -4287,6 +4317,25 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
             ? ' Se documenta en coexistencia con eubiosis clínica (0 síntomas digestivos referidos).'
             : '';
         const nodeAnomCombinedDet = anomalies.map((a) => `${a.label || ''} ${a.detail || ''}`).join(' | ');
+        const ecgDetSuffix = (() => {
+            if (node.id !== 'NODO_5_TRANSPORTE') return '';
+            const qAxisM = nodeAnomCombinedDet.match(/Eje\s+QRS\s*[:=]?\s*(-?\d+(?:\.\d+)?)°/i);
+            const qAxisV = qAxisM ? Number(qAxisM[1]) : (Number.isFinite(contract?.ecgQrsAxisDeg) ? Number(contract.ecgQrsAxisDeg) : null);
+            const qMsM = nodeAnomCombinedDet.match(/\bQRS\s*[:=]?\s*(\d{2,3})\s*ms\b/i);
+            const qMsV = qMsM ? Number(qMsM[1]) : null;
+            const hrM = nodeAnomCombinedDet.match(/\bFC\s*[:=]?\s*(\d{2,3})\s*lpm\b/i);
+            const hrV = hrM ? Number(hrM[1]) : null;
+            const hasRbbbDet = /BLOQUEO\s+DE\s+LA\s+RAMA\s+DERECHA/i.test(nodeAnomCombinedDet);
+            const hasLeftDet = (qAxisV !== null && qAxisV <= -30) || /eje\s+(?:el[ée]ctrico\s+(?:de\s+)?)?qrs\s+(?:desviado\s+)?a\s+la\s+izquierda|ECG_LEFT_AXIS_DEVIATION/i.test(nodeAnomCombinedDet);
+            const hasRightDet = !hasLeftDet && ((qAxisV !== null && qAxisV > 90) || /eje\s+(?:el[ée]ctrico\s+(?:de\s+)?)?qrs\s+(?:desviado\s+)?a\s+la\s+derecha|ECG_RIGHT_AXIS_DEVIATION/i.test(nodeAnomCombinedDet));
+            const parts = [
+                hrV !== null ? `FC ${hrV} lpm` : null,
+                hasRbbbDet ? `bloqueo de la rama derecha del Haz de His${qMsV !== null ? ` (QRS ${qMsV} ms)` : ''}` : null,
+                hasLeftDet ? `eje eléctrico de QRS desviado a la izquierda${qAxisV !== null ? ` (${qAxisV}°)` : ''}` : null,
+                hasRightDet ? `eje eléctrico de QRS desviado a la derecha${qAxisV !== null ? ` (${qAxisV}°)` : ''}` : null
+            ].filter(Boolean);
+            return parts.length > 0 ? ` El trazo electrocardiográfico consigna ${joinSpanishList(parts)}.` : '';
+        })();
         const isPureLingualScallopingCoatingEubiosis =
             node.id === 'NODO_1_ASIMILACION' &&
             anomalies.length === 1 &&
@@ -4298,11 +4347,11 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
             summary = 'Se observa saburra dorsal moderada acompañada de indentaciones marginales bilaterales, hallazgo morfológico orientativo de demanda preventiva en el equilibrio hidrosalino intersticial con tránsito digestivo conservado (en coexistencia con eubiosis clínica asintomática: 0 síntomas digestivos).';
         } else if (hasConfirmedLabOrCabinet) {
             summary = sanitizeClinicalSpanish(
-                `Correlación clínica y paraclínica en ${cleanNodeTitle} (${count} hallazgos integrados), destacando ${listClause}.${triadDetSuffix} El perfil sugiere demanda adaptativa prioritaria dentro del ${node.preAssignedLabel || 'eje funcional evaluado'}.`
+                `Correlación clínica y paraclínica en ${cleanNodeTitle} (${countLabel}), destacando ${listClause}.${ecgDetSuffix}${triadDetSuffix} El perfil sugiere demanda adaptativa prioritaria dentro del ${node.preAssignedLabel || 'eje funcional evaluado'}.`
             );
         } else {
             summary = sanitizeClinicalSpanish(
-                `Se registran ${count} hallazgos clínicos/semiológicos en ${cleanNodeTitle}, con predominio en ${listClause}.${eubiosisDetSuffix} Hallazgos compatibles con sobrecarga adaptativa funcional sujeta a correlación clínica.`
+                `Se registran ${count === 1 ? '1 hallazgo clínico/semiológico' : `${count} hallazgos clínicos/semiológicos`} en ${cleanNodeTitle}, con predominio en ${listClause}.${ecgDetSuffix}${eubiosisDetSuffix} Hallazgos compatibles con sobrecarga adaptativa funcional sujeta a correlación clínica.`
             );
         }
     }
@@ -4551,6 +4600,55 @@ ${nodesDigestText}`;
             : deterministicNode.summary;
 
         if (node.id === 'NODO_5_TRANSPORTE') {
+            // EGM-77 Directiva 2: Guardia determinista de eje eléctrico QRS (ej. -66°) junto con FC y BRDHH (QRS ms)
+            const qrsAxisMatch = nodeAnomText.match(/Eje\s+QRS\s*[:=]?\s*(-?\d+(?:\.\d+)?)°/i);
+            const qrsAxisVal = qrsAxisMatch
+                ? Number(qrsAxisMatch[1])
+                : (Number.isFinite(resolvedContract?.ecgQrsAxisDeg) ? Number(resolvedContract.ecgQrsAxisDeg) : null);
+            const qrsMsMatch = nodeAnomText.match(/\bQRS\s*[:=]?\s*(\d{2,3})\s*ms\b/i);
+            const qrsMsVal = qrsMsMatch ? Number(qrsMsMatch[1]) : null;
+            const ecgHrMatch = nodeAnomText.match(/\bFC\s*[:=]?\s*(\d{2,3})\s*lpm\b/i);
+            const ecgHrVal = ecgHrMatch ? Number(ecgHrMatch[1]) : null;
+
+            const hasLeftAxisInNode =
+                (qrsAxisVal !== null && qrsAxisVal <= -30) ||
+                /eje\s+(?:el[ée]ctrico\s+(?:de\s+)?)?qrs\s+(?:desviado\s+)?a\s+la\s+izquierda|ECG_LEFT_AXIS_DEVIATION/i.test(nodeAnomText);
+            const hasRightAxisInNode =
+                !hasLeftAxisInNode &&
+                ((qrsAxisVal !== null && qrsAxisVal > 90) ||
+                    /eje\s+(?:el[ée]ctrico\s+(?:de\s+)?)?qrs\s+(?:desviado\s+)?a\s+la\s+derecha|ECG_RIGHT_AXIS_DEVIATION/i.test(nodeAnomText));
+
+            if (hasLeftAxisInNode || hasRightAxisInNode) {
+                const dirWord = hasLeftAxisInNode ? 'izquierda' : 'derecha';
+                const axisClause = `eje eléctrico de QRS desviado a la ${dirWord}${qrsAxisVal !== null ? ` (${qrsAxisVal}°)` : ''}`;
+                if (qrsAxisVal !== null && new RegExp(`eje(?:\\s+el[ée]ctrico)?(?:\\s+de\\s+qrs)?(?:\\s+desviado)?\\s+a\\s+la\\s+${dirWord}(?!\\s*\\(?-?\\d+)`, 'iu').test(validSummary)) {
+                    validSummary = validSummary.replace(
+                        new RegExp(`eje(?:\\s+el[ée]ctrico)?(?:\\s+de\\s+qrs)?(?:\\s+desviado)?\\s+a\\s+la\\s+${dirWord}`, 'iu'),
+                        axisClause
+                    );
+                }
+                const summaryAlreadyHasAxis = qrsAxisVal !== null
+                    ? validSummary.includes(`${qrsAxisVal}°`)
+                    : new RegExp(`eje\\s+(?:el[ée]ctrico\\s+)?(?:de\\s+)?qrs\\s+(?:desviado\\s+)?a\\s+la\\s+${dirWord}`, 'iu').test(validSummary);
+
+                if (!summaryAlreadyHasAxis) {
+                    if (/Haz\s+de\s+His/i.test(validSummary)) {
+                        const needsQrsMs = qrsMsVal !== null && !new RegExp(`\\b${qrsMsVal}\\s*ms\\b`, 'i').test(validSummary);
+                        validSummary = validSummary.replace(
+                            /Haz\s+de\s+His/i,
+                            `Haz de His${needsQrsMs ? ` (QRS ${qrsMsVal} ms)` : ''} y ${axisClause}`
+                        );
+                    } else {
+                        const ecgExtraParts = [
+                            (ecgHrVal !== null && !new RegExp(`\\b${ecgHrVal}\\s*lpm\\b`, 'i').test(validSummary)) ? `FC ${ecgHrVal} lpm` : null,
+                            (hasCompleteRbbbInNode && !/rama\s+derecha/i.test(validSummary)) ? `bloqueo de la rama derecha del Haz de His${qrsMsVal !== null ? ` (QRS ${qrsMsVal} ms)` : ''}` : null,
+                            axisClause
+                        ].filter(Boolean);
+                        validSummary = `${validSummary.replace(/\.+$/, '')}. El trazo electrocardiográfico consigna ${joinSpanishList(ecgExtraParts)}.`;
+                    }
+                }
+            }
+
             const triad = resolvedContract.multimodalTriad || {};
             const missingTriadItems = [
                 (triad.hasCornealArcus && !/arco\s+corneal|limbar/i.test(validSummary)) ? 'arco corneal limbar (OD+OI)' : null,
@@ -4562,6 +4660,7 @@ ${nodesDigestText}`;
                     `${validSummary.replace(/\.+$/, '')}. Triangulación semiológica multimodal convergente: ${joinSpanishList(missingTriadItems)}.`
                 );
             }
+            validSummary = validSummary.replace(/\.\s*\.+/g, '.');
         }
         if (node.id === 'NODO_1_ASIMILACION') {
             const isSingleLingualScallopEubiosis =
@@ -5529,13 +5628,34 @@ function buildOrthomolecularPrescription(
         ? rawEnergyBiomarkers.filter((b) => !/^Dislipidemia\s+Aterog[ée]nica\s+y\s+Transporte\s+Lipoproteico:/i.test(b))
         : rawEnergyBiomarkers;
 
-    // EGM-76 Directiva 3.2: Vincular el racional objetivo de 34Plus® exclusivamente a sus blancos estructurales, colágenos, mucosos y microvasculares reales
-    // (ICC físico, cambios tróficos / estasis venosa en extremidades inferiores, soporte colágeno de pared inguinal postquirúrgica, mucosa/sueño), excluyendo TFGe KDIGO G2 y % leucocitarios relativos.
+    // EGM-76 Directiva 3.2 + EGM-77 Directiva 1: Vincular el racional objetivo de 34Plus® exclusivamente a sus blancos estructurales, colágenos, dérmicos, mucosos y microvasculares reales,
+    // deduplicando fotografías somáticas por región anatómica para jamás imprimir dos veces la misma captura (ej. Cara medial de la extremidad inferior distal).
     const buildTrueTissueBiomarkersFor34Plus = () => {
         const serumNodes = Array.isArray(serum?.nodes) ? serum.nodes : [];
         const list = [];
-        const addUnique = (str) => {
-            const fmt = formatMedicalBiomarkerSummary(str);
+        const seenSomaticRegions = new Set();
+        const extractSomaticRegionKey = (anom) => {
+            if (anom?.source !== 'SOMATIC_VISION') return '';
+            const lbl = String(anom?.label || '').trim();
+            const firstParen = lbl.indexOf('(');
+            const lastParen = lbl.lastIndexOf(')');
+            const rawReg = (firstParen !== -1 && lastParen > firstParen)
+                ? lbl.slice(firstParen + 1, lastParen)
+                : lbl;
+            return rawReg
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '')
+                .toLowerCase();
+        };
+        const addUnique = (str, anom = null) => {
+            if (anom?.source === 'SOMATIC_VISION') {
+                const regKey = extractSomaticRegionKey(anom);
+                if (regKey && seenSomaticRegions.has(regKey)) return;
+                if (regKey) seenSomaticRegions.add(regKey);
+            }
+            const fmt = formatMedicalBiomarkerSummary(str).replace(/\.\s*\.+/g, '.');
             if (fmt && !list.includes(fmt)) list.push(fmt);
         };
         const n7 = serumNodes.find((sn) => sn.id === 'NODO_7_ESTRUCTURAL');
@@ -5543,35 +5663,35 @@ function buildOrthomolecularPrescription(
         const n1 = serumNodes.find((sn) => sn.id === 'NODO_1_ASIMILACION');
         const n4 = serumNodes.find((sn) => sn.id === 'NODO_4_COMUNICACION');
 
-        // 1. Antropometría estructural / ICC físico y anomalías osteomusculares de Nodo 7
+        // 1. Antropometría estructural / ICC físico, integridad dérmica/colágeno y anomalías osteomusculares de Nodo 7
         (n7?.anomalies || []).forEach((a) => {
             if (a.source === 'CABINET_IMAGING') return; // se agrega en paso 3 para orden lógico
-            if (/relaci[óo]n\s+cintura[-\s]*cadera|\bicc\b|compo|articular|osteomuscular|vitamina\s*d|magnesio|masa\s+magra|sarcopenia/i.test(`${a.label} ${a.detail}`)) {
-                addUnique(`${a.label}: ${a.detail}`);
+            if (/relaci[óo]n\s+cintura[-\s]*cadera|\bicc\b|integridad\s+d[ée]rmica|trofismo\s+cut[áa]neo|compo|articular|osteomuscular|vitamina\s*d|magnesio|masa\s+magra|sarcopenia/i.test(`${a.label} ${a.detail}`)) {
+                addUnique(`${a.label}: ${a.detail}`, a);
             }
         });
         if (list.length === 0 && Number(serum?.vitalsSnapshot?.icc) >= (addr.isFemale ? 0.85 : 0.90)) {
             addUnique(`Relación Cintura-Cadera Física [ICC]: ${serum.vitalsSnapshot.icc} (demanda de remodelación miofascial abdominal y sostén estructural)`);
         }
 
-        // 2. Cambios tróficos cutáneos / estasis venosa distal en extremidades inferiores (matriz colágena vascular y dérmica)
+        // 2. Cambios tróficos cutáneos / estasis venosa distal en extremidades inferiores (solo regiones fotográficas no listadas ya en el paso 1)
         (n5?.anomalies || []).forEach((a) => {
             if (a.source === 'SOMATIC_VISION' && /estasis\s+venosa|hemosider|extremidad|tr[óo]fic/i.test(`${a.label} ${a.detail}`)) {
-                addUnique(`${a.label}: ${a.detail}`);
+                addUnique(`${a.label}: ${a.detail}`, a);
             }
         });
 
         // 3. Gabinete estructural (ej. Ultrasonido Doppler de pared inguinal postquirúrgica / osteoarticular)
         (n7?.anomalies || []).forEach((a) => {
             if (String(a.source || '').startsWith('CABINET_')) {
-                addUnique(`${a.label}: ${a.detail}`);
+                addUnique(`${a.label}: ${a.detail}`, a);
             }
         });
 
         // 4. Respaldo mucoso prebiótico (Nodo 1) o neurovegetativo de descanso (Nodo 4) si aún faltan blancos tisulares
         if (list.length < 2) {
-            (n1?.anomalies || []).slice(0, 2).forEach((a) => addUnique(`${a.label}: ${a.detail}`));
-            (n4?.anomalies || []).slice(0, 2).forEach((a) => addUnique(`${a.label}: ${a.detail}`));
+            (n1?.anomalies || []).slice(0, 2).forEach((a) => addUnique(`${a.label}: ${a.detail}`, a));
+            (n4?.anomalies || []).slice(0, 2).forEach((a) => addUnique(`${a.label}: ${a.detail}`, a));
         }
         return list;
     };
@@ -6275,13 +6395,16 @@ function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
         return 'equilibrio hormonal cíclico';
     }
     if (/hiperplasia\s+[óo]sea|densidad\s+mineral|osteoporosis|osteocalcina|calcificaci[óo]n|cervical|lumbar|fosfatasa|[óo]se[ao]|hueso|crecimiento\s+[óo]seo/i.test(base)) {
-        return 'firmeza mineral de huesos y columna';
+        return systemId === 'descanso_defensas' ? '' : 'firmeza mineral de huesos y columna';
     }
     if (/reumatismo|articular|articulaci|ligamento|cart[íi]lago/i.test(base)) {
-        return 'confort y movilidad articular';
+        return systemId === 'descanso_defensas' ? '' : 'confort y movilidad articular';
+    }
+    if (systemId === 'descanso_defensas' && /reactividad\s+cut[áa]nea|inmunidad\s+cut[áa]nea|reparaci[óo]n\s+epitelial|antioxidante\s+d[ée]rmic|sensibilidad\s+cut[áa]nea|dermatitis|eccema|eczema|urticaria|histam[íi]n/i.test(base)) {
+        return 'equilibrio de defensas epiteliales y respuesta antioxidante';
     }
     if (/col[áa]geno|piel|cut[áa]ne|cabello|tejido|muscular|m[úu]sculo/i.test(base)) {
-        return 'reservas de colágeno en articulaciones, piel y tejidos';
+        return systemId === 'descanso_defensas' ? '' : 'reservas de colágeno en articulaciones, piel y tejidos';
     }
     if (/grasa\s+en\s+el\s+h[íi]gado|h[íi]gado|hep[áa]tic|ves[íi]cula|biliar|bilirrubina|\bglobulina\b|desintoxicaci[óo]n|energ[íi]a\s+del\s+h[íi]gado/i.test(base)) {
         return 'procesamiento de grasas y limpieza en hígado';
@@ -6525,9 +6648,15 @@ function buildPatientFriendlyGuide({
 
     const sampleBalancedFriendlyTopics = (sourceNodes, systemId) => {
         const filterSemanticAffinity = (arr) => {
-            if (systemId === 'descanso_defensas' && hasCirculatoryOrStructuralVenous) {
-                const withoutVenous = arr.filter((t) => !/retorno\s+venoso\s+en\s+piernas|microcirculaci[óo]n\s+cut[áa]nea|estasis\s+venosa/i.test(t));
-                if (withoutVenous.length > 0) return withoutVenous;
+            if (systemId === 'descanso_defensas') {
+                const withoutStructuralOrVenous = arr.filter((t) => {
+                    if (/col[áa]geno|articulaci|articular|\bhuesos?\b|[óo]se[ao]|sost[ée]n\s+osteomuscular/i.test(t)) return false;
+                    if (hasCirculatoryOrStructuralVenous && /retorno\s+venoso\s+en\s+piernas|microcirculaci[óo]n\s+cut[áa]nea|estasis\s+venosa/i.test(t)) return false;
+                    return true;
+                });
+                return withoutStructuralOrVenous.length > 0
+                    ? withoutStructuralOrVenous
+                    : ['reservas de vitaminas, minerales y equilibrio inmunológico'];
             }
             return arr;
         };
@@ -7515,7 +7644,7 @@ const synthesizeDossier = async (req, res) => {
                     metabolicAge: metabolicAgeStudy?.metabolicAgeExact ?? null
                 }))
                 .digest('hex'),
-            ssot_contract_version: "3.6.0-Medical-Grade-Gold",
+            ssot_contract_version: "3.6.1-Platinum-SSoTT",
             status: "SYNTHESIZED_READY_FOR_REVIEW"
         };
 
@@ -7717,7 +7846,7 @@ const approveDossier = async (req, res) => {
                     status: 'approved'
                 }))
                 .digest('hex'),
-            ssot_contract_version: "3.6.0-Medical-Grade-Gold",
+            ssot_contract_version: "3.6.1-Platinum-SSoTT",
             status: "approved"
         };
 

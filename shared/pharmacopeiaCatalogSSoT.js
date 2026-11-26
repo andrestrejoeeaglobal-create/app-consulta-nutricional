@@ -404,12 +404,12 @@ function formatSingleActiveStoichiometry(act, factor = 1, includeCodes = true) {
         const eqVal = formatCleanNumberEs(act.equivNumeric * factor);
         const eqPrefix = act.equivPrefix !== undefined ? act.equivPrefix : '~';
         const eqLabel = act.equivLabel ? ` ${act.equivLabel}` : '';
-        let secBracket = '';
+        let secPart = '';
         if (Number.isFinite(act.secondaryEquivNumeric) && act.secondaryEquivUnit) {
             const secVal = formatCleanNumberEs(act.secondaryEquivNumeric * factor);
-            secBracket = ` [${secVal} ${act.secondaryEquivUnit}]`;
+            secPart = ` / ${secVal} ${act.secondaryEquivUnit}`;
         }
-        inner += ` • ${eqPrefix}${eqVal} ${act.equivUnit}${eqLabel}${secBracket}`;
+        inner += ` • ${eqPrefix}${eqVal} ${act.equivUnit}${eqLabel}${secPart}`;
     } else if (act.staticNote) {
         inner += ` • ${act.staticNote}`;
     }

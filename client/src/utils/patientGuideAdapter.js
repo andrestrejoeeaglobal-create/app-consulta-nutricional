@@ -64,6 +64,8 @@ export function sanitizeSupplementPosologyLexiconEgm74(rawText = '') {
             .replace(/ANORMAL\s+MODERADO\s*(?:(\(\+\+\))|(\[\+\+\]))?/giu, (_, p1, b1) => `Alerta Moderada ${b1 || p1 || '[++]'}`)
             .replace(/ANORMAL\s+LEVE\s*(?:(\(\+\))|(\[\+\]))?/giu, (_, p1, b1) => `Desviación Leve ${b1 || p1 || '[+]'}`)
             .replace(/(?:Bioseñal\s+orientativa\s+de\s+)?Hueso\s+Reumatoide/giu, 'Balance Articular Biofísico')
+            .replace(/\[\s*\[([^\[\]]+)\]\s*\]/g, '[$1]')
+            .replace(/\.\s*\.+/g, '.')
     );
 }
 
@@ -1186,13 +1188,16 @@ export function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
         return 'equilibrio hormonal cíclico';
     }
     if (/hiperplasia\s+[óo]sea|densidad\s+mineral|osteoporosis|osteocalcina|calcificaci[óo]n|cervical|lumbar|fosfatasa|[óo]se[ao]|hueso|crecimiento\s+[óo]seo/i.test(base)) {
-        return 'firmeza mineral de huesos y columna';
+        return systemId === 'descanso_defensas' ? '' : 'firmeza mineral de huesos y columna';
     }
     if (/reumatismo|articular|articulaci|ligamento|cart[íi]lago/i.test(base)) {
-        return 'confort y movilidad articular';
+        return systemId === 'descanso_defensas' ? '' : 'confort y movilidad articular';
+    }
+    if (systemId === 'descanso_defensas' && /reactividad\s+cut[áa]nea|inmunidad\s+cut[áa]nea|reparaci[óo]n\s+epitelial|antioxidante\s+d[ée]rmic|sensibilidad\s+cut[áa]nea|dermatitis|eccema|eczema|urticaria|histam[íi]n/i.test(base)) {
+        return 'equilibrio de defensas epiteliales y respuesta antioxidante';
     }
     if (/col[áa]geno|piel|cut[áa]ne|cabello|tejido|muscular|m[úu]sculo/i.test(base)) {
-        return 'reservas de colágeno en articulaciones, piel y tejidos';
+        return systemId === 'descanso_defensas' ? '' : 'reservas de colágeno en articulaciones, piel y tejidos';
     }
     if (/grasa\s+en\s+el\s+h[íi]gado|h[íi]gado|hep[áa]tic|ves[íi]cula|biliar|bilirrubina|\bglobulina\b|desintoxicaci[óo]n|energ[íi]a\s+del\s+h[íi]gado/i.test(base)) {
         return 'procesamiento de grasas y limpieza en hígado';
@@ -1545,9 +1550,15 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     })();
 
     const filterSemanticAffinityClient = (sysId, arr) => {
-        if (sysId === 'descanso_defensas' && hasClientCirculatoryOrStructuralVenous) {
-            const withoutVenous = arr.filter((t) => !/retorno\s+venoso\s+en\s+piernas|microcirculaci[óo]n\s+cut[áa]nea|estasis\s+venosa/i.test(t));
-            if (withoutVenous.length > 0) return withoutVenous;
+        if (sysId === 'descanso_defensas') {
+            const withoutStructuralOrVenous = arr.filter((t) => {
+                if (/col[áa]geno|articulaci|articular|\bhuesos?\b|[óo]se[ao]|sost[ée]n\s+osteomuscular/i.test(t)) return false;
+                if (hasClientCirculatoryOrStructuralVenous && /retorno\s+venoso\s+en\s+piernas|microcirculaci[óo]n\s+cut[áa]nea|estasis\s+venosa/i.test(t)) return false;
+                return true;
+            });
+            return withoutStructuralOrVenous.length > 0
+                ? withoutStructuralOrVenous
+                : ['reservas de vitaminas, minerales y equilibrio inmunológico'];
         }
         return arr;
     };
@@ -2091,8 +2102,13 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             const finalHighlights = safeHighlights.length > 0
                 ? safeHighlights
                 : sampleBalancedFriendlyTopicsForSystem(sys.id, true);
-            if (sys.id === 'descanso_defensas' && hasClientCirculatoryOrStructuralVenous && /retorno\s+venoso\s+en\s+piernas|microcirculaci[óo]n\s+cut[áa]nea/i.test(rawObs) && finalHighlights.length > 0) {
-                rawObs = rawObs.replace(/\([^()]*retorno\s+venoso\s+en\s+piernas[^()]*\)/giu, `(${finalHighlights.join(', ')})`);
+            if (
+                sys.id === 'descanso_defensas' &&
+                finalHighlights.length > 0 &&
+                (/col[áa]geno\s+en\s+articulaciones|confort\s+y\s+movilidad\s+articular|firmeza\s+mineral\s+de\s+huesos/i.test(rawObs) ||
+                    (hasClientCirculatoryOrStructuralVenous && /retorno\s+venoso\s+en\s+piernas|microcirculaci[óo]n\s+cut[áa]nea/i.test(rawObs)))
+            ) {
+                rawObs = rawObs.replace(/\([^()]*(?:retorno\s+venoso\s+en\s+piernas|col[áa]geno\s+en\s+articulaciones|confort\s+y\s+movilidad\s+articular|firmeza\s+mineral\s+de\s+huesos)[^()]*\)/giu, `(${finalHighlights.join(', ')})`);
             }
             const countVal = Number(sys.findingsCount) || (bucketsBySystem[sys.id] || []).length;
             const calibratedSev = resolveClientSystemSeverity(sys.id, countVal, sys);

@@ -1059,13 +1059,19 @@ export const TabDiagnosis = ({
                                             <span>{uiLabels.scheduleCardTitle || 'Cómo integrarlo a su rutina diaria (adaptado a su hora real de despertar)'}</span>
                                         </h4>
                                         <span className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200/80 dark:border-slate-800">
-                                            {isRedSemaphore
+                                            {isRedSemaphore || semaphore.modeCode === 'PAUSA_DUAL_INTERACCION_FARMACOLOGICA'
                                                 ? '0 sobres activos (Pausa Preventiva)'
-                                                : patientGuide?.biosecuritySemaphore?.isEstablishedContinuityFullDose
-                                                    ? 'Continuidad Calibrada (1 a 2 sobres completos/día)'
-                                                    : isYellowSemaphore
-                                                        ? 'Titulación Gradual (1/2 sobre por toma)'
-                                                        : 'Esquema Completo Sincronizado'}
+                                                : (semaphore.isCardioprotective1Plus2Continuity || semaphore.modeCode === 'PAUTA_OPTIMA_CARDIOPROTECTORA_SOBRE_COMPLETO')
+                                                    ? 'Pauta Cardioprotectora (3 sobres completos/día • 1 + 2)'
+                                                    : (semaphore.isSelective33Paused || semaphore.modeCode === 'PAUSA_SELECTIVA_33PLUS_SALICILATOS_ANTICOAG')
+                                                        ? 'Pausa Selectiva 33Plus® • 34Plus® Activo'
+                                                        : (semaphore.isSelective34Paused || String(semaphore.modeCode || '').startsWith('PAUSA_SELECTIVA_34PLUS'))
+                                                            ? '33Plus® Activo • Pausa Selectiva 34Plus®'
+                                                            : (semaphore.isEstablishedContinuityFullDose || semaphore.modeCode === 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA')
+                                                                ? 'Continuidad Calibrada (1 a 2 sobres completos/día)'
+                                                                : isYellowSemaphore
+                                                                    ? 'Titulación Gradual (1/2 sobre por toma)'
+                                                                    : 'Esquema Completo Sincronizado'}
                                         </span>
                                     </div>
 
@@ -1516,7 +1522,7 @@ export const TabDiagnosis = ({
                                                 description: `Auditoría comparativa de evolución clínica al cierre del ciclo de 28 días (${targetKcalVal} kcal/día).`
                                             }
                                         ]
-                                        : isYellowSemaphore
+                                        : (isYellowSemaphore && !semaphore.isCardioprotective1Plus2Continuity && !semaphore.isEstablishedContinuityFullDose && semaphore.modeCode !== 'PAUTA_OPTIMA_CARDIOPROTECTORA_SOBRE_COMPLETO' && semaphore.modeCode !== 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA')
                                             ? [
                                                 {
                                                     phase: 1,
