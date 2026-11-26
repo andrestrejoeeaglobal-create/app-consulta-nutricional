@@ -676,7 +676,7 @@ export const TabDiagnosis = ({
                                             {semaphore.badgeLabel || (isRedSemaphore
                                                 ? 'Prioridad Médica • Pausa Preventiva'
                                                 : isYellowSemaphore
-                                                    ? 'Inicio Gradual Preventivo • Micro-Dosis Calibrada'
+                                                    ? 'Inicio Gradual Preventivo • Fracción Inicial Gradual'
                                                     : 'Vía Libre Biosegura • Protocolo Completo')}
                                         </span>
                                     </span>
@@ -1522,7 +1522,7 @@ export const TabDiagnosis = ({
                                                     phase: 1,
                                                     rangeLabel: 'Días 1 a 7',
                                                     weekLabel: 'Semana 1',
-                                                    title: 'Adaptación Mucosa y Micro-Dosis Calibrada',
+                                                    title: 'Adaptación Mucosa y Fracción Inicial Gradual',
                                                     description: `Sellado epitelial digestivo (0 Picante, 0 Cerdo, 0 Azúcares), hidratación medida (${targetWaterVal} L/día) e inicio gradual con 1/2 sobre (5.3 g) matutino de 33Plus® en 300 ml de agua natural y 1/2 sobre (5.7 g) nocturno de 34Plus® en mínimo 500 ml de agua simple 💧.`
                                                 },
                                                 {

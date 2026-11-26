@@ -1,6 +1,13 @@
 /**
- * Espejo ESM para Cliente Vite (aislado dentro de client/src para compatibilidad estricta Vite fs.allow)
- * sincronizado 1:1 con shared/pharmacopeiaCatalogSSoT.js — Equipo en Acción® SSoTT v3.2.0 (EGM-49).
+ * Catálogo Farmacopeico SSoTT Inmutable — Equipo en Acción® (Constitución v2.0.5 / NOM-043 / COFEPRIS)
+ * Fuente Única de Verdad para estequiometría oficial de planta, códigos maestros de materia prima (MP),
+ * escalamiento matemático proporcional por fracción de dosis (doseFactor) y separación estricta de activos.
+ *
+ * REGLAS INMUTABLES (EGM-49):
+ * 1. Cero SKUs ficticios en inventario (prohibido inventar "Variante Libre de Estimulantes" o citar "NOM-028").
+ * 2. 33Plus® (#B70E0C): Sobre oficial 10.6 g (1/2 sobre = 5.3 g) en 300 ml de agua natural. Incluye complejo botánico energético natural. CERO L-Teanina.
+ * 3. 34Plus® (#3AAA35): Sobre oficial 11.3645 g [11.4 g comercial] (1/2 sobre = 5.7 g [5.68 g]) en MÍNIMO 500 ml de agua simple. Incluye L-Teanina MP123.
+ * 4. Cero ampersand ('&'); uso exclusivo de conjunción española ('y').
  */
 
 function formatCleanNumberEs(num) {
@@ -11,7 +18,7 @@ function formatCleanNumberEs(num) {
     return decPart ? `${intWithComma}.${decPart}` : intWithComma;
 }
 
-export const FORMULA_33PLUS = Object.freeze({
+const FORMULA_33PLUS = Object.freeze({
     code: '33PLUS',
     id: 'sup_33plus',
     brandTitle: '33Plus®',
@@ -27,12 +34,12 @@ export const FORMULA_33PLUS = Object.freeze({
     containsNaturalBotanicalXanthines: true,
     forbiddenActives: Object.freeze(['L-Teanina', 'MP123']),
     heroActives: Object.freeze([
-        Object.freeze({ code: 'MP026', name: 'L-Taurina', amountNumeric: 500, unit: 'mg' }),
-        Object.freeze({ code: 'MP080', name: 'L-Carnitina', amountNumeric: 500, unit: 'mg' }),
-        Object.freeze({ code: 'MP104', name: 'Coenzima Q10', amountNumeric: 31.25, unit: 'mg' }),
-        Object.freeze({ code: 'MP040', name: 'Semilla de Uva 95 %', amountNumeric: 18.75, unit: 'mg' }),
-        Object.freeze({ code: 'MP048', name: 'Vitamina C', amountNumeric: 1000, unit: 'mg' }),
-        Object.freeze({ code: 'MP078', name: 'Picolinato de Cromo', amountNumeric: 188, unit: 'mcg' })
+        Object.freeze({ code: 'MP026', name: 'L-Taurina', amountNumeric: 500, unit: 'mg', role: 'Modulación osmorreguladora y contráctil cardiometabólica' }),
+        Object.freeze({ code: 'MP080', name: 'L-Carnitina', amountNumeric: 500, unit: 'mg', role: 'Transporte mitocondrial de ácidos grasos y beta-oxidación limpia' }),
+        Object.freeze({ code: 'MP104', name: 'Coenzima Q10', amountNumeric: 31.25, unit: 'mg', role: 'Cadena respiratoria mitocondrial y protección antioxidante endotelial' }),
+        Object.freeze({ code: 'MP040', name: 'Semilla de Uva 95 %', fullName: 'Extracto de Semilla de Uva (95 % proantocianidinas)', amountNumeric: 18.75, unit: 'mg', role: 'Protección frente a peroxidación de partículas LDL y fluidez microvascular' }),
+        Object.freeze({ code: 'MP048', name: 'Vitamina C', amountNumeric: 1000, unit: 'mg', role: 'Cofactor endotelial de óxido nítrico y defensa antioxidante plasmática' }),
+        Object.freeze({ code: 'MP078', name: 'Picolinato de Cromo', amountNumeric: 188, unit: 'mcg', role: 'Sensibilidad del receptor metabólico y estabilidad energética diurna' })
     ]),
     botanicalComplexNote: 'complejo botánico energético natural estandarizado',
     dosageByMode: Object.freeze({
@@ -40,12 +47,12 @@ export const FORMULA_33PLUS = Object.freeze({
         PAUSED_MEDICAL: '0 sobres activos por ahora (en pausa preventiva hasta autorización médica)',
         PAUSED_SELECTIVE_33: '0 sobres activos de 33Plus® (pausa selectiva de bioseguridad por interacción simpaticomimética / etapa fisiológica)',
         MICRO_DOSE: 'Inicio gradual (Días 1–7): 1/2 sobre (5.3 g) al despertar en ayunas disuelto en 300 ml de agua natural (corte estricto antes de las 14:00 h)',
-        RECALIBRATION_DOSE: 'Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (5.3 g) al despertar en ayunas disuelto en 300 ml de agua natural (corte estricto antes de las 14:00 h)',
+        RECALIBRATION_DOSE: 'Ajuste preventivo de toma (Días 1–7): 1/2 sobre (5.3 g) al despertar en ayunas disuelto en 300 ml de agua natural (corte estricto antes de las 14:00 h)',
         STANDARD_DOSE: '2 tomas matutinas: 1 sobre (10.6 g) al despertar en ayunas y 1 sobre (10.6 g) a media mañana, cada uno en 300 ml de agua natural (antes de las 14:00 h)'
     })
 });
 
-export const FORMULA_34PLUS = Object.freeze({
+const FORMULA_34PLUS = Object.freeze({
     code: '34PLUS',
     id: 'sup_34plus',
     brandTitle: '34Plus®',
@@ -59,25 +66,29 @@ export const FORMULA_34PLUS = Object.freeze({
     waterMedium: 'agua simple',
     containsNaturalBotanicalXanthines: false,
     heroActives: Object.freeze([
-        Object.freeze({ code: 'MP009', name: 'Colágeno Hidrolizado', amountNumeric: 500, unit: 'mg' }),
-        Object.freeze({ code: 'MP123', name: 'L-Teanina', amountNumeric: 9.375, unit: 'mg' }),
-        Object.freeze({ code: 'MP023', name: 'L-Glicina', amountNumeric: 200, unit: 'mg' }),
-        Object.freeze({ code: 'MP020', name: 'FOS-Inulina Prebiótica', amountNumeric: 400, unit: 'mg' }),
-        Object.freeze({ code: 'MP012', name: 'Citrato de Magnesio', amountNumeric: 400, unit: 'mg' }),
-        Object.freeze({ code: 'MP048', name: 'Vitamina C', amountNumeric: 156.25, unit: 'mg' }),
-        Object.freeze({ code: 'MP172', name: 'Vitamina K2 MK-7', amountNumeric: 1, unit: 'mg' }),
-        Object.freeze({ code: 'MP171', name: 'Zinc Optizinc', amountNumeric: 18.75, unit: 'mg' })
+        Object.freeze({ code: 'MP009', name: 'Colágeno Hidrolizado', amountNumeric: 500, unit: 'mg', role: 'Sustrato peptídico para matriz extracelular vascular, dérmica y articular' }),
+        Object.freeze({ code: 'MP123', name: 'L-Teanina', amountNumeric: 9.375, unit: 'mg', role: 'Modulación neurovegetativa vespertina/nocturna y transición a ondas alfa de descanso' }),
+        Object.freeze({ code: 'MP023', name: 'L-Glicina', amountNumeric: 200, unit: 'mg', role: 'Síntesis de colágeno, conjugación biliar Fase II y arquitectura del sueño profundo' }),
+        Object.freeze({ code: 'MP020', name: 'FOS-Inulina Prebiótica', amountNumeric: 400, unit: 'mg', role: 'Nutrición selectiva de microbiota colónica y captación entérica de lípidos y esteroles' }),
+        Object.freeze({ code: 'MP012', name: 'Citrato de Magnesio', amountNumeric: 400, unit: 'mg', role: 'Relajación neuromuscular, conducción eléctrica cardiaca y equilibrio mineral' }),
+        Object.freeze({ code: 'MP048', name: 'Vitamina C', amountNumeric: 156.25, unit: 'mg', role: 'Hidroxilación nocturna de prolina y lisina en fibras de colágeno' }),
+        Object.freeze({ code: 'MP172', name: 'Vitamina K2 MK-7', amountNumeric: 1, unit: 'mg', role: 'Activación de matriz Gla para fijación ósea de calcio y protección arterial' }),
+        Object.freeze({ code: 'MP171', name: 'Zinc Optizinc', amountNumeric: 18.75, unit: 'mg', role: 'Sellado de uniones estrechas epiteliales e inmunomodulación mucosa' })
     ]),
     dosageByMode: Object.freeze({
         PAUSED_PEDIATRIC: '0 sobres activos (etapa exclusiva de lactancia y pediatría)',
         PAUSED_MEDICAL: '0 sobres activos por ahora (en pausa preventiva hasta autorización médica)',
         MICRO_DOSE: 'Inicio gradual (Días 1–7): 1/2 sobre (5.7 g) 30 a 60 min antes de dormir disuelto en MÍNIMO 500 ml de agua simple 💧',
-        RECALIBRATION_DOSE: 'Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (5.7 g) 30 a 60 min antes de dormir disuelto en MÍNIMO 500 ml de agua simple 💧',
+        RECALIBRATION_DOSE: 'Ajuste preventivo de toma (Días 1–7): 1/2 sobre (5.7 g) 30 a 60 min antes de dormir disuelto en MÍNIMO 500 ml de agua simple 💧',
         STANDARD_DOSE: '2 tomas vespertinas/nocturnas: 1 sobre (11.4 g) a media tarde y 1 sobre (11.4 g) 30 a 60 min antes de dormir, cada uno en MÍNIMO 500 ml de agua simple 💧'
     })
 });
 
-export function formatScaledActives(productKey, doseFactor = 1, options = {}) {
+/**
+ * Calcula estequiométricamente los miligramos/microgramos exactos aportados por la fracción de dosis prescrita
+ * con doble claridad regulatoria (aporte neto prescrito + referencia explícita al sobre unitario oficial COFEPRIS).
+ */
+function formatScaledActives(productKey, doseFactor = 1, options = {}) {
     try {
         const key = String(productKey || '').toUpperCase();
         const formula = key.includes('33') ? FORMULA_33PLUS : FORMULA_34PLUS;
@@ -128,12 +139,12 @@ export function formatScaledActives(productKey, doseFactor = 1, options = {}) {
             : formula.sachetGramsDisplay;
 
         const clinicalHeaderName = factor === 0.5
-            ? `${formula.brandTitle} (Micro-Dosis ${fractionLabel} • 50 % del sobre oficial de ${exactSachetRef}) — Aporte neto prescrito: ${activesInline}`
+            ? `${formula.brandTitle} (Fracción Inicial Gradual ${fractionLabel} • 50 % del sobre oficial de ${exactSachetRef}) — Aporte neto diario sugerido: ${activesInline}`
             : factor === 2
-                ? `${formula.brandTitle} (Protocolo Completo ${fractionLabel} • 200 % diario respecto al sobre unitario de ${exactSachetRef}) — Aporte neto diario: ${activesInline}`
-                : `${formula.brandTitle} (Dosis ${fractionLabel} • ${pctOfSingleSachet} % respecto al sobre oficial de ${exactSachetRef}) — Aporte neto prescrito: ${activesInline}`;
+                ? `${formula.brandTitle} (Pauta de Sobre Completo ${fractionLabel} • 200 % diario respecto al sobre unitario de ${exactSachetRef}) — Aporte neto diario sugerido: ${activesInline}`
+                : `${formula.brandTitle} (Pauta ${fractionLabel} • ${pctOfSingleSachet} % respecto al sobre oficial de ${exactSachetRef}) — Aporte neto diario sugerido: ${activesInline}`;
 
-        const regulatorySummary = `Aporte neto en la dosis prescrita (${fractionLabel}; ${pctOfSingleSachet} % respecto al sobre unitario oficial de ${exactSachetRef}): ${activesInline}`;
+        const regulatorySummary = `Aporte neto en la pauta nutricional sugerida (${fractionLabel}; ${pctOfSingleSachet} % respecto al sobre unitario oficial de ${exactSachetRef}): ${activesInline}`;
 
         return {
             doseFactor: factor,
@@ -158,10 +169,17 @@ export function formatScaledActives(productKey, doseFactor = 1, options = {}) {
     }
 }
 
-export const PHARMACOPEIA_CATALOG_SSOT = Object.freeze({
+const PHARMACOPEIA_CATALOG_SSOT = Object.freeze({
     version: '3.3.0-EGM51-SSoTT',
     formulas: Object.freeze({
         FORMULA_33PLUS,
         FORMULA_34PLUS
     })
 });
+
+export {
+    PHARMACOPEIA_CATALOG_SSOT,
+    FORMULA_33PLUS,
+    FORMULA_34PLUS,
+    formatScaledActives
+};

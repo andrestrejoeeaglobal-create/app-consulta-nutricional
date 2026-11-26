@@ -8,7 +8,8 @@ import {
   resolveElectretInformativeAnnex,
   sanitizeBioelectricScreeningLabel,
   sanitizeArt215NonTherapeuticLexicon,
-  sanitizeSupplementPosologyLexiconEgm74
+  sanitizeSupplementPosologyLexiconEgm74,
+  flattenNestedParenthesesToBrackets
 } from './patientGuideAdapter.js';
 import { FORMULA_33PLUS, FORMULA_34PLUS } from './pharmacopeiaCatalogSSoT.js';
 
@@ -393,7 +394,9 @@ export const formatPlanForClipboard = function (options) {
     text += `✨ Equipo en Acción® y Ecosistema T.I.L.O. (Visión 2030 • Expediente NOM-004)\n`;
     text += `==================================================\n`;
 
-    return sanitizeArt215NonTherapeuticLexicon(text.replace(/\s*&\s*/g, ' y ')).trim();
+    return flattenNestedParenthesesToBrackets(
+      sanitizeSupplementPosologyLexiconEgm74(text.replace(/\s*&\s*/g, ' y '))
+    ).trim();
   }
 
   // --- VISTA MÉDICA (NOM-004 — SSoTT v3.2) ---
@@ -616,13 +619,13 @@ export const formatPlanForClipboard = function (options) {
         ? 'Estabilización Inicial y Pausa Preventiva de Suplementación'
         : isSel33Paused
           ? 'Pausa Selectiva de 33Plus® y Reparación Nocturna Gradual con 34Plus®'
-          : (sem?.isMicroDose ? 'Adaptación Mucosa y Micro-Dosis Calibrada' : 'Sincronización Circadiana y Sellado de Barrera Mucosa'),
+          : (sem?.isMicroDose ? 'Adaptación Mucosa y Fracción Inicial Gradual' : 'Sincronización Circadiana y Sellado de Barrera Mucosa'),
       description: sem?.isPaused
         ? `Alimentación antiinflamatoria (${bio?.targetKcal || 2000} kcal/día), hidratación (${hydrationMedicalText}) y estudios de control (0 sobres activos).`
         : isSel33Paused
-          ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationMedicalText}), 0 sobres activos de 33Plus® (pausa selectiva) y micro-dosis de 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
+          ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationMedicalText}), 0 sobres activos de 33Plus® (pausa selectiva) y fracción inicial gradual de 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
           : (sem?.isMicroDose
-            ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationMedicalText}) y micro-dosis de 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® matutino y 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
+            ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationMedicalText}) y fracción inicial gradual de 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® matutino y 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
             : `Integración alimentaria (${bio?.targetKcal || 2000} kcal/día), hidratación (${hydrationMedicalText}) y protocolo completo de 33Plus® y 34Plus®.`)
     },
     {
@@ -685,7 +688,9 @@ export const formatPlanForClipboard = function (options) {
   }
   text += `\n==================================================\n`;
 
-  return sanitizeArt215NonTherapeuticLexicon(text.replace(/\s*&\s*/g, ' y ')).trim();
+  return flattenNestedParenthesesToBrackets(
+    sanitizeSupplementPosologyLexiconEgm74(text.replace(/\s*&\s*/g, ' y '))
+  ).trim();
 };
 
 /**

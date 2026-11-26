@@ -20,12 +20,45 @@ import {
 
 export { enforcePatientGenderConcordance, sanitizeBioelectricScreeningLabel, sanitizeArt215NonTherapeuticLexicon };
 
+export function flattenNestedParenthesesToBrackets(rawText = '') {
+    const str = String(rawText || '');
+    if (!str || !str.includes('(')) return str;
+    let out = '';
+    let depth = 0;
+    for (let i = 0; i < str.length; i++) {
+        const ch = str[i];
+        if (ch === '(') {
+            out += depth === 0 ? '(' : '[';
+            depth++;
+        } else if (ch === ')') {
+            if (depth > 1) {
+                depth--;
+                out += ']';
+            } else if (depth === 1) {
+                depth = 0;
+                out += ')';
+            } else {
+                out += ')';
+            }
+        } else {
+            out += ch;
+        }
+    }
+    return out;
+}
+
 export function sanitizeSupplementPosologyLexiconEgm74(rawText = '') {
-    return String(rawText || '')
-        .replace(/Aporte\s+neto\s+en\s+la\s+dosis\s+prescrita\s*\(/giu, 'Aporte neto en la pauta nutricional sugerida (')
-        .replace(/Aporte\s+neto\s+prescrito\b/giu, 'Aporte neto diario sugerido')
-        .replace(/—\s*Aporte\s+neto\s+diario:/giu, '— Aporte neto diario sugerido:')
-        .replace(/\bdosis\s+prescrita\b(?!\s+por\s+su\s+(?:m[ée]dico|especialista|cardi[óo]logo|nefr[óo]logo|endocrin[óo]logo|pediatra|obstetra))/giu, 'pauta nutricional sugerida');
+    return sanitizeArt215NonTherapeuticLexicon(
+        String(rawText || '')
+            .replace(/Aporte\s+neto\s+en\s+la\s+dosis\s+prescrita\s*\(/giu, 'Aporte neto en la pauta nutricional sugerida (')
+            .replace(/Aporte\s+neto\s+prescrito\b/giu, 'Aporte neto diario sugerido')
+            .replace(/—\s*Aporte\s+neto\s+diario:/giu, '— Aporte neto diario sugerido:')
+            .replace(/\bdosis\s+prescrita\b(?!\s+por\s+su\s+(?:m[ée]dico|especialista|cardi[óo]logo|nefr[óo]logo|endocrin[óo]logo|pediatra|obstetra))/giu, 'pauta nutricional sugerida')
+            .replace(/pechuga\s+de\s+pollo\s+o\s+pavo\s+o\s+huevo/giu, 'aves magras (pollo o pavo) o huevo')
+            .replace(/ya\s+le\s+ganan\s+-([0-9.]+)\s+años\s+de\s+vitalidad\s+celular/giu, 'ya restan $1 años a su edad biológica')
+            .replace(/le\s+retienen\s+\+([0-9.]+)\s+años/giu, 'le suman +$1 años retenidos')
+            .replace(/\(\s*Alimentaci[óo]n\s+Mediterr[áa]nea\s+Cardioprotectora\s+Antiinflamatoria\s+\(Rica\s+en\s+([ÁA]cidos\s+Grasos\s+Monoinsaturados\s+y\s+Fibra\s+Soluble)\)\s*\)/giu, '(Alimentación Mediterránea Cardioprotectora Antiinflamatoria — Rica en $1)')
+    );
 }
 
 export function resolveElectretInformativeAnnex(patientData = {}) {
@@ -1494,7 +1527,21 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         return out;
     };
 
-    const sampleBalancedFriendlyTopicsForSystem = (sysId) => {
+    const usedClientTopicsGlobal = new Set();
+    const hasClientCirculatoryOrStructuralVenous = (() => {
+        const blob = [...(bucketsByNode.NODO_5_TRANSPORTE || []), ...(bucketsByNode.NODO_7_ESTRUCTURAL || [])].join(' | ');
+        return /venos|hemosider|estasis|extremidad|pierna|varic/i.test(blob);
+    })();
+
+    const filterSemanticAffinityClient = (sysId, arr) => {
+        if (sysId === 'descanso_defensas' && hasClientCirculatoryOrStructuralVenous) {
+            const withoutVenous = arr.filter((t) => !/retorno\s+venoso\s+en\s+piernas|microcirculaci[óo]n\s+cut[áa]nea|estasis\s+venosa/i.test(t));
+            if (withoutVenous.length > 0) return withoutVenous;
+        }
+        return arr;
+    };
+
+    const sampleBalancedFriendlyTopicsForSystem = (sysId, registerInGlobal = false) => {
         const nodePairs = {
             circulacion_energia: ['NODO_5_TRANSPORTE', 'NODO_3_ENERGIA'],
             digestion_absorcion: ['NODO_1_ASIMILACION'],
@@ -1504,23 +1551,49 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         }[sysId] || [];
 
         const perNode = nodePairs.map((nid) =>
-            dedupeClientTopics((bucketsByNode[nid] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean))
+            filterSemanticAffinityClient(
+                sysId,
+                dedupeClientTopics((bucketsByNode[nid] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean))
+            )
         );
 
+        const claimUnique = (candidates) => {
+            const picked = [];
+            for (const t of candidates) {
+                if (!t || picked.length >= 4) break;
+                const st = normalizeTopicStem(t);
+                if (!st || picked.some((x) => normalizeTopicStem(x) === st)) continue;
+                if (registerInGlobal && usedClientTopicsGlobal.has(st)) continue;
+                picked.push(t);
+                if (registerInGlobal) usedClientTopicsGlobal.add(st);
+            }
+            if (picked.length === 0 && candidates.length > 0) {
+                picked.push(candidates[0]);
+                if (registerInGlobal) usedClientTopicsGlobal.add(normalizeTopicStem(candidates[0]));
+            }
+            return picked;
+        };
+
         if (perNode.every((arr) => arr.length === 0)) {
-            return dedupeClientTopics((bucketsBySystem[sysId] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean)).slice(0, 4);
+            const fb = filterSemanticAffinityClient(
+                sysId,
+                dedupeClientTopics((bucketsBySystem[sysId] || []).map((b) => humanizeBiomarkerTopicForPatient(b, sysId)).filter(Boolean))
+            );
+            return claimUnique(fb);
         }
 
         if (perNode.length <= 1) {
-            return (perNode[0] || []).slice(0, 4);
+            return claimUnique(perNode[0] || []);
         }
 
         const selected = [];
         const addTopicUnique = (t) => {
             if (!t || selected.length >= 4) return false;
             const st = normalizeTopicStem(t);
-            if (selected.some((x) => normalizeTopicStem(x) === st)) return false;
+            if (!st || selected.some((x) => normalizeTopicStem(x) === st)) return false;
+            if (registerInGlobal && usedClientTopicsGlobal.has(st)) return false;
             selected.push(t);
+            if (registerInGlobal) usedClientTopicsGlobal.add(st);
             return true;
         };
 
@@ -1538,6 +1611,10 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                     addTopicUnique(t);
                 }
             });
+        }
+        if (selected.length === 0) {
+            const flat = perNode.flat();
+            if (flat.length > 0) selected.push(flat[0]);
         }
         return selected;
     };
@@ -1734,16 +1811,16 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                     modeCode: 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA',
                     isEstablishedContinuityFullDose: true,
                     isRecalibrationMode: false,
-                    badgeLabel: 'Continuidad Calibrada en Dosis Completa • Vigilancia Focal',
+                    badgeLabel: 'Continuidad Calibrada en Pauta de Sobre Completo • Vigilancia Focal',
                     title: 'Continuidad calibrada de su pauta habitual en sobre completo con seguimiento focal preventivo',
-                    honestExplanation: `Reconocemos y respaldamos su constancia consolidada con 33Plus® y 34Plus®. Mantenemos sin recortes su pauta en dosis completa: 1 a 2 sobres completos al día de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33Grams}, ${cutoffSemClient}) y 1 a 2 sobres completos al día de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34Grams}, cada sobre en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple) conforme a su pauta habitual consolidada.`,
+                    honestExplanation: `Reconocemos y respaldamos su constancia consolidada con 33Plus® y 34Plus®. Mantenemos sin recortes su pauta de sobre completo: 1 a 2 sobres completos al día de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33Grams}, ${cutoffSemClient}) y 1 a 2 sobres completos al día de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34Grams}, cada sobre en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple) conforme a su pauta habitual consolidada.`,
                     ethicalNote: '33Plus® y 34Plus® actúan como apoyo nutricional complementario a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico).',
                     recommendedLabs: recommendedLabs.length > 0
                         ? recommendedLabs
                         : ['Control evolutivo de Perfil Lipídico ampliado y Examen General de Orina (EGO)'],
                     isPaused: false,
                     isMicroDose: false,
-                    titrationPlanText: `Continuidad calibrada en dosis completa: 1 a 2 sobres completos al día de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33Grams} en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma, ${cutoffSemClient}) + 1 a 2 sobres completos al día de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34Grams}, cada sobre en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧) conforme a su pauta habitual consolidada.`
+                    titrationPlanText: `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33Grams} en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma, ${cutoffSemClient}) + 1 a 2 sobres completos al día de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34Grams}, cada sobre en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧) conforme a su pauta habitual consolidada.`
                 };
             }
             if (hasPriorInstitutionalSups && !addr.isTutorMode) {
@@ -1751,8 +1828,8 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                     level: 'AMARILLO',
                     modeCode: 'RECALIBRACION_PREVENTIVA_DOSIS',
                     isRecalibrationMode: true,
-                    badgeLabel: 'Recalibración Preventiva de Dosis • Acompañamiento Continuo',
-                    title: 'Recalibramos preventivamente su pauta inicial para acompañar sus indicadores actuales',
+                    badgeLabel: 'Ajuste Preventivo de Toma • Acompañamiento Continuo',
+                    title: 'Ajustamos preventivamente su pauta inicial para acompañar sus indicadores actuales',
                     honestExplanation: `Reconocemos su acercamiento previo con las fórmulas nutricionales de Equipo en Acción®. Para acompañar con total bioseguridad sus indicadores actuales, iniciamos los primeros 7 días (Semana 1) con 1/2 sobre (${cutoffSemClient}) bien diluido en agua natural, escalando a 1 sobre completo en Día 8 según tolerancia.`,
                     ethicalNote: `33Plus® y 34Plus® son aliados nutricionales complementarios a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico${addr.isAdolescent ? ', y se integran en conjunto con su madre, padre o tutor legal' : ''}).`,
                     recommendedLabs: recommendedLabs.length > 0
@@ -1760,20 +1837,20 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                         : ['Química sanguínea (Creatinina, Ácido Úrico, BUN) y Examen General de Orina (EGO)'],
                     isPaused: false,
                     isMicroDose: true,
-                    titrationPlanText: `Recalibración preventiva de dosis (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en ${FORMULA_33PLUS.minWaterMl} ml de agua natural (${cutoffSemClient}) + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧. Valorar escalamiento a 1 sobre completo en Día 8.`
+                    titrationPlanText: `Ajuste preventivo de toma (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en ${FORMULA_33PLUS.minWaterMl} ml de agua natural (${cutoffSemClient}) + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧. Valorar escalamiento a 1 sobre completo en Día 8.`
                 };
             }
             return {
                 level: 'AMARILLO',
                 modeCode: 'MICRO_DOSIS_GRADUAL_CALIBRADA',
                 isRecalibrationMode: false,
-                badgeLabel: 'Inicio Gradual Preventivo • Micro-Dosis Calibrada',
+                badgeLabel: 'Inicio Gradual Preventivo • Fracción Inicial Gradual',
                 title: addr.isTutorMode
                     ? `Avanzamos paso a paso para cuidar los filtros naturales y la digestión de ${ref}`
                     : 'Avanzamos paso a paso para cuidar sus filtros naturales y su digestión',
                 honestExplanation: addr.isTutorMode
-                    ? `Para cuidar el organismo de ${ref} con total responsabilidad, iniciaremos los primeros 7 días (Semana 1) con una micro-dosis suave (medio sobre) bien diluida en agua natural, permitiendo una adaptación cómoda y sin sobrecarga.`
-                    : `Sus indicadores muestran carga de trabajo en sus filtros naturales o sensibilidad digestiva. Por seguridad iniciamos los primeros 7 días (Semana 1) con una micro-dosis suave (medio sobre, ${cutoffSemClient}) bien diluida en agua simple, escalando a 1 sobre completo en Día 8 según tolerancia${addr.isAdolescent ? ', contando siempre con el acompañamiento de su madre, padre o tutor legal' : ''}.`,
+                    ? `Para cuidar el organismo de ${ref} con total responsabilidad, iniciaremos los primeros 7 días (Semana 1) con una fracción inicial suave (medio sobre) bien diluida en agua natural, permitiendo una adaptación cómoda y sin sobrecarga.`
+                    : `Sus indicadores muestran carga de trabajo en sus filtros naturales o sensibilidad digestiva. Por seguridad iniciamos los primeros 7 días (Semana 1) con una fracción inicial suave (medio sobre, ${cutoffSemClient}) bien diluida en agua simple, escalando a 1 sobre completo en Día 8 según tolerancia${addr.isAdolescent ? ', contando siempre con el acompañamiento de su madre, padre o tutor legal' : ''}.`,
                 ethicalNote: addr.isTutorMode
                     ? `33Plus® y 34Plus® actúan como soporte nutricional complementario a la alimentación diaria de ${ref} (nunca sustituyen sus medicamentos ni el seguimiento de su pediatra o médico tratante).`
                     : `33Plus® y 34Plus® son aliados nutricionales complementarios a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico${addr.isAdolescent ? ', y se integran en conjunto con su madre, padre o tutor legal' : ''}).`,
@@ -1971,16 +2048,29 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 .replace(/producci[óo]n\s+de\s+energ[íi]a\s+celular\s+diaria,\s*producci[óo]n\s+de\s+energ[íi]a\s+celular\b/giu, 'producción de energía celular diaria');
             let rawMean = polishPatientEditorialPhrasing(sanitizeClinicalSpanish(sys.whatItMeans));
             const hasRawAlarmingLabel = RAW_ALARMING_PATIENT_LABEL_RE.test(rawObs);
-            const balancedTopics = sampleBalancedFriendlyTopicsForSystem(sys.id);
-            const safeHighlights = hasRawAlarmingLabel && balancedTopics.length > 0
-                ? balancedTopics
-                : dedupeClientTopics(
+            const balancedTopics = sampleBalancedFriendlyTopicsForSystem(sys.id, false);
+            const rawFilteredHighlights = filterSemanticAffinityClient(
+                sys.id,
+                dedupeClientTopics(
                     (Array.isArray(sys.cleanHighlights) ? sys.cleanHighlights : [])
                         .map((h) => humanizeBiomarkerTopicForPatient(h, sys.id))
                         .filter((h) => Boolean(h) && !hasLegacyTuteo(h))
-                );
+                )
+            );
+            const safeHighlights = (hasRawAlarmingLabel && balancedTopics.length > 0 ? balancedTopics : rawFilteredHighlights)
+                .filter((h) => {
+                    const st = normalizeTopicStem(h);
+                    if (!st || usedClientTopicsGlobal.has(st)) return false;
+                    usedClientTopicsGlobal.add(st);
+                    return true;
+                });
 
-            const finalHighlights = safeHighlights.length > 0 ? safeHighlights : balancedTopics;
+            const finalHighlights = safeHighlights.length > 0
+                ? safeHighlights
+                : sampleBalancedFriendlyTopicsForSystem(sys.id, true);
+            if (sys.id === 'descanso_defensas' && hasClientCirculatoryOrStructuralVenous && /retorno\s+venoso\s+en\s+piernas|microcirculaci[óo]n\s+cut[áa]nea/i.test(rawObs) && finalHighlights.length > 0) {
+                rawObs = rawObs.replace(/\([^()]*retorno\s+venoso\s+en\s+piernas[^()]*\)/giu, `(${finalHighlights.join(', ')})`);
+            }
             const countVal = Number(sys.findingsCount) || (bucketsBySystem[sys.id] || []).length;
             const calibratedSev = resolveClientSystemSeverity(sys.id, countVal, sys);
             const hasAny = countVal > 0 || finalHighlights.length > 0;
@@ -2022,7 +2112,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             { id: 'huesos_musculos', iconKey: 'bone', list: bucketsBySystem.huesos_musculos }
         ];
         fiveSystems = systemDefs.map(({ id, iconKey, list }) => {
-            const highlights = sampleBalancedFriendlyTopicsForSystem(id);
+            const highlights = sampleBalancedFriendlyTopicsForSystem(id, true);
             const hasAny = list.length > 0;
             const calibratedSev = resolveClientSystemSeverity(id, list.length, null);
             const canonicalSys = getCanonicalSystemMeta(id, highlights, hasAny);
@@ -2342,10 +2432,10 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             : isSelective33Paused
                 ? FORMULA_33PLUS.dosageByMode.PAUSED_SELECTIVE_33
                 : isEstablishedContinuityCard
-                    ? `Continuidad calibrada en dosis completa: 1 a 2 sobres completos al día (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33DailyGramsCard}) conforme a su pauta habitual consolidada, en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma`
+                    ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33DailyGramsCard}) conforme a su pauta habitual consolidada, en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma`
                     : (semaphore.isMicroDose
                         ? (isRecalibrationActive
-                            ? (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || `Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
+                            ? (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || `Ajuste preventivo de toma (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
                             : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
                         : `2 tomas por la mañana: 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) al despertar en ayunas y 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) a media mañana (en ${FORMULA_33PLUS.minWaterMl} ml de agua natural)`),
         timing: semaphore.isPaused
@@ -2384,10 +2474,10 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             : isSelective34Paused
                 ? '0 sobres activos de 34Plus® (Pausa selectiva por tratamiento anticoagulante antagonista de Vitamina K)'
                 : isEstablishedContinuityCard
-                    ? `Continuidad calibrada en dosis completa: 1 a 2 sobres completos al día (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34DailyGramsCard}) conforme a su pauta habitual consolidada, cada sobre en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`
+                    ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34DailyGramsCard}) conforme a su pauta habitual consolidada, cada sobre en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`
                     : (semaphore.isMicroDose
                         ? (isRecalibrationActive
-                            ? (FORMULA_34PLUS.dosageByMode.RECALIBRATION_DOSE || `Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
+                            ? (FORMULA_34PLUS.dosageByMode.RECALIBRATION_DOSE || `Ajuste preventivo de toma (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
                             : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
                         : `2 tomas tarde/noche: 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) a media tarde y 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) 30–60 min antes de dormir, cada uno en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`),
         timing: semaphore.isPaused
@@ -2446,6 +2536,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     });
     const resolvedMacros = canonicalPlan?.macros || bioenergetics?.macros || { carbs: 40, protein: 30, fat: 30 };
     const resolvedRegimen = sanitizeClinicalSpanish(canonicalPlan?.regimen || ortho?.dietaryPlan?.regimen || bioenergetics?.regimen || 'Alimentación Funcional Antiinflamatoria Personalizada');
+    const cleanClientRegimenInline = resolvedRegimen.replace(/\s*\(([^()]+)\)/g, ' — $1');
     const macroTail = (!addr.isLactante && !isTcaClientSafety)
         ? ` Distribución equilibrada: ${resolvedMacros.carbs}% carbohidratos integrales, ${resolvedMacros.protein}% proteínas limpias y ${resolvedMacros.fat}% grasas saludables.`
         : '';
@@ -2490,10 +2581,10 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             summary: addr.isLactante
                 ? `Mantener lactancia materna o fórmula indicada por su pediatra e introducción gradual de alimentos naturales para ${ref}, sin sal añadida ni azúcares.`
                 : isTcaClientSafety
-                    ? `Su plan (${resolvedRegimen}) acompaña su energía diaria, saciedad amable y paz nutricional sin conteo de calorías, integrando ${safeDietaryClient.veggiePhrase}, ${safeDietaryClient.fatsPhrase}, fibra soluble y ${safeDietaryClient.proteinPhrase}.`
+                    ? flattenNestedParenthesesToBrackets(`Su plan (${cleanClientRegimenInline}) acompaña su energía diaria, saciedad amable y paz nutricional sin conteo de calorías, integrando ${safeDietaryClient.veggiePhrase}, ${safeDietaryClient.fatsPhrase}, fibra soluble y ${safeDietaryClient.proteinPhrase}.`)
                     : addr.isTutorChild
-                        ? `El plan alimentario de ${ref} (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'acorde a su crecimiento'} • ${resolvedRegimen}) prioriza ${safeDietaryClient.veggiePhrase}, ${safeDietaryClient.fatsPhrase}, fruta natural y ${safeDietaryClient.proteinPhrase}.${macroTail}`
-                        : `Su plan (${resolvedRegimen}) está calculado a la medida de su organismo (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'personalizado'}), priorizando ${safeDietaryClient.veggiePhrase}, ${safeDietaryClient.fatsPhrase}, fibra soluble y ${safeDietaryClient.proteinPhrase}.${macroTail}`,
+                        ? flattenNestedParenthesesToBrackets(`El plan alimentario de ${ref} (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'acorde a su crecimiento'} • ${cleanClientRegimenInline}) prioriza ${safeDietaryClient.veggiePhrase}, ${safeDietaryClient.fatsPhrase}, fruta natural y ${safeDietaryClient.proteinPhrase}.${macroTail}`)
+                        : flattenNestedParenthesesToBrackets(`Su plan (${cleanClientRegimenInline}) está calculado a la medida de su organismo (${bioenergetics?.targetKcal ? `${bioenergetics.targetKcal} kcal al día` : 'personalizado'}), priorizando ${safeDietaryClient.veggiePhrase}, ${safeDietaryClient.fatsPhrase}, fibra soluble y ${safeDietaryClient.proteinPhrase}.${macroTail}`),
             universalRules: clientUniversalRules,
             personalExclusions
         },

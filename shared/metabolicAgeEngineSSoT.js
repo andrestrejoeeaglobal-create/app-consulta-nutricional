@@ -124,7 +124,24 @@ function sanitizeArt215NonTherapeuticLexicon(rawText = '') {
         .replace(/Prescripci[óo]n\s+de\s+Movimiento/giu, 'Pauta de Movimiento Seguro')
         .replace(/Prescripci[óo]n\s+Multimodal\s+Guiada/giu, 'Pauta Multimodal de Movimiento Guiada')
         .replace(/Prescripci[óo]n\s+Biomec[áa]nica/giu, 'Pauta Biomecánica')
-        .replace(/Prescripci[óo]n\s+Adaptativa/giu, 'Pauta Adaptativa');
+        .replace(/Prescripci[óo]n\s+Adaptativa/giu, 'Pauta Adaptativa')
+        .replace(/\[\s*Bioseguridad\s+y\s+Posolog[íi]a\s*\(/giu, '[Bioseguridad y Pauta Nutricional (')
+        .replace(/\bPosolog[íi]a\b(?!\s+(?:farmacol[óo]gica|m[ée]dica|alop[áa]tica|de\s+su\s+medicamento))/gu, 'Pauta Nutricional')
+        .replace(/\bposolog[íi]a\b(?!\s+(?:farmacol[óo]gica|m[ée]dica|alop[áa]tica|de\s+su\s+medicamento))/gu, 'pauta nutricional')
+        .replace(/Continuidad\s+Calibrada\s+en\s+Dosis\s+Completa/gu, 'Continuidad Calibrada en Pauta de Sobre Completo')
+        .replace(/continuidad\s+calibrada\s+en\s+dosis\s+completa/giu, 'continuidad calibrada en pauta de sobre completo')
+        .replace(/\ben\s+dosis\s+completa\b/gu, 'en pauta de sobre completo')
+        .replace(/\bEn\s+Dosis\s+Completa\b/gu, 'En Pauta de Sobre Completo')
+        .replace(/\bDosis\s+Completa\b/gu, 'Pauta de Sobre Completo')
+        .replace(/\bMicro-Dosis\s+Nocturna\b/gu, 'Fracción Inicial Nocturna')
+        .replace(/\bMicro-Dosis\s+Protectora\b/gu, 'Fracción Inicial Protectora')
+        .replace(/\bMicro-Dosis(?:\s+(?:Gradual|Calibrada))?\b/gu, 'Fracción Inicial Gradual')
+        .replace(/\bmicro-dosis(?:\s+gradual)?\b/giu, 'fracción inicial gradual')
+        .replace(/Recalibraci[óo]n\s+Preventiva\s+de\s+Dosis/gu, 'Ajuste Preventivo de Toma')
+        .replace(/recalibraci[óo]n\s+preventiva\s+de\s+dosis/giu, 'ajuste preventivo de toma')
+        .replace(/\bdosis\s+recalibrada\b/giu, 'toma recalibrada')
+        .replace(/Aporte\s+neto\s+en\s+la\s+dosis\s+prescrita\s*\(/giu, 'Aporte neto en la pauta nutricional sugerida (')
+        .replace(/Aporte\s+neto\s+prescrito\b/giu, 'Aporte neto diario sugerido');
 }
 
 function parseMealClockMinutes(rawHour = '') {
@@ -836,24 +853,30 @@ function buildSafeDietaryExamplesSSoT({
 
     const proteinCandidates = [];
     if (isVegan) {
-        if (!isExcluded(/soya|tofu|tempeh/)) proteinCandidates.push('tofu firme o tempeh');
+        if (!isExcluded(/soya|tofu|tempeh/)) proteinCandidates.push('proteína de soya fermentada (tofu firme o tempeh)');
         if (!isExcluded(/leguminosa|frijol|lenteja|garbanzo|haba/) && !hasSiiFodmap) {
-            proteinCandidates.push('lentejas o leguminosas bien cocidas combinadas con cereal integral');
+            proteinCandidates.push('leguminosas bien cocidas combinadas con cereal integral');
         }
         if (!isExcluded(/quinoa|amaranto/)) proteinCandidates.push('quinoa y amaranto');
         if (proteinCandidates.length === 0) proteinCandidates.push('proteína vegetal limpia hipoalergénica');
     } else if (isVegetarian) {
         if (!isExcluded(/huevo/)) proteinCandidates.push('huevo orgánico');
-        if (!isExcluded(/lacteo|leche|queso|yogur|caseina/)) proteinCandidates.push('requesón o yogur natural sin azúcar');
+        if (!isExcluded(/lacteo|leche|queso|yogur|caseina/)) proteinCandidates.push('lácteos frescos ligeros (requesón o yogur natural sin azúcar)');
         if (!isExcluded(/leguminosa|lenteja|frijol|garbanzo/) && !hasSiiFodmap) proteinCandidates.push('lentejas cocidas');
         if (!isExcluded(/soya|tofu/)) proteinCandidates.push('tofu');
         if (proteinCandidates.length === 0) proteinCandidates.push('quinoa, amaranto y proteína vegetal limpia');
     } else {
         if (!isExcluded(/pescado|marisco|atun|salmon|mojarra|camaron/)) proteinCandidates.push('pescado blanco o azul');
-        if (!isExcluded(/pollo|ave|pavo/)) proteinCandidates.push('pechuga de pollo o pavo');
+        if (!isExcluded(/ave/)) {
+            const safePollo = !isExcluded(/pollo/);
+            const safePavo = !isExcluded(/pavo/);
+            if (safePollo && safePavo) proteinCandidates.push('aves magras (pollo o pavo)');
+            else if (safePollo) proteinCandidates.push('pechuga de pollo');
+            else if (safePavo) proteinCandidates.push('pechuga de pavo');
+        }
         if (!isExcluded(/huevo/)) proteinCandidates.push('huevo');
         if (proteinCandidates.length < 2 && !isExcluded(/res|carne/)) proteinCandidates.push('cortes magros suaves');
-        if (proteinCandidates.length === 0) proteinCandidates.push('tofu, quinoa o proteína hipoalergénica segura');
+        if (proteinCandidates.length === 0) proteinCandidates.push('proteína hipoalergénica segura (tofu o quinoa)');
     }
 
     const veggiePhrase = hasSiiFodmap
@@ -862,13 +885,15 @@ function buildSafeDietaryExamplesSSoT({
     const fatsPhrase = fatCandidates.length > 0
         ? `grasas nobles (${fatCandidates.join(', ')})`
         : 'grasas antiinflamatorias seguras para su perfil';
-    const joinListEs = (arr) => {
+    const joinDisjunctiveListEs = (arr) => {
         if (arr.length <= 1) return arr[0] || '';
-        return `${arr.slice(0, -1).join(', ')} o ${arr[arr.length - 1]}`;
+        const last = String(arr[arr.length - 1] || '').trim();
+        const conj = /^(?:o|ho)/i.test(last) ? 'u' : 'o';
+        return `${arr.slice(0, -1).join(', ')} ${conj} ${last}`;
     };
     const proteinPhrase = isVegan
-        ? `proteínas 100 % vegetales completas como ${joinListEs(proteinCandidates.slice(0, 3))}`
-        : `proteínas limpias como ${joinListEs(proteinCandidates.slice(0, 3))}`;
+        ? `proteínas 100 % vegetales completas como ${joinDisjunctiveListEs(proteinCandidates.slice(0, 3))}`
+        : `proteínas limpias como ${joinDisjunctiveListEs(proteinCandidates.slice(0, 3))}`;
 
     return { veggiePhrase, fatsPhrase, proteinPhrase };
 }
@@ -1809,13 +1834,14 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
                     ? `Potencial por Desbloquear: ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años`
                     : (clampedDeltaExact < -0.4 ? `Reserva Funcional Joven (${clampedDeltaExact} años)` : 'Reserva Funcional Conservada');
 
-        const topProtectiveText = protectiveFactors.slice(0, 3).join(', ');
-        const topModifiableText = modifiableLoadFactors.slice(0, 3).join(', ');
+        const toCleanInnerBrackets = (item = '') => String(item || '').replace(/\(([^()]+)\)/g, '[$1]');
+        const topProtectiveText = protectiveFactors.slice(0, 3).map(toCleanInnerBrackets).join(', ');
+        const topModifiableText = modifiableLoadFactors.slice(0, 3).map(toCleanInnerBrackets).join(', ');
 
         const patientSummary = narrativeMode === 'MODO_RECUPERACION_CELULAR'
-            ? `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica estimada es de ${metabolicAgeExact} años (+${clampedDeltaExact} años • ${evidenceTierBadge}). Sus fortalezas actuales (${topProtectiveText || 'capacidad de adaptación funcional'}) le restan ya ${protectiveBonusYears} años de desgaste, mientras que los ejes modificables por atender (${topModifiableText || 'sobrecarga metabólica'}) retienen +${totalDragYears} años. En su Ciclo 1 (28 días) proyectamos avanzar hacia ${cycle1TargetAge28d} años (${cycle1Delta28d} años), en su Ciclo 3 (90 días) hacia ${cycle3ProjectionAge90d} años, y un Potencial Óptimo Desbloqueable en su Ciclo 6 (180 días) de ${cycle6RangeLabel180d}.`
+            ? `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica estimada es de ${metabolicAgeExact} años (+${clampedDeltaExact} años • ${evidenceTierBadge}). Sus fortalezas actuales (${topProtectiveText || 'capacidad de adaptación funcional'}) ya restan ${protectiveBonusYears} años a su edad biológica, mientras que los ejes modificables por atender (${topModifiableText || 'sobrecarga metabólica'}) le suman +${totalDragYears} años retenidos. En su Ciclo 1 (28 días) proyectamos avanzar hacia ${cycle1TargetAge28d} años (${cycle1Delta28d} años), en su Ciclo 3 (90 días) hacia ${cycle3ProjectionAge90d} años, y un Potencial Óptimo Desbloqueable en su Ciclo 6 (180 días) de ${cycle6RangeLabel180d}.`
             : narrativeMode === 'MODO_DESBLOQUEO_POTENCIAL'
-                ? `Su Edad Cronológica (${chronoAge} años) y su Edad Metabólica actual (${metabolicAgeExact} años; ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años • ${evidenceTierBadge}) reflejan una tracción opuesta activa: sus hábitos y constantes protectoras (${topProtectiveText || 'reserva cardiorrespiratoria y metabólica'}) ya le ganan -${protectiveBonusYears} años de vitalidad celular, pero hoy focos específicos (${topModifiableText || 'ejes clínicos prioritarios'}) le retienen +${totalDragYears} años. Al optimizarlos paso a paso, proyectamos ${cycle1TargetAge28d} años a 28 días, ${cycle3ProjectionAge90d} años a 90 días y un Potencial Óptimo Desbloqueable a 180 días (Ciclo 6) de ${cycle6RangeLabel180d}.`
+                ? `Su Edad Cronológica (${chronoAge} años) y su Edad Metabólica actual (${metabolicAgeExact} años; ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años • ${evidenceTierBadge}) reflejan una tracción opuesta activa: sus hábitos y constantes protectoras (${topProtectiveText || 'reserva cardiorrespiratoria y metabólica'}) ya restan ${protectiveBonusYears} años a su edad biológica, pero hoy focos específicos (${topModifiableText || 'ejes clínicos prioritarios'}) le suman +${totalDragYears} años retenidos. Al optimizarlos paso a paso, proyectamos ${cycle1TargetAge28d} años a 28 días, ${cycle3ProjectionAge90d} años a 90 días y un Potencial Óptimo Desbloqueable a 180 días (Ciclo 6) de ${cycle6RangeLabel180d}.`
                 : `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica actual es de ${metabolicAgeExact} años (${clampedDeltaExact} años • ${evidenceTierBadge}), respaldada por ${topProtectiveText || 'su composición corporal y vitalidad cardiometabólica'}. Nuestro enfoque de expansión de reserva funcional proyecta sostener y blindar esta ventaja hacia ${cycle1TargetAge28d} años (28 días) y ${cycle6RangeLabel180d} en su horizonte de 180 días (Healthspan).`;
 
         const clinicalSummary = `Estudio Multivariable EGM-51 v4 (${evidenceTierBadge} • ${measuredDomains.length}/6 dominios • Altitud ${altitudeInfo.msnm} msnm • ${narrativeMode}${hasActiveCompensationFocalDrag ? ' • COMPENSACIÓN FISIOLÓGICA ACTIVA' : ''}): Edad Cronológica ${chronoAge} a vs Edad Metabólica ${metabolicAgeExact} a (Delta ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} a | Tracción Opuesta: -${protectiveBonusYears} a protectores vs +${totalDragYears} a retenidos [+${modifiableDragYears} a modificables]). Meta Ciclo 1 (28d): ${cycle1TargetAge28d} a (${cycle1Delta28d} a) | Proyección Ciclo 3 (90d): ${cycle3ProjectionAge90d} a (${cycle3Delta90d} a) | Potencial Óptimo Ciclo 6 (180d): ${cycle6RangeLabel180d}.`;

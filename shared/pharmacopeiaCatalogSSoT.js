@@ -47,7 +47,7 @@ const FORMULA_33PLUS = Object.freeze({
         PAUSED_MEDICAL: '0 sobres activos por ahora (en pausa preventiva hasta autorización médica)',
         PAUSED_SELECTIVE_33: '0 sobres activos de 33Plus® (pausa selectiva de bioseguridad por interacción simpaticomimética / etapa fisiológica)',
         MICRO_DOSE: 'Inicio gradual (Días 1–7): 1/2 sobre (5.3 g) al despertar en ayunas disuelto en 300 ml de agua natural (corte estricto antes de las 14:00 h)',
-        RECALIBRATION_DOSE: 'Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (5.3 g) al despertar en ayunas disuelto en 300 ml de agua natural (corte estricto antes de las 14:00 h)',
+        RECALIBRATION_DOSE: 'Ajuste preventivo de toma (Días 1–7): 1/2 sobre (5.3 g) al despertar en ayunas disuelto en 300 ml de agua natural (corte estricto antes de las 14:00 h)',
         STANDARD_DOSE: '2 tomas matutinas: 1 sobre (10.6 g) al despertar en ayunas y 1 sobre (10.6 g) a media mañana, cada uno en 300 ml de agua natural (antes de las 14:00 h)'
     })
 });
@@ -79,7 +79,7 @@ const FORMULA_34PLUS = Object.freeze({
         PAUSED_PEDIATRIC: '0 sobres activos (etapa exclusiva de lactancia y pediatría)',
         PAUSED_MEDICAL: '0 sobres activos por ahora (en pausa preventiva hasta autorización médica)',
         MICRO_DOSE: 'Inicio gradual (Días 1–7): 1/2 sobre (5.7 g) 30 a 60 min antes de dormir disuelto en MÍNIMO 500 ml de agua simple 💧',
-        RECALIBRATION_DOSE: 'Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (5.7 g) 30 a 60 min antes de dormir disuelto en MÍNIMO 500 ml de agua simple 💧',
+        RECALIBRATION_DOSE: 'Ajuste preventivo de toma (Días 1–7): 1/2 sobre (5.7 g) 30 a 60 min antes de dormir disuelto en MÍNIMO 500 ml de agua simple 💧',
         STANDARD_DOSE: '2 tomas vespertinas/nocturnas: 1 sobre (11.4 g) a media tarde y 1 sobre (11.4 g) 30 a 60 min antes de dormir, cada uno en MÍNIMO 500 ml de agua simple 💧'
     })
 });
@@ -139,12 +139,12 @@ function formatScaledActives(productKey, doseFactor = 1, options = {}) {
             : formula.sachetGramsDisplay;
 
         const clinicalHeaderName = factor === 0.5
-            ? `${formula.brandTitle} (Micro-Dosis ${fractionLabel} • 50 % del sobre oficial de ${exactSachetRef}) — Aporte neto prescrito: ${activesInline}`
+            ? `${formula.brandTitle} (Fracción Inicial Gradual ${fractionLabel} • 50 % del sobre oficial de ${exactSachetRef}) — Aporte neto diario sugerido: ${activesInline}`
             : factor === 2
-                ? `${formula.brandTitle} (Protocolo Completo ${fractionLabel} • 200 % diario respecto al sobre unitario de ${exactSachetRef}) — Aporte neto diario: ${activesInline}`
-                : `${formula.brandTitle} (Dosis ${fractionLabel} • ${pctOfSingleSachet} % respecto al sobre oficial de ${exactSachetRef}) — Aporte neto prescrito: ${activesInline}`;
+                ? `${formula.brandTitle} (Pauta de Sobre Completo ${fractionLabel} • 200 % diario respecto al sobre unitario de ${exactSachetRef}) — Aporte neto diario sugerido: ${activesInline}`
+                : `${formula.brandTitle} (Pauta ${fractionLabel} • ${pctOfSingleSachet} % respecto al sobre oficial de ${exactSachetRef}) — Aporte neto diario sugerido: ${activesInline}`;
 
-        const regulatorySummary = `Aporte neto en la dosis prescrita (${fractionLabel}; ${pctOfSingleSachet} % respecto al sobre unitario oficial de ${exactSachetRef}): ${activesInline}`;
+        const regulatorySummary = `Aporte neto en la pauta nutricional sugerida (${fractionLabel}; ${pctOfSingleSachet} % respecto al sobre unitario oficial de ${exactSachetRef}): ${activesInline}`;
 
         return {
             doseFactor: factor,
