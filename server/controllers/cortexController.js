@@ -1,19 +1,81 @@
 const crypto = require('crypto');
 const { db } = require('../db');
 const cryptoVault = require('../utils/cryptoVault');
-const { FORMULA_33PLUS, FORMULA_34PLUS, formatScaledActives } = require('../utils/pharmacopeiaCatalogSSoT');
+const {
+    FORMULA_33PLUS,
+    FORMULA_34PLUS,
+    formatSingleSachetActiveCitation,
+    formatScaledActives
+} = require('../utils/pharmacopeiaCatalogSSoT');
 const {
     ENGINE_VERSION_SSOT,
+    isAffirmativeClinicalStatement,
     sanitizeBioelectricScreeningLabel,
     sanitizeArt215NonTherapeuticLexicon,
     extractUnifiedAnamnesisSignals,
+    extractLabVigenciaSSoT,
     buildSafeDietaryExamplesSSoT,
     calculateUniversalMetabolicAgeSSoT
 } = require('../utils/metabolicAgeEngineSSoT');
 
 function getCatalogActiveDynamic(formulaObj, nameRegex) {
     const list = Array.isArray(formulaObj?.heroActives) ? formulaObj.heroActives : [];
-    return list.find((a) => nameRegex.test(String(a?.name || ''))) || null;
+    return list.find((a) => nameRegex.test(`${a?.code || ''} ${a?.name || ''}`)) || null;
+}
+
+/**
+ * Corrector ortográfico y tipográfico determinista sobre conclusiones OCR de gabinete (`EGM-76` Directiva 4).
+ * Normaliza mayúsculas sostenidas de escáner OCR, restaura tildes médicas, corrige concordancias
+ * ("ESTUDIOS COMPLEMENTARIO" -> "estudios complementarios") y evita duplicar el ICT en Rx de tórax.
+ */
+function sanitizeCabinetOcrImpression(rawImpression = '', metricsObj = null) {
+    let txt = String(rawImpression || '').trim();
+    if (!txt) return '';
+
+    const lettersOnly = txt.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, '');
+    const upperOnly = lettersOnly.replace(/[^A-ZÁÉÍÓÚÜÑ]/g, '');
+    if (lettersOnly.length >= 12 && (upperOnly.length / lettersOnly.length) > 0.75) {
+        txt = txt
+            .split(/(\s*[•·|]\s*|\.\s+)/)
+            .map((seg) => {
+                if (/^\s*[•·|.]\s*$/.test(seg)) return seg;
+                const low = seg.toLowerCase();
+                return low.replace(/(^\s*[a-záéíóúüñ])/u, (m) => m.toUpperCase());
+            })
+            .join('');
+    }
+
+    txt = txt
+        .replace(/\bestudios\s+complementario\b/giu, 'estudios complementarios')
+        .replace(/\bcardiotoracico\b/giu, 'cardiotorácico')
+        .replace(/\baortico\b/giu, 'aórtico')
+        .replace(/\bpatron\b/giu, (m) => (m[0] === 'P' ? 'Patrón' : 'patrón'))
+        .replace(/\bhaz\s+de\s+his\b/giu, 'Haz de His')
+        .replace(/\belectrico\b/giu, 'eléctrico')
+        .replace(/\bconduccion\b/giu, (m) => (m[0] === 'C' ? 'Conducción' : 'conducción'))
+        .replace(/\bpatologia\b/giu, 'patología')
+        .replace(/\bcorrelacion\b/giu, 'correlación')
+        .replace(/\bclinica\b/giu, 'clínica')
+        .replace(/\btorax\b/giu, 'tórax')
+        .replace(/\bregion\b/giu, (m) => (m[0] === 'R' ? 'Región' : 'región'))
+        .replace(/\bpostquirurgic([oa]s?)\b/giu, 'postquirúrgic$1')
+        .replace(/\bquirurgic([oa]s?)\b/giu, 'quirúrgic$1')
+        .replace(/\blaminas\b/giu, 'láminas')
+        .replace(/\bqrs\b/giu, 'QRS')
+        .replace(/\bqtc\b/giu, 'QTc')
+        .replace(/\bconducci[óo]n\s+av\s+es\s+normal\b/giu, 'Conducción AV normal')
+        .replace(/\bav\b/giu, 'AV')
+        .replace(/\bbrdhh\b/giu, 'BRDHH')
+        .replace(/\bbrihh\b/giu, 'BRIHH')
+        .replace(/\bict\b/giu, 'ICT')
+        .replace(/\bdoppler\b/giu, 'Doppler')
+        .replace(/\bvalsalva\b/giu, 'Valsalva');
+
+    if (metricsObj && metricsObj.ict !== undefined && metricsObj.ict !== null) {
+        txt = txt.replace(/^[•·\s]*[ÍI]ndice\s+cardiotor[áa]cico\s+de\s+[0-9.]+\s*(?:[•·.]\s*)?/iu, '');
+    }
+
+    return txt.replace(/\s{2,}/g, ' ').trim();
 }
 
 const SPANISH_LOWER_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e']);
@@ -455,10 +517,10 @@ function extractNom004IdentificationSheet(patientData = {}, serum = null, bioene
 
         const foodAllergies = (patientData?.history?.allergies?.food || [])
             .map((a) => sanitizeClinicalSpanish(String(typeof a === 'object' ? (a?.agent || a?.name || '') : a || '').trim()))
-            .filter(Boolean);
+            .filter((s) => isAffirmativeClinicalStatement(s));
         const drugAllergies = (patientData?.history?.allergies?.drug || [])
             .map((a) => sanitizeClinicalSpanish(String(typeof a === 'object' ? (a?.agent || a?.name || '') : a || '').trim()))
-            .filter(Boolean);
+            .filter((s) => isAffirmativeClinicalStatement(s));
         const hasClinicalAllergies = foodAllergies.length > 0 || drugAllergies.length > 0;
         const allergiesText = hasClinicalAllergies
             ? [
@@ -474,8 +536,11 @@ function extractNom004IdentificationSheet(patientData = {}, serum = null, bioene
         const medicationsText = medItems.length > 0 ? medItems.join(', ') : 'Ninguno (0 fármacos activos)';
 
         const priorAdh = serum?.priorAdherence || detectPriorInstitutionalAdherence(patientData);
+        const priorDoseBadge = (priorAdh?.priorSachets33 > 0 || priorAdh?.priorSachets34 > 0)
+            ? `; ingesta previa declarada: ${priorAdh.priorSachets33 || 0} + ${priorAdh.priorSachets34 || 0} sobres/día`
+            : '';
         const priorSupplementsText = priorAdh?.hasPriorAdherence
-            ? `${priorAdh.publicSafeLabel || '33Plus® y 34Plus®'}${priorAdh.durationText ? ` (adherencia previa de ${priorAdh.durationText})` : ''}`
+            ? `${priorAdh.publicSafeLabel || '33Plus® y 34Plus®'}${priorAdh.durationText ? ` (adherencia previa de ${priorAdh.durationText}${priorDoseBadge})` : ''}`
             : 'Ninguna declarada';
 
         const digProfile = patientData?.digestive_profile || {};
@@ -669,13 +734,22 @@ function extractDietaryAndEpigeneticSynthesis(patientData = {}, serum = null, bi
         const icaVal = vitalsSnap?.ica || (Number(patientData?.vitals?.waist) && Number(patientData?.vitals?.height) ? Number((Number(patientData.vitals.waist) / Number(patientData.vitals.height)).toFixed(2)) : null);
         const iccVal = vitalsSnap?.icc || Number(patientData?.vitals?.whr || 0) || null;
 
+        const vigDiet = extractLabVigenciaSSoT(patientData);
+        const isHistLabDiet = Boolean(serum?.precedence?.isHistoricalLab || vigDiet.isHistoricalLab);
+        const histDateDiet = serum?.precedence?.studyDateDisplay || vigDiet.studyDateDisplay || '';
+
         let epigeneticClinicalNote = '';
         let epigeneticPatientNote = '';
         if (hasMetabolicAhf) {
             const ahfClean = ahfList.join('; ');
             if (effGlu > 0 && effGlu < 100 && (effTg === 0 || effTg < 150)) {
-                epigeneticClinicalNote = `Contexto Epigenético AHF (${ahfClean}): Glucosa basal (${effGlu} mg/dL)${effTg > 0 ? ` y Triglicéridos (${effTg} mg/dL)` : ''} conservados en rango óptimo protector frente a carga heredofamiliar; se vincula el ajuste energético con la reducción preventiva de adiposidad central${icaVal ? ` (ICA ${icaVal}` : ''}${iccVal ? `${icaVal ? ' / ' : ' ('}ICC ${iccVal})` : (icaVal ? ')' : '')}.`;
-                epigeneticPatientNote = `Frente a sus antecedentes familiares (${ahfClean}), hoy sus niveles de glucosa (${effGlu} mg/dL)${effTg > 0 ? ` y triglicéridos (${effTg} mg/dL)` : ''} se mantienen en rango óptimo saludable, protegiendo su metabolismo mientras reducimos gradualmente el perímetro abdominal${iccVal ? ` (ICC ${iccVal})` : ''}.`;
+                const histClinSuffix = isHistLabDiet
+                    ? ` [química histórica${histDateDiet ? ` ${histDateDiet}` : ''}; sujeto a control actualizado]`
+                    : '';
+                epigeneticClinicalNote = `Contexto Epigenético AHF (${ahfClean}): Glucosa basal (${effGlu} mg/dL)${effTg > 0 ? ` y Triglicéridos (${effTg} mg/dL)` : ''} conservados en rango óptimo protector frente a carga heredofamiliar${histClinSuffix}; se vincula el ajuste energético con la reducción preventiva de adiposidad central${icaVal ? ` (ICA ${icaVal}` : ''}${iccVal ? `${icaVal ? ' / ' : ' ('}ICC ${iccVal})` : (icaVal ? ')' : '')}.`;
+                epigeneticPatientNote = isHistLabDiet
+                    ? `Frente a sus antecedentes familiares (${ahfClean}), en su último control registrado${histDateDiet ? ` [${histDateDiet}]` : ''} sus niveles de glucosa (${effGlu} mg/dL)${effTg > 0 ? ` y triglicéridos (${effTg} mg/dL)` : ''} se reportaron en rango óptimo saludable (sujeto a actualizar su química de seguimiento), protegiendo su metabolismo mientras reducimos gradualmente el perímetro abdominal${iccVal ? ` (ICC ${iccVal})` : ''}.`
+                    : `Frente a sus antecedentes familiares (${ahfClean}), hoy sus niveles de glucosa (${effGlu} mg/dL)${effTg > 0 ? ` y triglicéridos (${effTg} mg/dL)` : ''} se mantienen en rango óptimo saludable, protegiendo su metabolismo mientras reducimos gradualmente el perímetro abdominal${iccVal ? ` (ICC ${iccVal})` : ''}.`;
             } else {
                 epigeneticClinicalNote = `Contexto Epigenético AHF (${ahfClean}): Vigilancia metabólica prioritaria integrada a la distribución macronutrimental y control de adiposidad central.`;
                 epigeneticPatientNote = `Acompañamos de forma preventiva sus antecedentes familiares (${ahfClean}) cuidando la calidad de sus carbohidratos, grasas nobles y cintura abdominal.`;
@@ -766,23 +840,37 @@ function parseAdherenceDurationMonths(rawDuration = '') {
     return 0;
 }
 
+function parseDeclaredDailySachets(rawFreq = '') {
+    const s = String(rawFreq || '').toLowerCase();
+    if (!s) return 0;
+    const wordMap = {
+        medio: 0.5, '1/2': 0.5, un: 1, uno: 1, una: 1, '1': 1,
+        dos: 2, '2': 2, tres: 3, '3': 3, cuatro: 4, '4': 4
+    };
+    const matches = [...s.matchAll(/\b(1\/2|medio|un|uno|una|dos|tres|cuatro|[1-4])\s+sobres?\b/giu)];
+    if (matches.length === 0) return 0;
+    return matches.reduce((sum, m) => sum + (wordMap[m[1].toLowerCase()] || 0), 0);
+}
+
 function detectPriorInstitutionalAdherence(patientData = {}) {
     try {
         if (patientData?.history?.supplements_negated === true && !Array.isArray(patientData?.history?.supplements)) {
-            return { hasPriorAdherence: false, hasEstablishedAdherence3mPlus: false, estimatedMonths: 0, matchedFormulas: [], publicSafeLabel: '', durationText: '' };
+            return { hasPriorAdherence: false, hasEstablishedAdherence3mPlus: false, estimatedMonths: 0, matchedFormulas: [], publicSafeLabel: '', durationText: '', priorSachets33: 0, priorSachets34: 0 };
         }
         const rawList = [
             ...(Array.isArray(patientData?.history?.supplements) ? patientData.history.supplements : []),
             ...(Array.isArray(patientData?.advanced_supplementation) ? patientData.advanced_supplementation : [])
         ];
         if (rawList.length === 0) {
-            return { hasPriorAdherence: false, hasEstablishedAdherence3mPlus: false, estimatedMonths: 0, matchedFormulas: [], publicSafeLabel: '', durationText: '' };
+            return { hasPriorAdherence: false, hasEstablishedAdherence3mPlus: false, estimatedMonths: 0, matchedFormulas: [], publicSafeLabel: '', durationText: '', priorSachets33: 0, priorSachets34: 0 };
         }
 
         const matchedCodes = new Set();
         const safePublicBrands = new Set();
         let bestDuration = '';
         let maxEstimatedMonths = 0;
+        let priorSachets33 = 0;
+        let priorSachets34 = 0;
         const priorPosologyNotes = [];
 
         rawList.forEach((entry) => {
@@ -791,12 +879,14 @@ function detectPriorInstitutionalAdherence(patientData = {}) {
             if (!normName || /^(NINGUN[OA]?|NIEGA|NO|N\/A|NULL|UNDEFINED)$/i.test(normName.trim())) return;
 
             let isInstitutional = false;
-            if (/33\s*PLUS/i.test(normName)) {
+            const is33 = /33\s*PLUS/i.test(normName);
+            const is34 = /34\s*PLUS/i.test(normName);
+            if (is33) {
                 matchedCodes.add('33PLUS');
                 safePublicBrands.add('33Plus®');
                 isInstitutional = true;
             }
-            if (/34\s*PLUS/i.test(normName)) {
+            if (is34) {
                 matchedCodes.add('34PLUS');
                 safePublicBrands.add('34Plus®');
                 isInstitutional = true;
@@ -820,12 +910,17 @@ function detectPriorInstitutionalAdherence(patientData = {}) {
                     bestDuration = dur;
                 }
                 const freq = sanitizeClinicalSpanish(String(entry.frequency || entry.dosis || '').trim());
-                if (freq) priorPosologyNotes.push(`${ /33/i.test(normName) ? '33Plus®' : /34/i.test(normName) ? '34Plus®' : 'fórmula institucional' }: ${freq}`);
+                if (freq) {
+                    const parsedSachets = parseDeclaredDailySachets(freq);
+                    if (is33 && parsedSachets > priorSachets33) priorSachets33 = parsedSachets;
+                    if (is34 && parsedSachets > priorSachets34) priorSachets34 = parsedSachets;
+                    priorPosologyNotes.push(`${is33 ? '33Plus®' : is34 ? '34Plus®' : 'fórmula institucional'}: ${freq}`);
+                }
             }
         });
 
         if (matchedCodes.size === 0) {
-            return { hasPriorAdherence: false, hasEstablishedAdherence3mPlus: false, estimatedMonths: 0, matchedFormulas: [], publicSafeLabel: '', durationText: '' };
+            return { hasPriorAdherence: false, hasEstablishedAdherence3mPlus: false, estimatedMonths: 0, matchedFormulas: [], publicSafeLabel: '', durationText: '', priorSachets33: 0, priorSachets34: 0 };
         }
 
         const estimatedMonths = maxEstimatedMonths || parseAdherenceDurationMonths(bestDuration);
@@ -845,10 +940,12 @@ function detectPriorInstitutionalAdherence(patientData = {}) {
             matchedFormulas: Array.from(matchedCodes),
             publicSafeLabel,
             durationText: bestDuration,
+            priorSachets33,
+            priorSachets34,
             priorPosologyNotes
         };
     } catch (_) {
-        return { hasPriorAdherence: false, hasPriorInstitutionalSupplements: false, hasEstablishedAdherence3mPlus: false, estimatedMonths: 0, matchedFormulas: [], publicSafeLabel: '', durationText: '' };
+        return { hasPriorAdherence: false, hasPriorInstitutionalSupplements: false, hasEstablishedAdherence3mPlus: false, estimatedMonths: 0, matchedFormulas: [], publicSafeLabel: '', durationText: '', priorSachets33: 0, priorSachets34: 0 };
     }
 }
 
@@ -2250,13 +2347,49 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
             }
         }
         else if (normKey.includes('basofilos') && (unitNorm === '%' || normKey.includes('pct'))) labValues.basophilsPct = rawNum;
-        else if (normKey.includes('basofilos') && /miles|10\^3/i.test(unitNorm)) labValues.basophilsAbs = rawNum;
+        else if (normKey.includes('basofilos') && (/miles|10\^3|\/ul|\/µl/i.test(unitNorm) || normKey.includes('absolut'))) {
+            labValues.basophilsAbs = rawNum;
+            const stAbs = String(itemObj?.status || '').toUpperCase().trim();
+            if (isPhysiologicallyNormal(stAbs) || (!stAbs && rawNum >= 0.0 && rawNum <= 0.15)) labValues.basophilsAbsNormal = true;
+        }
+        else if (normKey.includes('eosinofilos') && (unitNorm === '%' || normKey.includes('pct'))) labValues.eosinophilsPct = rawNum;
+        else if (normKey.includes('eosinofilos') && (/miles|10\^3|\/ul|\/µl/i.test(unitNorm) || normKey.includes('absolut'))) {
+            labValues.eosinophilsAbs = rawNum;
+            const stAbs = String(itemObj?.status || '').toUpperCase().trim();
+            if (isPhysiologicallyNormal(stAbs) || (!stAbs && rawNum >= 0.0 && rawNum <= 0.55)) labValues.eosinophilsAbsNormal = true;
+        }
+        else if (normKey.includes('linfocitos') && (unitNorm === '%' || normKey.includes('pct'))) labValues.lymphocytesPct = rawNum;
+        else if (normKey.includes('linfocitos') && (/miles|10\^3|\/ul|\/µl/i.test(unitNorm) || normKey.includes('absolut'))) {
+            labValues.lymphocytesAbs = rawNum;
+            const stAbs = String(itemObj?.status || '').toUpperCase().trim();
+            if (isPhysiologicallyNormal(stAbs) || (!stAbs && rawNum >= 1.0 && rawNum <= 3.8)) labValues.lymphocytesAbsNormal = true;
+        }
+        else if (normKey.includes('neutrofilos') && (unitNorm === '%' || normKey.includes('pct'))) labValues.neutrophilsPct = rawNum;
+        else if (normKey.includes('neutrofilos') && (/miles|10\^3|\/ul|\/µl/i.test(unitNorm) || normKey.includes('absolut'))) {
+            labValues.neutrophilsAbs = rawNum;
+            const stAbs = String(itemObj?.status || '').toUpperCase().trim();
+            if (isPhysiologicallyNormal(stAbs) || (!stAbs && rawNum >= 1.5 && rawNum <= 7.5)) labValues.neutrophilsAbsNormal = true;
+        }
+        else if (normKey.includes('monocitos') && (unitNorm === '%' || normKey.includes('pct'))) labValues.monocytesPct = rawNum;
+        else if (normKey.includes('monocitos') && (/miles|10\^3|\/ul|\/µl/i.test(unitNorm) || normKey.includes('absolut'))) {
+            labValues.monocytesAbs = rawNum;
+            const stAbs = String(itemObj?.status || '').toUpperCase().trim();
+            if (isPhysiologicallyNormal(stAbs) || (!stAbs && rawNum >= 0.15 && rawNum <= 1.0)) labValues.monocytesAbsNormal = true;
+        }
         else if (normKey.includes('hemoglobina') && !normKey.includes('corp') && !normKey.includes('a1c')) labValues.hemoglobin = num;
         else if (normKey.includes('vsg') || normKey.includes('sedimentacion')) labValues.vsg = num;
         else if (normKey.includes('ferritina')) labValues.ferritin = num;
+        else if (normKey.includes('saturacion') && (normKey.includes('hierro') || normKey.includes('transferrina'))) labValues.transferrinSaturationPct = num;
+        else if ((normKey === 'hierro' || normKey.includes('hierro_serico')) && !normKey.includes('captacion') && !normKey.includes('saturacion')) labValues.serumIron = num;
         else if (normKey.includes('tsh')) labValues.tsh = num;
         else if (normKey.includes('t3_libre') || normKey.includes('t3')) labValues.freeT3 = num;
-        else if (normKey.includes('t4_libre') || normKey.includes('t4')) labValues.freeT4 = num;
+        else if (normKey.includes('t4_libre') || normKey.includes('t4')) {
+            labValues.freeT4 = num;
+            const stT4 = String(itemObj?.status || '').toUpperCase().trim();
+            if ((stT4 && !isPhysiologicallyNormal(stT4) && /ELEV|ALTO|HIGH/.test(stT4)) || (unitNorm.includes('pmol') ? num > 22 : num > 1.75)) {
+                labValues.freeT4Elevated = true;
+            }
+        }
         else if (normKey.includes('cortisol')) labValues.cortisol = num;
         else if (normKey.includes('potasio') || normKey === 'k' || normKey.startsWith('k_')) labValues.potassium = num;
         else if (normKey === 'sodio' || normKey.startsWith('sodio_')) labValues.sodium = num;
@@ -2264,17 +2397,48 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         else if (normKey.includes('rdw_cv') || (normKey.includes('distribucion_eritrocitaria') && !normKey.includes('rdw_sd') && (unitNorm === '%' || rawNum < 30))) labValues.rdw = rawNum;
     }
 
+    // PASADA 1 (EGM-76 Directiva 3): Poblar primero todos los analitos numéricos y conteos absolutos antes de evaluar anomalías relativas (%)
+    labSectionEntries.forEach(([, secObj]) => {
+        const items = Array.isArray(secObj?.items) ? secObj.items : (Array.isArray(secObj) ? secObj : []);
+        items.forEach((item) => {
+            const name = cleanClinicalLabel(item.name || item.label || item.parameter || 'Biomarcador');
+            registerLabNumeric(name, item.val ?? item.value, item.unit || '', item);
+        });
+    });
+    Object.entries(flatLabs).forEach(([k, v]) => {
+        if (!v) return;
+        const name = cleanClinicalLabel(typeof v === 'object' ? (v.name || v.label || k) : k);
+        const rawVal = typeof v === 'object' ? (v.value ?? v.val) : v;
+        const unitStr = typeof v === 'object' ? (v.unit || '') : '';
+        registerLabNumeric(name, rawVal, unitStr, typeof v === 'object' ? v : null);
+    });
+
+    const isTotalLeukocytesNormal = !(labValues.leukocytes > 11600 || (labValues.leukocytes > 0 && labValues.leukocytes < 3800));
+    const isBenignRelativeLeukocyteShift = (rawLabel = '', rawUnit = '') => {
+        const u = String(rawUnit || '').trim();
+        const nm = String(rawLabel || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const isRelativePct = u === '%' || /\(\s*%\s*\)|\bporcentaje\b|\bpct\b/.test(nm);
+        if (!isRelativePct || !isTotalLeukocytesNormal) return false;
+        if (nm.includes('basofil') && labValues.basophilsAbsNormal === true) return true;
+        if (nm.includes('eosinofil') && labValues.eosinophilsAbsNormal === true) return true;
+        if (nm.includes('linfocit') && labValues.lymphocytesAbsNormal === true) return true;
+        if (nm.includes('neutrofil') && labValues.neutrophilsAbsNormal === true) return true;
+        if (nm.includes('monocit') && labValues.monocytesAbsNormal === true) return true;
+        return false;
+    };
+
+    // PASADA 2: Registrar anomalías reales (omitiendo desviaciones porcentuales aisladas cuando el conteo absoluto es NORMAL)
     labSectionEntries.forEach(([secKey, secObj]) => {
         const items = Array.isArray(secObj?.items) ? secObj.items : (Array.isArray(secObj) ? secObj : []);
         items.forEach(item => {
             const name = cleanClinicalLabel(item.name || item.label || item.parameter || 'Biomarcador');
             const unitStr = item.unit || '';
-            registerLabNumeric(name, item.val ?? item.value, unitStr, item);
 
             const st = String(item.status || '').toUpperCase().trim();
             if (st && !isPhysiologicallyNormal(st)) {
                 const dedupeKey = item.analyte_uid || `${name.toUpperCase()}::${unitStr.toUpperCase()}`;
                 seenLabKeys.add(dedupeKey);
+                if (isBenignRelativeLeukocyteShift(name, unitStr)) return;
                 const normLabVal = normalizeMetricDecimals(item.val ?? item.value ?? '');
                 const normLabRef = normalizeMetricDecimals(item.ref || item.reference || 'N/A');
                 const vigTag = labVigencia?.study_date_display ? ` • Toma ${labVigencia.study_date_display}` : '';
@@ -2307,11 +2471,11 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         const name = cleanClinicalLabel(typeof v === 'object' ? (v.name || v.label || k) : k);
         const rawVal = typeof v === 'object' ? (v.value ?? v.val) : v;
         const unitStr = typeof v === 'object' ? (v.unit || '') : '';
-        registerLabNumeric(name, rawVal, unitStr, typeof v === 'object' ? v : null);
 
         const st = typeof v === 'object' ? String(v.status || '').toUpperCase().trim() : '';
         const dedupeKey = (typeof v === 'object' && v.analyte_uid) ? v.analyte_uid : `${name.toUpperCase()}::${unitStr.toUpperCase()}`;
         if (st && !isPhysiologicallyNormal(st) && !seenLabKeys.has(dedupeKey)) {
+            if (isBenignRelativeLeukocyteShift(name, unitStr)) return;
             const cleanUnitStr = String(unitStr || '').trim();
             const nonRedundantUnit = /^[íi]ndice$/i.test(cleanUnitStr) ? '' : cleanUnitStr;
             const detail = `${normalizeMetricDecimals(rawVal ?? '')}${nonRedundantUnit ? ` ${nonRedundantUnit}` : ''} (${st})`.trim();
@@ -2450,13 +2614,16 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         studiesCount: 0,
         hasCardiacConductionOrBradycardia: false,
         hasRbbbBlock: false,
+        hasBifascicularOrSevereConductionBlock: false,
         ecgHrBpm: null,
         ecgQrsMs: null,
+        ecgQrsAxisDeg: null,
         recommendsEchocardiogram: false,
         hasAorticOrThoracicRemodeling: false,
         hasPostsurgicalInguinalOrAbdominalWall: false,
         hasNoActiveHerniaAtValsalva: false,
         hasAxialLoadRestriction: false,
+        hasAccreditedCabinetCalcification: false,
         summaries: []
     };
     try {
@@ -2472,13 +2639,23 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
                 const flags = Array.isArray(st.clinical_flags) ? st.clinical_flags : [];
                 const m = st.metrics || {};
                 const dateLabel = st.study_date_display ? ` (${st.study_date_display})` : '';
+                const cleanImp = sanitizeCabinetOcrImpression(st.impression || '', m);
 
                 if (st.domain === 'ECG_CARDIOLOGY' || st.modality === 'ECG') {
-                    if (m.hr_bpm) cabinetSignals.ecgHrBpm = Number(m.hr_bpm);
-                    if (m.qrs_ms) cabinetSignals.ecgQrsMs = Number(m.qrs_ms);
-                    if (flags.includes('ECG_RBBB_CONDUCTION') || (m.qrs_ms && m.qrs_ms >= 120)) {
+                    if (m.hr_bpm !== undefined && m.hr_bpm !== null) cabinetSignals.ecgHrBpm = Number(m.hr_bpm);
+                    if (m.qrs_ms !== undefined && m.qrs_ms !== null) cabinetSignals.ecgQrsMs = Number(m.qrs_ms);
+                    if (m.qrs_axis_deg !== undefined && m.qrs_axis_deg !== null) cabinetSignals.ecgQrsAxisDeg = Number(m.qrs_axis_deg);
+                    if (flags.includes('ECG_RBBB_CONDUCTION') || (m.qrs_ms && m.qrs_ms >= 120) || /bloqueo\s+de\s+(?:la\s+)?rama|hemibloqueo|bloqueo\s+av/i.test(String(st.impression || ''))) {
                         cabinetSignals.hasRbbbBlock = true;
                         cabinetSignals.hasCardiacConductionOrBradycardia = true;
+                    }
+                    const hasSevereLeftAxis = (cabinetSignals.ecgQrsAxisDeg !== null && cabinetSignals.ecgQrsAxisDeg <= -45) || flags.includes('ECG_LEFT_AXIS_DEVIATION');
+                    const hasWideQrs160 = cabinetSignals.ecgQrsMs !== null && cabinetSignals.ecgQrsMs >= 160;
+                    if (
+                        (cabinetSignals.hasRbbbBlock && (hasSevereLeftAxis || hasWideQrs160)) ||
+                        /bloqueo\s+(?:bi|tri)fascicular|bloqueo\s+av\s+(?:de\s+)?(?:segundo|tercer|2|3|completo)|mobitz/i.test(String(st.impression || ''))
+                    ) {
+                        cabinetSignals.hasBifascicularOrSevereConductionBlock = true;
                     }
                     if (flags.includes('ECG_SINUS_BRADYCARDIA') || (m.hr_bpm && m.hr_bpm < 60)) {
                         cabinetSignals.hasCardiacConductionOrBradycardia = true;
@@ -2500,15 +2677,18 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
                         m.t_axis_deg !== undefined ? `Eje T ${m.t_axis_deg}°` : null,
                         m.rr_ms !== undefined ? `RR ${m.rr_ms} ms` : null
                     ].filter(Boolean).join(', ');
-                    const detail = `${metricParts ? `${metricParts} • ` : ''}${st.impression || 'Evaluación electrocardiográfica en reposo'}`;
+                    const detail = `${metricParts ? `${metricParts} • ` : ''}${cleanImp || 'Evaluación electrocardiográfica en reposo'}`;
                     pushAnomaly('NODO_5_TRANSPORTE', 'CABINET_ECG', `Electrocardiograma en Reposo${dateLabel}`, detail, 'ALTA');
                     cabinetSignals.summaries.push(`ECG${dateLabel}: ${detail}`);
                 } else if (st.modality === 'RX' && String(st.anatomical_region || '').includes('torax')) {
                     if (flags.includes('RX_PROMINENT_AORTIC_ARCH_HILA')) {
                         cabinetSignals.hasAorticOrThoracicRemodeling = true;
                     }
-                    const ictStr = m.ict !== undefined ? `ICT ${m.ict} • ` : '';
-                    const detail = `${ictStr}${st.impression || 'Radiografía postero-anterior de tórax'}`;
+                    if (String(st.impression || '').split(/[•.;|\n]+/).some((cl) => isAffirmativeClinicalStatement(cl) && /\b(?:calcificaci[óo]n|ateromatosis\s+calcificada)\b/i.test(cl))) {
+                        cabinetSignals.hasAccreditedCabinetCalcification = true;
+                    }
+                    const ictStr = m.ict !== undefined ? `Índice cardiotorácico [ICT] ${m.ict} • ` : '';
+                    const detail = `${ictStr}${cleanImp || 'Radiografía postero-anterior de tórax'}`;
                     pushAnomaly('NODO_5_TRANSPORTE', 'CABINET_RX', `Radiografía de Tórax PA${dateLabel}`, detail, 'MODERADA');
                     cabinetSignals.summaries.push(`RX Tórax${dateLabel}: ${detail}`);
                 } else {
@@ -2521,12 +2701,15 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
                     if (st.modality === 'RM' || st.modality === 'TAC' || st.modality === 'DMO' || String(st.anatomical_region || '').includes('columna')) {
                         cabinetSignals.hasAxialLoadRestriction = true;
                     }
+                    if (String(st.impression || '').split(/[•.;|\n]+/).some((cl) => isAffirmativeClinicalStatement(cl) && /\b(?:calcificaci[óo]n|ateromatosis\s+calcificada|nefrocalcinosis|litiasis\s+c[áa]lcica)\b/i.test(cl))) {
+                        cabinetSignals.hasAccreditedCabinetCalcification = true;
+                    }
                     const extraMetrics = Object.entries(m)
                         .filter(([mk]) => !['transducer_mhz'].includes(mk))
                         .map(([mk, mv]) => `${mk}: ${mv}`)
                         .join(', ');
                     const platesTag = st.attached_plate_pages > 0 ? ` • Informe + ${st.attached_plate_pages} láminas Doppler` : '';
-                    const detail = `${extraMetrics ? `${extraMetrics} • ` : ''}${st.impression || 'Estudio estructural de gabinete'}${platesTag}`;
+                    const detail = `${extraMetrics ? `${extraMetrics} • ` : ''}${cleanImp || 'Estudio estructural de gabinete'}${platesTag}`;
                     const targetNodeId = /h[íi]gado|hep[áa]t|biliar|ves[íi]cula|renal|ri[ñn][óo]n/i.test(`${st.anatomical_region || ''} ${st.title || ''}`)
                         ? 'NODO_2_BIOTRANSFORMACION'
                         : 'NODO_7_ESTRUCTURAL';
@@ -2574,13 +2757,11 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
 
                 const normItemKey = normalizeForMatch(item.key || rawName);
 
-                // Señales de bioseguridad y sobrecarga orgánica para Semáforo Clínico
+                // EGM-76 Directiva 2.4: Prohibido disparar bloqueo cálcico clínico desde bioseñales orientativas del Electret (.HTM)
                 if (normItemKey.includes('calcificacion') && direction !== 'LOW') {
-                    hasHighSerumCalciumOrCalcification = true;
-                    electretSignals.hasCalcificationAlert = true;
+                    electretSignals.hasCalcificationAlert = false;
                 } else if (normItemKey === 'calcio' && direction === 'HIGH') {
-                    hasHighSerumCalciumOrCalcification = true;
-                    electretSignals.hasCalcificationAlert = true;
+                    electretSignals.hasCalcificationAlert = false;
                 }
 
                 if (normCat === 'renal' || normItemKey.includes('proteinuria') || normItemKey.includes('acido_urico') || normItemKey.includes('urobilinogeno') || normItemKey.includes('nitrogeno_ureico')) {
@@ -2621,7 +2802,7 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
                 if (classification.nodeId === 'AUXILIARY_MERIDIANS') {
                     auxiliaryBioenergetics.push({
                         label: safeBioelectricLabel,
-                        detail: valStr,
+                        detail: formatMedicalBiomarkerSummary(valStr),
                         severity: sev
                     });
                     return;
@@ -2927,16 +3108,20 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
             }
         }
 
-        if (Number(labValues.serumCalcium) > 0 && labValues.serumCalcium <= 10.2) {
-            hasHighSerumCalciumOrCalcification = Boolean(electretSignals.hasCalcificationAlert);
-        }
+        const vigSerumInfo = extractLabVigenciaSSoT(patientData);
+        hasHighSerumCalciumOrCalcification = Boolean(
+            Number(labValues.serumCalcium) > 10.2 ||
+            anamnesis.hasPrimaryHyperparathyroidism ||
+            cabinetSignals.hasAccreditedCabinetCalcification
+        );
 
         precedence = {
             venousRenalNormal,
             venousHepaticNormal,
             hasGfrStageG2,
-            isHistoricalLab: Boolean(labVigencia?.is_historical || (Number(labVigencia?.age_days) > 180)),
-            studyDateDisplay: labVigencia?.study_date_display || null
+            isHistoricalLab: Boolean(vigSerumInfo.isHistoricalLab || labVigencia?.is_historical || (Number(labVigencia?.age_days) > 180)),
+            labAgeDays: vigSerumInfo.labAgeDays,
+            studyDateDisplay: vigSerumInfo.studyDateDisplay || labVigencia?.study_date_display || null
         };
 
         const hasVenousNormoglycemia =
@@ -3371,6 +3556,14 @@ function detectSelective33PlusContraindication({
 
         const isPregnant = Boolean(serum?.anamnesis360Context?.isPregnant || anamnesis.isPregnant);
         const isLactating = Boolean(serum?.anamnesis360Context?.isLactating || anamnesis.isLactating);
+        const hasSalicylateAllergy = Boolean(anamnesis.hasSalicylateOrNsaidAllergy);
+        const hasPepticUlcerOrGiBleed = Boolean(anamnesis.hasActivePepticUlcerOrGiBleed);
+        const hasAnticoagulantOrStrongAntiplatelet = Boolean(
+            anamnesis.hasCoumarinAnticoagulant ||
+            anamnesis.hasDoacOrStrongAntiplatelet ||
+            /(?:WARFARINA|COUMADIN|ACENOCUMAROL|SINTROM|ALDOCUMAR|FENPROCUM[ÓO]N|RIVAROXAB[ÁA]N|XARELTO|APIXAB[ÁA]N|ELIQUIS|DABIGATR[ÁA]N|PRADAXA|EDOXAB[ÁA]N|CLOPIDOGREL|PLAVIX|PRASUGREL|TICAGRELOR|BRILINTA|CILOSTAZOL|ENOXAPARINA|HEPARINA)/.test(medsUpper)
+        );
+        const willowCitation = formatSingleSachetActiveCitation(FORMULA_33PLUS, 'MP039', { withPerSachetSuffix: true }) || 'Sauce Blanco MP039 (80 mg • fuente de salicina/sobre)';
 
         const reasons = [];
         if (hasSympathomimetic) reasons.push('tratamiento activo con fármacos simpaticomiméticos centrales');
@@ -3378,6 +3571,9 @@ function detectSelective33PlusContraindication({
         if (hasVasoactiveSubstance) reasons.push('exposición declarada a sustancias vasoactivas/estimulantes');
         if (hasHypertensiveCrisis) reasons.push(`cifras tensionales en rango crítico (${vitalsSnap.sys}/${vitalsSnap.dia} mmHg)`);
         if (hasActiveUncontrolledTachyarrhythmia) reasons.push('taquiarritmia activa descontrolada');
+        if (hasSalicylateAllergy) reasons.push(`hipersensibilidad declarada a salicilatos, aspirina (AAS) o AINEs frente a ${willowCitation}`);
+        if (hasPepticUlcerOrGiBleed) reasons.push(`antecedente activo de úlcera péptica o sangrado digestivo frente a ${willowCitation}`);
+        if (hasAnticoagulantOrStrongAntiplatelet) reasons.push(`tratamiento anticoagulante o antiagregante activo para prevenir riesgo hemorrágico aditivo frente a ${willowCitation}`);
         if (isPregnant) reasons.push('estado gestacional activo');
         if (isLactating) reasons.push('etapa de lactancia materna activa');
 
@@ -3388,6 +3584,10 @@ function detectSelective33PlusContraindication({
             hasVasoactiveSubstance,
             hasHypertensiveCrisis,
             hasActiveUncontrolledTachyarrhythmia,
+            hasSalicylateAllergy,
+            hasPepticUlcerOrGiBleed,
+            hasAnticoagulantOrStrongAntiplatelet,
+            willowCitation,
             isPregnant,
             isLactating,
             reasons,
@@ -3403,8 +3603,12 @@ function detectSelective33PlusContraindication({
 }
 
 /**
- * Evalúa Pausa Selectiva de 34Plus® ante Anticoagulantes Antagonistas de la Vitamina K (`EGM-58`):
- * Resuelve dinámicamente el activo Vitamina K2 MK-7 desde FORMULA_34PLUS.heroActives (cero claves estáticas).
+ * Evalúa Pausa Selectiva de 34Plus® por Ingredientes Reales de Planta (`EGM-58` + `EGM-76`):
+ * 1) Anticoagulantes cumarínicos vs Vitamina K2 MK-7 (`MP172`)
+ * 2) Alergia IgE a Proteína de Leche de Vaca (`APLV`) vs Suero de Leche WPI 90 % (`MP170`)
+ * 3) Hipercalcemia sérica real (`Calcio > 10.2 mg/dL`) o Hiperparatiroidismo primario vs Calcio de Coral (`MP121`)
+ * 4) Hipertiroidismo activo / Enfermedad de Graves (`TSH < 0.1` + `T4L` alta o diagnóstico activo) vs Alga Kelp (`MP132`)
+ * 5) Hemocromatosis o sobrecarga férrica (`Sat. transferrina > 50 %` + hiperferritinemia) vs Bisglicinato de Hierro (`MP062`)
  */
 function detectSelective34PlusContraindication({
     patientData = {},
@@ -3413,6 +3617,7 @@ function detectSelective34PlusContraindication({
 } = {}) {
     try {
         const anamnesis = serum?.anamnesisUnified || extractUnifiedAnamnesisSignals(patientData);
+        const labs = serum?.labValues || {};
         const medsList = Array.isArray(medications) && medications.length > 0
             ? medications
             : anamnesis.unifiedMedications;
@@ -3421,30 +3626,92 @@ function detectSelective34PlusContraindication({
             anamnesis.hasCoumarinAnticoagulant ||
             /(?:WARFARINA|COUMADIN|ACENOCUMAROL|SINTROM|ALDOCUMAR|FENPROCUM[ÓO]N)/.test(medsUpper)
         );
-        const k2Active = getCatalogActiveDynamic(FORMULA_34PLUS, /VITAMINA\s+K2/i);
-        const k2LabelClinical = k2Active
-            ? `${k2Active.name} ${k2Active.code} (${k2Active.amountNumeric} ${k2Active.unit}/sobre)`
-            : 'Vitamina K2 MK-7';
-        const k2LabelPatient = k2Active ? k2Active.name : 'Vitamina K2 MK-7';
+        const hasCowMilkProteinAllergy = Boolean(anamnesis.hasCowMilkProteinAllergy);
+        const hasHypercalcemiaOrParathyroid = Boolean(
+            Number(labs.serumCalcium) > 10.2 ||
+            anamnesis.hasPrimaryHyperparathyroidism
+        );
+        const hasOvertHyperthyroidism = Boolean(
+            anamnesis.hasActiveHyperthyroidism ||
+            (Number(labs.tsh) > 0 && Number(labs.tsh) < 0.1 && (Number(labs.freeT4) > 1.7 || labs.freeT4Elevated === true))
+        );
+        const ferrOverloadThreshold = anamnesis.isFemale ? 200 : 300;
+        const hasIronOverload = Boolean(
+            anamnesis.hasHemochromatosisOrIronOverloadHistory ||
+            (Number(labs.transferrinSaturationPct) > 50 && (Number(labs.ferritin) > ferrOverloadThreshold || Number(labs.serumIron) > 195))
+        );
+
+        const k2LabelClinical = formatSingleSachetActiveCitation(FORMULA_34PLUS, 'MP172', { withPerSachetSuffix: true }) || 'Vitamina K2 MK-7 MP172 (~10 mcg de MK-7/sobre)';
+        const k2Active = getCatalogActiveDynamic(FORMULA_34PLUS, /VITAMINA\s+K2|MP172/i);
+        const k2LabelPatient = k2Active ? `${k2Active.name} (~10 mcg por sobre)` : 'Vitamina K2 MK-7';
+        const wheyCitation = formatSingleSachetActiveCitation(FORMULA_34PLUS, 'MP170', { withPerSachetSuffix: true }) || 'Proteína Aislada de Suero de Leche 90 % MP170 (2,200 mg totales/sobre)';
+        const coralCitation = formatSingleSachetActiveCitation(FORMULA_34PLUS, 'MP121', { withPerSachetSuffix: true }) || 'Calcio de Coral MP121 (800 mg • ~304 mg de Ca elemental/sobre)';
+        const kelpCitation = formatSingleSachetActiveCitation(FORMULA_34PLUS, 'MP132', { withPerSachetSuffix: true }) || 'Alga Kelp MP132 (50 mg • fuente natural de yodo/sobre)';
+        const ironCitation = formatSingleSachetActiveCitation(FORMULA_34PLUS, 'MP062', { withPerSachetSuffix: true }) || 'Bisglicinato Quelado de Hierro MP062 (10 mg de quelato/sobre)';
 
         const reasons = [];
+        const patientReasons = [];
+        const badgeTags = [];
+        const extraLabs = [];
+
         if (hasCoumarin) {
-            reasons.push(`tratamiento anticoagulante antagonista de la Vitamina K (protección estricta de su índice INR frente a ${k2LabelPatient})`);
+            badgeTags.push('Protección INR');
+            reasons.push(`tratamiento anticoagulante antagonista de la Vitamina K frente a ${k2LabelClinical}`);
+            patientReasons.push(`proteger la estabilidad exacta de su índice INR frente a ${k2LabelPatient}`);
+            extraLabs.push('Tiempo de Protrombina (TP) e Índice Internacional Normalizado (INR) de control con su médico tratante');
         }
+        if (hasCowMilkProteinAllergy) {
+            badgeTags.push('Protección APLV');
+            reasons.push(`alergia IgE declarada a proteína de leche de vaca/caseína/suero lácteo frente a ${wheyCitation}`);
+            patientReasons.push('evitar exposición alergénica a la proteína aislada de suero de leche presente en 34Plus®');
+        }
+        if (hasHypercalcemiaOrParathyroid) {
+            badgeTags.push('Equilibrio Cálcico');
+            reasons.push(`${Number(labs.serumCalcium) > 10.2 ? `hipercalcemia sérica acreditada (${labs.serumCalcium} mg/dL > 10.2 mg/dL)` : 'hiperparatiroidismo primario activo'} frente a ${coralCitation}`);
+            patientReasons.push('evitar aporte adicional de calcio de coral mientras su médico regula sus niveles séricos de calcio y paratiroides');
+            extraLabs.push('Calcio sérico total e ionizado, Fósforo, Hormona Paratiroidea intacta (PTHi) y Vitamina D 25-OH con Endocrinología');
+        }
+        if (hasOvertHyperthyroidism) {
+            badgeTags.push('Protección Tiroidea');
+            reasons.push(`hipertiroidismo activo / Enfermedad de Graves${Number(labs.tsh) > 0 ? ` (TSH ${labs.tsh} mUI/L)` : ''} frente al aporte natural de yodo de ${kelpCitation}`);
+            patientReasons.push('evitar el aporte adicional de yodo marino (Alga Kelp) mientras su especialista controla la actividad de su tiroides');
+            extraLabs.push('Perfil tiroideo completo (TSH, T4 libre, T3 libre y anticuerpos TSI / Anti-TPO) con Endocrinología');
+        }
+        if (hasIronOverload) {
+            badgeTags.push('Control Férrico');
+            reasons.push(`sobrecarga férrica o hemocromatosis activa${Number(labs.transferrinSaturationPct) > 50 ? ` (saturación de hierro ${labs.transferrinSaturationPct} %)` : ''} frente a ${ironCitation}`);
+            patientReasons.push('evitar el aporte adicional de hierro quelado mientras su médico vigila sus reservas de ferritina y saturación de hierro');
+            extraLabs.push('Cinética de hierro completa (Hierro sérico, Ferritina, TIBC y % de saturación de transferrina) con Hematología/Medicina Interna');
+        }
+
+        const primaryBadgeTag = badgeTags[0] || 'Bioseguridad Selectiva';
         return {
             isSelective34Paused: reasons.length > 0,
             hasCoumarin,
+            hasCowMilkProteinAllergy,
+            hasHypercalcemiaOrParathyroid,
+            hasOvertHyperthyroidism,
+            hasIronOverload,
+            primaryBadgeTag,
             k2LabelClinical,
             k2LabelPatient,
+            wheyCitation,
+            coralCitation,
+            kelpCitation,
+            ironCitation,
+            recommendedLabs: extraLabs,
             reasons,
-            reasonText: reasons.join(', ')
+            reasonText: reasons.join('; '),
+            patientReasonText: patientReasons.join(' y ')
         };
     } catch (_) {
         return {
             isSelective34Paused: false,
             hasCoumarin: false,
             reasons: [],
-            reasonText: ''
+            reasonText: '',
+            patientReasonText: '',
+            recommendedLabs: []
         };
     }
 }
@@ -3548,13 +3815,18 @@ function buildCanonicalTherapeuticContract({
 
         const selGuard = selective33Guard || detectSelective33PlusContraindication({ patientData, serum, medications });
         const sel34Guard = detectSelective34PlusContraindication({ patientData, serum, medications });
-        const calciumLocked = Boolean(serum?.hasHighSerumCalciumOrCalcification || serum?.electretSignals?.hasCalcificationAlert);
+        const calciumLocked = Boolean(serum?.hasHighSerumCalciumOrCalcification);
         const hasThyroidAlert = Boolean(serum?.electretSignals?.hasThyroidAlert);
         const hasLabResultsLoaded = Boolean(serum?.hasLabResultsLoaded);
         const isPaused = Boolean(biosecuritySemaphore?.isPaused || biosecuritySemaphore?.level === 'ROJO');
         const isSelective33Paused = !isPaused && Boolean(selGuard.isSelective33Paused || biosecuritySemaphore?.isSelective33Paused);
         const isSelective34Paused = !isPaused && Boolean(sel34Guard.isSelective34Paused || biosecuritySemaphore?.isSelective34Paused);
+        const isCardioprotective1Plus2Continuity = !isPaused && !isSelective33Paused && !isSelective34Paused && Boolean(
+            biosecuritySemaphore?.isCardioprotective1Plus2Continuity ||
+            biosecuritySemaphore?.modeCode === 'PAUTA_OPTIMA_CARDIOPROTECTORA_SOBRE_COMPLETO'
+        );
         const isEstablishedContinuityFullDose = !isPaused && !isSelective33Paused && !isSelective34Paused && Boolean(
+            isCardioprotective1Plus2Continuity ||
             biosecuritySemaphore?.isEstablishedContinuityFullDose ||
             biosecuritySemaphore?.modeCode === 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA'
         );
@@ -3565,7 +3837,7 @@ function buildCanonicalTherapeuticContract({
             isSelective34Paused
         );
 
-        const doseFactor33 = isPaused || isSelective33Paused ? 0 : (isMicroDose ? 0.5 : 2);
+        const doseFactor33 = isPaused || isSelective33Paused ? 0 : (isMicroDose ? 0.5 : (isCardioprotective1Plus2Continuity ? 1 : 2));
         const doseFactor34 = isPaused || isSelective34Paused ? 0 : (isMicroDose ? 0.5 : 2);
 
         const sanitizeScaledFormulaArt215 = (scaledObj) => {
@@ -3601,37 +3873,47 @@ function buildCanonicalTherapeuticContract({
                 ? `pausa selectiva de 33Plus® (0 sobres activos por ${selGuard.reasonText || 'criterio de bioseguridad'}) priorizando hidratación natural`
                 : isMicroDose
                     ? `fracción inicial gradual de 33Plus® (1/2 sobre = ${FORMULA_33PLUS.halfSachetGramsDisplay} en ${FORMULA_33PLUS.minWaterMl} ml de agua natural${ecoMonitorClause}; aporte neto: ${scaled33.activesInline})`
-                    : isEstablishedContinuityFullDose
-                        ? `continuidad calibrada en pauta de sobre completo de 33Plus® (1 a 2 sobres completos/día = ${FORMULA_33PLUS.sachetGramsDisplay} a ${scaled33.totalGramsDisplay} conforme a su pauta habitual consolidada, en ${FORMULA_33PLUS.minWaterMl} ml de agua natural${ecoMonitorClause}; aporte por 2 sobres: ${scaled33.activesInline})`
-                        : `protocolo diurno de 33Plus® (2 sobres/día = ${scaled33.totalGramsDisplay}; ${FORMULA_33PLUS.sachetGramsDisplay} c/u en ${FORMULA_33PLUS.minWaterMl} ml de agua natural${ecoMonitorClause}; aporte diario: ${scaled33.activesInline})`;
+                    : isCardioprotective1Plus2Continuity
+                        ? `pauta óptima cardioprotectora en sobre completo de 33Plus® (1 sobre completo matutino = ${FORMULA_33PLUS.sachetGramsDisplay} en ${FORMULA_33PLUS.minWaterMl} ml de agua natural${ecoMonitorClause}, sin segunda carga de xantinas para mantener Vitamina C total en 1,312.5 mg/día [< 2,000 mg UL]; aporte neto: ${scaled33.activesInline})`
+                        : isEstablishedContinuityFullDose
+                            ? `continuidad calibrada en pauta de sobre completo de 33Plus® (1 a 2 sobres completos/día = ${FORMULA_33PLUS.sachetGramsDisplay} a ${scaled33.totalGramsDisplay} conforme a su pauta habitual consolidada, en ${FORMULA_33PLUS.minWaterMl} ml de agua natural${ecoMonitorClause}; aporte por 2 sobres: ${scaled33.activesInline})`
+                            : `protocolo diurno de 33Plus® (2 sobres/día = ${scaled33.totalGramsDisplay}; ${FORMULA_33PLUS.sachetGramsDisplay} c/u en ${FORMULA_33PLUS.minWaterMl} ml de agua natural${ecoMonitorClause}; aporte diario: ${scaled33.activesInline})`;
 
         const phrase34ForNode = isPaused
             ? 'hidratación controlada y proteína dietética suave (0 sobres activos de 34Plus® en pausa preventiva)'
             : isSelective34Paused
-                ? `pausa selectiva estricta de 34Plus® (0 sobres activos por ${sel34Guard.reasonText || 'interacción con anticoagulante cumarínico'})`
+                ? `pausa selectiva estricta de 34Plus® (0 sobres activos por ${sel34Guard.reasonText || 'bioseguridad farmacopeica de planta'})`
                 : isMicroDose
                     ? `fracción inicial de reparación de 34Plus® (1/2 sobre = ${FORMULA_34PLUS.halfSachetGramsDisplay} disuelto en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple; aporte neto: ${scaled34.activesInline})`
-                    : isEstablishedContinuityFullDose
-                        ? `continuidad calibrada en pauta de sobre completo de 34Plus® (1 a 2 sobres completos/día = ${FORMULA_34PLUS.sachetGramsDisplay} a ${scaled34.totalGramsDisplay} conforme a su pauta habitual consolidada, cada sobre en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple; aporte por 2 sobres: ${scaled34.activesInline})`
-                        : `protocolo vespertino y pre-descanso de 34Plus® (2 sobres/día = ${scaled34.totalGramsDisplay}; ${FORMULA_34PLUS.sachetGramsDisplay} c/u en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple; aporte diario: ${scaled34.activesInline})`;
+                    : isCardioprotective1Plus2Continuity
+                        ? `pauta óptima cardioprotectora en sobre completo de 34Plus® (2 sobres completos/día = ${scaled34.totalGramsDisplay}; ${FORMULA_34PLUS.sachetGramsDisplay} a media tarde y ${FORMULA_34PLUS.sachetGramsDisplay} pre-descanso, cada sobre en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple; aporte por 2 sobres: ${scaled34.activesInline})`
+                        : isEstablishedContinuityFullDose
+                            ? `continuidad calibrada en pauta de sobre completo de 34Plus® (1 a 2 sobres completos/día = ${FORMULA_34PLUS.sachetGramsDisplay} a ${scaled34.totalGramsDisplay} conforme a su pauta habitual consolidada, cada sobre en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple; aporte por 2 sobres: ${scaled34.activesInline})`
+                            : `protocolo vespertino y pre-descanso de 34Plus® (2 sobres/día = ${scaled34.totalGramsDisplay}; ${FORMULA_34PLUS.sachetGramsDisplay} c/u en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple; aporte diario: ${scaled34.activesInline})`;
 
-        const patientSpecificExclusions = (serum?.combinedExclusions || [])
+        const patientSpecificExclusions = [
+            ...(serum?.combinedExclusions || []),
+            ...(anamnesisContract.hasCowMilkProteinAllergy ? ['0 Lácteos y derivados (alergia a proteína de leche de vaca)'] : [])
+        ]
             .map(sanitizeClinicalSpanish)
-            .filter((val) => {
+            .filter((val, idx, arr) => {
                 const clean = String(val || '').trim();
                 if (!clean) return false;
+                if (arr.findIndex((x) => String(x || '').toLowerCase() === clean.toLowerCase()) !== idx) return false;
                 return !/^(ninguna?|ninguno|niega|negad[oa]s?|n\/a|na|sin\s+alergias?|sin\s+exclusiones?|sin\s+restricciones?|no|no\s+refiere|null|undefined|-+)$/i.test(clean);
             });
 
         const phase1Desc = isPaused
             ? `Alimentación protectora (${targetKcal} kcal/día; ${macros.carbs}% CHO / ${macros.protein}% P / ${macros.fat}% L), hidratación (${hydrationClinicalPhrase}) y acreditación de valoración médica/estudios de control (0 sobres activos).`
             : isSelective33Paused
-                ? `Sellado epitelial digestivo (${targetKcal} kcal/día), hidratación (${hydrationClinicalPhrase}), pausa selectiva de 33Plus® (0 sobres activos) e inicio gradual con 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧.`
+                ? `Sellado epitelial digestivo (${targetKcal} kcal/día), hidratación (${hydrationClinicalPhrase}), pausa selectiva de 33Plus® (0 sobres activos por ${selGuard.reasonText || 'bioseguridad'}) e inicio gradual con 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧.`
                 : isSelective34Paused
-                    ? `Adaptación metabólica (${targetKcal} kcal/día), hidratación (${hydrationClinicalPhrase}), inicio gradual con 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® y pausa selectiva estricta de 34Plus® (0 sobres activos por protección de INR frente a ${sel34Guard.k2LabelClinical || 'Vitamina K2 MK-7'}).`
+                    ? `Adaptación metabólica (${targetKcal} kcal/día), hidratación (${hydrationClinicalPhrase}), inicio gradual con 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® y pausa selectiva estricta de 34Plus® (0 sobres activos por ${sel34Guard.reasonText || 'bioseguridad farmacopeica'}).`
                     : isMicroDose
                         ? `Sellado epitelial digestivo (${targetKcal} kcal/día; 0 Picante, 0 Cerdo, 0 Azúcares refinados), hidratación (${hydrationClinicalPhrase}) e inicio gradual con 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® en ${FORMULA_33PLUS.minWaterMl} ml de agua natural y 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧.`
-                        : `Integración de ${regimen.toLowerCase()} (${targetKcal} kcal/día), hidratación diaria (${hydrationClinicalPhrase}) y protocolo completo sincronizado de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay}/toma) y 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay}/toma en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧).`;
+                        : isCardioprotective1Plus2Continuity
+                            ? `Integración de ${regimen.toLowerCase()} (${targetKcal} kcal/día), hidratación diaria (${hydrationClinicalPhrase}) y Pauta Óptima Cardioprotectora en Sobre Completo: 1 sobre matutino (${FORMULA_33PLUS.sachetGramsDisplay}) de 33Plus® (${cutoffDesc}) + hidratación simple en Toma 2 + 2 sobres vespertino/nocturnos (${scaled34.totalGramsDisplay}) de 34Plus® en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧 (3 sobres/día = 90 sobres/mes • Vitamina C total 1,312.5 mg/día < 2,000 mg UL).`
+                            : `Integración de ${regimen.toLowerCase()} (${targetKcal} kcal/día), hidratación diaria (${hydrationClinicalPhrase}) y protocolo completo sincronizado de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay}/toma) y 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay}/toma en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧).`;
 
         const isTcaContractSafety = Boolean(serum?.routeContext?.isTcaBehavioralSafety);
         const midCyclePulseDay14 = {
@@ -3740,7 +4022,7 @@ function buildCanonicalTherapeuticContract({
         const isRecalibrationMode = Boolean(isMicroDose && !isPaused && priorAdherence?.hasPriorAdherence);
 
         return {
-            contractVersion: '3.5.0-EGM73-SSOTT',
+            contractVersion: '3.6.0-EGM76-SSOTT',
             biometricMonitorLabel,
             regimen,
             regimenBadge,
@@ -3755,12 +4037,15 @@ function buildCanonicalTherapeuticContract({
             hasLabResultsLoaded,
             isPaused,
             isMicroDose,
+            isCardioprotective1Plus2Continuity,
             isEstablishedContinuityFullDose,
             isRecalibrationMode,
             isSelective33Paused,
             selective33ReasonText: selGuard.reasonText || '',
             isSelective34Paused,
             selective34ReasonText: sel34Guard.reasonText || '',
+            selective34PatientReasonText: sel34Guard.patientReasonText || '',
+            selective34BadgeTag: sel34Guard.primaryBadgeTag || 'Bioseguridad Selectiva',
             isPediatricExplicit,
             isLactanteExplicit,
             isClinicalEubiosis: Boolean(serum?.isClinicalEubiosis ?? nom004Sheet?.isClinicalEubiosis),
@@ -3781,6 +4066,7 @@ function buildCanonicalTherapeuticContract({
                 phrase33ForNode,
                 phrase34ForNode,
                 hasCardioConductionCaution,
+                isCardioprotective1Plus2Continuity,
                 isEstablishedContinuityFullDose,
                 isRecalibrationMode
             },
@@ -3948,9 +4234,9 @@ function formatMedicalBiomarkerSummary(rawItem) {
     const translated = translateBiomarkerToSpanish(rawItem);
     return stripUnaccreditedCodesAndFlags(sanitizeClinicalSpanish(translated))
         .replace(/Ref:\s*N\/A\s*\|\s*/gi, '')
-        .replace(/ANORMAL\s+SEVERO\s*(\(\+\+\+\))?/gi, (_, g1) => `Alerta Severa${g1 ? ` ${g1}` : ' (+++)'}`)
-        .replace(/ANORMAL\s+MODERADO\s*(\(\+\+\))?/gi, (_, g1) => `Alerta Moderada${g1 ? ` ${g1}` : ' (++)'}`)
-        .replace(/ANORMAL\s+LEVE\s*(\(\+\))?/gi, (_, g1) => `Desviación Leve${g1 ? ` ${g1}` : ' (+)'}`)
+        .replace(/ANORMAL\s+SEVERO\s*(?:(\(\+\+\+\))|(\[\+\+\+\]))?/gi, (_, p1, b1) => `Alerta Severa ${b1 || p1 || '[+++]'}`)
+        .replace(/ANORMAL\s+MODERADO\s*(?:(\(\+\+\))|(\[\+\+\]))?/gi, (_, p1, b1) => `Alerta Moderada ${b1 || p1 || '[++]'}`)
+        .replace(/ANORMAL\s+LEVE\s*(?:(\(\+\))|(\[\+\]))?/gi, (_, p1, b1) => `Desviación Leve ${b1 || p1 || '[+]'}`)
         .replace(/(\d),(\d)/g, '$1.$2')
         .replace(/\s{2,}/g, ' ')
         .trim();
@@ -4202,8 +4488,8 @@ ${nodesDigestText}`;
                 return null;
             };
             const numWordTok = '(?:ciento\\s+)?(?:(?:treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa)(?:\\s+y\\s+(?:un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve))?|cien|veint[ií]\\p{L}+|veinte|dieci\\p{L}+|quince|catorce|trece|doce|once|diez|nueve|ocho|siete|seis|cinco|cuatro|tres|dos|uno|una|un|cero)';
-            const decRe = new RegExp(`\\b(${numWordTok})(?:\\s+(?:punto|coma)\\s+(${numWordTok}))?\\s+(mililitros\\s+por\\s+minuto(?:\\s+por\\s+[\\p{L}\\s.,0-9²]+)?|miligramos\\s+por\\s+decilitro|gramos\\s+por\\s+decilitro|latidos\\s+por\\s+minuto|milisegundos|por\\s+ciento)\\b`, 'giu');
-            return String(txt || '').replace(decRe, (full, intPart, decPart, unitWord) => {
+            const decRe = new RegExp(`\\b(${numWordTok})(?:\\s+(?:punto|coma)\\s+(${numWordTok}))?\\s+(mililitros\\s+por\\s+minuto(?:\\s+por\\s+[\\p{L}\\s.,0-9²]+)?|miligramos\\s+por\\s+decilitro|gramos\\s+por\\s+decilitro|latidos\\s+por\\s+minuto|milisegundos|por\\s+ciento|grados)\\b`, 'giu');
+            let out = String(txt || '').replace(decRe, (full, intPart, decPart, unitWord) => {
                 const iVal = parseSimpleIntWord(intPart);
                 if (iVal === null) return full;
                 const dVal = decPart ? parseSimpleIntWord(decPart) : null;
@@ -4216,8 +4502,16 @@ ${nodesDigestText}`;
                 else if (uLow.startsWith('latidos por minuto')) uStd = 'lpm';
                 else if (uLow.startsWith('milisegundos')) uStd = 'ms';
                 else if (uLow === 'por ciento') uStd = '%';
+                else if (uLow === 'grados') return `${numStr}°`;
                 return `${numStr} ${uStd}`;
             });
+            out = out
+                .replace(/\bmenos\s+(-?\d+(?:\.\d+)?)°/giu, (_, n) => `-${String(n).replace(/^-/, '')}°`)
+                .replace(/\bmenos\s+(\d+(?:\.\d+)?)\s*grados\b/giu, '-$1°')
+                .replace(/\b(\d+(?:\.\d+)?)\s*grados(?!\s*(?:cent[íi]grados|celsius))\b/giu, '$1°')
+                .replace(/(\d+(?:\.\d+)?)\s+por\s+ciento\b/giu, '$1 %')
+                .replace(/\bhaz\s+de\s+his\b/giu, 'Haz de His');
+            return out;
         };
         sanitizedSummary = normalizeSpelledSpanishNumbersInClinicalSummary(sanitizedSummary);
         if (!resolvedContract.hasLabResultsLoaded) {
@@ -4704,10 +4998,14 @@ function evaluateBiosecurityAndTitration(
     const isPregnant = Boolean(serum?.anamnesis360Context?.isPregnant || anamnesis.isPregnant);
     const isLactating = Boolean(serum?.anamnesis360Context?.isLactating || anamnesis.isLactating);
 
-    const foodAllergies = patientData?.history?.allergies?.food || [];
-    const drugAllergies = patientData?.history?.allergies?.drug || [];
+    const foodAllergies = (patientData?.history?.allergies?.food || [])
+        .map((a) => String(typeof a === 'object' ? (a?.agent || a?.name || '') : a || '').trim())
+        .filter((s) => isAffirmativeClinicalStatement(s));
+    const drugAllergies = (patientData?.history?.allergies?.drug || [])
+        .map((a) => String(typeof a === 'object' ? (a?.agent || a?.name || '') : a || '').trim())
+        .filter((s) => isAffirmativeClinicalStatement(s));
     const allAllergiesStr = [...foodAllergies, ...drugAllergies]
-        .map(a => String(typeof a === 'object' ? a.agent : a || '').toUpperCase())
+        .map(a => a.toUpperCase())
         .join(' ');
     const hasFormulaAllergy = ['GUARANA', 'GUARANÁ', 'COLAGENO', 'COLÁGENO', 'INULINA', 'TEANINA', 'UVA', 'SPIRULINA'].some(
         ing => allAllergiesStr.includes(ing)
@@ -4715,6 +5013,7 @@ function evaluateBiosecurityAndTitration(
 
     const hasSevereRenalHistory = Boolean(anamnesis.hasSevereRenalHistory);
     const hasRenalStoneOrMildHistory = Boolean(anamnesis.hasOxalateOrRenalStoneHistory);
+    const cabinetPreCheck = serum?.cabinetSignals || {};
 
     const redReasons = [];
     const yellowReasons = [];
@@ -4757,6 +5056,14 @@ function evaluateBiosecurityAndTitration(
     if (selective33Guard.hasActiveUncontrolledTachyarrhythmia && ((vitals.hr || 0) >= 120 || (serum?.cabinetSignals?.ecgHrBpm || 0) >= 120)) {
         redReasons.push('taquiarritmia activa descontrolada que requiere estabilización cardiológica prioritaria');
         recommendedLabsSet.add('Electrocardiograma de 12 derivaciones, electrolitos séricos y valoración cardiológica presencial');
+    }
+    if (cabinetPreCheck.hasBifascicularOrSevereConductionBlock && (anamnesis.hasCardiacRedFlagSymptoms || ageYears >= 75)) {
+        redReasons.push(
+            anamnesis.hasCardiacRedFlagSymptoms
+                ? 'bloqueo de conducción intraventricular severo en coexistencia con síntomas de alarma (mareo, síncope o disnea) que exige valoración cardiológica prioritaria'
+                : `bloqueo de conducción intraventricular severo en paciente adulto mayor (${ageYears} años >= 75 años) que exige autorización cardiológica presencial previa`
+        );
+        recommendedLabsSet.add('Valoración cardiológica/electrofisiológica presencial prioritaria, Electrocardiograma de 12 derivaciones, Holter de 24 horas y Ecocardiograma transtorácico');
     }
     const fastGlucose = vitals.glu || labs.glucose || 0;
     if (fastGlucose >= 250 || (fastGlucose > 0 && fastGlucose < 60)) {
@@ -4856,9 +5163,9 @@ function evaluateBiosecurityAndTitration(
         recommendedLabsSet.add('Valoración cardiológica y Ecocardiograma transtorácico de correlación (sugerido en informe electrocardiográfico)');
     }
 
-    const hasCalcificationTrigger = Boolean(serum?.hasHighSerumCalciumOrCalcification || signals.hasCalcificationAlert);
+    const hasCalcificationTrigger = Boolean(serum?.hasHighSerumCalciumOrCalcification);
     if (hasCalcificationTrigger && !labs.vitaminD) {
-        recommendedLabsSet.add('Vitamina D sérica (25-OH) para control de fijación mineral');
+        recommendedLabsSet.add('Vitamina D sérica (25-OH) y Calcio sérico de control para seguimiento de metabolismo mineral');
     }
     if (signals.hasThyroidAlert && !labs.tsh) {
         yellowReasons.push(
@@ -4926,7 +5233,7 @@ function evaluateBiosecurityAndTitration(
     }
     if (selective34Guard.isSelective34Paused) {
         yellowReasons.push(`mantenemos 34Plus® en pausa selectiva estricta (0 sobres activos) ante ${selective34Guard.reasonText}`);
-        recommendedLabsSet.add('Tiempo de Protrombina (TP) e Índice Internacional Normalizado (INR) de control con su médico tratante');
+        (selective34Guard.recommendedLabs || []).forEach((labItem) => recommendedLabsSet.add(labItem));
     }
 
     const isSelective33PausedActive = Boolean(selective33Guard.isSelective33Paused || isLactating);
@@ -4946,32 +5253,35 @@ function evaluateBiosecurityAndTitration(
                 level: 'AMARILLO',
                 modeCode: 'PAUSA_DUAL_INTERACCION_FARMACOLOGICA',
                 badgeLabel: 'Protección Farmacológica Dual • 0 Sobres Activos',
-                title: 'Resguardo farmacológico integral: prioridad en alimentación natural e hidratación segura',
-                honestExplanation: `Por bioseguridad farmacológica —ya que ${formattedYellowReasons}— mantenemos temporalmente tanto 33Plus® como 34Plus® en pausa preventiva (0 sobres activos), acompañando su salud exclusivamente mediante su plan alimentario personalizado.`,
-                ethicalNote: '33Plus® y 34Plus® nunca sustituyen ni deben interferir con su tratamiento anticoagulante o cardiovascular prescrito.',
+                title: 'Resguardo farmacológico y alergénico integral: prioridad en alimentación natural e hidratación segura',
+                honestExplanation: `Por bioseguridad clínica —ya que ${formattedYellowReasons}— mantenemos temporalmente tanto 33Plus® como 34Plus® en pausa preventiva (0 sobres activos), acompañando su salud exclusivamente mediante su plan alimentario personalizado.`,
+                ethicalNote: '33Plus® y 34Plus® nunca sustituyen ni deben interferir con su tratamiento anticoagulante, endocrino o cardiovascular prescrito.',
                 recommendedLabs: Array.from(recommendedLabsSet),
                 isPaused: true,
                 isMicroDose: false,
                 isSelective33Paused: true,
                 isSelective34Paused: true,
-                titrationPlanText: '0 sobres activos por protección farmacológica simultánea (prioridad en alimentación cardioprotectora y control de INR).'
+                titrationPlanText: `0 sobres activos por protección simultánea de bioseguridad (${selective33Guard.reasonText || 'criterio 33Plus®'}; ${selective34Guard.reasonText || 'criterio 34Plus®'}).`
             };
         }
         if (isSelective34PausedActive) {
+            const tag34 = selective34Guard.primaryBadgeTag || 'Bioseguridad Selectiva';
+            const patGoal34 = selective34Guard.patientReasonText || 'proteger su equilibrio metabólico y alergénico';
             return {
                 level: 'AMARILLO',
                 modeCode: 'MICRO_33PLUS_PAUSA_SELECTIVA_34PLUS',
-                badgeLabel: 'Pausa Selectiva de 34Plus® (Protección INR) • Fracción Inicial 33Plus®',
-                title: 'Protección estricta de su anticoagulación (INR): 34Plus® en pausa y 33Plus® gradual',
-                honestExplanation: `Por bioseguridad farmacológica —ya que ${formattedYellowReasons}— mantenemos 34Plus® en pausa selectiva estricta (0 sobres activos para no alterar su INR con ${selective34Guard.k2LabelPatient || 'Vitamina K2 MK-7'}) e iniciamos únicamente con 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) matutino de 33Plus® en 300 ml de agua natural.`,
-                ethicalNote: '33Plus® actúa como apoyo nutricional complementario y jamás sustituye su seguimiento hematológico/cardiológico ni el monitoreo de su INR.',
+                badgeLabel: `Pausa Selectiva de 34Plus® (${tag34}) • Fracción Inicial 33Plus®`,
+                title: `Resguardo selectivo (${tag34}): 34Plus® en pausa preventiva y 33Plus® gradual`,
+                honestExplanation: `Por bioseguridad clínica —ya que ${formattedYellowReasons}— mantenemos 34Plus® en pausa selectiva estricta (0 sobres activos para ${patGoal34}) e iniciamos únicamente con 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) matutino de 33Plus® en 300 ml de agua natural.`,
+                ethicalNote: '33Plus® actúa como apoyo nutricional complementario y jamás sustituye su seguimiento médico especializado.',
                 recommendedLabs: Array.from(recommendedLabsSet),
                 isPaused: false,
                 isMicroDose: true,
                 isSelective33Paused: false,
                 isSelective34Paused: true,
+                selective34BadgeTag: tag34,
                 selective34Reasons: selective34Guard.reasons || [],
-                titrationPlanText: `Fracción inicial matutina: 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® en 300 ml de agua natural + Pausa selectiva estricta de 34Plus® (0 sobres activos por protección de anticoagulación cumarínica / INR).`
+                titrationPlanText: `Fracción inicial matutina: 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® en 300 ml de agua natural + Pausa selectiva estricta de 34Plus® (0 sobres activos por ${selective34Guard.reasonText}).`
             };
         }
         if (isSelective33PausedActive) {
@@ -4980,8 +5290,8 @@ function evaluateBiosecurityAndTitration(
                 modeCode: 'PAUSA_SELECTIVA_33PLUS_MICRO_34PLUS',
                 badgeLabel: 'Pausa Selectiva de 33Plus® • Fracción Inicial Nocturna 34Plus®',
                 title: addr.isTutorMode
-                    ? `Protección neurovascular selectiva para ${addr.childShortRef}: 33Plus® en pausa y 34Plus® gradual`
-                    : 'Protección neurovascular selectiva: 33Plus® en pausa preventiva y reparación nocturna gradual con 34Plus®',
+                    ? `Protección selectiva para ${addr.childShortRef}: 33Plus® en pausa y 34Plus® gradual`
+                    : 'Protección selectiva de bioseguridad: 33Plus® en pausa preventiva y reparación nocturna gradual con 34Plus®',
                 honestExplanation: addr.isTutorMode
                     ? `Por seguridad clínica —ya que ${formattedYellowReasons}— mantenemos 33Plus® en pausa selectiva (0 sobres activos, hidratación matutina simple) e iniciamos únicamente con 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO 500 ml de agua simple.`
                     : `Por seguridad clínica —ya que ${formattedYellowReasons}— mantenemos 33Plus® en pausa selectiva (0 sobres activos, hidratación matutina simple) e iniciamos únicamente con 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO 500 ml de agua simple.`,
@@ -4994,7 +5304,7 @@ function evaluateBiosecurityAndTitration(
                 isSelective33Paused: true,
                 isSelective34Paused: false,
                 selective33Reasons: selective33Guard.reasons || [],
-                titrationPlanText: `Pausa selectiva matutina: 0 sobres activos de 33Plus® (hidratación protectora de 300 ml de agua natural al despertar) + Fracción inicial nocturna de 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO 500 ml de agua simple 💧.`
+                titrationPlanText: `Pausa selectiva matutina: 0 sobres activos de 33Plus® por ${selective33Guard.reasonText || 'criterio de bioseguridad'} (hidratación protectora de 300 ml de agua natural al despertar) + Fracción inicial nocturna de 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO 500 ml de agua simple 💧.`
             };
         }
 
@@ -5020,6 +5330,38 @@ function evaluateBiosecurityAndTitration(
         const priorDurationClause = priorAdherence?.durationText ? ` durante ${priorAdherence.durationText}` : '';
         const full33DailyGrams = formatScaledActives('33PLUS', 2).totalGramsDisplay;
         const full34DailyGrams = formatScaledActives('34PLUS', 2).totalGramsDisplay;
+        const needsCardioprotective1Plus2Calibration = Boolean(
+            cabinet.hasCardiacConductionOrBradycardia ||
+            cabinet.hasRbbbBlock ||
+            cabinet.hasBifascicularOrSevereConductionBlock
+        );
+
+        if (hasEstablished3mContinuity && !hasHardTitrationBarrier && needsCardioprotective1Plus2Calibration) {
+            const declaredPrevClause = (priorAdherence.priorSachets33 > 0 || priorAdherence.priorSachets34 > 0)
+                ? ` desde su ingesta previa declarada (${priorAdherence.priorSachets33 || 0} + ${priorAdherence.priorSachets34 || 0} sobres/día)`
+                : '';
+            const wakingLabel = anamnesis.isNightOrRotatingShift
+                ? 'al iniciar su jornada tras despertar'
+                : 'al despertar en ayunas';
+            return {
+                level: 'AMARILLO',
+                modeCode: 'PAUTA_OPTIMA_CARDIOPROTECTORA_SOBRE_COMPLETO',
+                badgeLabel: 'Pauta Óptima Cardioprotectora en Sobre Completo (3 sobres/día) • Vigilancia Focal',
+                title: 'Calibración cardioprotectora en sobre completo (1 + 2 = 3 sobres/día) con seguimiento focal preventivo',
+                honestExplanation: `Reconocemos y respaldamos su constancia consolidada${priorDurationClause} con ${priorAdherence.publicSafeLabel || '33Plus® y 34Plus®'}. Dado que su organismo cuenta con adaptación digestiva plena y condición aeróbica entrenada —mientras acompañamos con rigor que ${formattedYellowReasons}—, calibramos preventivamente su esquema${declaredPrevClause} hacia su Pauta Óptima Cardioprotectora de Sobre Completo: 1 sobre completo matutino de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} = ~132 mg de cafeína natural y 1,000 mg de Vitamina C, ${wakingLabel}, ${cutoffContinuityText}) + hidratación simple en Toma 2 + 2 sobres completos de 34Plus® (${full34DailyGrams} = 1,000 mg de colágeno y ~123.6 mg de Mg elemental, tarde y antes de su descanso en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple por toma), sumando 3 sobres/día (90 sobres/mes) y manteniendo la Vitamina C total diaria en 1,312.5 mg/día (< 2,000 mg UL) con menor estímulo cronotrópico.`,
+                ethicalNote: '33Plus® y 34Plus® actúan como apoyo nutricional complementario a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento cardiológico).',
+                recommendedLabs: Array.from(recommendedLabsSet),
+                isPaused: false,
+                isMicroDose: false,
+                isCardioprotective1Plus2Continuity: true,
+                isEstablishedContinuityFullDose: true,
+                isRecalibrationMode: false,
+                hasSevereLdlReferral: hasSevereHypercholesterolemiaLdl190,
+                isSelective33Paused: false,
+                isSelective34Paused: false,
+                titrationPlanText: `Pauta Óptima Cardioprotectora en Sobre Completo (adherencia previa${priorDurationClause}${declaredPrevClause ? `; calibrada${declaredPrevClause}` : ''}): 1 sobre completo matutino de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} = ~132 mg cafeína + 1,000 mg Vitamina C en ${FORMULA_33PLUS.minWaterMl} ml de agua natural ${wakingLabel}, ${cutoffContinuityText}) + hidratación simple en Toma 2 + 2 sobres completos de 34Plus® (${full34DailyGrams} = 1,000 mg colágeno + ~123.6 mg Mg elemental + 312.5 mg Vitamina C, tarde y pre-descanso en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧) = 3 sobres/día (90 sobres/mes • Vitamina C total 1,312.5 mg/día < 2,000 mg UL). Seguimiento de FC ${formatBiometricMonitorPrepClause()}.`
+            };
+        }
 
         if (hasEstablished3mContinuity && !hasHardTitrationBarrier) {
             return {
@@ -5099,6 +5441,7 @@ function evaluateBiosecurityAndTitration(
         isPaused: false,
         isMicroDose: false,
         isSelective33Paused: false,
+        isSelective34Paused: false,
         titrationPlanText: `Protocolo estándar sincronizado a su día: 2 tomas matutinas de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} c/u en 300 ml de agua) y 2 tomas vespertinas/nocturnas de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} c/u en MÍNIMO 500 ml de agua simple 💧).`
     };
 }
@@ -5180,12 +5523,68 @@ function buildOrthomolecularPrescription(
         return accredited.length > 0 ? accredited : functionalFallback.slice(0, 5);
     };
 
-    const energyBiomarkers = collectAxisBiomarkers(['NODO_3_ENERGIA', 'NODO_5_TRANSPORTE']);
-    const tissueBiomarkers = collectAxisBiomarkers(['NODO_1_ASIMILACION', 'NODO_2_BIOTRANSFORMACION', 'NODO_4_COMUNICACION', 'NODO_6_DEFENSA', 'NODO_7_ESTRUCTURAL']);
+    const rawEnergyBiomarkers = collectAxisBiomarkers(['NODO_3_ENERGIA', 'NODO_5_TRANSPORTE']);
+    const hasIndividualLipidOcr = rawEnergyBiomarkers.some((b) => /^(?:Colesterol\s+(?:total|LDL|no-HDL)|Sd\s*LDL|[ÍI]ndice\s+aterog[ée]nico):/i.test(b));
+    const energyBiomarkers = hasIndividualLipidOcr
+        ? rawEnergyBiomarkers.filter((b) => !/^Dislipidemia\s+Aterog[ée]nica\s+y\s+Transporte\s+Lipoproteico:/i.test(b))
+        : rawEnergyBiomarkers;
+
+    // EGM-76 Directiva 3.2: Vincular el racional objetivo de 34Plus® exclusivamente a sus blancos estructurales, colágenos, mucosos y microvasculares reales
+    // (ICC físico, cambios tróficos / estasis venosa en extremidades inferiores, soporte colágeno de pared inguinal postquirúrgica, mucosa/sueño), excluyendo TFGe KDIGO G2 y % leucocitarios relativos.
+    const buildTrueTissueBiomarkersFor34Plus = () => {
+        const serumNodes = Array.isArray(serum?.nodes) ? serum.nodes : [];
+        const list = [];
+        const addUnique = (str) => {
+            const fmt = formatMedicalBiomarkerSummary(str);
+            if (fmt && !list.includes(fmt)) list.push(fmt);
+        };
+        const n7 = serumNodes.find((sn) => sn.id === 'NODO_7_ESTRUCTURAL');
+        const n5 = serumNodes.find((sn) => sn.id === 'NODO_5_TRANSPORTE');
+        const n1 = serumNodes.find((sn) => sn.id === 'NODO_1_ASIMILACION');
+        const n4 = serumNodes.find((sn) => sn.id === 'NODO_4_COMUNICACION');
+
+        // 1. Antropometría estructural / ICC físico y anomalías osteomusculares de Nodo 7
+        (n7?.anomalies || []).forEach((a) => {
+            if (a.source === 'CABINET_IMAGING') return; // se agrega en paso 3 para orden lógico
+            if (/relaci[óo]n\s+cintura[-\s]*cadera|\bicc\b|compo|articular|osteomuscular|vitamina\s*d|magnesio|masa\s+magra|sarcopenia/i.test(`${a.label} ${a.detail}`)) {
+                addUnique(`${a.label}: ${a.detail}`);
+            }
+        });
+        if (list.length === 0 && Number(serum?.vitalsSnapshot?.icc) >= (addr.isFemale ? 0.85 : 0.90)) {
+            addUnique(`Relación Cintura-Cadera Física [ICC]: ${serum.vitalsSnapshot.icc} (demanda de remodelación miofascial abdominal y sostén estructural)`);
+        }
+
+        // 2. Cambios tróficos cutáneos / estasis venosa distal en extremidades inferiores (matriz colágena vascular y dérmica)
+        (n5?.anomalies || []).forEach((a) => {
+            if (a.source === 'SOMATIC_VISION' && /estasis\s+venosa|hemosider|extremidad|tr[óo]fic/i.test(`${a.label} ${a.detail}`)) {
+                addUnique(`${a.label}: ${a.detail}`);
+            }
+        });
+
+        // 3. Gabinete estructural (ej. Ultrasonido Doppler de pared inguinal postquirúrgica / osteoarticular)
+        (n7?.anomalies || []).forEach((a) => {
+            if (String(a.source || '').startsWith('CABINET_')) {
+                addUnique(`${a.label}: ${a.detail}`);
+            }
+        });
+
+        // 4. Respaldo mucoso prebiótico (Nodo 1) o neurovegetativo de descanso (Nodo 4) si aún faltan blancos tisulares
+        if (list.length < 2) {
+            (n1?.anomalies || []).slice(0, 2).forEach((a) => addUnique(`${a.label}: ${a.detail}`));
+            (n4?.anomalies || []).slice(0, 2).forEach((a) => addUnique(`${a.label}: ${a.detail}`));
+        }
+        return list;
+    };
+    const tissueBiomarkers = buildTrueTissueBiomarkersFor34Plus();
 
     const anamnesisOrtho = serum?.anamnesisUnified || extractUnifiedAnamnesisSignals(patientData);
     const isSelective33Paused = Boolean(contract.isSelective33Paused || semaphore.isSelective33Paused) && !semaphore.isPaused;
     const isSelective34Paused = Boolean(contract.isSelective34Paused || semaphore.isSelective34Paused) && !semaphore.isPaused;
+    const isCardioprotective1Plus2 = Boolean(
+        semaphore.isCardioprotective1Plus2Continuity ||
+        semaphore.modeCode === 'PAUTA_OPTIMA_CARDIOPROTECTORA_SOBRE_COMPLETO' ||
+        contract?.isCardioprotective1Plus2Continuity
+    );
     const sanitizeScaledOrthoLex = (sc) => {
         if (!sc || typeof sc !== 'object') return sc;
         const fix = (t = '') => String(t || '')
@@ -5199,22 +5598,33 @@ function buildOrthomolecularPrescription(
             regulatorySummary: fix(sc.regulatorySummary)
         };
     };
-    const scaled33 = sanitizeScaledOrthoLex(contract.posology?.scaled33 || formatScaledActives('33PLUS', (semaphore.isPaused || isSelective33Paused) ? 0 : (semaphore.isMicroDose ? 0.5 : 2)));
-    const scaled34 = sanitizeScaledOrthoLex(contract.posology?.scaled34 || formatScaledActives('34PLUS', (semaphore.isPaused || isSelective34Paused) ? 0 : (semaphore.isMicroDose ? 0.5 : 2)));
+    const defaultFactor33 = (semaphore.isPaused || isSelective33Paused) ? 0 : (semaphore.isMicroDose ? 0.5 : (isCardioprotective1Plus2 ? 1 : 2));
+    const defaultFactor34 = (semaphore.isPaused || isSelective34Paused) ? 0 : (semaphore.isMicroDose ? 0.5 : 2);
+    const scaled33 = sanitizeScaledOrthoLex(contract.posology?.scaled33 || formatScaledActives('33PLUS', defaultFactor33));
+    const scaled34 = sanitizeScaledOrthoLex(contract.posology?.scaled34 || formatScaledActives('34PLUS', defaultFactor34));
     const hasConductionCaution = Boolean(serum?.cabinetSignals?.hasCardiacConductionOrBradycardia);
     const hasFluidRestrictionOrtho = contract.hydrationTargetLiters === null || Boolean(anamnesisOrtho.hasMedicalFluidRestriction);
     const isNightShift = Boolean(anamnesisOrtho.isNightOrRotatingShift);
     const hasThyroidFastingSpacing = Boolean(anamnesisOrtho.hasFastingThyroidOrBisphosphonate);
     const hasCationDrugSpacing = Boolean(anamnesisOrtho.hasCationChelatedDrug);
 
-    const collagenActive = getCatalogActiveDynamic(FORMULA_34PLUS, /COL[ÁA]GENO/i);
-    const collagenNameSafe = collagenActive ? collagenActive.name : 'Colágeno Hidrolizado';
-    const collagenCodeSafe = collagenActive ? collagenActive.code : '';
+    // EGM-76 Directiva 2.2: Transparencia ética vegana en AMBAS fórmulas (33Plus® MP009 200 mg y 34Plus® MP009 500 mg + MP170 2,200 mg + MP121 800 mg)
+    const cite33Col = formatSingleSachetActiveCitation(FORMULA_33PLUS, 'MP009', { withPerSachetSuffix: true }) || 'Colágeno Hidrolizado Bovino MP009 (200 mg/sobre)';
+    const cite34Col = formatSingleSachetActiveCitation(FORMULA_34PLUS, 'MP009', { withPerSachetSuffix: true }) || 'Colágeno Hidrolizado Bovino MP009 (500 mg/sobre)';
+    const cite34Whey = formatSingleSachetActiveCitation(FORMULA_34PLUS, 'MP170', { withPerSachetSuffix: true }) || 'Proteína Aislada de Suero de Leche 90 % MP170 (2,200 mg totales/sobre)';
+    const cite34Coral = formatSingleSachetActiveCitation(FORMULA_34PLUS, 'MP121', { withPerSachetSuffix: true }) || 'Calcio de Coral MP121 (800 mg • ~304 mg de Ca elemental/sobre)';
+
+    const vegan33ClinicalNote = anamnesisOrtho.isVegan
+        ? ` Nota de consentimiento ético informado: 33Plus® contiene ${cite33Col} de origen animal bovino.`
+        : '';
+    const vegan33PatientNote = anamnesisOrtho.isVegan
+        ? ' Nota de transparencia ética: le informamos con total respeto a su elección vegana que 33Plus® contiene colágeno hidrolizado bovino (200 mg por sobre), para que usted decida su integración con pleno consentimiento informado.'
+        : '';
     const veganCollagenClinicalNote = anamnesisOrtho.isVegan
-        ? ` Nota de consentimiento ético informado: contiene péptidos de ${collagenNameSafe}${collagenCodeSafe ? ` (${collagenCodeSafe})` : ''} de origen animal.`
+        ? ` Nota de consentimiento ético informado: 34Plus® contiene ${cite34Col}, ${cite34Whey} y ${cite34Coral} de origen animal/marino.`
         : '';
     const veganCollagenPatientNote = anamnesisOrtho.isVegan
-        ? ` Nota de transparencia ética: le informamos con total respeto a su elección vegana que 34Plus® incorpora péptidos de ${collagenNameSafe.toLowerCase()} de origen animal, para que usted decida su integración con pleno consentimiento informado.`
+        ? ' Nota de transparencia ética: le informamos con total respeto a su elección vegana que 34Plus® incorpora colágeno hidrolizado bovino (500 mg/sobre), proteína aislada de suero de leche (2,200 mg/sobre) y calcio de coral (800 mg/sobre), para que usted decida su integración con pleno consentimiento informado.'
         : '';
 
     const fastingToma1Slot = isNightShift
@@ -5355,12 +5765,13 @@ function buildOrthomolecularPrescription(
             status: 'paused_by_biosecurity'
         };
     } else if (isSelective34Paused) {
-        const k2Act = getCatalogActiveDynamic(FORMULA_34PLUS, /VITAMINA\s+K2/i);
-        const k2ClinText = k2Act ? `${k2Act.name} ${k2Act.code} (${k2Act.amountNumeric} ${k2Act.unit}/sobre)` : 'Vitamina K2 MK-7';
+        const sel34ReasonClin = contract.selective34ReasonText || 'criterio de bioseguridad farmacopeica de planta';
+        const sel34ReasonPat = contract.selective34PatientReasonText || 'proteger su equilibrio metabólico y alergénico';
+        const sel34Tag = contract.selective34BadgeTag || 'Bioseguridad Selectiva';
         const cardioNote34Sel = hasConductionCaution
             ? ` • ${isNightShift ? 'Suspender >= 8 h antes de su sueño diurno' : 'Corte estricto antes de las 14:00 h'} y vigilancia de FC ${formatBiometricMonitorPrepClause()}`
             : '';
-        protocolName = 'Protocolo de Protección Anticoagulante (Micro-Dosis 33Plus® • 34Plus® en Pausa Selectiva de INR)';
+        protocolName = `Protocolo de Resguardo Selectivo (${sel34Tag} • Fracción Inicial 33Plus® y 34Plus® en Pausa)`;
         circadianSchedule = [
             {
                 tomaNumber: 1,
@@ -5368,21 +5779,21 @@ function buildOrthomolecularPrescription(
                 phase: 'FASE INICIAL — Energía Celular Gradual (33Plus®)',
                 formula: label33Formula,
                 dosage: `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) disuelto en 300 ml de agua natural o tibia${fastingSpacingSuffix}${cardioNote34Sel}`,
-                clinicalObjective: `Aporte controlado al 50 % de 33Plus® (${scaled33.activeListText}) sin interferir con la vía de la Vitamina K.`,
-                patientObjective: `Apoyar su energía y circulación de forma suave (${cutoffFriendlyText}), respetando íntegramente su tratamiento anticoagulante.`,
+                clinicalObjective: `Aporte controlado al 50 % de 33Plus® (${scaled33.activeListText}) respetando bioseguridad selectiva.${vegan33ClinicalNote}`,
+                patientObjective: `Apoyar su energía y circulación de forma suave (${cutoffFriendlyText}), cuidando su seguridad clínica.${vegan33PatientNote}`,
                 waterVolumeMl: 300,
                 isMicroDose: true
             },
             {
                 tomaNumber: 2,
                 timeSlot: sleepToma4Slot,
-                phase: 'FASE DE DESCANSO — Protección de Anticoagulación (34Plus® en Pausa Selectiva)',
+                phase: `FASE DE DESCANSO — ${sel34Tag} (34Plus® en Pausa Selectiva)`,
                 formula: '💧 Hidratación Suave (34Plus® en pausa selectiva: 0 sobres activos)',
                 dosage: hasFluidRestrictionOrtho
                     ? '0 sobres activos de 34Plus® • Respetar su techo médico diario de líquidos'
                     : '0 sobres activos de 34Plus® • Beber 250 ml de agua simple natural',
-                clinicalObjective: `Pausa selectiva estricta de 34Plus® para evitar antagonismo farmacodinámico de ${k2ClinText} sobre anticoagulantes cumarínicos y preservar estabilidad del INR.`,
-                patientObjective: 'Proteger la estabilidad exacta de su medicamento anticoagulante (INR) manteniendo 34Plus® en pausa preventiva.',
+                clinicalObjective: `Pausa selectiva estricta de 34Plus® (0 sobres activos) ante ${sel34ReasonClin}.`,
+                patientObjective: `Cuidar su salud manteniendo 34Plus® en pausa preventiva para ${sel34ReasonPat}.`,
                 waterVolumeMl: hasFluidRestrictionOrtho ? 0 : 250,
                 isPaused: true,
                 isMicroDose: true
@@ -5391,25 +5802,25 @@ function buildOrthomolecularPrescription(
 
         sup33 = {
             id: 'sup_33plus',
-            cortex: '33Plus® (Micro-Dosis Gradual • Energía y Circulación)',
+            cortex: '33Plus® (Fracción Inicial Gradual • Energía y Circulación)',
             name: scaled33.clinicalHeaderName,
-            dosage: FORMULA_33PLUS.dosageByMode.MICRO_DOSE,
+            dosage: isNightShift ? FORMULA_33PLUS.dosageByMode.MICRO_DOSE_NIGHT_SHIFT : FORMULA_33PLUS.dosageByMode.MICRO_DOSE,
             timing: `Sincronizado a su despertar (${cutoffFriendlyText}${hasThyroidFastingSpacing ? '; >= 60 min post-medicamento en ayunas' : ''})`,
             clinical_timing: `Sincronizado al despertar (${cutoffShortText}${hasThyroidFastingSpacing ? '; >= 60 min post-fármaco en ayunas' : ''})`,
-            rationale: `${scaled33.regulatorySummary}.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${energyBiomarkers.length}): ${energyBiomarkers.join(' | ')}.` : ''}`,
-            patient_rationale: `${addr.directObjCap} acompaña con L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva, vitamina C y cromo, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}, ${cutoffFriendlyText}) bajo vigilancia médica.`,
+            rationale: `${scaled33.regulatorySummary}.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${energyBiomarkers.length}): ${energyBiomarkers.join(' | ')}.` : ''}${vegan33ClinicalNote}`,
+            patient_rationale: `${addr.directObjCap} acompaña con Vitamina C, extracto de guaraná, L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva y cromo elemental, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}, ${cutoffFriendlyText}) bajo vigilancia médica.${vegan33PatientNote}`,
             status: 'approved'
         };
 
         sup34 = {
             id: 'sup_34plus',
-            cortex: '34Plus® (En Pausa Selectiva Estricta por Protección de INR)',
+            cortex: `34Plus® (En Pausa Selectiva Estricta • ${sel34Tag})`,
             name: scaled34.clinicalHeaderName,
-            dosage: '0 sobres activos de 34Plus® (Pausa selectiva por tratamiento anticoagulante antagonista de Vitamina K)',
-            timing: 'En pausa selectiva estricta mientras mantenga anticoagulación cumarínica',
-            clinical_timing: `Contraindicación farmacodinámica selectiva: 0 sobres activos por contenido de ${k2ClinText} frente a cumarínicos (Warfarina/Acenocumarol)`,
-            rationale: `PAUSA SELECTIVA FARMACOLÓGICA (NOM-004): Se excluye 34Plus® (0 sobres activos) debido a que ${k2ClinText} antagoniza directamente a los anticoagulantes cumarínicos y reduce el INR.${veganCollagenClinicalNote}`,
-            patient_rationale: `Por su seguridad cardiovascular, mantenemos 34Plus® en pausa estricta (0 sobres activos) porque contiene ${k2Act ? k2Act.name : 'Vitamina K2 MK-7'}, un nutriente que modificaría el efecto de su medicamento anticoagulante (INR).`,
+            dosage: `0 sobres activos de 34Plus® (Pausa selectiva por ${sel34ReasonClin})`,
+            timing: `En pausa selectiva estricta (${sel34Tag})`,
+            clinical_timing: `Contraindicación selectiva de bioseguridad: 0 sobres activos ante ${sel34ReasonClin}`,
+            rationale: `PAUSA SELECTIVA DE BIOSEGURIDAD (NOM-004): Se excluye 34Plus® (0 sobres activos) ante ${sel34ReasonClin}.${veganCollagenClinicalNote}`,
+            patient_rationale: `Por su seguridad clínica, mantenemos 34Plus® en pausa estricta (0 sobres activos) para ${sel34ReasonPat}.`,
             status: 'paused_by_biosecurity'
         };
     } else if (isSelective33Paused) {
@@ -5584,22 +5995,22 @@ function buildOrthomolecularPrescription(
         sup33 = {
             id: 'sup_33plus',
             cortex: isRecalibration
-                ? '33Plus® (Recalibración Preventiva • Energía y Circulación)'
-                : '33Plus® (Micro-Dosis Gradual • Energía y Circulación)',
+                ? '33Plus® (Ajuste Preventivo • Energía y Circulación)'
+                : '33Plus® (Fracción Inicial Gradual • Energía y Circulación)',
             name: scaled33.clinicalHeaderName,
             dosage: isRecalibration
-                ? (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || FORMULA_33PLUS.dosageByMode.MICRO_DOSE)
-                : FORMULA_33PLUS.dosageByMode.MICRO_DOSE,
+                ? (isNightShift ? FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE_NIGHT_SHIFT : (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || FORMULA_33PLUS.dosageByMode.MICRO_DOSE))
+                : (isNightShift ? FORMULA_33PLUS.dosageByMode.MICRO_DOSE_NIGHT_SHIFT : FORMULA_33PLUS.dosageByMode.MICRO_DOSE),
             timing: addr.isTutorMode
                 ? `Sincronizado al despertar de ${addr.childShortRef} (evitar ofrecerlo después de las 2:00 PM)`
                 : `Sincronizado a su despertar real (${cutoffFriendlyText}${hasThyroidFastingSpacing ? '; >= 60 min después de su medicamento en ayunas' : ''}${hasConductionCaution ? ` y vigilancia ${formatBiometricMonitorPrepClause()}` : ''})`,
             clinical_timing: `Sincronizado al despertar del paciente (${cutoffShortText}${hasThyroidFastingSpacing ? '; separar >= 60 min post-fármaco en ayunas' : ''}${hasConductionCaution ? ` y vigilancia cronotrópica ${formatBiometricMonitorPrepClause()}` : ''})`,
-            rationale: `${scaled33.regulatorySummary}.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${energyBiomarkers.length}): ${energyBiomarkers.join(' | ')}.` : ''}`,
+            rationale: `${scaled33.regulatorySummary}.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${energyBiomarkers.length}): ${energyBiomarkers.join(' | ')}.` : ''}${vegan33ClinicalNote}`,
             patient_rationale: addr.isTutorMode
                 ? `Acompaña a ${addr.childShortRef} por la mañana con L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva, vitamina C y cromo para apoyar su energía diaria y circulación, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre de ${FORMULA_33PLUS.sachetGramsDisplay}—) para cuidar su adaptación.`
                 : isRecalibration
-                    ? `Continuamos su adherencia previa con 33Plus® aportando L-Taurina, L-Carnitina, Coenzima Q10, antioxidantes de semilla de uva, vitamina C y picolinato de cromo, recalibrando preventivamente su toma inicial a medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_33PLUS.sachetGramsDisplay}—, ${cutoffFriendlyText}) para acompañar con total seguridad su conducción cardiovascular.`
-                    : `${addr.directObjCap} acompaña al iniciar su día con L-Taurina, L-Carnitina, Coenzima Q10, antioxidantes de semilla de uva, vitamina C y picolinato de cromo para apoyar su energía diaria y la flexibilidad de su circulación, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_33PLUS.sachetGramsDisplay}—, ${cutoffFriendlyText}) para cuidar su adaptación.`,
+                    ? `Continuamos su adherencia previa con 33Plus® aportando L-Taurina, L-Carnitina, Coenzima Q10, antioxidantes de semilla de uva, vitamina C y cromo elemental, ajustando preventivamente su toma inicial a medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_33PLUS.sachetGramsDisplay}—, ${cutoffFriendlyText}) para acompañar con total seguridad su conducción cardiovascular.${vegan33PatientNote}`
+                    : `${addr.directObjCap} acompaña al iniciar su día con L-Taurina, L-Carnitina, Coenzima Q10, antioxidantes de semilla de uva, vitamina C y cromo elemental para apoyar su energía diaria y la flexibilidad de su circulación, iniciando con medio sobre (${FORMULA_33PLUS.halfSachetGramsDisplay} —50% del sobre oficial de ${FORMULA_33PLUS.sachetGramsDisplay}—, ${cutoffFriendlyText}) para cuidar su adaptación.${vegan33PatientNote}`,
             status: 'approved'
         };
 
@@ -5624,11 +6035,14 @@ function buildOrthomolecularPrescription(
         };
     } else {
         const isEstablishedContinuity = Boolean(
+            isCardioprotective1Plus2 ||
             semaphore.isEstablishedContinuityFullDose ||
             semaphore.modeCode === 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA' ||
             contract?.isEstablishedContinuityFullDose
         );
-        if (isEstablishedContinuity) {
+        if (isCardioprotective1Plus2) {
+            protocolName = 'Protocolo de Pauta Óptima Cardioprotectora en Sobre Completo (1 sobre 33Plus® + 2 sobres 34Plus® = 3 sobres/día)';
+        } else if (isEstablishedContinuity) {
             protocolName = 'Protocolo de Continuidad Calibrada en Pauta de Sobre Completo (33Plus® y 34Plus®)';
         }
         const cardioFullDoseSuffix = hasConductionCaution
@@ -5640,33 +6054,54 @@ function buildOrthomolecularPrescription(
                 timeSlot: isNightShift
                     ? (hasThyroidFastingSpacing ? 'Al menos 60 min después de su medicamento tras despertar' : 'Al iniciar su jornada tras despertar')
                     : (hasThyroidFastingSpacing ? 'Al menos 60 min después de su medicamento en ayunas' : 'Al despertar en ayunas'),
-                phase: isEstablishedContinuity
-                    ? 'FASE ACTIVA — Continuidad de Energía Celular y Circulación'
-                    : 'FASE ACTIVA — Encendido de Energía Celular y Circulación',
+                phase: isCardioprotective1Plus2
+                    ? 'FASE ACTIVA — Toma Única Cardioprotectora de Energía y Circulación'
+                    : isEstablishedContinuity
+                        ? 'FASE ACTIVA — Continuidad de Energía Celular y Circulación'
+                        : 'FASE ACTIVA — Encendido de Energía Celular y Circulación',
                 formula: label33Formula,
                 dosage: `1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) disuelto en 300 ml de agua natural o tibia${fastingSpacingSuffix}${cardioFullDoseSuffix}`,
-                clinicalObjective: 'Inducción de energía mitocondrial, oxigenación tisular y soporte endotelial respetando biodisponibilidad en ayunas.',
+                clinicalObjective: `Inducción de energía mitocondrial, oxigenación tisular y soporte endotelial respetando biodisponibilidad en ayunas.${vegan33ClinicalNote}`,
                 patientObjective: addr.isTutorMode
                     ? `Impulsar la energía natural y atención matutina de ${addr.childShortRef} desde temprano.`
-                    : 'Despertar su energía natural con claridad y apoyar una circulación ligera desde el inicio de su jornada.',
+                    : `Despertar su energía natural con claridad y apoyar una circulación ligera desde el inicio de su jornada.${vegan33PatientNote}`,
                 waterVolumeMl: 300,
+                isCardioprotective1Plus2Continuity: isCardioprotective1Plus2,
                 isEstablishedContinuityFullDose: isEstablishedContinuity
             },
-            {
-                tomaNumber: 2,
-                timeSlot: isNightShift
-                    ? 'Aprox. 4 h después de despertar (suspender >= 8 h antes de su sueño diurno)'
-                    : 'A media mañana (aprox. 4 h después de despertar, antes de las 14:00 h)',
-                phase: 'FASE ACTIVA — Estabilidad de Energía y Circulación',
-                formula: label33Formula,
-                dosage: `1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) disuelto en 300 ml de agua natural${isEstablishedContinuity ? ' (según su pauta habitual de 1 a 2 sobres/día)' : ''}`,
-                clinicalObjective: 'Protección antioxidante vascular y sensibilidad metabólica respetando corte circadiano.',
-                patientObjective: addr.isTutorMode
-                    ? `Mantener la vitalidad de ${addr.childShortRef} estable a mitad del día.`
-                    : 'Mantener su vitalidad estable a mitad de su jornada evitando bajones de energía.',
-                waterVolumeMl: 300,
-                isEstablishedContinuityFullDose: isEstablishedContinuity
-            },
+            isCardioprotective1Plus2
+                ? {
+                    tomaNumber: 2,
+                    timeSlot: isNightShift
+                        ? 'A mitad de su primera mitad de jornada (sin segunda carga de xantinas)'
+                        : 'A media mañana (hidratación cardioprotectora sin segunda carga de xantinas)',
+                    phase: 'FASE INTERMEDIA — Hidratación Cardioprotectora Matutina',
+                    formula: '💧 Hidratación Cardioprotectora Matutina (Agua Simple)',
+                    dosage: hasFluidRestrictionOrtho
+                        ? 'Sorbos medidos dentro de su techo hídrico médico • 0 sobres adicionales de 33Plus®'
+                        : '300 ml de agua natural purificada a sorbos • 0 sobres adicionales de 33Plus® (mantiene cafeína en ~132 mg/día y Vitamina C total en 1,312.5 mg/día [< 2,000 mg UL])',
+                    clinicalObjective: 'Sostener perfusión microvascular e hidratación sin segunda carga cronotrópica de xantinas y preservando el techo seguro de Vitamina C (< 2,000 mg/día UL).',
+                    patientObjective: 'Mantener sus arterias y riñones bien hidratados a media mañana sin recargar estimulantes sobre el ritmo de su corazón.',
+                    waterVolumeMl: hasFluidRestrictionOrtho ? 0 : 300,
+                    isPaused: true,
+                    isCardioprotective1Plus2Continuity: true,
+                    isEstablishedContinuityFullDose: true
+                }
+                : {
+                    tomaNumber: 2,
+                    timeSlot: isNightShift
+                        ? 'Aprox. 4 h después de despertar (suspender >= 8 h antes de su sueño diurno)'
+                        : 'A media mañana (aprox. 4 h después de despertar, antes de las 14:00 h)',
+                    phase: 'FASE ACTIVA — Estabilidad de Energía y Circulación',
+                    formula: label33Formula,
+                    dosage: `1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) disuelto en 300 ml de agua natural${isEstablishedContinuity ? ' (según su pauta habitual de 1 a 2 sobres/día)' : ''}`,
+                    clinicalObjective: 'Protección antioxidante vascular y sensibilidad metabólica respetando corte circadiano.',
+                    patientObjective: addr.isTutorMode
+                        ? `Mantener la vitalidad de ${addr.childShortRef} estable a mitad del día.`
+                        : 'Mantener su vitalidad estable a mitad de su jornada evitando bajones de energía.',
+                    waterVolumeMl: 300,
+                    isEstablishedContinuityFullDose: isEstablishedContinuity
+                },
             {
                 tomaNumber: 3,
                 timeSlot: isNightShift ? 'Segunda mitad de su jornada (previo a su descanso)' : 'A media tarde',
@@ -5678,6 +6113,7 @@ function buildOrthomolecularPrescription(
                     ? `Cuidar la digestión vespertina de ${addr.childShortRef} e hidratar profundamente sus tejidos con medio litro de agua simple.`
                     : 'Cuidar su digestión e hidratar profundamente sus tejidos con medio litro de agua simple.',
                 waterVolumeMl: 500,
+                isCardioprotective1Plus2Continuity: isCardioprotective1Plus2,
                 isEstablishedContinuityFullDose: isEstablishedContinuity
             },
             {
@@ -5691,50 +6127,67 @@ function buildOrthomolecularPrescription(
                     ? `Aportar a los músculos, huesos, piel y articulaciones de ${addr.childShortRef} los nutrientes que emplea para repararse mientras duerme.`
                     : `Aportar a sus músculos, huesos, piel y articulaciones los nutrientes que emplean para repararse durante su descanso.${veganCollagenPatientNote}`,
                 waterVolumeMl: 500,
+                isCardioprotective1Plus2Continuity: isCardioprotective1Plus2,
                 isEstablishedContinuityFullDose: isEstablishedContinuity
             }
         ];
 
         sup33 = {
             id: 'sup_33plus',
-            cortex: isEstablishedContinuity
-                ? '33Plus® (Continuidad Calibrada • Energía Celular y Circulación)'
-                : '33Plus® (Ignición Mitocondrial y Reología Vascular)',
+            cortex: isCardioprotective1Plus2
+                ? '33Plus® (Pauta Óptima Cardioprotectora • 1 Sobre Completo Matutino)'
+                : isEstablishedContinuity
+                    ? '33Plus® (Continuidad Calibrada • Energía Celular y Circulación)'
+                    : '33Plus® (Ignición Mitocondrial y Reología Vascular)',
             name: scaled33.clinicalHeaderName,
-            dosage: isEstablishedContinuity
-                ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_33PLUS.sachetGramsDisplay} a ${scaled33.totalGramsDisplay}) conforme a su pauta habitual consolidada, disueltos en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma`
-                : FORMULA_33PLUS.dosageByMode.STANDARD_DOSE,
+            dosage: isCardioprotective1Plus2
+                ? (isNightShift
+                    ? FORMULA_33PLUS.dosageByMode.CARDIOPROTECTIVE_CONTINUITY_1_SACHET_NIGHT_SHIFT
+                    : FORMULA_33PLUS.dosageByMode.CARDIOPROTECTIVE_CONTINUITY_1_SACHET)
+                : isEstablishedContinuity
+                    ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_33PLUS.sachetGramsDisplay} a ${scaled33.totalGramsDisplay}) conforme a su pauta habitual consolidada, disueltos en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma`
+                    : FORMULA_33PLUS.dosageByMode.STANDARD_DOSE,
             timing: addr.isTutorMode
                 ? `Sincronizado a la mañana de ${addr.childShortRef} (Al despertar y a media mañana)`
                 : `Sincronizado a su despertar (${cutoffFriendlyText}${hasThyroidFastingSpacing ? '; >= 60 min post-medicamento en ayunas' : ''}${hasConductionCaution ? ` y seguimiento ${formatBiometricMonitorPrepClause()}` : ''})`,
             clinical_timing: `Sincronizado al ciclo activo del paciente (${cutoffShortText}${hasThyroidFastingSpacing ? '; separar >= 60 min post-fármaco en ayunas' : ''}${hasConductionCaution ? ` y seguimiento cronotrópico ${formatBiometricMonitorPrepClause()}` : ''})`,
-            rationale: `${scaled33.regulatorySummary}.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${energyBiomarkers.length}): ${energyBiomarkers.join(' | ')}.` : ' Optimización de microcirculación, oxigenación tisular diurna y metabolismo celular.'}`,
+            rationale: `${scaled33.regulatorySummary}.${energyBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${energyBiomarkers.length}): ${energyBiomarkers.join(' | ')}.` : ' Optimización de microcirculación, oxigenación tisular diurna y metabolismo celular.'}${vegan33ClinicalNote}`,
             patient_rationale: addr.isTutorMode
                 ? `Acompaña a ${addr.childShortRef} por la mañana: aporta L-Taurina, L-Carnitina, antioxidantes de semilla de uva, Coenzima Q10, vitamina C y cromo (${scaled33.totalGramsDisplay}/día en 2 sobres de ${FORMULA_33PLUS.sachetGramsDisplay}) para apoyar su circulación y una energía limpia durante el día.`
-                : isEstablishedContinuity
-                    ? `Reconocemos su constancia consolidada: continuamos con 1 a 2 sobres completos al día de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} a ${scaled33.totalGramsDisplay} conforme a su pauta habitual consolidada), aportando L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva, vitamina C y picolinato de cromo para apoyar su circulación y energía limpia (${cutoffFriendlyText}).`
-                    : `Su aliado de energía activa: ${addr.directObjLower} acompaña con L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva, vitamina C y picolinato de cromo (${scaled33.totalGramsDisplay}/día en 2 sobres de ${FORMULA_33PLUS.sachetGramsDisplay}) para apoyar su circulación, su corazón y una energía limpia (${cutoffFriendlyText}).`,
+                : isCardioprotective1Plus2
+                    ? `Calibración cardioprotectora en sobre completo: 1 sobre completo al despertar (${FORMULA_33PLUS.sachetGramsDisplay} = ~132 mg de cafeína natural y 1,000 mg de Vitamina C, ${cutoffFriendlyText}), aportando L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva y cromo elemental sin sobrecargar el ritmo de su corazón.${vegan33PatientNote}`
+                    : isEstablishedContinuity
+                        ? `Reconocemos su constancia consolidada: continuamos con 1 a 2 sobres completos al día de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} a ${scaled33.totalGramsDisplay} conforme a su pauta habitual consolidada), aportando Vitamina C, L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva y cromo elemental para apoyar su circulación y energía limpia (${cutoffFriendlyText}).${vegan33PatientNote}`
+                        : `Su aliado de energía activa: ${addr.directObjLower} acompaña con Vitamina C, L-Taurina, L-Carnitina, Coenzima Q10, semilla de uva y cromo elemental (${scaled33.totalGramsDisplay}/día en 2 sobres de ${FORMULA_33PLUS.sachetGramsDisplay}) para apoyar su circulación, su corazón y una energía limpia (${cutoffFriendlyText}).${vegan33PatientNote}`,
+            isCardioprotective1Plus2Continuity: isCardioprotective1Plus2,
             isEstablishedContinuityFullDose: isEstablishedContinuity,
             status: 'approved'
         };
 
         sup34 = {
             id: 'sup_34plus',
-            cortex: isEstablishedContinuity
-                ? '34Plus® (Continuidad Calibrada • Reparación Celular y Colágeno)'
-                : '34Plus® (Ingeniería Tisular y Homeostasis Mucosa)',
+            cortex: isCardioprotective1Plus2
+                ? '34Plus® (Pauta Óptima Cardioprotectora • 2 Sobres Completos Vespertino/Nocturno)'
+                : isEstablishedContinuity
+                    ? '34Plus® (Continuidad Calibrada • Reparación Celular y Colágeno)'
+                    : '34Plus® (Ingeniería Tisular y Homeostasis Mucosa)',
             name: scaled34.clinicalHeaderName,
-            dosage: isEstablishedContinuity
-                ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_34PLUS.sachetGramsDisplay} a ${scaled34.totalGramsDisplay}) conforme a su pauta habitual consolidada, cada sobre disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`
-                : FORMULA_34PLUS.dosageByMode.STANDARD_DOSE,
+            dosage: isCardioprotective1Plus2
+                ? `Pauta óptima cardioprotectora en sobre completo: 2 sobres completos al día (${scaled34.totalGramsDisplay}; 1 sobre de ${FORMULA_34PLUS.sachetGramsDisplay} a media tarde y 1 sobre de ${FORMULA_34PLUS.sachetGramsDisplay} pre-descanso), cada sobre disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`
+                : isEstablishedContinuity
+                    ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_34PLUS.sachetGramsDisplay} a ${scaled34.totalGramsDisplay}) conforme a su pauta habitual consolidada, cada sobre disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`
+                    : FORMULA_34PLUS.dosageByMode.STANDARD_DOSE,
             timing: `Previo y 30–60 min antes de su descanso principal (${isNightShift ? 'nunca durante turno nocturno operativo' : 'tarde y noche'}, en medio litro de agua simple 💧${hasCationDrugSpacing ? '; separar >= 3 h de su antibiótico o hierro' : ''})`,
             clinical_timing: `Sincronizado a ventana de transición y descanso (${sleepToma4Slot} en mínimo 500 ml de agua simple 💧${hasCationDrugSpacing ? '; separar >= 3 h de quinolonas/tetraciclinas/hierro' : ''})`,
             rationale: `${scaled34.regulatorySummary}.${tissueBiomarkers.length > 0 ? ` Hallazgos objetivos integrados (${tissueBiomarkers.length}): ${tissueBiomarkers.join(' | ')}.` : ' Reparación de matriz de colágeno, relajación y recubrimiento digestivo.'}${veganCollagenClinicalNote}`,
             patient_rationale: addr.isTutorMode
                 ? `Soporte de reparación vespertino y nocturno para ${addr.childShortRef}: aporta colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, magnesio, vitamina C, vitamina K2 y zinc (${scaled34.totalGramsDisplay}/día en 2 sobres de ${FORMULA_34PLUS.sachetGramsDisplay}). Disuélvalo siempre en medio litro de agua simple 💧.`
-                : isEstablishedContinuity
-                    ? `Continuamos su soporte vespertino y pre-descanso con 1 a 2 sobres completos al día de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} a ${scaled34.totalGramsDisplay} conforme a su pauta habitual consolidada), aportando colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, citrato de magnesio, vitamina C, vitamina K2 MK-7 y zinc en MÍNIMO 500 ml de agua simple 💧 por toma.${veganCollagenPatientNote}`
-                    : `Su aliado de reparación y descanso: aporta colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, citrato de magnesio, vitamina C, vitamina K2 MK-7 y zinc (${scaled34.totalGramsDisplay}/día en 2 sobres de ${FORMULA_34PLUS.sachetGramsDisplay}) para confortar su intestino, favorecer su descanso y nutrir articulaciones, huesos y piel. Disuélvalo siempre en medio litro de agua simple 💧.${veganCollagenPatientNote}`,
+                : isCardioprotective1Plus2
+                    ? `Sostiene su reparación estructural y vascular con 2 sobres completos al día de 34Plus® (${scaled34.totalGramsDisplay}: tarde y antes de dormir), aportando 1,000 mg de colágeno hidrolizado, ~123.6 mg de magnesio elemental, L-Arginina, L-Glicina, fibra prebiótica FOS-inulina, L-Teanina, zinc elemental, Vitamina D3 (~1,000 UI) y Vitamina K2 MK-7 (~20 mcg) en MÍNIMO 500 ml de agua simple 💧 por toma.${veganCollagenPatientNote}`
+                    : isEstablishedContinuity
+                        ? `Continuamos su soporte vespertino y pre-descanso con 1 a 2 sobres completos al día de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} a ${scaled34.totalGramsDisplay} conforme a su pauta habitual consolidada), aportando colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, magnesio elemental, vitamina C, vitamina K2 MK-7 y zinc en MÍNIMO 500 ml de agua simple 💧 por toma.${veganCollagenPatientNote}`
+                        : `Su aliado de reparación y descanso: aporta colágeno hidrolizado, L-Teanina, L-Glicina, fibra prebiótica FOS-inulina, magnesio elemental, vitamina C, vitamina K2 MK-7 y zinc (${scaled34.totalGramsDisplay}/día en 2 sobres de ${FORMULA_34PLUS.sachetGramsDisplay}) para confortar su intestino, favorecer su descanso y nutrir articulaciones, huesos y piel. Disuélvalo siempre en medio litro de agua simple 💧.${veganCollagenPatientNote}`,
+            isCardioprotective1Plus2Continuity: isCardioprotective1Plus2,
             isEstablishedContinuityFullDose: isEstablishedContinuity,
             status: 'approved'
         };
@@ -5756,10 +6209,10 @@ function buildOrthomolecularPrescription(
         supplements: [sup33, sup34],
         has_calcium_contraction_lock: contract.calciumLocked,
         calcium_alert_text: contract.calciumLocked
-            ? 'Detectamos tendencia a depósito de calcio fuera del hueso: evitamos suplementos aislados de calcio inorgánico y priorizamos hidratación constante junto con magnesio y vitamina K2 alimentaria.'
+            ? 'Vigilancia mineral acreditada: acompañamos el control médico de su metabolismo de calcio con hidratación constante y sin suplementos aislados de calcio inorgánico.'
             : null,
         calcium_clinical_safeguard_text: contract.calciumLocked
-            ? `Riesgo biofísico de calcificación ectópica: se excluye suplementación aislada con sales de calcio inorgánico; priorizar hidratación estructurada (${contract.hydrationTargetLiters} L/día), magnesio y vitamina K2 alimentaria.`
+            ? `Salvaguarda mineral acreditada (hipercalcemia sérica o hallazgo cálcico en gabinete): evitar suplementación aislada con sales de calcio inorgánico y priorizar hidratación estructurada (${contract.hydrationTargetLiters} L/día) bajo seguimiento médico.`
             : null,
         bioenergetics_summary: bioenergetics
     };
@@ -6968,12 +7421,12 @@ const synthesizeDossier = async (req, res) => {
         }
 
         foodAllergies.forEach(a => {
-            const agent = typeof a === 'object' ? a.agent : a;
-            if (agent) critical_alerts.push(`ALERGIA ALIMENTARIA ESTRICTA: ${cleanClinicalLabel(String(agent)).toUpperCase()}`);
+            const agent = typeof a === 'object' ? (a.agent || a.name) : a;
+            if (isAffirmativeClinicalStatement(agent)) critical_alerts.push(`ALERGIA ALIMENTARIA ESTRICTA: ${cleanClinicalLabel(String(agent)).toUpperCase()}`);
         });
         drugAllergies.forEach(a => {
-            const agent = typeof a === 'object' ? a.agent : a;
-            if (agent) critical_alerts.push(`ALERGIA MEDICAMENTOSA: ${cleanClinicalLabel(String(agent)).toUpperCase()}`);
+            const agent = typeof a === 'object' ? (a.agent || a.name) : a;
+            if (isAffirmativeClinicalStatement(agent)) critical_alerts.push(`ALERGIA MEDICAMENTOSA: ${cleanClinicalLabel(String(agent)).toUpperCase()}`);
         });
 
         activeNodesWithAnomalies.forEach(n => {
@@ -6982,24 +7435,31 @@ const synthesizeDossier = async (req, res) => {
             }
         });
 
+        const allIfmOrdered = Array.isArray(processedIfmNodes) ? processedIfmNodes : [];
         const suggested_management = (isLactanteExplicit ? [
             "1. Preservación de Lactancia Materna / Fórmula Pediátrica + Introducción Guiada de Sólidos (BLW/Papillas)",
             "2. Monitoreo Ponderal y Crecimiento Longitudinal (L-OMS)",
             "3. Estimulación Psicomotriz Activa y Tiempo de Juego (Tummy Time)",
             "4. Soporte Nutricional Pediátrico bajo Supervisión del Pediatra Tratante"
         ] : [
-            ...activeNodesWithAnomalies.map((n, idx) => `${idx + 1}. [${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')} • ${n.accredited_cie10 || n.functionalCode || 'IFM'}] ${n.therapeutic_focus}`),
-            `${activeNodesWithAnomalies.length + 1}. [Bioenergética ${bioenergetics.equationUsed} • ${String(canonicalContract.regimen || '').replace(/\s*\(([^()]+)\)/g, ' — $1')}] TMB: ${bioenergetics.bmr} kcal | TDEE: ${bioenergetics.tdee} kcal | Meta Energética Sugerida: ${bioenergetics.targetKcal} kcal (${bioenergetics.macros.carbs}% C / ${bioenergetics.macros.protein}% P / ${bioenergetics.macros.fat}% L) | Hidratación Meta: ${canonicalContract.hydrationTargetLiters} L/día | ${canonicalContract.logisticsSummary?.operationalSummary || `Logística: ${canonicalContract.logisticsSummary?.venueLabel || 'Casa'} (${canonicalContract.logisticsSummary?.cookLabel || 'Preparación propia'})`}${canonicalContract.patientSpecificExclusions.length > 0 ? ` | Exclusiones personalizadas: ${canonicalContract.patientSpecificExclusions.join(', ')}` : ''}.${canonicalContract.dietaryEpigeneticSynthesis?.clinicalSummaryText ? ` ${canonicalContract.dietaryEpigeneticSynthesis.clinicalSummaryText}` : ''}`,
-            `${activeNodesWithAnomalies.length + 2}. [Readaptación Biomecánica y Pauta de Movimiento Seguro] ${physicalStrategyText}`,
-            `${activeNodesWithAnomalies.length + 3}. [Bioseguridad y Pauta Nutricional (${biosecuritySemaphore.level})] ${biosecuritySemaphore.titrationPlanText}`,
-            `${activeNodesWithAnomalies.length + 4}. [Hito de Pulso Día 14 (Mitad de Ciclo)] ${canonicalContract.evolutionTimeline?.midCyclePulseDay14?.clinicalInstruction || 'Control intermedio Día 14 de circunferencia abdominal en ayunas, vitalidad (1–10) y constancia de sus 4 momentos.'}`,
-            `${activeNodesWithAnomalies.length + 5}. [Estudio de Edad Metabólica SSoTT] ${metabolicAgeStudy.clinicalSummary}`
+            ...allIfmOrdered.map((n, idx) => {
+                const ifmCode = n.accredited_cie10 || n.functionalCode || `IFM-0${idx + 1}`;
+                const focusText = n.status === 'HOMEOSTASIS'
+                    ? `Preservación preventiva de homeostasis: ${resolveNodeTherapeuticFocus(n.nodeId, canonicalContract)}`
+                    : n.therapeutic_focus;
+                return `${idx + 1}. [${n.nodeName.replace(/^(?:(?:Nodo\s*)?\d+[.:\s-]*)+/i, '')} • ${ifmCode}] ${focusText}`;
+            }),
+            `${allIfmOrdered.length + 1}. [Bioenergética ${bioenergetics.equationUsed} • ${String(canonicalContract.regimen || '').replace(/\s*\(([^()]+)\)/g, ' — $1')}] TMB: ${bioenergetics.bmr} kcal | TDEE: ${bioenergetics.tdee} kcal | Meta Energética Sugerida: ${bioenergetics.targetKcal} kcal (${bioenergetics.macros.carbs}% C / ${bioenergetics.macros.protein}% P / ${bioenergetics.macros.fat}% L) | Hidratación Meta: ${canonicalContract.hydrationTargetLiters} L/día | ${canonicalContract.logisticsSummary?.operationalSummary || `Logística: ${canonicalContract.logisticsSummary?.venueLabel || 'Casa'} (${canonicalContract.logisticsSummary?.cookLabel || 'Preparación propia'})`}${canonicalContract.patientSpecificExclusions.length > 0 ? ` | Exclusiones personalizadas: ${canonicalContract.patientSpecificExclusions.join(', ')}` : ''}.${canonicalContract.dietaryEpigeneticSynthesis?.clinicalSummaryText ? ` ${canonicalContract.dietaryEpigeneticSynthesis.clinicalSummaryText}` : ''}`,
+            `${allIfmOrdered.length + 2}. [Readaptación Biomecánica y Pauta de Movimiento Seguro] ${physicalStrategyText}`,
+            `${allIfmOrdered.length + 3}. [Bioseguridad y Pauta Nutricional (${biosecuritySemaphore.level})] ${biosecuritySemaphore.titrationPlanText}`,
+            `${allIfmOrdered.length + 4}. [Hito de Pulso Día 14 (Mitad de Ciclo)] ${canonicalContract.evolutionTimeline?.midCyclePulseDay14?.clinicalInstruction || 'Control intermedio Día 14 de circunferencia abdominal en ayunas, vitalidad (1–10) y constancia de sus 4 momentos.'}`,
+            `${allIfmOrdered.length + 5}. [Estudio de Edad Metabólica SSoTT] ${metabolicAgeStudy.clinicalSummary}`
         ]).map(sanitizeArt215NonTherapeuticLexicon);
 
         const payload = {
             doctrina_aplicada: determinedRoute === 'RUTA_A'
                 ? 'Ruta Clínica A • Endocrinología y Desarrollo Pediátrico L-OMS (Primeros 1000 Días)'
-                : `Ruta Clínica ${determinedRoute.replace('RUTA_', '')} • Medicina Funcional de Sistemas (Matriz IFM SSoTT v3.5)`,
+                : `Ruta Clínica ${determinedRoute.replace('RUTA_', '')} • Medicina Funcional de Sistemas (Matriz IFM SSoTT v3.6)`,
             diagnostico_causa_raiz: sanitizeArt215NonTherapeuticLexicon(sanitizeClinicalSpanish(diagnosticoCausaRaiz)),
             preliminary_diagnosis,
             ifm_nodes_matrix: processedIfmNodes,
@@ -7055,7 +7515,7 @@ const synthesizeDossier = async (req, res) => {
                     metabolicAge: metabolicAgeStudy?.metabolicAgeExact ?? null
                 }))
                 .digest('hex'),
-            ssot_contract_version: "3.5.2-Gold-Aniversario19",
+            ssot_contract_version: "3.6.0-Medical-Grade-Gold",
             status: "SYNTHESIZED_READY_FOR_REVIEW"
         };
 
@@ -7257,7 +7717,7 @@ const approveDossier = async (req, res) => {
                     status: 'approved'
                 }))
                 .digest('hex'),
-            ssot_contract_version: "3.5.2-Gold-Aniversario19",
+            ssot_contract_version: "3.6.0-Medical-Grade-Gold",
             status: "approved"
         };
 

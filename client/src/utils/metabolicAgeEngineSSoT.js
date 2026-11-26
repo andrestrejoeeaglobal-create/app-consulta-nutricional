@@ -9,7 +9,7 @@
  *   sub-regla por sub-regla, Potencial Óptimo Ciclo 6 (180d), Compensación Fisiológica Activa y Niveles I-III (EGM-69..72).
  */
 
-const ENGINE_VERSION_SSOT = '3.5.0-EGM51-V4';
+const ENGINE_VERSION_SSOT = '3.6.0-EGM51-V5';
 
 const DOMAIN_WEIGHTS_SSOT = Object.freeze({
     ANTHROPOMETRY_ADIPOSITY: 0.26,
@@ -42,6 +42,24 @@ function isNegatedOrEmptyToken(raw = '') {
     return /^(?:no|ningun[oa]?s?|niega|negad[oa]s?|sin\s+(?:antecedentes?|diagnosticos?|patologias?|alergias?|sintomas?|exclusiones?|restricciones?)|no_diagnosis|none|null|undefined|n\/a|na|-+|0)$/i.test(
         s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     );
+}
+
+/**
+ * Guardia Forense Anti-Falsos Positivos por Negación (`EGM-76` Guardia #1).
+ * Devuelve `true` exclusivamente cuando un enunciado clínico/alergénico es afirmativo,
+ * rechazando cualquier cláusula antecedida por "Niega", "Sin", "Ninguna", "0 alergias" o "Negadas".
+ */
+function isAffirmativeClinicalStatement(rawClause = '') {
+    const clean = cleanHumanLabel(rawClause);
+    if (!clean || isNegatedOrEmptyToken(clean)) return false;
+    const ascii = clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (/^(?:niega|negad[oa]s?|sin\b|ningun[oa]?s?\b|0\s+alergias?|cero\s+alergias?|no\s+(?:presenta|refiere|tiene|padece|reporta|alergic[oa]|hay)|descartad[oa]s?|ausencia\s+de\b)/.test(ascii)) {
+        return false;
+    }
+    if (/\b(?:niega\s+(?:alergia|hipersensibilidad|intolerancia|antecedente|consumo|uso|sintomas?|mareo|sincope|disnea|ulcera|sangrado)|sin\s+(?:alergias?|hipersensibilidad|antecedentes?|datos?\s+de)|alergias?:\s*(?:negadas?|ninguna|0|no)|0\s+alergias?\s+clinicas?)\b/.test(ascii)) {
+        return false;
+    }
+    return true;
 }
 
 const SURGICAL_CODE_LABELS = Object.freeze({
@@ -87,6 +105,9 @@ function sanitizeBioelectricScreeningLabel(rawLabel = '') {
     }
     if (/gastritis|[úu]lcera|colitis|enteritis/i.test(clean)) {
         return 'Bioseñal orientativa de confort y motilidad digestiva';
+    }
+    if (/(?:biose[ñn]al\s+orientativa\s+de\s+)?hueso\s+reumatoide|enfermedad\s+de\s+hueso\s+reumatoide/i.test(clean)) {
+        return 'Balance Articular Biofísico';
     }
     if (/osteoporosis|hiperplasia\s+[óo]sea|espondilosis|enfermedad\s+[óo]sea\s+reumatoide|coeficiente\s+de\s+reumatismo|reumatismo|artritis/i.test(clean)) {
         return 'Bioseñal orientativa de soporte osteomuscular y articular';
@@ -141,7 +162,11 @@ function sanitizeArt215NonTherapeuticLexicon(rawText = '') {
         .replace(/recalibraci[óo]n\s+preventiva\s+de\s+dosis/giu, 'ajuste preventivo de toma')
         .replace(/\bdosis\s+recalibrada\b/giu, 'toma recalibrada')
         .replace(/Aporte\s+neto\s+en\s+la\s+dosis\s+prescrita\s*\(/giu, 'Aporte neto en la pauta nutricional sugerida (')
-        .replace(/Aporte\s+neto\s+prescrito\b/giu, 'Aporte neto diario sugerido');
+        .replace(/Aporte\s+neto\s+prescrito\b/giu, 'Aporte neto diario sugerido')
+        .replace(/(?:Bioseñal\s+orientativa\s+de\s+)?Hueso\s+Reumatoide/giu, 'Balance Articular Biofísico')
+        .replace(/ANORMAL\s+SEVERO\s*(?:(\(\+\+\+\))|(\[\+\+\+\]))?/giu, (_, p1, b1) => `Alerta Severa ${b1 || p1 || '[+++]'}`)
+        .replace(/ANORMAL\s+MODERADO\s*(?:(\(\+\+\))|(\[\+\+\]))?/giu, (_, p1, b1) => `Alerta Moderada ${b1 || p1 || '[++]'}`)
+        .replace(/ANORMAL\s+LEVE\s*(?:(\(\+\))|(\[\+\]))?/giu, (_, p1, b1) => `Desviación Leve ${b1 || p1 || '[+]'}`);
 }
 
 function parseMealClockMinutes(rawHour = '') {
@@ -380,7 +405,7 @@ function extractUnifiedAnamnesisSignals(patientData = {}) {
     const pathSet = new Map();
     const addPathology = (rawVal) => {
         const clean = cleanHumanLabel(rawVal);
-        if (!clean || isNegatedOrEmptyToken(clean)) return;
+        if (!clean || !isAffirmativeClinicalStatement(clean)) return;
         const k = normalizeAsciiToken(clean);
         if (!k || k === 'no_diagnosis' || k === 'other') return;
         if (!pathSet.has(k)) pathSet.set(k, clean);
@@ -411,7 +436,12 @@ function extractUnifiedAnamnesisSignals(patientData = {}) {
     });
 
     if (typeof history.personal_raw_text === 'string' && !isNegatedOrEmptyToken(history.personal_raw_text)) {
-        history.personal_raw_text.split(/[,;|\n]/).forEach(addPathology);
+        history.personal_raw_text
+            .split(/[.;|\n]+/)
+            .filter((sent) => isAffirmativeClinicalStatement(sent))
+            .forEach((affirmativeSentence) => {
+                affirmativeSentence.split(/,/).forEach(addPathology);
+            });
     }
 
     const unifiedPathologies = Array.from(pathSet.values());
@@ -623,17 +653,99 @@ function extractUnifiedAnamnesisSignals(patientData = {}) {
     const hasIrregularCycle = Boolean(isFemale && /irregular|oligomenorrea|polimenorrea/i.test(menstrualStatus));
     const hasMenopause = Boolean(isFemale && /menopausia|climaterio|postmenopausia/i.test(`${menstrualStatus} | ${pathUpper}`));
 
-    // 7. Fase 7, 12, 13, 14: Alergias, Preferencias, Disfagia, Turno Nocturno y Ventana R24h
-    const rawAllergyCandidates = [
+    // 7. Fase 7, 12, 13, 14: Alergias Afirmativas (Guardia Forense #1), Endocrino/Hierro, Disfagia y Turno Nocturno
+    const rawFoodAllergyCandidates = [
         ...(Array.isArray(history?.allergies?.food) ? history.allergies.food : []),
-        ...(Array.isArray(history?.allergies_structured) ? history.allergies_structured : []),
+        ...(Array.isArray(history?.allergies_structured)
+            ? history.allergies_structured.filter((x) => !x?.type || /FOOD|ALIMENT/i.test(String(x.type)))
+            : []),
         ...(Array.isArray(patientData?.allergies) ? patientData.allergies : [])
     ];
-    const allergyItems = Array.from(new Set(
-        rawAllergyCandidates
+    const rawDrugAllergyCandidates = [
+        ...(Array.isArray(history?.allergies?.drug) ? history.allergies.drug : []),
+        ...(Array.isArray(history?.allergies_structured)
+            ? history.allergies_structured.filter((x) => /DRUG|MEDICAM|FARMAC/i.test(String(x?.type || '')))
+            : [])
+    ];
+    const extractAffirmativeAgents = (arr = []) => Array.from(new Set(
+        arr
             .map((a) => cleanHumanLabel(typeof a === 'object' ? (a.agent || a.name || a.label || '') : a))
-            .filter((s) => s && !isNegatedOrEmptyToken(s))
+            .filter((s) => isAffirmativeClinicalStatement(s))
     ));
+    const affirmativeFoodAllergies = extractAffirmativeAgents(rawFoodAllergyCandidates);
+    const affirmativeDrugAllergies = extractAffirmativeAgents(rawDrugAllergyCandidates);
+    const allergyItems = Array.from(new Set([...affirmativeFoodAllergies, ...affirmativeDrugAllergies]));
+
+    const affirmativePathClauses = unifiedPathologies.filter((p) => isAffirmativeClinicalStatement(p));
+    const affirmativeFoodUpper = affirmativeFoodAllergies.map((x) => x.toUpperCase()).join(' | ');
+    const affirmativeDrugUpper = affirmativeDrugAllergies.map((x) => x.toUpperCase()).join(' | ');
+    const affirmativeAllergyUpper = allergyItems.map((x) => x.toUpperCase()).join(' | ');
+    const affirmativePathUpper = affirmativePathClauses.map((x) => x.toUpperCase()).join(' | ');
+
+    // APLV IgE real (Proteína de leche de vaca / Caseína / Suero de leche WPI), distinta de intolerancia leve a lactosa
+    const isPureLactoseIntoleranceOnly = (txt = '') =>
+        /INTOLERANCIA\s+(?:LEVE\s+|PARCIAL\s+|DIGESTIVA\s+)?A\s+(?:LA\s+)?LACTOSA|\bSOLO\s+LACTOSA\b|\bDESLACTOSAD/.test(txt) &&
+        !/(?:APLV|CASE[ÍI]NA|SUERO\s+DE\s+LECHE|\bWHEY\b|LACTOALB[ÚU]MINA|LACTOGLOBULINA|PROTE[ÍI]NA\s+DE\s+(?:LA\s+)?LECHE|\bIGE\b|ANAFILAX)/.test(txt);
+
+    const hasCowMilkProteinAllergy = Boolean(
+        affirmativeFoodAllergies.some((item) => {
+            const up = item.toUpperCase();
+            if (isPureLactoseIntoleranceOnly(up)) return false;
+            return /\b(?:APLV|CASE[ÍI]NA|SUERO\s+DE\s+LECHE|WHEY|LACTOALB[ÚU]MINA|LACTOGLOBULINA|BETALACTOGLOBULINA|ALFALACTOALB[ÚU]MINA|PROTE[ÍI]NA\s+DE\s+(?:LA\s+)?LECHE|LECHE\s+DE\s+VACA|ALERGIA\s+A\s+(?:LA\s+)?LECHE|L[ÁA]CTEOS)\b/.test(up);
+        }) ||
+        affirmativePathClauses.some((item) => {
+            const up = item.toUpperCase();
+            if (isPureLactoseIntoleranceOnly(up)) return false;
+            return /\b(?:APLV|ALERGIA\s+(?:IGE\s+)?A\s+(?:LA\s+)?(?:PROTE[ÍI]NA\s+DE\s+(?:LA\s+)?)?LECHE|ALERGIA\s+A\s+CASE[ÍI]NA|ALERGIA\s+A\s+SUERO\s+DE\s+LECHE)\b/.test(up);
+        })
+    );
+
+    // Alergia a Salicilatos / AAS / AINEs (evaluada estrictamente sobre registros afirmativos de alergia)
+    const hasSalicylateOrNsaidAllergy = Boolean(
+        /(?:SALICILATO|SALICINA|SAUCE\s+BLANCO|SALIX\s+ALBA|ASPIRINA|[ÁA]CIDO\s+ACETILSALIC[ÍI]LICO|\bAAS\b|\bAINES?\b|ANTIINFLAMATORIOS?\s+NO\s+ESTEROIDEOS?|IBUPROFENO|NAPROXENO|KETOROLACO|DICLOFENACO|INDOMETACINA|MELOXICAM|PIROXICAM|CELECOXIB|METAMIZOL|SAMTER|WIDAL)/.test(affirmativeAllergyUpper) ||
+        affirmativePathClauses.some((item) =>
+            /(?:ALERGIA|HIPERSENSIBILIDAD|INTOLERANCIA|ANAFILAXIA|BRONCOESPASMO).*(?:SALICILATO|ASPIRINA|\bAAS\b|\bAINES?\b|SAUCE\s+BLANCO|IBUPROFENO|NAPROXENO|KETOROLACO|DICLOFENACO)|TR[ÍI]ADA\s+DE\s+SAMTER|S[ÍI]NDROME\s+DE\s+WIDAL/i.test(item)
+        )
+    );
+
+    const affirmativeUlcerCandidates = [
+        ...affirmativePathClauses,
+        ...unifiedDigestiveSymptoms,
+        clinicalContext.primary_motive,
+        clinicalContext.specific_ailment,
+        patientData?.motivo_consulta
+    ]
+        .flatMap((s) => String(s || '').split(/[.;|\n]+/))
+        .filter((cl) => isAffirmativeClinicalStatement(cl));
+    const hasActivePepticUlcerOrGiBleed = affirmativeUlcerCandidates.some((cl) =>
+        /(?:[ÚU]LCERA\s+(?:P[ÉE]PTICA|G[ÁA]STRICA|DUODENAL)\s*(?:SANGRANTE|ACTIVA|HEMORR[ÁA]GICA|PERFORADA)?|SANGRADO\s+(?:DE\s+TUBO\s+DIGESTIVO|GASTROINTESTINAL|DIGESTIVO)|HEMORRAGIA\s+DIGESTIVA|\bMELENA\b|\bHEMATEMESIS\b|GASTRITIS\s+(?:EROSIVA\s+)?SANGRANTE|GASTRITIS\s+HEMORR[ÁA]GICA)/i.test(cl)
+    );
+
+    const hasPrimaryHyperparathyroidism = Boolean(
+        /(?:HIPERPARATIROIDISMO(?:\s+PRIMARIO)?|ADENOMA\s+PARATIROIDEO)/.test(affirmativePathUpper)
+    );
+    const hasActiveHyperthyroidism = Boolean(
+        /\b(?:HIPERTIROIDISMO(?:\s+ACTIVO)?|ENFERMEDAD\s+DE\s+GRAVES|GRAVES[-\s]*BASEDOW|TIROTOXICOSIS|TORMENTA\s+TIROIDEA|BOCIO\s+T[ÓO]XICO(?:\s+DIFUSO|\s+MULTINODULAR)?)\b/.test(affirmativePathUpper) ||
+        /\b(?:METIMAZOL|TIAMAZOL|TAPAZOL|PROPILTIOURACILO|CARBIMAZOL)\b/.test(medsUpper)
+    );
+    const hasHemochromatosisOrIronOverloadHistory = Boolean(
+        /\b(?:HEMOCROMATOSIS|HEMOSIDEROSIS\s+SIST[ÉE]MICA|SOBRECARGA\s+(?:DE\s+HIERRO|F[ÉE]RRICA)|TALASEMIA\s+MAYOR)\b/.test(affirmativePathUpper)
+    );
+
+    const affirmativeSymptomClauses = [
+        clinicalContext.primary_motive,
+        clinicalContext.specific_ailment,
+        clinicalContext.patient_quote,
+        patientData?.motivo,
+        patientData?.motivo_consulta,
+        patientData?.reason_for_consultation,
+        ...affirmativePathClauses
+    ]
+        .flatMap((raw) => String(raw || '').split(/[.;|\n]+/))
+        .filter((cl) => isAffirmativeClinicalStatement(cl));
+    const hasCardiacRedFlagSymptoms = affirmativeSymptomClauses.some((cl) =>
+        /\b(?:S[ÍI]NCOPE|PRES[ÍI]NCOPE|LIPOTIMIA|DESMAYOS?|MAREO(?:S)?(?:\s+INTENSO|\s+RECURRENTE|\s+AL\s+ESFUERZO)?|DISNEA(?:\s+DE\s+(?:REPOSO|ESFUERZO|PEQUE[ÑN]OS\s+ESFUERZOS))?|FALTA\s+DE\s+AIRE|ANGINA\s+DE\s+PECHO|DOLOR\s+TOR[ÁA]CICO\s+OPRESIVO)\b/i.test(cl)
+    );
 
     const prefDietRaw = String(
         patientData?.nutrition?.preferences?.diet_type ||
@@ -780,6 +892,15 @@ function extractUnifiedAnamnesisSignals(patientData = {}) {
         hasIrregularCycle,
         hasMenopause,
         allergyItems,
+        affirmativeFoodAllergies,
+        affirmativeDrugAllergies,
+        hasCowMilkProteinAllergy,
+        hasSalicylateOrNsaidAllergy,
+        hasActivePepticUlcerOrGiBleed,
+        hasPrimaryHyperparathyroidism,
+        hasActiveHyperthyroidism,
+        hasHemochromatosisOrIronOverloadHistory,
+        hasCardiacRedFlagSymptoms,
         prefDietRaw,
         isVegan,
         isVegetarian,
@@ -812,7 +933,8 @@ function buildSafeDietaryExamplesSSoT({
 } = {}) {
     const mergedExcl = [
         ...(Array.isArray(combinedExclusions) ? combinedExclusions : []),
-        ...(Array.isArray(anamnesis?.allergyItems) ? anamnesis.allergyItems : [])
+        ...(Array.isArray(anamnesis?.allergyItems) ? anamnesis.allergyItems : []),
+        ...(anamnesis?.hasCowMilkProteinAllergy ? ['lacteos', 'leche', 'queso', 'yogur', 'caseina', 'suero_de_leche'] : [])
     ];
     const exclBlob = mergedExcl
         .map((x) => normalizeAsciiToken(x))
@@ -954,7 +1076,12 @@ function extractLabSnapshotFromRawPatientData(rawPatientData = {}, ageYears = 35
         }
         else if (normKey.includes('hemoglobina') && !normKey.includes('corp') && !normKey.includes('a1c')) labs.hemoglobin = num;
         else if (normKey.includes('ferritina')) labs.ferritin = num;
+        else if (normKey.includes('saturacion') && (normKey.includes('hierro') || normKey.includes('transferrina'))) labs.transferrinSaturationPct = num;
+        else if ((normKey === 'hierro' || normKey.includes('hierro_serico')) && !normKey.includes('captacion') && !normKey.includes('saturacion')) labs.serumIron = num;
+        else if ((normKey === 'calcio' || normKey.includes('calcio_serico') || normKey === 'calcium') && !normKey.includes('orina') && !normKey.includes('calcitriol')) labs.serumCalcium = num;
         else if (normKey.includes('tsh')) labs.tsh = num;
+        else if (normKey.includes('t4_libre') || normKey === 'ft4' || normKey.includes('tiroxina_libre')) labs.freeT4 = num;
+        else if (normKey.includes('t3_libre') || normKey === 'ft3' || normKey.includes('triyodotironina_libre')) labs.freeT3 = num;
         else if (normKey.includes('potasio') || normKey === 'k') labs.potassium = num;
         else if (normKey === 'sodio' || normKey.startsWith('sodio_')) labs.sodium = num;
     };
@@ -986,6 +1113,47 @@ function extractLabSnapshotFromRawPatientData(rawPatientData = {}, ageYears = 35
     return labs;
 }
 
+function extractLabVigenciaSSoT(rawPatientData = {}, referenceDate = null) {
+    const ext = rawPatientData?.scan_data?.external_metrics || {};
+    const vig = ext.vigencia || {};
+    const rawIso = vig.study_date_iso || ext.study_date_iso || ext.study_date || ext.date || '';
+    const rawDisplay = vig.study_date_display || ext.study_date_display || '';
+    let parsedStudyDate = null;
+    if (rawIso) {
+        const s = String(rawIso).trim();
+        const ymd = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        const dmy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+        if (ymd) parsedStudyDate = new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+        else if (dmy) parsedStudyDate = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+    } else if (rawDisplay) {
+        const dmy = String(rawDisplay).trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+        if (dmy) parsedStudyDate = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+    }
+    const refDt = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime())
+        ? referenceDate
+        : (referenceDate ? new Date(referenceDate) : new Date());
+    let computedAgeDays = null;
+    if (parsedStudyDate && !Number.isNaN(parsedStudyDate.getTime()) && !Number.isNaN(refDt.getTime())) {
+        const diffDays = Math.floor((refDt.getTime() - parsedStudyDate.getTime()) / 86400000);
+        if (diffDays >= 0 && diffDays <= 36500) computedAgeDays = diffDays;
+    }
+    const fallbackAgeDays = Number.isFinite(Number(vig.age_days)) ? Number(vig.age_days) : null;
+    const labAgeDays = computedAgeDays !== null ? computedAgeDays : fallbackAgeDays;
+    const studyDateDisplay = rawDisplay || (parsedStudyDate
+        ? `${String(parsedStudyDate.getDate()).padStart(2, '0')}/${String(parsedStudyDate.getMonth() + 1).padStart(2, '0')}/${parsedStudyDate.getFullYear()}`
+        : null);
+    const isHistoricalLab = Boolean(
+        vig.is_historical === true ||
+        String(vig.tier || '').toUpperCase() === 'HISTORICA' ||
+        (labAgeDays !== null && labAgeDays > 180)
+    );
+    return {
+        labAgeDays,
+        studyDateDisplay,
+        isHistoricalLab
+    };
+}
+
 function extractCabinetSnapshotFromRawPatientData(rawPatientData = {}) {
     const ext = rawPatientData?.scan_data?.external_metrics || {};
     const studies = ext?.external_studies?.clinical_imaging_and_cabinet || ext?.imaging?.studies || [];
@@ -993,9 +1161,13 @@ function extractCabinetSnapshotFromRawPatientData(rawPatientData = {}) {
         hasCabinetStudies: false,
         hasCardiacConductionOrBradycardia: false,
         hasRbbbOrConductionBlock: false,
+        hasBifascicularOrSevereConductionBlock: false,
         hasSinusBradycardiaFlag: false,
         hasActiveTachyarrhythmia: false,
-        ecgHrBpm: null
+        hasAccreditedCabinetCalcification: false,
+        ecgHrBpm: null,
+        ecgQrsMs: null,
+        ecgQrsAxisDeg: null
     };
     if (!Array.isArray(studies) || studies.length === 0) return cab;
     cab.hasCabinetStudies = true;
@@ -1003,12 +1175,22 @@ function extractCabinetSnapshotFromRawPatientData(rawPatientData = {}) {
         if (!st || typeof st !== 'object') return;
         const flags = Array.isArray(st.clinical_flags) ? st.clinical_flags : [];
         const m = st.metrics || {};
+        const imp = String(st.impression || '');
         if (st.domain === 'ECG_CARDIOLOGY' || st.modality === 'ECG') {
-            if (m.hr_bpm) cab.ecgHrBpm = Number(m.hr_bpm);
-            const imp = String(st.impression || '');
+            if (m.hr_bpm !== undefined && m.hr_bpm !== null) cab.ecgHrBpm = Number(m.hr_bpm);
+            if (m.qrs_ms !== undefined && m.qrs_ms !== null) cab.ecgQrsMs = Number(m.qrs_ms);
+            if (m.qrs_axis_deg !== undefined && m.qrs_axis_deg !== null) cab.ecgQrsAxisDeg = Number(m.qrs_axis_deg);
             if (flags.includes('ECG_RBBB_CONDUCTION') || (m.qrs_ms && Number(m.qrs_ms) >= 120) || /bloqueo\s+de\s+(?:la\s+)?rama|hemibloqueo|bloqueo\s+av/i.test(imp)) {
                 cab.hasRbbbOrConductionBlock = true;
                 cab.hasCardiacConductionOrBradycardia = true;
+            }
+            const hasLeftAxisSevere = (cab.ecgQrsAxisDeg !== null && cab.ecgQrsAxisDeg <= -45) || flags.includes('ECG_LEFT_AXIS_DEVIATION');
+            const hasWideQrs160 = cab.ecgQrsMs !== null && cab.ecgQrsMs >= 160;
+            if (
+                (cab.hasRbbbOrConductionBlock && (hasLeftAxisSevere || hasWideQrs160)) ||
+                /bloqueo\s+(?:bi|tri)fascicular|bloqueo\s+av\s+(?:de\s+)?(?:segundo|tercer|2|3|completo)|mobitz/i.test(imp)
+            ) {
+                cab.hasBifascicularOrSevereConductionBlock = true;
             }
             if (flags.includes('ECG_SINUS_BRADYCARDIA') || (m.hr_bpm && Number(m.hr_bpm) < 60)) {
                 cab.hasSinusBradycardiaFlag = true;
@@ -1016,6 +1198,11 @@ function extractCabinetSnapshotFromRawPatientData(rawPatientData = {}) {
             }
             if (flags.includes('ECG_TACHYARRHYTHMIA') || (m.hr_bpm && Number(m.hr_bpm) >= 110) || /taquiarritmia|fibrilaci[óo]n\s+auricular|flutter/i.test(imp)) {
                 cab.hasActiveTachyarrhythmia = true;
+            }
+        } else if (imp) {
+            const impClauses = imp.split(/[•.;|\n]+/);
+            if (impClauses.some((cl) => isAffirmativeClinicalStatement(cl) && /\b(?:calcificaci[óo]n|ateromatosis\s+calcificada|nefrocalcinosis|litiasis\s+c[áa]lcica)\b/i.test(cl))) {
+                cab.hasAccreditedCabinetCalcification = true;
             }
         }
     });
@@ -1105,6 +1292,14 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
             rawPatientData?.lifestyle_profile?.activity?.source_type === 'TELEMETRY_TCX'
         );
 
+        const vigInfo = extractLabVigenciaSSoT(rawPatientData, opts.referenceDate || null);
+        const isHistoricalLab = Boolean(
+            vigInfo.isHistoricalLab ||
+            opts.serum?.precedence?.isHistoricalLab === true
+        );
+        const labAgeDays = vigInfo.labAgeDays;
+        const labStudyDateDisplay = vigInfo.studyDateDisplay || opts.serum?.precedence?.studyDateDisplay || null;
+
         const evidenceTier = hasRealVenousLabs
             ? 'BIOQUIMICO_INTEGRAL'
             : (hasElectretEvidence || hasMultimodalCabinetOrWearable)
@@ -1112,7 +1307,9 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
                 : 'CLINICO_ANTROPOMETRICO';
 
         const evidenceTierBadge = evidenceTier === 'BIOQUIMICO_INTEGRAL'
-            ? 'Nivel I — Evidencia Bioquímica y Clínica Completa'
+            ? (isHistoricalLab
+                ? 'Nivel I — Evidencia Bioquímica y Clínica Completa (Química histórica > 6 meses • actualizar control)'
+                : 'Nivel I — Evidencia Bioquímica y Clínica Completa')
             : evidenceTier === 'BIOFISICO_MULTIMODAL'
                 ? 'Nivel II — Evidencia Multimodal y Antropométrica'
                 : 'Nivel III — Evaluación Clínica y Antropométrica Basal';
@@ -1844,7 +2041,7 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
                 ? `Su Edad Cronológica (${chronoAge} años) y su Edad Metabólica actual (${metabolicAgeExact} años; ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años • ${evidenceTierBadge}) reflejan una tracción opuesta activa: sus hábitos y constantes protectoras (${topProtectiveText || 'reserva cardiorrespiratoria y metabólica'}) ya restan ${protectiveBonusYears} años a su edad biológica, pero hoy focos específicos (${topModifiableText || 'ejes clínicos prioritarios'}) le suman +${totalDragYears} años retenidos. Al optimizarlos paso a paso, proyectamos ${cycle1TargetAge28d} años a 28 días, ${cycle3ProjectionAge90d} años a 90 días y un Potencial Óptimo Desbloqueable a 180 días (Ciclo 6) de ${cycle6RangeLabel180d}.`
                 : `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica actual es de ${metabolicAgeExact} años (${clampedDeltaExact} años • ${evidenceTierBadge}), respaldada por ${topProtectiveText || 'su composición corporal y vitalidad cardiometabólica'}. Nuestro enfoque de expansión de reserva funcional proyecta sostener y blindar esta ventaja hacia ${cycle1TargetAge28d} años (28 días) y ${cycle6RangeLabel180d} en su horizonte de 180 días (Healthspan).`;
 
-        const clinicalSummary = `Estudio Multivariable EGM-51 v4 (${evidenceTierBadge} • ${measuredDomains.length}/6 dominios • Altitud ${altitudeInfo.msnm} msnm • ${narrativeMode}${hasActiveCompensationFocalDrag ? ' • COMPENSACIÓN FISIOLÓGICA ACTIVA' : ''}): Edad Cronológica ${chronoAge} a vs Edad Metabólica ${metabolicAgeExact} a (Delta ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} a | Tracción Opuesta: -${protectiveBonusYears} a protectores vs +${totalDragYears} a retenidos [+${modifiableDragYears} a modificables]). Meta Ciclo 1 (28d): ${cycle1TargetAge28d} a (${cycle1Delta28d} a) | Proyección Ciclo 3 (90d): ${cycle3ProjectionAge90d} a (${cycle3Delta90d} a) | Potencial Óptimo Ciclo 6 (180d): ${cycle6RangeLabel180d}.`;
+        const clinicalSummary = `Estudio Multivariable EGM-51 v5 (${evidenceTierBadge} • ${measuredDomains.length}/6 dominios • Altitud ${altitudeInfo.msnm} msnm • ${narrativeMode}${hasActiveCompensationFocalDrag ? ' • COMPENSACIÓN FISIOLÓGICA ACTIVA' : ''}): Edad Cronológica ${chronoAge} a vs Edad Metabólica ${metabolicAgeExact} a (Delta ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} a | Tracción Opuesta: -${protectiveBonusYears} a protectores vs +${totalDragYears} a retenidos [+${modifiableDragYears} a modificables]). Meta Ciclo 1 (28d): ${cycle1TargetAge28d} a (${cycle1Delta28d} a) | Proyección Ciclo 3 (90d): ${cycle3ProjectionAge90d} a (${cycle3Delta90d} a) | Potencial Óptimo Ciclo 6 (180d): ${cycle6RangeLabel180d}.`;
 
         return {
             engineVersion: ENGINE_VERSION_SSOT,
@@ -1875,6 +2072,9 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
             cycle6RangeLabel180d,
             evidenceTier,
             evidenceTierBadge,
+            isHistoricalLab,
+            labAgeDays,
+            labStudyDateDisplay,
             evidenceConfidencePct,
             measuredDomainsCount: measuredDomains.length,
             totalDomainsPossible: 6,
@@ -1952,9 +2152,11 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
 export {
     ENGINE_VERSION_SSOT,
     DOMAIN_WEIGHTS_SSOT,
+    isAffirmativeClinicalStatement,
     sanitizeBioelectricScreeningLabel,
     sanitizeArt215NonTherapeuticLexicon,
     extractUnifiedAnamnesisSignals,
+    extractLabVigenciaSSoT,
     buildSafeDietaryExamplesSSoT,
     calculateUniversalMetabolicAgeSSoT
 };

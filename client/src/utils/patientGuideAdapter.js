@@ -8,12 +8,14 @@
  */
 
 import { enforcePatientGenderConcordance, resolvePatientSex } from './genderConcordance.js';
-import { FORMULA_33PLUS, FORMULA_34PLUS, formatScaledActives } from './pharmacopeiaCatalogSSoT.js';
+import { FORMULA_33PLUS, FORMULA_34PLUS, formatSingleSachetActiveCitation, formatScaledActives } from './pharmacopeiaCatalogSSoT.js';
 import {
     ENGINE_VERSION_SSOT,
+    isAffirmativeClinicalStatement,
     sanitizeBioelectricScreeningLabel,
     sanitizeArt215NonTherapeuticLexicon,
     extractUnifiedAnamnesisSignals,
+    extractLabVigenciaSSoT,
     buildSafeDietaryExamplesSSoT,
     calculateUniversalMetabolicAgeSSoT
 } from './metabolicAgeEngineSSoT.js';
@@ -58,22 +60,31 @@ export function sanitizeSupplementPosologyLexiconEgm74(rawText = '') {
             .replace(/ya\s+le\s+ganan\s+-([0-9.]+)\s+años\s+de\s+vitalidad\s+celular/giu, 'ya restan $1 años a su edad biológica')
             .replace(/le\s+retienen\s+\+([0-9.]+)\s+años/giu, 'le suman +$1 años retenidos')
             .replace(/\(\s*Alimentaci[óo]n\s+Mediterr[áa]nea\s+Cardioprotectora\s+Antiinflamatoria\s+\(Rica\s+en\s+([ÁA]cidos\s+Grasos\s+Monoinsaturados\s+y\s+Fibra\s+Soluble)\)\s*\)/giu, '(Alimentación Mediterránea Cardioprotectora Antiinflamatoria — Rica en $1)')
+            .replace(/ANORMAL\s+SEVERO\s*(?:(\(\+\+\+\))|(\[\+\+\+\]))?/giu, (_, p1, b1) => `Alerta Severa ${b1 || p1 || '[+++]'}`)
+            .replace(/ANORMAL\s+MODERADO\s*(?:(\(\+\+\))|(\[\+\+\]))?/giu, (_, p1, b1) => `Alerta Moderada ${b1 || p1 || '[++]'}`)
+            .replace(/ANORMAL\s+LEVE\s*(?:(\(\+\))|(\[\+\]))?/giu, (_, p1, b1) => `Desviación Leve ${b1 || p1 || '[+]'}`)
+            .replace(/(?:Bioseñal\s+orientativa\s+de\s+)?Hueso\s+Reumatoide/giu, 'Balance Articular Biofísico')
     );
 }
 
 export function resolveElectretInformativeAnnex(patientData = {}) {
+    const normalizeAnnexDetail = (d = '') =>
+        sanitizeClinicalSpanish(d || '')
+            .replace(/ANORMAL\s+SEVERO\s*(?:(\(\+\+\+\))|(\[\+\+\+\]))?/giu, (_, p1, b1) => `Alerta Severa ${b1 || p1 || '[+++]'}`)
+            .replace(/ANORMAL\s+MODERADO\s*(?:(\(\+\+\))|(\[\+\+\]))?/giu, (_, p1, b1) => `Alerta Moderada ${b1 || p1 || '[++]'}`)
+            .replace(/ANORMAL\s+LEVE\s*(?:(\(\+\))|(\[\+\]))?/giu, (_, p1, b1) => `Desviación Leve ${b1 || p1 || '[+]'}`);
     const dossier = patientData?.clinical_dossier || {};
     const persisted = dossier?.electret_informative_annex;
     if (persisted && typeof persisted === 'object' && Array.isArray(persisted.items)) {
         const cleanItems = persisted.items.map((it) => ({
             ...it,
             label: sanitizeBioelectricScreeningLabel(sanitizeClinicalSpanish(it?.label || '')),
-            detail: sanitizeClinicalSpanish(it?.detail || '')
+            detail: normalizeAnnexDetail(it?.detail || '')
         }));
         const cleanMeridians = (Array.isArray(persisted.meridianItems) ? persisted.meridianItems : []).map((m) => ({
             ...m,
             label: sanitizeBioelectricScreeningLabel(sanitizeClinicalSpanish(m?.label || '')),
-            detail: sanitizeClinicalSpanish(m?.detail || '')
+            detail: normalizeAnnexDetail(m?.detail || '')
         }));
         return {
             title: persisted.title || 'ANEXO INFORMATIVO (FUERA DE NOTA MÉDICA NOM-004) — TAMIZAJE BIOFÍSICO ORIENTATIVO NO DIAGNÓSTICO',
@@ -86,7 +97,7 @@ export function resolveElectretInformativeAnnex(patientData = {}) {
     const aux = Array.isArray(dossier?.auxiliary_bioenergetics) ? dossier.auxiliary_bioenergetics : [];
     const cleanMeridiansFallback = aux.map((m) => ({
         label: sanitizeBioelectricScreeningLabel(sanitizeClinicalSpanish(m?.label || '')),
-        detail: sanitizeClinicalSpanish(m?.detail || ''),
+        detail: normalizeAnnexDetail(m?.detail || ''),
         severity: m?.severity || 'MODERADA'
     }));
     return {
@@ -1929,7 +1940,12 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         const mismatchTutorSem = addr.isTutorMode && /\b(su cuerpo|sus síntomas|usted requiere)\b/i.test(cleanedExplanation);
         const missingTeenTutorNote = addr.isAdolescent && !/tutor|madre|padre/i.test(`${cleanedExplanation} ${cleanedEthical}`);
 
+        const isCardioprotective1Plus2Raw = Boolean(
+            rawSem.isCardioprotective1Plus2Continuity ||
+            rawSem.modeCode === 'PAUTA_OPTIMA_CARDIOPROTECTORA_SOBRE_COMPLETO'
+        );
         const isEstablishedContinuityRaw = Boolean(
+            isCardioprotective1Plus2Raw ||
             rawSem.isEstablishedContinuityFullDose ||
             rawSem.modeCode === 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA'
         );
@@ -1948,9 +1964,10 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 ? canonicalSem.titrationPlanText
                 : cleanedTitration,
             recommendedLabs: safeLabs,
-            isPaused: effectiveLevel === 'ROJO',
+            isPaused: Boolean(rawSem.isPaused || effectiveLevel === 'ROJO'),
+            isCardioprotective1Plus2Continuity: isCardioprotective1Plus2Raw,
             isEstablishedContinuityFullDose: isEstablishedContinuityRaw,
-            isMicroDose: effectiveLevel === 'AMARILLO' && !isEstablishedContinuityRaw
+            isMicroDose: effectiveLevel === 'AMARILLO' && !isEstablishedContinuityRaw && !rawSem.isPaused
         };
     } else if (rawIfmNodes.length === 0 && !existingGuide) {
         // Guardia FAIL-CLOSED: jamás prescribir Semáforo VERDE (40 g/día) sobre un expediente sin síntesis diagnóstica
@@ -1980,7 +1997,13 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
 
     const resolveClientSystemSeverity = (sysId, countVal, rawSys = null) => {
         try {
-            if (rawSys?.status && (dossier?.ssot_contract_version === '3.3.0-EGM56-SSOTT' || dossier?.ssot_contract_version === '3.5.0-Aniversario19-SSoTT')) {
+            if (rawSys?.status && (
+                dossier?.ssot_contract_version === '3.3.0-EGM56-SSOTT' ||
+                dossier?.ssot_contract_version === '3.5.0-Aniversario19-SSoTT' ||
+                dossier?.ssot_contract_version === '3.5.1-Aniversario19-SSoTT' ||
+                dossier?.ssot_contract_version === '3.5.2-Gold-Aniversario19' ||
+                dossier?.ssot_contract_version === '3.6.0-Medical-Grade-Gold'
+            )) {
                 return {
                     status: rawSys.status,
                     statusLabel: sanitizeClinicalSpanish(String(rawSys.statusLabel || (
@@ -2396,7 +2419,15 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     const mismatch33Adult = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(raw33Expl) || adultThirdPersonLeakRe.test(raw33Expl) || hasForbiddenTheanineIn33 || hasFictionalSkuIn33);
     const mismatch34Adult = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(raw34Expl) || adultThirdPersonLeakRe.test(raw34Expl));
 
+    const isCardioprotective1Plus2Card = Boolean(
+        semaphore.isCardioprotective1Plus2Continuity ||
+        semaphore.modeCode === 'PAUTA_OPTIMA_CARDIOPROTECTORA_SOBRE_COMPLETO' ||
+        canonicalPlan?.isCardioprotective1Plus2Continuity ||
+        raw33?.isCardioprotective1Plus2Continuity ||
+        raw34?.isCardioprotective1Plus2Continuity
+    );
     const isEstablishedContinuityCard = Boolean(
+        isCardioprotective1Plus2Card ||
         semaphore.isEstablishedContinuityFullDose ||
         semaphore.modeCode === 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA' ||
         canonicalPlan?.isEstablishedContinuityFullDose ||
@@ -2413,11 +2444,27 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     const anamCardClient = extractUnifiedAnamnesisSignals(patientData);
     const full33DailyGramsCard = formatScaledActives('33PLUS', 2).totalGramsDisplay;
     const full34DailyGramsCard = formatScaledActives('34PLUS', 2).totalGramsDisplay;
+    const sel34BadgeTagClient = canonicalPlan?.selective34BadgeTag || semaphore?.selective34BadgeTag || 'Bioseguridad Selectiva';
+    const sel34ReasonClient = canonicalPlan?.selective34ReasonText || 'criterio de bioseguridad farmacopeica de planta';
+    const vegan33CardTail = anamCardClient.isVegan && !semaphore.isPaused && !isSelective33Paused
+        ? ' Nota de transparencia ética: 33Plus® contiene colágeno hidrolizado bovino MP009 (200 mg por sobre).'
+        : '';
+    const vegan34CardTail = anamCardClient.isVegan && !semaphore.isPaused && !isSelective34Paused
+        ? ' Nota de transparencia ética: 34Plus® contiene colágeno hidrolizado bovino MP009 (500 mg/sobre), proteína aislada de suero de leche MP170 (2,200 mg/sobre) y calcio de coral MP121 (800 mg/sobre).'
+        : '';
+
+    const baseExpl33 = (!raw33Expl || hasLegacyTuteo(raw33Expl) || mismatch33Tutor || mismatch33Adult || hasFictionalSkuIn33 || addr.isLactante)
+        ? default33Explanation
+        : raw33Expl;
+    const baseExpl34 = (!raw34Expl || hasLegacyTuteo(raw34Expl) || mismatch34Tutor || mismatch34Adult || addr.isLactante)
+        ? default34Explanation
+        : raw34Expl;
 
     const formula33Card = {
         code: '33PLUS',
         brandTitle: '33Plus®',
         isSelectivePaused: isSelective33Paused,
+        isCardioprotective1Plus2Continuity: isCardioprotective1Plus2Card,
         isEstablishedContinuityFullDose: isEstablishedContinuityCard,
         isRecalibrationMode: isRecalibrationActive,
         subtitle: isSelective33Paused
@@ -2431,13 +2478,17 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 : '0 sobres activos por ahora (en pausa preventiva hasta revisar sus estudios de laboratorio)')
             : isSelective33Paused
                 ? FORMULA_33PLUS.dosageByMode.PAUSED_SELECTIVE_33
-                : isEstablishedContinuityCard
-                    ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33DailyGramsCard}) conforme a su pauta habitual consolidada, en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma`
-                    : (semaphore.isMicroDose
-                        ? (isRecalibrationActive
-                            ? (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || `Ajuste preventivo de toma (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
-                            : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
-                        : `2 tomas por la mañana: 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) al despertar en ayunas y 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) a media mañana (en ${FORMULA_33PLUS.minWaterMl} ml de agua natural)`),
+                : isCardioprotective1Plus2Card
+                    ? (anamCardClient.isNightOrRotatingShift
+                        ? FORMULA_33PLUS.dosageByMode.CARDIOPROTECTIVE_CONTINUITY_1_SACHET_NIGHT_SHIFT
+                        : FORMULA_33PLUS.dosageByMode.CARDIOPROTECTIVE_CONTINUITY_1_SACHET)
+                    : isEstablishedContinuityCard
+                        ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33DailyGramsCard}) conforme a su pauta habitual consolidada, en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma`
+                        : (semaphore.isMicroDose
+                            ? (isRecalibrationActive
+                                ? (anamCardClient.isNightOrRotatingShift ? FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE_NIGHT_SHIFT : (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || `Ajuste preventivo de toma (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`))
+                                : (anamCardClient.isNightOrRotatingShift ? FORMULA_33PLUS.dosageByMode.MICRO_DOSE_NIGHT_SHIFT : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`))
+                            : `2 tomas por la mañana: 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) al despertar en ayunas y 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) a media mañana (en ${FORMULA_33PLUS.minWaterMl} ml de agua natural)`),
         timing: semaphore.isPaused
             ? (addr.isLactante ? 'No indicado en menores de 2 años' : 'En espera de validación médica')
             : isSelective33Paused
@@ -2450,9 +2501,9 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                             ? 'Sincronizado a su despertar real (suspender al menos 8 h antes de su horario programado de sueño diurno)'
                             : 'Sincronizado a su despertar real (corte estricto antes de las 2:00 PM)')),
         explanation: sanitizeSupplementPosologyLexiconEgm74(
-            (!raw33Expl || hasLegacyTuteo(raw33Expl) || mismatch33Tutor || mismatch33Adult || hasFictionalSkuIn33 || addr.isLactante)
-                ? default33Explanation
-                : raw33Expl
+            vegan33CardTail && !/transparencia\s+[ée]tica/i.test(baseExpl33)
+                ? `${baseExpl33}${vegan33CardTail}`
+                : baseExpl33
         )
     };
 
@@ -2460,10 +2511,11 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         code: '34PLUS',
         brandTitle: '34Plus®',
         isSelectivePaused: isSelective34Paused,
+        isCardioprotective1Plus2Continuity: isCardioprotective1Plus2Card,
         isEstablishedContinuityFullDose: isEstablishedContinuityCard,
         isRecalibrationMode: isRecalibrationActive,
         subtitle: isSelective34Paused
-            ? 'En pausa selectiva estricta por protección de anticoagulación (INR)'
+            ? `En pausa selectiva estricta (${sel34BadgeTagClient})`
             : (addr.isTutorMode
                 ? `Soporte vespertino y nocturno de reparación y digestión para ${ref}`
                 : 'Su aliado vespertino y nocturno de reparación y digestión'),
@@ -2472,23 +2524,25 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 ? '0 sobres activos (etapa exclusiva de lactancia y pediatría)'
                 : '0 sobres activos por ahora (en pausa preventiva hasta validación médica)')
             : isSelective34Paused
-                ? '0 sobres activos de 34Plus® (Pausa selectiva por tratamiento anticoagulante antagonista de Vitamina K)'
-                : isEstablishedContinuityCard
-                    ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34DailyGramsCard}) conforme a su pauta habitual consolidada, cada sobre en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`
-                    : (semaphore.isMicroDose
-                        ? (isRecalibrationActive
-                            ? (FORMULA_34PLUS.dosageByMode.RECALIBRATION_DOSE || `Ajuste preventivo de toma (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
-                            : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
-                        : `2 tomas tarde/noche: 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) a media tarde y 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) 30–60 min antes de dormir, cada uno en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`),
+                ? (raw34.dosage ? sanitizeClinicalSpanish(raw34.dosage) : `0 sobres activos de 34Plus® (Pausa selectiva por ${sel34ReasonClient})`)
+                : isCardioprotective1Plus2Card
+                    ? `Pauta óptima cardioprotectora en sobre completo: 2 sobres completos al día (${full34DailyGramsCard}; 1 sobre de ${FORMULA_34PLUS.sachetGramsDisplay} a media tarde y 1 sobre de ${FORMULA_34PLUS.sachetGramsDisplay} pre-descanso), cada sobre en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`
+                    : isEstablishedContinuityCard
+                        ? `Continuidad calibrada en pauta de sobre completo: 1 a 2 sobres completos al día (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34DailyGramsCard}) conforme a su pauta habitual consolidada, cada sobre en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`
+                        : (semaphore.isMicroDose
+                            ? (isRecalibrationActive
+                                ? (FORMULA_34PLUS.dosageByMode.RECALIBRATION_DOSE || `Ajuste preventivo de toma (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
+                                : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
+                            : `2 tomas tarde/noche: 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) a media tarde y 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) 30–60 min antes de dormir, cada uno en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`),
         timing: semaphore.isPaused
             ? (addr.isLactante ? 'No indicado en menores de 2 años' : 'En espera de validación médica')
             : isSelective34Paused
-                ? 'En pausa selectiva estricta mientras mantenga anticoagulación cumarínica'
+                ? `En pausa selectiva estricta (${sel34BadgeTagClient})`
                 : (raw34.timing && !hasLegacyTuteo(String(raw34.timing)) ? sanitizeClinicalSpanish(raw34.timing) : 'Tarde y 30 a 60 min antes de dormir (siempre en medio litro de agua simple 💧)'),
         explanation: sanitizeSupplementPosologyLexiconEgm74(
-            (!raw34Expl || hasLegacyTuteo(raw34Expl) || mismatch34Tutor || mismatch34Adult || addr.isLactante)
-                ? default34Explanation
-                : raw34Expl
+            vegan34CardTail && !/transparencia\s+[ée]tica/i.test(baseExpl34)
+                ? `${baseExpl34}${vegan34CardTail}`
+                : baseExpl34
         )
     };
 
@@ -2520,12 +2574,13 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             ? Number(canonicalPlan?.hydrationTargetLiters || ortho?.hydrationTargetLiters)
             : Math.min(3.4, Math.max(1.8, Number((((weightKg * 32) / 1000) + (anamClientHome.isLactating ? 0.6 : 0)).toFixed(1)))));
 
-    const rawFoodAllergyClient = (patientData?.history?.allergies?.food || []).map((a) =>
-        typeof a === 'object' ? (a.agent || a.name || '') : String(a || '')
-    );
+    const rawFoodAllergyClient = (patientData?.history?.allergies?.food || [])
+        .map((a) => typeof a === 'object' ? (a.agent || a.name || '') : String(a || ''))
+        .filter((s) => isAffirmativeClinicalStatement(s));
     const personalExclusions = Array.from(new Set([
         ...(canonicalPlan?.patientSpecificExclusions || ortho?.dietaryPlan?.patientSpecificExclusions || []),
-        ...rawFoodAllergyClient
+        ...rawFoodAllergyClient,
+        ...(anamClientHome.hasCowMilkProteinAllergy ? ['0 Lácteos y derivados (alergia a proteína de leche de vaca)'] : [])
     ]))
         .map((x) => capitalizeLeadingSpanish(sanitizeClinicalSpanish(x)))
         .filter(isMeaningfulExclusion);
@@ -2645,6 +2700,15 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         }
     };
 
+    const vigClientHome = extractLabVigenciaSSoT(patientData);
+    const upgradeHistoricalNutritionSummary = (txt = '') => {
+        if (!txt || !vigClientHome.isHistoricalLab) return txt;
+        const dtTag = vigClientHome.studyDateDisplay ? ` [${vigClientHome.studyDateDisplay}]` : '';
+        return String(txt).replace(
+            /hoy\s+sus\s+niveles\s+de\s+glucosa\s*\(([^()]+)\)(\s+y\s+triglic[ée]ridos\s*\([^()]+\))?\s+se\s+mantienen\s+en\s+rango\s+[óo]ptimo\s+saludable/giu,
+            `en su último control registrado${dtTag} sus niveles de glucosa ($1)$2 se reportaron en rango óptimo saludable (sujeto a actualizar su química de seguimiento)`
+        );
+    };
     const rawHome = existingGuide?.home_action_plan;
     let homeActionPlan = canonicalHomePlan;
     if (rawHome && !addr.isLactante) {
@@ -2670,9 +2734,11 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 isTcaBehavioralSafety: isTcaClientSafety,
                 macros: isTcaClientSafety ? null : (rawHome.protective_nutrition?.macros || canonicalHomePlan.protective_nutrition.macros),
                 title: sanitizeClinicalSpanish(rawHome.protective_nutrition?.title) || canonicalHomePlan.protective_nutrition.title,
-                summary: (!rawNutSummary || hasLegacyTuteo(rawNutSummary) || mismatchHomeTutor || mismatchHomeAdultNut)
-                    ? canonicalHomePlan.protective_nutrition.summary
-                    : rawNutSummary,
+                summary: upgradeHistoricalNutritionSummary(
+                    (!rawNutSummary || hasLegacyTuteo(rawNutSummary) || mismatchHomeTutor || mismatchHomeAdultNut)
+                        ? canonicalHomePlan.protective_nutrition.summary
+                        : rawNutSummary
+                ),
                 universalRules: (rulesHaveTuteo || mismatchHomeAdultNut) ? canonicalHomePlan.protective_nutrition.universalRules : rawRules,
                 personalExclusions: (rawHome.protective_nutrition?.personalExclusions || personalExclusions)
                     .map(sanitizeClinicalSpanish)
@@ -2755,11 +2821,10 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
 
     const totalAbnormalCount = Object.values(bucketsBySystem).reduce((acc, arr) => acc + arr.length, 0);
     const rawCalciumAlert = existingGuide?.calcium_alert_text || (ortho?.has_calcium_contraction_lock ? ortho?.calcium_alert_text : null);
-    const resolvedCalciumAlert = rawCalciumAlert && !hasLegacyTuteo(String(rawCalciumAlert))
+    const isPhantomElectretCalciumLeak = /dep[óo]sito\s+de\s+calcio\s+fuera\s+del\s+hueso|riesgo\s+biof[íi]sico\s+de\s+calcificaci[óo]n\s+ect[óo]pica/i.test(String(rawCalciumAlert || ''));
+    const resolvedCalciumAlert = (rawCalciumAlert && !isPhantomElectretCalciumLeak)
         ? sanitizeClinicalSpanish(rawCalciumAlert)
-        : (rawCalciumAlert
-            ? 'Detectamos tendencia a depósito de calcio fuera del hueso: evitamos suplementos aislados de calcio inorgánico y priorizamos hidratación constante junto con magnesio y vitamina K2 alimentaria.'
-            : null);
+        : null;
 
     const applyGenderDeep = (val) => {
         if (val === null || val === undefined) return val;

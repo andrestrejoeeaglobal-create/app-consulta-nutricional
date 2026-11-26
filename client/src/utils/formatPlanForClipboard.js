@@ -374,16 +374,17 @@ export const formatPlanForClipboard = function (options) {
     }
     text += `\n`;
 
+    let nextPatientSectionNum = 6;
     const pulse14 = action.mid_cycle_pulse_day14;
     if (pulse14?.summary) {
-      text += `5.5 🎯 ${pulse14.title || 'HITO DE PULSO DÍA 14 (MITAD DE CICLO)'}:\n`;
+      text += `${nextPatientSectionNum++}. 🎯 ${pulse14.title || 'Hito de Pulso Día 14 (Mitad de Ciclo)'}:\n`;
       text += `   • ${pulse14.summary}\n\n`;
     }
 
     const apptPatient = guide.scheduledAppointmentSummary || resolveScheduledAppointmentSummary(patientData);
     const sealShaPatient = resolveDossierSealSha256(patientData, folio);
     if (apptPatient?.formattedLine) {
-      text += `6. 📅 PRÓXIMA CITA DE EVALUACIÓN Y SEGUIMIENTO:\n`;
+      text += `${nextPatientSectionNum++}. 📅 PRÓXIMA CITA DE EVALUACIÓN Y SEGUIMIENTO:\n`;
       text += `   • ${apptPatient.formattedLine}\n\n`;
     }
 
@@ -457,8 +458,15 @@ export const formatPlanForClipboard = function (options) {
       sanitizeClinicalSpanish(rawStr || '')
         .replace(/\(\s*null\s*\)/giu, '')
         .replace(/\[\s*⚠️?\s*REQUIERE_REVISI[ÓO]N\s*\]/giu, '')
-        .replace(/\(Matriz IFM SSoTT v2\.[45678]\)/giu, '(Matriz IFM SSoTT v3.5)')
+        .replace(/\(Matriz IFM SSoTT v(?:2\.[45678]|3\.[0-5])\)/giu, '(Matriz IFM SSoTT v3.6)')
         .replace(/\[Readaptaci[óo]n F[íi]sica\]/giu, '[Readaptación Biomecánica y Pauta de Movimiento Seguro]')
+        .replace(/\bmenos\s+(\d+(?:\.\d+)?)\s*grados\b/giu, '-$1°')
+        .replace(/(\d+(?:\.\d+)?)\s+por\s+ciento\b/giu, '$1 %')
+        .replace(/\bhaz\s+de\s+his\b/giu, 'Haz de His')
+        .replace(/\bestudios\s+complementario\b/giu, 'estudios complementarios')
+        .replace(/\bcardiotoracico\b/giu, 'cardiotorácico')
+        .replace(/\baortico\b/giu, 'aórtico')
+        .replace(/\bpatron\b/giu, (m) => (m[0] === 'P' ? 'Patrón' : 'patrón'))
         .replace(/6,000[–-]8,000\s*pasos\/d[íi]a/giu, '6\u00A0000 a 8\u00A0000 pasos/día')
         .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+33Plus®/giu, `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus®`)
         .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+34Plus®/giu, `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus®`)
@@ -528,10 +536,10 @@ export const formatPlanForClipboard = function (options) {
         text += `   • Estudio Multivariable de Edad Metabólica (${sanitizeClinicalSpanish(metStudy.evidenceTierBadge || metStudy.evidenceTier)}${compTag}): Edad Cronológica ${metStudy.chronologicalAge} años vs Edad Metabólica ${exactAge} años (Delta ${deltaFmt} años${tractionTag}) | Meta Ciclo 1 (28d): ${metStudy.cycle1TargetAge28d} años (${metStudy.cycle1Delta28d} años) | Proyección Ciclo 3 (90d): ${metStudy.cycle3ProjectionAge90d} años${cycle6MedTag}.\n`;
       }
     }
-    if (ortho?.has_calcium_contraction_lock) {
-      const clinicalMineralSafeguard = ortho?.calcium_clinical_safeguard_text ||
-        `Riesgo biofísico de calcificación ectópica: se excluye suplementación aislada con sales de calcio inorgánico; priorizar hidratación (${hydrationMedicalText}), magnesio y vitamina K2 alimentaria.`;
-      text += `   • Salvaguarda Mineral (Bloqueo de Calcio Exógeno): ${normalizeFormalClinicalField(clinicalMineralSafeguard)}\n`;
+    const rawMineralSafeguard = ortho?.calcium_clinical_safeguard_text || '';
+    const isPhantomElectretCalcMedical = /riesgo\s+biof[íi]sico\s+de\s+calcificaci[óo]n\s+ect[óo]pica|dep[óo]sito\s+de\s+calcio\s+fuera\s+del\s+hueso/i.test(rawMineralSafeguard);
+    if (ortho?.has_calcium_contraction_lock && rawMineralSafeguard && !isPhantomElectretCalcMedical) {
+      text += `   • Salvaguarda Mineral (Bloqueo de Calcio Exógeno): ${normalizeFormalClinicalField(rawMineralSafeguard)}\n`;
     }
     if (Array.isArray(sem?.recommendedLabs) && sem.recommendedLabs.length > 0) {
       text += `   • Estudios Paraclínicos Solicitados: ${sem.recommendedLabs.map(sanitizeClinicalSpanish).join(' | ')}\n`;
