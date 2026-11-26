@@ -385,9 +385,10 @@ const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessa
                         const deltaTag = deltaNum > 0 ? `+${deltaNum}\u00A0años` : `${deltaNum}\u00A0años`;
                         const target28d = metStudy.cycle1TargetAge28d ?? exactAge;
                         const target90d = metStudy.cycle3ProjectionAge90d ?? target28d;
-                        const tierBadge = sanitizeClinicalSpanish(metStudy.evidenceTierBadge || 'Certeza Clínica Integral');
+                        const tierBadge = sanitizeClinicalSpanish(metStudy.evidenceTierBadge || 'Nivel I — Evidencia Bioquímica y Clínica Completa');
+                        const cycle6Tag = metStudy.cycle6RangeLabel180d ? ` | Potencial Ciclo\u00A06 (180\u00A0días): **${metStudy.cycle6RangeLabel180d}**` : '';
                         metabolicBullet =
-                            `• **Estudio de Edad Metabólica (${tierBadge}):** **${exactAge}\u00A0años** frente a **${chronoVal}\u00A0años** cronológicos (${deltaTag}) • Meta Ciclo\u00A01 (28\u00A0días): **${target28d}\u00A0años** | Proyección a 90\u00A0días: **${target90d}\u00A0años**\n\n`;
+                            `• **Estudio de Edad Metabólica (${tierBadge}):** **${exactAge}\u00A0años** frente a **${chronoVal}\u00A0años** cronológicos (${deltaTag}) • Meta Ciclo\u00A01 (28\u00A0días): **${target28d}\u00A0años** | Proyección a 90\u00A0días: **${target90d}\u00A0años**${cycle6Tag}\n\n`;
                     }
 
                     const logistics = translateLogisticsProfile(patientData);
@@ -398,6 +399,10 @@ const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessa
                     console.warn('⚠️ [Fase21 SSoTT Metabolic Summary Fallback]:', metErr?.message || metErr);
                 }
 
+                const midCyclePulseBullet = isTcaBehavioralSafetyGate
+                    ? `• **Hito Intermedio (Pulso Día 14):** Registro de vitalidad matutina (1 a 10), confort digestivo y constancia de sus 4 momentos de hidratación\n\n`
+                    : `• **Hito Intermedio (Pulso Día 14):** Medición matutina de cintura en ayunas, vitalidad al despertar (1 a 10) y constancia de sus 4 momentos diarios\n\n`;
+
                 const closingInstruction = isTutorMode
                     ? `Seleccione la acción de cierre clínico para concluir la valoración en acompañamiento de madre, padre o tutor bajo **NOM-004-SSA3-2012**:`
                     : `Seleccione la acción de cierre clínico para concluir su estudio bajo **NOM-004-SSA3-2012**:`;
@@ -405,7 +410,7 @@ const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessa
                 const bioenergeticsBulletsBlock = isTcaBehavioralSafetyGate
                     ? `• **Pauta Nutricional Protectora:** Alimentación variada centrada en saciedad amable, energía diaria y bienestar integral (sin marcadores numéricos de conteo calórico)\n\n`
                     : `• **Ecuación Bioenergética:** ${eqName}\n\n` +
-                      `• **Meta Calórica Prescrita:** **${formattedKcal}**\n\n` +
+                      `• **Meta Energética Sugerida:** **${formattedKcal}**\n\n` +
                       `• **Distribución de Macronutrientes:** ${m.carbs}% Hidratos de Carbono | ${m.protein}% Proteínas | ${m.fat}% Lípidos\n\n`;
 
                 const gateContent =
@@ -415,6 +420,7 @@ const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessa
                         : `Su arquitectura crononutricional se encuentra sincronizada en el panel derecho con los parámetros sellados de su expediente:\n\n`) +
                     bioenergeticsBulletsBlock +
                     metabolicBullet +
+                    midCyclePulseBullet +
                     logisticsBullet +
                     closingInstruction;
 

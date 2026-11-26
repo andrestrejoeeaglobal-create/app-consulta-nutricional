@@ -613,7 +613,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
             <div className="bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200/90 dark:border-[#334155] p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] space-y-2">
                 <div className="flex flex-wrap items-center gap-2 tabular-nums">
                     <span className="px-2.5 py-0.5 rounded-md bg-[#1C75BC]/10 text-[#1C75BC] text-[10px] font-extrabold tracking-wider">
-                        {activeNodeMeta ? `NODO IFM 0${activeNodeMeta.indexOrder}` : 'DOCTRINA CORTEX SSoTT v3.3'}
+                        {activeNodeMeta ? `NODO IFM 0${activeNodeMeta.indexOrder}` : 'DOCTRINA CORTEX SSoTT v3.5'}
                     </span>
                     <span className="text-xs font-bold text-[#334155] dark:text-[#CBD5E1]">
                         #IFM-{activeNodeMeta ? `700${activeNodeMeta.indexOrder}` : '7000'}
@@ -686,7 +686,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                     <div className={`bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200/90 dark:border-[#334155] border-l-4 ${
                         Number(metabolicAgeStudy.deltaYears) > 1.5
                             ? 'border-l-[#B70E0C]'
-                            : Number(metabolicAgeStudy.deltaYears) > 0.4
+                            : (metabolicAgeStudy.hasActiveCompensationFocalDrag || Number(metabolicAgeStudy.deltaYears) > 0.4)
                                 ? 'border-l-[#FFCC00]'
                                 : 'border-l-[#3AAA35]'
                     } p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] space-y-4 tabular-nums`}>
@@ -697,7 +697,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                 </div>
                                 <div>
                                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
-                                        ESTUDIO MULTIVARIABLE DE EDAD METABÓLICA • EGM-51 v3
+                                        ESTUDIO MULTIVARIABLE DE EDAD METABÓLICA • EGM-51 v4
                                     </span>
                                     <h4 className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
                                         Ponderación por Evidencia, Sexo Biológico y Altitud ({metabolicAgeStudy.altitudeMsnm ?? 2240} msnm)
@@ -707,28 +707,33 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                             <div className="flex flex-wrap items-center gap-3">
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/25">
                                     <CheckCircle2 className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-                                    <span>{metabolicAgeStudy.evidenceTierBadge || 'Certeza Clínica Integral'} ({metabolicAgeStudy.evidenceConfidencePct || 85}%)</span>
+                                    <span>{metabolicAgeStudy.evidenceTierBadge || 'Nivel I — Evidencia Bioquímica y Clínica Completa'}</span>
                                 </span>
                                 {Number(metabolicAgeStudy.deltaYears) > 1.5 ? (
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#B70E0C]/10 text-[#B70E0C] border border-[#B70E0C]/30">
                                         <AlertTriangle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
                                         <span>Sobrecarga Reversible: +{metabolicAgeStudy.deltaYears} años</span>
                                     </span>
+                                ) : metabolicAgeStudy.hasActiveCompensationFocalDrag ? (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/15">
+                                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                        <span>COMPENSACIÓN FISIOLÓGICA ACTIVA • FOCOS PRIORITARIOS POR OPTIMIZAR</span>
+                                    </span>
                                 ) : Number(metabolicAgeStudy.deltaYears) > 0.4 ? (
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/15">
                                         <Activity className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-                                        <span>Ajuste Leve: +{metabolicAgeStudy.deltaYears} años</span>
+                                        <span>Potencial por Desbloquear: +{metabolicAgeStudy.deltaYears} años</span>
                                     </span>
                                 ) : (
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30">
                                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-                                        <span>{Number(metabolicAgeStudy.deltaYears) < -0.4 ? `Reserva Joven (${metabolicAgeStudy.deltaYears} años)` : 'Homeostasis Conservada'}</span>
+                                        <span>{Number(metabolicAgeStudy.deltaYears) < -0.4 ? `Reserva Funcional Joven (${metabolicAgeStudy.deltaYears} años)` : 'Reserva Funcional Conservada'}</span>
                                     </span>
                                 )}
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                             <div className="bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-200/80 dark:border-[#334155] rounded-xl p-3 text-center">
                                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Edad Cronológica</span>
                                 <span className="text-xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 block">{metabolicAgeStudy.chronologicalAge} años</span>
@@ -736,11 +741,17 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                             <div className={`border rounded-xl p-3 text-center ${
                                 Number(metabolicAgeStudy.deltaYears) > 1.5
                                     ? 'bg-[#B70E0C]/5 border-[#B70E0C]/25'
-                                    : 'bg-[#3AAA35]/5 border-[#3AAA35]/25'
+                                    : metabolicAgeStudy.hasActiveCompensationFocalDrag
+                                        ? 'bg-[#FFCC00]/15 border-[#FFCC00]/50'
+                                        : 'bg-[#3AAA35]/5 border-[#3AAA35]/25'
                             }`}>
                                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Edad Metabólica</span>
                                 <span className={`text-xl font-extrabold mt-0.5 block ${
-                                    Number(metabolicAgeStudy.deltaYears) > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'
+                                    Number(metabolicAgeStudy.deltaYears) > 1.5
+                                        ? 'text-[#B70E0C]'
+                                        : metabolicAgeStudy.hasActiveCompensationFocalDrag
+                                            ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                                            : 'text-[#3AAA35]'
                                 }`}>
                                     {metabolicAgeStudy.metabolicAgeExact ?? metabolicAgeStudy.metabolicAge} años
                                 </span>
@@ -752,6 +763,10 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                             <div className="bg-[#1C75BC]/5 border border-[#1C75BC]/25 rounded-xl p-3 text-center">
                                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Proyección 90 Días</span>
                                 <span className="text-xl font-extrabold text-[#1C75BC] mt-0.5 block">{metabolicAgeStudy.cycle3ProjectionAge90d} años</span>
+                            </div>
+                            <div className="col-span-2 sm:col-span-1 bg-[#1C75BC]/10 border border-[#1C75BC]/30 rounded-xl p-3 text-center">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">Potencial 180d (Ciclo 6)</span>
+                                <span className="text-base sm:text-lg font-extrabold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 block">{metabolicAgeStudy.cycle6RangeLabel180d || `${metabolicAgeStudy.cycle3ProjectionAge90d} años`}</span>
                             </div>
                         </div>
 
@@ -926,7 +941,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                         </div>
                                         {node.therapeutic_focus && (
                                             <p className="text-[11px] font-bold text-[#1C75BC] pl-1 pt-0.5">
-                                                🎯 Enfoque Terapéutico: <span className="font-semibold text-slate-700">{formatClinicalText(node.therapeutic_focus)}</span>
+                                                🎯 Apoyo Fisiológico Complementario: <span className="font-semibold text-slate-700 dark:text-slate-200">{formatClinicalText(node.therapeutic_focus)}</span>
                                             </p>
                                         )}
                                     </div>
@@ -1113,25 +1128,25 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
 
                     {/* Pie de Tarjeta Estándar */}
                     <div className="pt-2.5 border-t border-slate-100 dark:border-[#334155] mt-3 flex items-center justify-between text-[10px]">
-                        <span className="text-[#334155] dark:text-[#CBD5E1] font-medium">ⓘ Salvaguarda biomecánica, renal y hemodinámica de prescripción</span>
+                        <span className="text-[#334155] dark:text-[#CBD5E1] font-medium">ⓘ Salvaguarda biomecánica, renal y hemodinámica de seguridad clínica</span>
                     </div>
                 </div>
 
-                {/* Bento Card 3: Estrategia Terapéutica Integral (Homologación Lineal Desaturada) */}
+                {/* Bento Card 3: Pauta Nutricional Sugerida y Apoyo Fisiológico Complementario (Art. 215 LGS) */}
                 <div className="bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-[#334155] rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] border-l-4 border-l-[#3AAA35] transition-all">
                     {/* Cabecera en 3 flex-items */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-[#334155] mb-3 select-none">
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30">
-                                PRESCRIPCIÓN ORTOMOLECULAR INTEGRAL
+                                COMPLEMENTACIÓN NUTRICIONAL CIRCADIANA
                             </span>
                             <h3 className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-1.5">
                                 <Activity className="w-4 h-4 text-[#3AAA35]" />
-                                <span>Estrategia Terapéutica Integral</span>
+                                <span>Pauta Nutricional Sugerida y Apoyo Fisiológico Complementario</span>
                             </h3>
                         </div>
                         <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide border shrink-0 self-start sm:self-center bg-[#3AAA35]/10 text-[#3AAA35] border-[#3AAA35]/30">
-                            {orthomolecularPrescription?.protocolName || biosecuritySemaphore?.badgeLabel || 'Prescripción Adaptativa'}
+                            {orthomolecularPrescription?.protocolName || biosecuritySemaphore?.badgeLabel || 'Pauta Adaptativa'}
                         </span>
                     </div>
 
@@ -1210,7 +1225,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm">🏃</span>
                                         <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
-                                            Readaptación Biomecánica y Prescripción de Movimiento
+                                            Readaptación Biomecánica y Pauta de Movimiento Seguro
                                         </span>
                                     </div>
                                     <p className="text-[11.5px] text-slate-700 dark:text-slate-300 leading-relaxed font-medium pl-6">
@@ -1360,9 +1375,48 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
 
                     {/* Pie de Tarjeta Estándar */}
                     <div className="pt-2.5 border-t border-slate-100 dark:border-[#334155] mt-3 flex items-center justify-between text-[10px]">
-                        <span className="text-[#334155] dark:text-[#CBD5E1] font-medium">ⓘ Prescripción nutricional adaptativa acoplada al Semáforo Clínico de Bioseguridad</span>
+                        <span className="text-[#334155] dark:text-[#CBD5E1] font-medium">ⓘ Pauta nutricional adaptativa acoplada al Semáforo Clínico de Bioseguridad</span>
                     </div>
                 </div>
+
+                {/* ANEXO REGULATORIO COFEPRIS / NOM-004: TAMIZAJE BIOFÍSICO ORIENTATIVO FUERA DE NOTA MÉDICA (EGM-71) */}
+                {cortexSynthesis?.electret_informative_annex?.totalItems > 0 && (
+                    <div className="bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-200/90 dark:border-[#334155] border-l-4 border-l-slate-400 rounded-2xl p-5 space-y-3 tabular-nums">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80 dark:border-[#334155]">
+                            <div>
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">
+                                    ANEXO INFORMATIVO (FUERA DE NOTA MÉDICA NOM-004)
+                                </span>
+                                <h4 className="text-xs sm:text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+                                    Tamizaje Biofísico Orientativo No Diagnóstico ({cortexSynthesis.electret_informative_annex.totalItems} bioseñales)
+                                </h4>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-extrabold bg-slate-200/80 dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] border border-slate-300 dark:border-[#334155] w-fit">
+                                REFERENCIA ORIENTATIVA • NO DIAGNÓSTICA
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-[#334155] dark:text-[#CBD5E1] leading-relaxed font-medium">
+                            {sanitizeClinicalSpanish(cortexSynthesis.electret_informative_annex.disclaimer)}
+                        </p>
+                        {Array.isArray(cortexSynthesis.electret_informative_annex.items) && cortexSynthesis.electret_informative_annex.items.length > 0 && (
+                            <details className="group bg-white dark:bg-[#1E293B] border border-slate-200/80 dark:border-[#334155] rounded-xl p-3">
+                                <summary className="cursor-pointer text-[11px] font-extrabold text-[#1C75BC] dark:text-[#93C5FD] select-none min-h-[32px] flex items-center">
+                                    Desplegar bioseñales bioeléctricas orientativas resguardadas fuera de la nota médica ({cortexSynthesis.electret_informative_annex.items.length})
+                                </summary>
+                                <div className="flex flex-wrap gap-1.5 pt-3 mt-2 border-t border-slate-100 dark:border-[#334155]">
+                                    {cortexSynthesis.electret_informative_annex.items.map((it, idx) => (
+                                        <span
+                                            key={idx}
+                                            className="text-[10.5px] font-semibold bg-[#F8FAFC] dark:bg-[#0F172A] text-[#334155] dark:text-[#CBD5E1] border border-slate-200 dark:border-[#334155] px-2.5 py-1 rounded-lg"
+                                        >
+                                            {sanitizeClinicalSpanish(it.label)}: {sanitizeClinicalSpanish(it.detail)}
+                                        </span>
+                                    ))}
+                                </div>
+                            </details>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

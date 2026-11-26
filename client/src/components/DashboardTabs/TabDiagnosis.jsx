@@ -753,7 +753,7 @@ export const TabDiagnosis = ({
                                     <div className={`bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-[#334155] border-l-4 ${
                                         Number(patientGuide.metabolicAgeStudy.deltaYears) > 1.5
                                             ? 'border-l-[#B70E0C]'
-                                            : Number(patientGuide.metabolicAgeStudy.deltaYears) > 0.4
+                                            : (patientGuide.metabolicAgeStudy.hasActiveCompensationFocalDrag || Number(patientGuide.metabolicAgeStudy.deltaYears) > 0.4)
                                                 ? 'border-l-[#FFCC00]'
                                                 : 'border-l-[#3AAA35]'
                                     } rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] space-y-4 tabular-nums`}>
@@ -774,28 +774,33 @@ export const TabDiagnosis = ({
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/25">
                                                     <CheckCircle2 className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-                                                    <span>{patientGuide.metabolicAgeStudy.evidenceTierBadge || 'Certeza Clínica'}</span>
+                                                    <span>{patientGuide.metabolicAgeStudy.evidenceTierBadge || 'Nivel I — Evidencia Bioquímica y Clínica Completa'}</span>
                                                 </span>
                                                 {Number(patientGuide.metabolicAgeStudy.deltaYears) > 1.5 ? (
                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#B70E0C]/10 text-[#B70E0C] border border-[#B70E0C]/30">
                                                         <AlertTriangle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
                                                         <span>Esfuerzo Reversible: +{patientGuide.metabolicAgeStudy.deltaYears} años</span>
                                                     </span>
+                                                ) : patientGuide.metabolicAgeStudy.hasActiveCompensationFocalDrag ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/15">
+                                                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                                        <span>COMPENSACIÓN FISIOLÓGICA ACTIVA • FOCOS PRIORITARIOS POR OPTIMIZAR</span>
+                                                    </span>
                                                 ) : Number(patientGuide.metabolicAgeStudy.deltaYears) > 0.4 ? (
                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/15">
                                                         <Activity className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-                                                        <span>Ajuste Suave: +{patientGuide.metabolicAgeStudy.deltaYears} años</span>
+                                                        <span>Potencial por Desbloquear: +{patientGuide.metabolicAgeStudy.deltaYears} años</span>
                                                     </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30">
                                                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-                                                        <span>{Number(patientGuide.metabolicAgeStudy.deltaYears) < -0.4 ? `Reserva Joven (${patientGuide.metabolicAgeStudy.deltaYears} años)` : 'Equilibrio Conservado'}</span>
+                                                        <span>{Number(patientGuide.metabolicAgeStudy.deltaYears) < -0.4 ? `Reserva Funcional Joven (${patientGuide.metabolicAgeStudy.deltaYears} años)` : 'Reserva Funcional Conservada'}</span>
                                                     </span>
                                                 )}
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                                             <div className="bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-200/80 dark:border-[#334155] rounded-xl p-3 text-center">
                                                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Su Edad Actual</span>
                                                 <span className="text-xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 block">{patientGuide.metabolicAgeStudy.chronologicalAge} años</span>
@@ -803,11 +808,17 @@ export const TabDiagnosis = ({
                                             <div className={`border rounded-xl p-3 text-center ${
                                                 Number(patientGuide.metabolicAgeStudy.deltaYears) > 1.5
                                                     ? 'bg-[#B70E0C]/5 border-[#B70E0C]/25'
-                                                    : 'bg-[#3AAA35]/5 border-[#3AAA35]/25'
+                                                    : patientGuide.metabolicAgeStudy.hasActiveCompensationFocalDrag
+                                                        ? 'bg-[#FFCC00]/15 border-[#FFCC00]/50'
+                                                        : 'bg-[#3AAA35]/5 border-[#3AAA35]/25'
                                             }`}>
                                                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Edad Metabólica</span>
                                                 <span className={`text-xl font-extrabold mt-0.5 block ${
-                                                    Number(patientGuide.metabolicAgeStudy.deltaYears) > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'
+                                                    Number(patientGuide.metabolicAgeStudy.deltaYears) > 1.5
+                                                        ? 'text-[#B70E0C]'
+                                                        : patientGuide.metabolicAgeStudy.hasActiveCompensationFocalDrag
+                                                            ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                                                            : 'text-[#3AAA35]'
                                                 }`}>
                                                     {patientGuide.metabolicAgeStudy.metabolicAgeExact ?? patientGuide.metabolicAgeStudy.metabolicAge} años
                                                 </span>
@@ -819,6 +830,10 @@ export const TabDiagnosis = ({
                                             <div className="bg-[#1C75BC]/5 border border-[#1C75BC]/25 rounded-xl p-3 text-center">
                                                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">Proyección 90 Días</span>
                                                 <span className="text-xl font-extrabold text-[#1C75BC] mt-0.5 block">{patientGuide.metabolicAgeStudy.cycle3ProjectionAge90d} años</span>
+                                            </div>
+                                            <div className="col-span-2 sm:col-span-1 bg-[#1C75BC]/10 border border-[#1C75BC]/30 rounded-xl p-3 text-center">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">Potencial 180d (Ciclo 6)</span>
+                                                <span className="text-base sm:text-lg font-extrabold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 block">{patientGuide.metabolicAgeStudy.cycle6RangeLabel180d || `${patientGuide.metabolicAgeStudy.cycle3ProjectionAge90d} años`}</span>
                                             </div>
                                         </div>
 
@@ -1046,9 +1061,11 @@ export const TabDiagnosis = ({
                                         <span className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200/80 dark:border-slate-800">
                                             {isRedSemaphore
                                                 ? '0 sobres activos (Pausa Preventiva)'
-                                                : isYellowSemaphore
-                                                    ? 'Titulación Gradual (1/2 sobre por toma)'
-                                                    : 'Esquema Completo Sincronizado'}
+                                                : patientGuide?.biosecuritySemaphore?.isEstablishedContinuityFullDose
+                                                    ? 'Continuidad Calibrada (1 a 2 sobres completos/día)'
+                                                    : isYellowSemaphore
+                                                        ? 'Titulación Gradual (1/2 sobre por toma)'
+                                                        : 'Esquema Completo Sincronizado'}
                                         </span>
                                     </div>
 
@@ -1250,6 +1267,34 @@ export const TabDiagnosis = ({
                                     </div>
                                 </div>
 
+                                {/* Tarjeta 3.5: Hito de Pulso Día 14 (Mitad de Ciclo — EGM-73) */}
+                                {patientGuide?.homeActionPlan?.mid_cycle_pulse_day14?.summary && (
+                                    <div className="bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-[#334155] border-l-4 border-l-[#3AAA35] rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] space-y-2 tabular-nums">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-8 h-8 rounded-xl bg-[#3AAA35]/12 border border-[#3AAA35]/25 flex items-center justify-center shrink-0">
+                                                    <Activity className="w-4 h-4 text-[#3AAA35]" strokeWidth={2} />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#3AAA35] block">
+                                                        Control Intermedio de Adherencia • Día 14
+                                                    </span>
+                                                    <h4 className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+                                                        {patientGuide.homeActionPlan.mid_cycle_pulse_day14.title || 'Hito de Pulso Día 14 (Mitad de Ciclo)'}
+                                                    </h4>
+                                                </div>
+                                            </div>
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30 text-[10.5px] font-extrabold">
+                                                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                                <span>Mitad de Ciclo 1</span>
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-[#334155] dark:text-[#CBD5E1] leading-relaxed font-medium">
+                                            {patientGuide.homeActionPlan.mid_cycle_pulse_day14.summary}
+                                        </p>
+                                    </div>
+                                )}
+
                                 {/* Tarjeta 4: Próxima Cita de Seguimiento y Sello NOM-004 */}
                                 {scheduledApptView?.formattedLine && (
                                     <div className="bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-[#334155] border-l-4 border-l-[#1C75BC] rounded-2xl p-5 shadow-[0_4px_20px_rgba(15,23,42,0.04)] space-y-2 tabular-nums">
@@ -1374,7 +1419,7 @@ export const TabDiagnosis = ({
                                 <div className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-[#334155] rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
                                     <h3 className="text-slate-900 dark:text-slate-100 text-xs font-extrabold uppercase tracking-wider mb-3 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                                         <Activity className="w-4 h-4 text-[#1C75BC]" />
-                                        1. Diagnósticos Clínicos Aprobados (Matriz IFM de 7 Nodos)
+                                        1. Evaluación Funcional y Hallazgos Clínico-Paraclínicos Acreditados (NOM-004)
                                     </h3>
 
                                     {cleanDiagnoses.length > 0 ? (
@@ -1414,7 +1459,7 @@ export const TabDiagnosis = ({
                                 </div>
                             )}
 
-                            {/* Algoritmo de Secuenciación Terapéutica Cronológica */}
+                            {/* Algoritmo de Secuenciación de Hábitos, Pulso Día 14 y Complementación */}
                             <div className="bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-[#334155] rounded-2xl p-5 shadow-[0_2px_10px_rgba(15,23,42,0.03)] border-l-4 border-l-[#1C75BC] transition-all">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800 mb-3.5 select-none">
                                     <div className="flex items-center gap-2">
@@ -1423,7 +1468,7 @@ export const TabDiagnosis = ({
                                         </span>
                                         <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                                             <Clock className="w-4 h-4 text-[#1C75BC]" />
-                                            <span>Algoritmo de Secuenciación Terapéutica Cronológica</span>
+                                            <span>Secuenciación de Hábitos, Pulso Día 14 y Complementación (28 Días)</span>
                                         </h3>
                                     </div>
                                     <div className="flex items-center gap-1.5">
@@ -1576,7 +1621,7 @@ export const TabDiagnosis = ({
                                 })()}
 
                                 <div className="pt-2.5 border-t border-slate-100 dark:border-[#334155] mt-3 flex items-center justify-between text-[10px]">
-                                    <span className="text-[#334155] dark:text-[#CBD5E1] font-medium">ⓘ Secuenciación cronobiológica ortomolecular sincronizada al ciclo clínico de 28 días</span>
+                                    <span className="text-[#334155] dark:text-[#CBD5E1] font-medium">ⓘ Secuenciación cronobiológica de hábitos y complementación sincronizada al ciclo de 28 días</span>
                                 </div>
                             </div>
 

@@ -11,12 +11,51 @@ import { enforcePatientGenderConcordance, resolvePatientSex } from './genderConc
 import { FORMULA_33PLUS, FORMULA_34PLUS, formatScaledActives } from './pharmacopeiaCatalogSSoT.js';
 import {
     ENGINE_VERSION_SSOT,
+    sanitizeBioelectricScreeningLabel,
+    sanitizeArt215NonTherapeuticLexicon,
     extractUnifiedAnamnesisSignals,
     buildSafeDietaryExamplesSSoT,
     calculateUniversalMetabolicAgeSSoT
 } from './metabolicAgeEngineSSoT.js';
 
-export { enforcePatientGenderConcordance };
+export { enforcePatientGenderConcordance, sanitizeBioelectricScreeningLabel, sanitizeArt215NonTherapeuticLexicon };
+
+export function resolveElectretInformativeAnnex(patientData = {}) {
+    const dossier = patientData?.clinical_dossier || {};
+    const persisted = dossier?.electret_informative_annex;
+    if (persisted && typeof persisted === 'object' && Array.isArray(persisted.items)) {
+        const cleanItems = persisted.items.map((it) => ({
+            ...it,
+            label: sanitizeBioelectricScreeningLabel(sanitizeClinicalSpanish(it?.label || '')),
+            detail: sanitizeClinicalSpanish(it?.detail || '')
+        }));
+        const cleanMeridians = (Array.isArray(persisted.meridianItems) ? persisted.meridianItems : []).map((m) => ({
+            ...m,
+            label: sanitizeBioelectricScreeningLabel(sanitizeClinicalSpanish(m?.label || '')),
+            detail: sanitizeClinicalSpanish(m?.detail || '')
+        }));
+        return {
+            title: persisted.title || 'ANEXO INFORMATIVO (FUERA DE NOTA MÉDICA NOM-004) — TAMIZAJE BIOFÍSICO ORIENTATIVO NO DIAGNÓSTICO',
+            disclaimer: persisted.disclaimer || 'Los siguientes parámetros provienen de bioimpedancia bioeléctrica orientativa (.HTM) y NO constituyen diagnóstico médico, toxicológico ni prueba de laboratorio acreditada conforme a NOM-004-SSA3-2012 y COFEPRIS.',
+            totalItems: cleanItems.length + cleanMeridians.length,
+            items: cleanItems,
+            meridianItems: cleanMeridians
+        };
+    }
+    const aux = Array.isArray(dossier?.auxiliary_bioenergetics) ? dossier.auxiliary_bioenergetics : [];
+    const cleanMeridiansFallback = aux.map((m) => ({
+        label: sanitizeBioelectricScreeningLabel(sanitizeClinicalSpanish(m?.label || '')),
+        detail: sanitizeClinicalSpanish(m?.detail || ''),
+        severity: m?.severity || 'MODERADA'
+    }));
+    return {
+        title: 'ANEXO INFORMATIVO (FUERA DE NOTA MÉDICA NOM-004) — TAMIZAJE BIOFÍSICO ORIENTATIVO NO DIAGNÓSTICO',
+        disclaimer: 'Los siguientes parámetros provienen de bioimpedancia bioeléctrica orientativa (.HTM) y NO constituyen diagnóstico médico, toxicológico ni prueba de laboratorio acreditada conforme a NOM-004-SSA3-2012 y COFEPRIS.',
+        totalItems: cleanMeridiansFallback.length,
+        items: [],
+        meridianItems: cleanMeridiansFallback
+    };
+}
 
 const SINERGIX_PUBLIC_RELEASE_MS = new Date('2026-12-18T00:00:00-06:00').getTime();
 
@@ -743,7 +782,7 @@ export function sanitizeClinicalSpanish(rawText) {
 
 function polishPatientEditorialPhrasing(rawText) {
     if (!rawText || typeof rawText !== 'string') return '';
-    return rawText
+    return sanitizeArt215NonTherapeuticLexicon(rawText)
         .replace(/qu[ée]\s+est[áa]\s+pasando\s+en\s+su\s+cuerpo/giu, 'qué está ocurriendo en su organismo')
         .replace(/Para\s+proteger\s+su\s+cuerpo/gu, 'Para proteger su organismo')
         .replace(/complementari(o|a|os|as)\s+a\s+su\s+comida\s+real/giu, (_, suf) => `complementari${suf} a su alimentación diaria`)
@@ -1167,8 +1206,9 @@ export function humanizeBiomarkerTopicForPatient(rawLabel, systemId = '') {
         return 'producción de jugos digestivos y absorción de nutrientes';
     }
 
+    const sanitizedBio = sanitizeBioelectricScreeningLabel(base);
     return stripBalancedParenthesesSafe(
-        base.replace(/^(?:grado|coeficiente|[íi]ndice|s[íi]ndrome|factor|tasa)\s+de\s+/i, '')
+        sanitizedBio.replace(/^(?:grado|coeficiente|[íi]ndice|s[íi]ndrome|factor|tasa)\s+de\s+/i, '')
     ).toLowerCase();
 }
 
@@ -1653,23 +1693,66 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             ? rawHistorySups.map((s) => (typeof s === 'object' ? `${s.name || ''} ${s.brand || ''} ${s.duration || ''} ${s.notes || ''}` : String(s || ''))).join(' | ')
             : String(rawHistorySups || '');
         const hasPriorInstitutionalSups = /(?:33\s*plus|34\s*plus|multisinergix|aminosinergix|equipo\s+en\s+acci[óo]n)/i.test(historySupsText);
+        const yrMatchClient = historySupsText.match(/(\d+(?:[.,]\d+)?)\s*a[ñn]os?/i);
+        const moMatchClient = historySupsText.match(/(\d+(?:[.,]\d+)?)\s*mes(?:es)?/i);
+        const estMonthsClient = yrMatchClient
+            ? Math.round(parseFloat(yrMatchClient[1].replace(',', '.')) * 12)
+            : (moMatchClient ? Math.round(parseFloat(moMatchClient[1].replace(',', '.'))) : (/cr[óo]nic|habitual|constante|siempre|varios\s+a[ñn]os/i.test(historySupsText) ? 6 : 0));
+        const anamSemClient = extractUnifiedAnamnesisSignals(patientData);
+        const cutoffSemClient = anamSemClient.isNightOrRotatingShift
+            ? 'suspendiéndolo al menos 8 h antes de su horario programado de sueño diurno'
+            : 'antes de las 14:00 h';
+        const hasEstablished3mClient = Boolean(
+            hasPriorInstitutionalSups &&
+            estMonthsClient >= 3 &&
+            !addr.isTutorMode &&
+            !isPediatric &&
+            !anamSemClient.hasCoumarinAnticoagulant &&
+            !anamSemClient.hasDoacOrStrongAntiplatelet &&
+            !anamSemClient.hasSympathomimeticMed &&
+            !anamSemClient.hasMaoInhibitorMed &&
+            !anamSemClient.hasOxalateOrRenalStoneHistory &&
+            !anamSemClient.hasDigestiveIssues &&
+            !anamSemClient.isPregnant &&
+            !anamSemClient.isLactating
+        );
 
         if (levelHint === 'AMARILLO') {
+            if (hasEstablished3mClient) {
+                const full33Grams = formatScaledActives('33PLUS', 2).totalGramsDisplay;
+                const full34Grams = formatScaledActives('34PLUS', 2).totalGramsDisplay;
+                return {
+                    level: 'AMARILLO',
+                    modeCode: 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA',
+                    isEstablishedContinuityFullDose: true,
+                    isRecalibrationMode: false,
+                    badgeLabel: 'Continuidad Calibrada en Dosis Completa • Vigilancia Focal',
+                    title: 'Continuidad calibrada de su pauta habitual en sobre completo con seguimiento focal preventivo',
+                    honestExplanation: `Reconocemos y respaldamos su constancia consolidada con 33Plus® y 34Plus®. Mantenemos sin recortes su pauta en dosis completa: 1 a 2 sobres completos al día de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33Grams}, ${cutoffSemClient}) y 1 a 2 sobres completos al día de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34Grams}, cada sobre en mínimo ${FORMULA_34PLUS.minWaterMl} ml de agua simple) conforme a su pauta habitual consolidada.`,
+                    ethicalNote: '33Plus® y 34Plus® actúan como apoyo nutricional complementario a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico).',
+                    recommendedLabs: recommendedLabs.length > 0
+                        ? recommendedLabs
+                        : ['Control evolutivo de Perfil Lipídico ampliado y Examen General de Orina (EGO)'],
+                    isPaused: false,
+                    isMicroDose: false,
+                    titrationPlanText: `Continuidad calibrada en dosis completa: 1 a 2 sobres completos al día de 33Plus® (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33Grams} en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma, ${cutoffSemClient}) + 1 a 2 sobres completos al día de 34Plus® (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34Grams}, cada sobre en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧) conforme a su pauta habitual consolidada.`
+                };
+            }
             if (hasPriorInstitutionalSups && !addr.isTutorMode) {
                 return {
                     level: 'AMARILLO',
                     modeCode: 'RECALIBRACION_PREVENTIVA_DOSIS',
                     isRecalibrationMode: true,
                     badgeLabel: 'Recalibración Preventiva de Dosis • Acompañamiento Continuo',
-                    title: 'Recalibramos preventivamente su pauta habitual para acompañar sus indicadores actuales',
-                    honestExplanation: 'Reconocemos su constancia previa con las fórmulas nutricionales de Equipo en Acción®. Para acompañar con total bioseguridad sus indicadores actuales, recalibramos preventivamente su posología los primeros 7 días (Semana 1) a media toma bien diluida en agua natural, optimizando su asimilación sin sobrecarga.',
+                    title: 'Recalibramos preventivamente su pauta inicial para acompañar sus indicadores actuales',
+                    honestExplanation: `Reconocemos su acercamiento previo con las fórmulas nutricionales de Equipo en Acción®. Para acompañar con total bioseguridad sus indicadores actuales, iniciamos los primeros 7 días (Semana 1) con 1/2 sobre (${cutoffSemClient}) bien diluido en agua natural, escalando a 1 sobre completo en Día 8 según tolerancia.`,
                     ethicalNote: `33Plus® y 34Plus® son aliados nutricionales complementarios a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico${addr.isAdolescent ? ', y se integran en conjunto con su madre, padre o tutor legal' : ''}).`,
                     recommendedLabs: recommendedLabs.length > 0
                         ? recommendedLabs
                         : ['Química sanguínea (Creatinina, Ácido Úrico, BUN) y Examen General de Orina (EGO)'],
                     isPaused: false,
                     isMicroDose: true,
-                    titrationPlanText: `Recalibración preventiva de dosis (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en ${FORMULA_33PLUS.minWaterMl} ml de agua natural + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧. Valorar retorno gradual a su dosis habitual según control.`
+                    titrationPlanText: `Recalibración preventiva de dosis (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en ${FORMULA_33PLUS.minWaterMl} ml de agua natural (${cutoffSemClient}) + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧. Valorar escalamiento a 1 sobre completo en Día 8.`
                 };
             }
             return {
@@ -1682,7 +1765,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                     : 'Avanzamos paso a paso para cuidar sus filtros naturales y su digestión',
                 honestExplanation: addr.isTutorMode
                     ? `Para cuidar el organismo de ${ref} con total responsabilidad, iniciaremos los primeros 7 días (Semana 1) con una micro-dosis suave (medio sobre) bien diluida en agua natural, permitiendo una adaptación cómoda y sin sobrecarga.`
-                    : `Sus indicadores muestran carga de trabajo en sus filtros naturales o sensibilidad digestiva. Por seguridad iniciamos los primeros 7 días (Semana 1) con una micro-dosis suave (medio sobre) bien diluida en agua simple, permitiendo que su organismo se adapte sin sobrecarga${addr.isAdolescent ? ', contando siempre con el acompañamiento de su madre, padre o tutor legal' : ''}.`,
+                    : `Sus indicadores muestran carga de trabajo en sus filtros naturales o sensibilidad digestiva. Por seguridad iniciamos los primeros 7 días (Semana 1) con una micro-dosis suave (medio sobre, ${cutoffSemClient}) bien diluida en agua simple, escalando a 1 sobre completo en Día 8 según tolerancia${addr.isAdolescent ? ', contando siempre con el acompañamiento de su madre, padre o tutor legal' : ''}.`,
                 ethicalNote: addr.isTutorMode
                     ? `33Plus® y 34Plus® actúan como soporte nutricional complementario a la alimentación diaria de ${ref} (nunca sustituyen sus medicamentos ni el seguimiento de su pediatra o médico tratante).`
                     : `33Plus® y 34Plus® son aliados nutricionales complementarios a su alimentación diaria (nunca sustituyen sus medicamentos ni su seguimiento médico${addr.isAdolescent ? ', y se integran en conjunto con su madre, padre o tutor legal' : ''}).`,
@@ -1691,7 +1774,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                     : ['Química sanguínea (Creatinina, Ácido Úrico, BUN) y Examen General de Orina (EGO)'],
                 isPaused: false,
                 isMicroDose: true,
-                titrationPlanText: `Fase de adaptación (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en ${FORMULA_33PLUS.minWaterMl} ml de agua natural + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧. Escalar gradualmente según tolerancia.`
+                titrationPlanText: `Fase de adaptación (Días 1 al 7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® al despertar en ${FORMULA_33PLUS.minWaterMl} ml de agua natural (${cutoffSemClient}) + 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® antes de dormir en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧. Escalar a 1 sobre completo en Día 8 según tolerancia.`
             };
         }
 
@@ -1761,6 +1844,10 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         const mismatchTutorSem = addr.isTutorMode && /\b(su cuerpo|sus síntomas|usted requiere)\b/i.test(cleanedExplanation);
         const missingTeenTutorNote = addr.isAdolescent && !/tutor|madre|padre/i.test(`${cleanedExplanation} ${cleanedEthical}`);
 
+        const isEstablishedContinuityRaw = Boolean(
+            rawSem.isEstablishedContinuityFullDose ||
+            rawSem.modeCode === 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA'
+        );
         semaphore = {
             ...rawSem,
             level: effectiveLevel,
@@ -1777,7 +1864,8 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 : cleanedTitration,
             recommendedLabs: safeLabs,
             isPaused: effectiveLevel === 'ROJO',
-            isMicroDose: effectiveLevel === 'AMARILLO'
+            isEstablishedContinuityFullDose: isEstablishedContinuityRaw,
+            isMicroDose: effectiveLevel === 'AMARILLO' && !isEstablishedContinuityRaw
         };
     } else if (rawIfmNodes.length === 0 && !existingGuide) {
         // Guardia FAIL-CLOSED: jamás prescribir Semáforo VERDE (40 g/día) sobre un expediente sin síntesis diagnóstica
@@ -1807,7 +1895,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
 
     const resolveClientSystemSeverity = (sysId, countVal, rawSys = null) => {
         try {
-            if (rawSys?.status && dossier?.ssot_contract_version === '3.3.0-EGM56-SSOTT') {
+            if (rawSys?.status && (dossier?.ssot_contract_version === '3.3.0-EGM56-SSOTT' || dossier?.ssot_contract_version === '3.5.0-Aniversario19-SSoTT')) {
                 return {
                     status: rawSys.status,
                     statusLabel: sanitizeClinicalSpanish(String(rawSys.statusLabel || (
@@ -2210,42 +2298,59 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
     const mismatch33Adult = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(raw33Expl) || adultThirdPersonLeakRe.test(raw33Expl) || hasForbiddenTheanineIn33 || hasFictionalSkuIn33);
     const mismatch34Adult = !addr.isTutorMode && (PEDIATRIC_CONTAMINATION_RE.test(raw34Expl) || adultThirdPersonLeakRe.test(raw34Expl));
 
-    const isRecalibrationActive = Boolean(
+    const isEstablishedContinuityCard = Boolean(
+        semaphore.isEstablishedContinuityFullDose ||
+        semaphore.modeCode === 'CONTINUIDAD_CALIBRADA_DOSIS_COMPLETA' ||
+        canonicalPlan?.isEstablishedContinuityFullDose ||
+        raw33?.isEstablishedContinuityFullDose ||
+        raw34?.isEstablishedContinuityFullDose
+    );
+    const isRecalibrationActive = !isEstablishedContinuityCard && Boolean(
         semaphore.isRecalibrationMode ||
         semaphore.modeCode === 'RECALIBRACION_PREVENTIVA_DOSIS' ||
         semaphore.modeCode === 'RECALIBRACION_DOSIS_PREVENTIVA' ||
         raw33?.isRecalibrationMode ||
         raw34?.isRecalibrationMode
     );
+    const anamCardClient = extractUnifiedAnamnesisSignals(patientData);
+    const full33DailyGramsCard = formatScaledActives('33PLUS', 2).totalGramsDisplay;
+    const full34DailyGramsCard = formatScaledActives('34PLUS', 2).totalGramsDisplay;
 
     const formula33Card = {
         code: '33PLUS',
         brandTitle: '33Plus®',
         isSelectivePaused: isSelective33Paused,
+        isEstablishedContinuityFullDose: isEstablishedContinuityCard,
         isRecalibrationMode: isRecalibrationActive,
         subtitle: isSelective33Paused
             ? 'En pausa selectiva preventiva de bioseguridad (0 sobres activos)'
             : (addr.isTutorMode
                 ? `Soporte matutino de energía celular y circulación para ${ref}`
-                : 'Su aliado matutino de energía celular y circulación'),
+                : 'Su aliado diurno de energía celular y circulación'),
         dosage: semaphore.isPaused
             ? (addr.isLactante
                 ? '0 sobres activos (etapa exclusiva de lactancia y pediatría)'
                 : '0 sobres activos por ahora (en pausa preventiva hasta revisar sus estudios de laboratorio)')
             : isSelective33Paused
                 ? FORMULA_33PLUS.dosageByMode.PAUSED_SELECTIVE_33
-                : (semaphore.isMicroDose
-                    ? (isRecalibrationActive
-                        ? (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || `Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
-                        : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
-                    : `2 tomas por la mañana: 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) al despertar en ayunas y 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) a media mañana (en ${FORMULA_33PLUS.minWaterMl} ml de agua natural)`),
+                : isEstablishedContinuityCard
+                    ? `Continuidad calibrada en dosis completa: 1 a 2 sobres completos al día (${FORMULA_33PLUS.sachetGramsDisplay} a ${full33DailyGramsCard}) conforme a su pauta habitual consolidada, en ${FORMULA_33PLUS.minWaterMl} ml de agua natural por toma`
+                    : (semaphore.isMicroDose
+                        ? (isRecalibrationActive
+                            ? (FORMULA_33PLUS.dosageByMode.RECALIBRATION_DOSE || `Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
+                            : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) al despertar en ayunas en ${FORMULA_33PLUS.minWaterMl} ml de agua natural`)
+                        : `2 tomas por la mañana: 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) al despertar en ayunas y 1 sobre (${FORMULA_33PLUS.sachetGramsDisplay}) a media mañana (en ${FORMULA_33PLUS.minWaterMl} ml de agua natural)`),
         timing: semaphore.isPaused
             ? (addr.isLactante ? 'No indicado en menores de 2 años' : 'En espera de validación médica')
             : isSelective33Paused
                 ? 'En pausa selectiva (sustituir por 300 ml de agua natural al despertar)'
-                : (addr.isTutorMode
-                    ? `Sincronizado al despertar de ${ref} (evitar después de las 2:00 PM)`
-                    : 'Sincronizado a su despertar real (corte estricto antes de las 2:00 PM)'),
+                : (raw33.timing && !hasLegacyTuteo(String(raw33.timing))
+                    ? sanitizeClinicalSpanish(raw33.timing)
+                    : (addr.isTutorMode
+                        ? `Sincronizado al despertar de ${ref} (evitar después de las 2:00 PM)`
+                        : anamCardClient.isNightOrRotatingShift
+                            ? 'Sincronizado a su despertar real (suspender al menos 8 h antes de su horario programado de sueño diurno)'
+                            : 'Sincronizado a su despertar real (corte estricto antes de las 2:00 PM)')),
         explanation: (!raw33Expl || hasLegacyTuteo(raw33Expl) || mismatch33Tutor || mismatch33Adult || hasFictionalSkuIn33 || addr.isLactante)
             ? default33Explanation
             : raw33Expl
@@ -2255,6 +2360,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
         code: '34PLUS',
         brandTitle: '34Plus®',
         isSelectivePaused: isSelective34Paused,
+        isEstablishedContinuityFullDose: isEstablishedContinuityCard,
         isRecalibrationMode: isRecalibrationActive,
         subtitle: isSelective34Paused
             ? 'En pausa selectiva estricta por protección de anticoagulación (INR)'
@@ -2267,11 +2373,13 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 : '0 sobres activos por ahora (en pausa preventiva hasta validación médica)')
             : isSelective34Paused
                 ? '0 sobres activos de 34Plus® (Pausa selectiva por tratamiento anticoagulante antagonista de Vitamina K)'
-                : (semaphore.isMicroDose
-                    ? (isRecalibrationActive
-                        ? (FORMULA_34PLUS.dosageByMode.RECALIBRATION_DOSE || `Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
-                        : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
-                    : `2 tomas tarde/noche: 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) a media tarde y 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) 30–60 min antes de dormir, cada uno en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`),
+                : isEstablishedContinuityCard
+                    ? `Continuidad calibrada en dosis completa: 1 a 2 sobres completos al día (${FORMULA_34PLUS.sachetGramsDisplay} a ${full34DailyGramsCard}) conforme a su pauta habitual consolidada, cada sobre en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`
+                    : (semaphore.isMicroDose
+                        ? (isRecalibrationActive
+                            ? (FORMULA_34PLUS.dosageByMode.RECALIBRATION_DOSE || `Recalibración preventiva de dosis (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
+                            : `Inicio gradual (Días 1–7): 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) antes de dormir disuelto en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`)
+                        : `2 tomas tarde/noche: 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) a media tarde y 1 sobre (${FORMULA_34PLUS.sachetGramsDisplay}) 30–60 min antes de dormir, cada uno en MÍNIMO ${FORMULA_34PLUS.minWaterMl} ml de agua simple 💧`),
         timing: semaphore.isPaused
             ? (addr.isLactante ? 'No indicado en menores de 2 años' : 'En espera de validación médica')
             : isSelective34Paused
@@ -2422,6 +2530,15 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                     : addr.isTutorChild
                         ? `Procure ofrecer a ${ref} una cena ligera al menos 2 horas antes de dormir y apagar pantallas brillantes con anticipación.`
                         : 'Procure cenar ligero al menos 2 a 3 horas antes de dormir y descansar lejos de pantallas brillantes.'
+        },
+        mid_cycle_pulse_day14: {
+            day: 14,
+            title: 'Hito de Pulso Día 14 (Mitad de Ciclo)',
+            summary: addr.isLactante
+                ? `A mitad del ciclo (Día 14), registre la tolerancia digestiva, sueño y bienestar diario de ${ref} para compartirlo en su seguimiento.`
+                : isTcaClientSafety
+                    ? 'A mitad de su Ciclo 1 (Día 14), registre cómo percibe su energía al despertar (escala 1 a 10), su confort digestivo y la constancia de sus 4 momentos diarios de hidratación y complementación.'
+                    : 'A mitad de su Ciclo 1 (Día 14), tome por la mañana en ayunas su medida de cintura con cinta flexible a la altura del ombligo, califique su energía al despertar (escala 1 a 10) y confirme la constancia de sus 4 momentos diarios de hidratación y complementación.'
         }
     };
 
@@ -2482,6 +2599,14 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                 sleepHabit: (!rawSleepHabit || hasLegacyTuteo(rawSleepHabit) || mismatchHomeAdultMov)
                     ? canonicalHomePlan.gentle_movement.sleepHabit
                     : rawSleepHabit
+            },
+            mid_cycle_pulse_day14: {
+                ...canonicalHomePlan.mid_cycle_pulse_day14,
+                ...(rawHome.mid_cycle_pulse_day14 || {}),
+                title: sanitizeClinicalSpanish(rawHome.mid_cycle_pulse_day14?.title) || canonicalHomePlan.mid_cycle_pulse_day14.title,
+                summary: (rawHome.mid_cycle_pulse_day14?.summary && !hasLegacyTuteo(String(rawHome.mid_cycle_pulse_day14.summary)))
+                    ? sanitizeClinicalSpanish(rawHome.mid_cycle_pulse_day14.summary)
+                    : canonicalHomePlan.mid_cycle_pulse_day14.summary
             }
         };
     }
@@ -2535,7 +2660,7 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
 
     const applyGenderDeep = (val) => {
         if (val === null || val === undefined) return val;
-        if (typeof val === 'string') return enforcePatientGenderConcordance(val, isFemale);
+        if (typeof val === 'string') return sanitizeArt215NonTherapeuticLexicon(enforcePatientGenderConcordance(val, isFemale));
         if (Array.isArray(val)) return val.map(applyGenderDeep);
         if (typeof val === 'object') {
             const out = {};

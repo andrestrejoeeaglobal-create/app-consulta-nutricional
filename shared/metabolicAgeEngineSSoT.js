@@ -1,15 +1,15 @@
 /**
- * Motor Universal Compartido de Anamnesis 360° y Edad Metabólica de 6 Dominios (`v3.4.0-EGM51-V3` — SSoTT)
- * Equipo en Acción® — Ecosistema T.I.L.O. (NOM-004-SSA3-2012 / NOM-043 / COFEPRIS)
+ * Motor Universal Compartido de Anamnesis 360° y Edad Metabólica de 6 Dominios (`v3.5.0-EGM51-V4` — SSoTT)
+ * Equipo en Acción® — Ecosistema T.I.L.O. (NOM-004-SSA3-2012 / NOM-043 / COFEPRIS Art. 215 LGS)
  *
  * Fuente Única de Verdad (CommonJS vigilada por `nodemon --watch ../shared`), consumida 1:1 en servidor y cliente:
  * - Normaliza retrocompatiblemente Fases 0 a 18 sin tocar componentes protegidos (EGM-57).
  * - Evalúa farmacovigilancia, restricción hídrica, litiasis, turno nocturno y exclusiones alergénicas/éticas (EGM-58..60, EGM-66..67).
- * - Calcula Edad Metabólica sobre 6 Dominios (0.26 / 0.18 / 0.18 / 0.14 / 0.12 / 0.12 = 1.00) con Curva en J,
- *   atenuación por fármacos activos, biomarcadores PhenoAge y certeza bioquímica honesta (EGM-61..65).
+ * - Calcula Edad Metabólica sobre 6 Dominios (0.26 / 0.18 / 0.18 / 0.14 / 0.12 / 0.12 = 1.00) con Tracción Opuesta
+ *   sub-regla por sub-regla, Potencial Óptimo Ciclo 6 (180d), Compensación Fisiológica Activa y Niveles I-III (EGM-69..72).
  */
 
-const ENGINE_VERSION_SSOT = '3.4.0-EGM51-V3';
+const ENGINE_VERSION_SSOT = '3.5.0-EGM51-V4';
 
 const DOMAIN_WEIGHTS_SSOT = Object.freeze({
     ANTHROPOMETRY_ADIPOSITY: 0.26,
@@ -56,6 +56,76 @@ const SURGICAL_CODE_LABELS = Object.freeze({
     SURG_ORTOPEDICA: 'Cirugía ortopédica articular/espinal',
     SURG_CARDIACA: 'Cirugía cardiovascular'
 });
+
+/**
+ * Sanitizador Regulatorio COFEPRIS / NOM-004 (`EGM-71` — Parte II Anexo Biofísico y Parte III Guía del Paciente).
+ * Transforma etiquetas nosológicas/toxicológicas crudas del escáner bioeléctrico `.HTM` en bioseñales orientativas no diagnósticas.
+ */
+function sanitizeBioelectricScreeningLabel(rawLabel = '') {
+    const clean = cleanHumanLabel(rawLabel);
+    if (!clean) return '';
+    if (/radiaci[óo]n\s+electromagn[ée]tica|electromagn[ée]tic/i.test(clean)) {
+        return 'Bioseñal orientativa de confort neuroambiental';
+    }
+    if (/s[íi]ndrome\s+de\s+prostatitis|prostatitis|hiperplasia\s+prost[áa]tica|calcificaci[óo]n\s+prost[áa]tica|pr[óo]stata/i.test(clean)) {
+        return 'Bioseñal orientativa de confort prostático y urogenital';
+    }
+    if (/mercurio|ars[ée]nico|plomo|cadmio|metales?\s+pesados?|pesticidas?|toxinas?\s+ambientales?/i.test(clean)) {
+        return 'Índice biofísico orientativo de depuración ambiental';
+    }
+    if (/enfermedad\s+(?:coronaria|cardiovascular)|arteriosclerosis|aterosclerosis|isquemia\s+(?:mioc[áa]rdica|cerebral)|riesgo\s+cerebrovascular|\bstroke\b|infarto/i.test(clean)) {
+        return 'Bioseñal orientativa de elasticidad y flujo microvascular';
+    }
+    if (/\bdiabetes\b|hiperglucemia|hipoglucemia/i.test(clean)) {
+        return 'Bioseñal orientativa de equilibrio bioenergético celular';
+    }
+    if (/esteatosis|h[íi]gado\s+graso|cirrosis|hepatitis/i.test(clean)) {
+        return 'Bioseñal orientativa de procesamiento lipídico hepatobiliar';
+    }
+    if (/nefritis|insuficiencia\s+renal|uremia|proteinuria/i.test(clean)) {
+        return 'Bioseñal orientativa de balance hidromineral renal';
+    }
+    if (/gastritis|[úu]lcera|colitis|enteritis/i.test(clean)) {
+        return 'Bioseñal orientativa de confort y motilidad digestiva';
+    }
+    if (/osteoporosis|hiperplasia\s+[óo]sea|espondilosis|enfermedad\s+[óo]sea\s+reumatoide|coeficiente\s+de\s+reumatismo|reumatismo|artritis/i.test(clean)) {
+        return 'Bioseñal orientativa de soporte osteomuscular y articular';
+    }
+    if (/hipertiroidismo|hipotiroidismo|tiroiditis|bocio/i.test(clean)) {
+        return 'Bioseñal orientativa de modulación funcional tiroidea';
+    }
+    return clean
+        .replace(/^(?:S[íi]ndrome|Enfermedad|Trastorno|Patolog[íi]a)\s+de\s+/iu, 'Bioseñal orientativa de ')
+        .trim();
+}
+
+/**
+ * Sanitizador Léxico Art. 215 LGS / COFEPRIS (`EGM-71` — Parte II y Parte III).
+ * Erradica términos farmacológicos/terapéuticos aplicados a alimentación o suplementación (33Plus® / 34Plus®),
+ * preservando referencias legítimas a medicamentos alopáticos prescritos por el médico tratante.
+ */
+function sanitizeArt215NonTherapeuticLexicon(rawText = '') {
+    const s = String(rawText || '');
+    if (!s) return '';
+    return s
+        .replace(/Puente\s+nutricional\s+terap[ée]utico/giu, 'Ajuste alimentario cardioprotector')
+        .replace(/PRESCRIPCI[ÓO]N\s+ORTOMOLECULAR(?:\s+INTEGRAL)?/gu, 'COMPLEMENTACIÓN NUTRICIONAL CIRCADIANA')
+        .replace(/Prescripci[óo]n\s+Ortomolecular(?:\s+Integral)?/giu, 'Complementación Nutricional Circadiana')
+        .replace(/PRESCRIPCI[ÓO]N\s+BIOENERG[ÉE]TICA\s+Y\s+CRONOBIOLOG[ÍI]A\s+ORTOMOLECULAR/gu, 'META BIOENERGÉTICA Y COMPLEMENTACIÓN NUTRICIONAL CIRCADIANA')
+        .replace(/Prescripci[óo]n\s+Bioenerg[ée]tica/giu, 'Pauta Bioenergética Sugerida')
+        .replace(/Estrategia\s+Terap[ée]utica(?:\s+Integral)?/giu, 'Pauta Nutricional Sugerida y Apoyo Fisiológico Complementario')
+        .replace(/Enfoque\s+Terap[ée]utico/giu, 'Apoyo Fisiológico Complementario')
+        .replace(/SECUENCIACI[ÓO]N\s+TERAP[ÉE]UTICA/gu, 'SECUENCIACIÓN DE HÁBITOS Y COMPLEMENTACIÓN')
+        .replace(/Secuenciaci[óo]n\s+Terap[ée]utica/giu, 'Secuenciación de Hábitos y Complementación')
+        .replace(/Secuenciaci[óo]n\s+cronobiol[óo]gica\s+ortomolecular/giu, 'Secuenciación cronobiológica de complementación nutricional')
+        .replace(/Meta\s+(?:Cal[óo]rica\s+|Energ[ée]tica\s+)?Prescrita/giu, 'Meta Energética Sugerida')
+        .replace(/D[ÉE]FICIT_TERAP[ÉE]UTICO_MODERADO/gu, 'AJUSTE_ENERGETICO_MODERADO')
+        .replace(/su\s+prescripci[óo]n\s+nutricional/giu, 'su pauta nutricional sugerida')
+        .replace(/Prescripci[óo]n\s+de\s+Movimiento/giu, 'Pauta de Movimiento Seguro')
+        .replace(/Prescripci[óo]n\s+Multimodal\s+Guiada/giu, 'Pauta Multimodal de Movimiento Guiada')
+        .replace(/Prescripci[óo]n\s+Biomec[áa]nica/giu, 'Pauta Biomecánica')
+        .replace(/Prescripci[óo]n\s+Adaptativa/giu, 'Pauta Adaptativa');
+}
 
 function parseMealClockMinutes(rawHour = '') {
     const txt = String(rawHour || '').trim().toLowerCase();
@@ -164,77 +234,109 @@ function resolveSharedVerifiedAge(patientData = {}, fallbackYears = 35) {
 }
 
 function resolveSharedAltitudeMsnm(patientData = {}) {
-    const explicitCandidates = [
-        patientData?.identificacion?.altitude_msnm,
-        patientData?.identificacion?.altitud_msnm,
-        patientData?.profile?.altitude_msnm,
-        patientData?.demographics?.altitude_msnm,
-        patientData?.location?.altitude_msnm,
-        patientData?.altitude_msnm
-    ];
-    for (const raw of explicitCandidates) {
-        if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
-            const v = Number(raw);
-            if (Number.isFinite(v) && v >= 0 && v <= 5500) {
-                return buildAltitudeBand(Math.round(v), patientData);
+    try {
+        const dom = patientData?.domicilio || patientData?.address || patientData?.location || {};
+        const ident = patientData?.identificacion || patientData?.profile || patientData?.demographics || {};
+        const explicitCandidates = [
+            dom.altitud_msnm,
+            dom.altitude_msnm,
+            dom.altitud,
+            dom.altitude,
+            dom.elevation_m,
+            dom.msnm,
+            ident.altitud_msnm,
+            ident.altitude_msnm,
+            patientData?.vitals?.altitude_msnm,
+            patientData?.vitals?.altitud_msnm,
+            patientData?.profile?.altitude_msnm,
+            patientData?.profile?.altitud_msnm,
+            patientData?.altitude_msnm,
+            patientData?.msnm
+        ];
+        for (const cand of explicitCandidates) {
+            if (cand !== null && cand !== undefined && String(cand).trim() !== '') {
+                const n = parseFloat(String(cand).replace(/[^0-9.-]/g, ''));
+                if (Number.isFinite(n) && n >= -100 && n <= 5500) {
+                    const msnm = Math.max(0, Math.round(n));
+                    return buildAltitudeBand(msnm, patientData, msnm === 0 ? 'Nivel del mar (0 msnm)' : `${dom.municipio || dom.ciudad || ident.municipio || ident.city || 'Altitud declarada'} • ${msnm} msnm`);
+                }
             }
         }
-    }
 
-    const locText = [
-        patientData?.identificacion?.municipio,
-        patientData?.identificacion?.ciudad,
-        patientData?.identificacion?.estado,
-        patientData?.identificacion?.direccion,
-        patientData?.identificacion?.domicilio,
-        patientData?.profile?.city,
-        patientData?.profile?.state,
-        patientData?.profile?.address,
-        patientData?.demographics?.city,
-        patientData?.demographics?.state
-    ]
-        .filter(Boolean)
-        .join(' ')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toUpperCase();
+        const lat = parseFloat(dom?.coordinates?.lat ?? dom?.lat ?? ident?.lat ?? NaN);
+        const lng = parseFloat(dom?.coordinates?.lng ?? dom?.lng ?? ident?.lng ?? NaN);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            if (lat >= 19.12 && lat <= 19.46 && lng >= -99.85 && lng <= -99.42) return buildAltitudeBand(2660, patientData, 'Valle de Toluca • 2660 msnm');
+            if (lat >= 19.20 && lat <= 19.65 && lng >= -99.36 && lng <= -98.88) return buildAltitudeBand(2240, patientData, 'Valle de México • 2240 msnm');
+            if (lat >= 20.02 && lat <= 20.22 && lng >= -98.85 && lng <= -98.60) return buildAltitudeBand(2420, patientData, 'Pachuca / Comarca Minera • 2420 msnm');
+            if (lat >= 18.95 && lat <= 19.15 && lng >= -98.35 && lng <= -98.10) return buildAltitudeBand(2135, patientData, 'Valle de Puebla • 2135 msnm');
+            if (lat >= 20.50 && lat <= 20.70 && lng >= -100.52 && lng <= -100.28) return buildAltitudeBand(1820, patientData, 'Querétaro • 1820 msnm');
+            if (lat >= 20.55 && lat <= 20.80 && lng >= -103.50 && lng <= -103.20) return buildAltitudeBand(1566, patientData, 'Guadalajara • 1566 msnm');
+        }
 
-    if (/\b(?:TOLUCA|METEPEC|ZINACANTEPEC|LERMA|SAN\s+MATEO\s+ATENCO|ALMOLOYA)\b/.test(locText)) {
-        return buildAltitudeBand(2660, patientData, 'Toluca / Valle Alto (2,660 msnm)');
+        const cp = String(dom.cp || dom.codigoPostal || dom.postal_code || ident.cp || ident.codigoPostal || ident.postal_code || '').trim();
+        if (/^(50\d{3}|520\d{2}|521\d{2})$/.test(cp)) return buildAltitudeBand(2660, patientData, 'Valle de Toluca • 2660 msnm');
+        if (/^(0[1-9]\d{3}|1[0-6]\d{3})$/.test(cp)) return buildAltitudeBand(2240, patientData, 'Ciudad de México • 2240 msnm');
+        if (/^42[01]\d{2}$/.test(cp)) return buildAltitudeBand(2420, patientData, 'Pachuca • 2420 msnm');
+        if (/^423\d{2}$/.test(cp)) return buildAltitudeBand(1640, patientData, 'Tasquillo, Hidalgo • 1640 msnm');
+        if (/^980\d{2}$/.test(cp)) return buildAltitudeBand(2490, patientData, 'Zacatecas • 2490 msnm');
+        if (/^72\d{3}$/.test(cp)) return buildAltitudeBand(2135, patientData, 'Puebla • 2135 msnm');
+        if (/^76[0-2]\d{2}$/.test(cp)) return buildAltitudeBand(1820, patientData, 'Querétaro • 1820 msnm');
+
+        const locText = [
+            dom.municipio, dom.ciudad, dom.estado, dom.direccion_capturada_usuario, dom.direccion_googlemaps,
+            ident.municipio, ident.ciudad, ident.estado, ident.direccion, ident.domicilio,
+            ident.city, ident.state, ident.address
+        ]
+            .filter(Boolean)
+            .join(' ')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase();
+
+        if (/\b(?:TOLUCA|METEPEC|ZINACANTEPEC|LERMA|SAN\s+MATEO\s+ATENCO|CALIMAYA|ALMOLOYA)\b/.test(locText)) {
+            return buildAltitudeBand(2660, patientData, 'Valle de Toluca • 2660 msnm');
+        }
+        if (/\b(?:EL\s+ALTO|LA\s+PAZ\s+BOLIVIA)\b/.test(locText)) return buildAltitudeBand(3640, patientData, 'Altiplano Andino • 3640 msnm');
+        if (/\b(?:CUSCO|CUZCO)\b/.test(locText)) return buildAltitudeBand(3399, patientData, 'Cusco • 3399 msnm');
+        if (/\b(?:QUITO)\b/.test(locText)) return buildAltitudeBand(2850, patientData, 'Quito • 2850 msnm');
+        if (/\b(?:BOGOTA)\b/.test(locText)) return buildAltitudeBand(2640, patientData, 'Sabana de Bogotá • 2640 msnm');
+        if (/\b(?:ZACATECAS)\b/.test(locText)) return buildAltitudeBand(2490, patientData, 'Zacatecas • 2490 msnm');
+        if (/\b(?:PACHUCA|MINERAL\s+DE\s+LA\s+REFORMA|REAL\s+DEL\s+MONTE|TLAXCALA|APIZACO)\b/.test(locText)) {
+            return buildAltitudeBand(2420, patientData, 'Altiplano Central • 2420 msnm');
+        }
+        if (/\b(?:CIUDAD\s+DE\s+MEXICO|CDMX|DF|NAUCALPAN|TLALNEPANTLA|ECATEPEC|HUIXQUILUCAN|NEZAHUALCOYOTL|TEXCOCO)\b/.test(locText)) {
+            return buildAltitudeBand(2240, patientData, 'Valle de México • 2240 msnm');
+        }
+        if (/\b(?:PUEBLA|CHOLULA|ATLIXCO)\b/.test(locText)) return buildAltitudeBand(2135, patientData, 'Valle de Puebla • 2135 msnm');
+        if (/\b(?:QUERETARO|MORELIA|PATZCUARO|AGUASCALIENTES|SAN\s+LUIS\s+POTOSI|DURANGO|GUANAJUATO|LEON|GUADALAJARA|ZAPOPAN|SALTILLO|OAXACA|TASQUILLO|IXMIQUILPAN)\b/.test(locText)) {
+            return buildAltitudeBand(1820, patientData, 'Altiplano Medio • 1820 msnm');
+        }
+        if (/\b(?:VERACRUZ|BOCA\s+DEL\s+RIO|CANCUN|MERIDA|ACAPULCO|MAZATLAN|TAMPICO|PUERTO\s+VALLARTA|LOS\s+CABOS|LA\s+PAZ|COATZACOALCOS|CAMPECHE|CHETUMAL|PLAYA\s+DEL\s+CARMEN|COZUMEL|MANZANILLO|ENSENADA|VILLAHERMOSA)\b/.test(locText)) {
+            return buildAltitudeBand(0, patientData, 'Nivel del mar (0 msnm)');
+        }
+        if (/\b(?:MONTERREY|SAN\s+PEDRO\s+GARZA|HERMOSILLO|CULIACAN|CHIHUAHUA|TORREON|TUXTLA|CUERNAVACA)\b/.test(locText)) {
+            return buildAltitudeBand(540, patientData, 'Baja altitud (540 msnm)');
+        }
+    } catch (_) {
+        // Respaldo seguro
     }
-    if (/\b(?:CIUDAD\s+DE\s+MEXICO|CDMX|DF|NAUCALPAN|TLALNEPANTLA|ECATEPEC|HUIXQUILUCAN|PACHUCA|PUEBLA|TLAXCALA|ZACATECAS)\b/.test(locText)) {
-        return buildAltitudeBand(2240, patientData, 'Altiplano Central (2,240 msnm)');
-    }
-    if (/\b(?:QUERETARO|MORELIA|AGUASCALIENTES|SAN\s+LUIS\s+POTOSI|DURANGO|GUANAJUATO|LEON|GUADALAJARA|ZAPOPAN|SALTILLO|OAXACA)\b/.test(locText)) {
-        return buildAltitudeBand(1800, patientData, 'Altitud Intermedia (1,800 msnm)');
-    }
-    if (/\b(?:VERACRUZ|BOCA\s+DEL\s+RIO|CANCUN|MERIDA|ACAPULCO|MAZATLAN|TAMPICO|PUERTO\s+VALLARTA|LOS\s+CABOS|LA\s+PAZ|COATZACOALCOS|CAMPECHE|CHETUMAL|PLAYA\s+DEL\s+CARMEN|COZUMEL|MANZANILLO|ENSENADA|VILLAHERMOSA)\b/.test(locText)) {
-        return buildAltitudeBand(0, patientData, 'Nivel del mar (0 msnm)');
-    }
-    if (/\b(?:MONTERREY|SAN\s+PEDRO\s+GARZA|HERMOSILLO|CULIACAN|CHIHUAHUA|TORREON|MERIDA|TUXTLA|CUERNAVACA)\b/.test(locText)) {
-        return buildAltitudeBand(540, patientData, 'Baja altitud (540 msnm)');
-    }
-    return buildAltitudeBand(2240, patientData, 'Referencia altiplano (2,240 msnm)');
+    return buildAltitudeBand(0, patientData, 'Nivel basal (< 1,500 msnm)');
 }
 
 function buildAltitudeBand(msnm, patientData = {}, customLabel = '') {
+    const safeMsnm = Number.isFinite(msnm) ? Math.max(0, Math.round(msnm)) : 0;
     let spo2NormalFloor = 95;
     let hbAltitudeOffset = 0.0;
-    if (msnm >= 2500) {
-        spo2NormalFloor = 91;
-        hbAltitudeOffset = 1.3;
-    } else if (msnm >= 2000) {
+    if (safeMsnm >= 2400) {
         spo2NormalFloor = 92;
-        hbAltitudeOffset = 0.8;
-    } else if (msnm >= 1500) {
-        spo2NormalFloor = 93;
-        hbAltitudeOffset = 0.5;
-    } else if (msnm >= 1000) {
+        hbAltitudeOffset = 1.3;
+    } else if (safeMsnm >= 1500) {
         spo2NormalFloor = 94;
-        hbAltitudeOffset = 0.2;
+        hbAltitudeOffset = 0.5;
     }
-    const label = customLabel || (msnm === 0 ? 'Nivel del mar (0 msnm)' : `${msnm} msnm`);
-    return { msnm, label, spo2NormalFloor, hbAltitudeOffset };
+    const label = customLabel || (safeMsnm === 0 ? 'Nivel basal (< 1,500 msnm)' : `${safeMsnm} msnm`);
+    return { msnm: safeMsnm, label, spo2NormalFloor, hbAltitudeOffset };
 }
 
 function calculateSharedCkdEpi2021(scrMgDl, ageYears, isFemale) {
@@ -900,7 +1002,10 @@ function extractCabinetSnapshotFromRawPatientData(rawPatientData = {}) {
  */
 function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
     const verifiedAge = opts.verifiedAge || resolveSharedVerifiedAge(rawPatientData, 35);
-    const chronoAge = Number(verifiedAge.ageYears) || 35;
+    const rawChrono = Number(verifiedAge.ageYears);
+    const chronoAge = (verifiedAge.ageYears !== null && verifiedAge.ageYears !== undefined && Number.isFinite(rawChrono) && rawChrono >= 0)
+        ? rawChrono
+        : 35;
     const isFemale = opts.isFemale !== undefined ? Boolean(opts.isFemale) : resolveSharedPatientIsFemale(rawPatientData);
     const isLactante = Boolean(chronoAge < 2 && (verifiedAge.isLactanteVerified || rawPatientData?.isLactante === true));
     const isPediatric = Boolean(chronoAge < 18 && (isLactante || verifiedAge.isPediatricVerified || rawPatientData?.isPediatrico === true));
@@ -982,16 +1087,12 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
                 : 'CLINICO_ANTROPOMETRICO';
 
         const evidenceTierBadge = evidenceTier === 'BIOQUIMICO_INTEGRAL'
-            ? 'Certeza Bioquímica y Clínica Integral'
+            ? 'Nivel I — Evidencia Bioquímica y Clínica Completa'
             : evidenceTier === 'BIOFISICO_MULTIMODAL'
-                ? 'Certeza Biofísica y Clínica Multimodal'
-                : 'Certeza Clínica y Antropométrica Basal';
+                ? 'Nivel II — Evidencia Multimodal y Antropométrica'
+                : 'Nivel III — Evaluación Clínica y Antropométrica Basal';
 
-        const evidenceConfidencePct = evidenceTier === 'BIOQUIMICO_INTEGRAL'
-            ? 95
-            : evidenceTier === 'BIOFISICO_MULTIMODAL'
-                ? 82
-                : 72;
+        const evidenceConfidencePct = null;
 
         if (safetyGateReasonCode) {
             const gateMetaMap = {
@@ -1091,7 +1192,7 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
                 });
             });
         }
-        const rawFatCandidate = parseFloat(vitalsSnap.bodyFatPct || vitals.body_fat || biometria.grasa_corporal || biometria.porcentaje_grasa || bio.bodyFatPct || electretBodyFat || 0);
+        const rawFatCandidate = parseFloat(vitalsSnap.bodyFatPct || vitals.body_fat || vitals.body_fat_pct || biometria.grasa_corporal || biometria.porcentaje_grasa || bio.bodyFatPct || electretBodyFat || 0);
         const bodyFatPct = Number.isFinite(rawFatCandidate) && rawFatCandidate >= 4 && rawFatCandidate <= 65 ? rawFatCandidate : null;
 
         const bmi = (weightKg && heightCm)
@@ -1126,94 +1227,125 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
         const modifiableLoadFactors = [];
         const domains = [];
 
+        // Acumuladores Sub-Regla por Sub-Regla para Tracción Opuesta (EGM-69 — Fallo #1: cero ocultamiento intra-dominio)
+        let rawProtectiveWeightedSum = 0; // <= 0 (años brutos ganados)
+        let rawTotalDragWeightedSum = 0;  // >= 0 (años brutos retenidos totales)
+        let rawModifiableDragWeightedSum = 0; // >= 0 (años retenidos 100 % modificables)
+
+        const finalizeDomainWithSubRules = (id, label, weight, subRules, minCap, maxCap) => {
+            const rawSum = subRules.reduce((acc, r) => acc + r.delta, 0);
+            const clamped = Math.max(minCap, Math.min(maxCap, Number(rawSum.toFixed(2))));
+            const scale = (rawSum !== 0 && Math.abs(clamped - rawSum) > 0.001) ? (clamped / rawSum) : 1.0;
+            subRules.forEach((r) => {
+                const eff = r.delta * scale;
+                if (eff < 0) {
+                    rawProtectiveWeightedSum += weight * eff;
+                } else if (eff > 0) {
+                    rawTotalDragWeightedSum += weight * eff;
+                    if (r.modifiable !== false) {
+                        rawModifiableDragWeightedSum += weight * eff;
+                    }
+                }
+            });
+            return {
+                id,
+                label,
+                weight,
+                measured: true,
+                scoreEquivalentYears: clamped
+            };
+        };
+
         // =========================================================================
         // DOMINIO 1 (0.26): Composición Corporal, Adiposidad Visceral y Curva en J
         // =========================================================================
         const hasAnthroDomain = Boolean(bmi !== null || ica !== null || icc !== null || bodyFatPct !== null);
         if (hasAnthroDomain) {
-            let d1Score = 0;
+            const d1Sub = [];
+            const pushD1 = (delta, modifiable = true) => { if (delta !== 0) d1Sub.push({ delta, modifiable }); };
             const isUnderweightMalnutrition = bmi !== null && bmi < 18.5;
             const isGeriatricLowReserve = chronoAge >= 65 && bmi !== null && bmi >= 18.5 && bmi < 21.0 && !hasActiveExercise;
 
             if (isUnderweightMalnutrition) {
-                d1Score += bmi < 17.0 ? 5.2 : 3.6;
-                if (chronoAge >= 65) d1Score += 1.2;
+                pushD1(bmi < 17.0 ? 5.2 : 3.6, true);
+                if (chronoAge >= 65) pushD1(1.2, true);
                 modifiableLoadFactors.push(`baja reserva proteico-energética corporal (IMC ${bmi} kg/m²)`);
             } else if (isGeriatricLowReserve) {
-                d1Score += 2.2;
+                pushD1(2.2, true);
                 modifiableLoadFactors.push(`reserva osteomuscular geriátrica disminuida (IMC ${bmi} kg/m²)`);
             } else if (isAthleticHighLeanMass) {
                 if (bodyFatPct !== null && bodyFatPct <= (isFemale ? 22 : 15)) {
-                    d1Score -= 3.2;
+                    pushD1(-3.2, true);
                     protectiveFactors.push(`alta reserva muscular magra (${bodyFatPct} % grasa corporal; 0 penalización por IMC ${bmi || '--'})`);
                 } else {
-                    d1Score -= 2.0;
+                    pushD1(-2.0, true);
                     protectiveFactors.push('composición atlética con baja adiposidad visceral (0 penalización por IMC muscular)');
                 }
                 if (ica !== null && ica < 0.49) {
-                    d1Score -= 1.0;
+                    pushD1(-1.0, true);
                     protectiveFactors.push(`relación cintura-estatura óptima (ICA ${ica})`);
                 } else if (ica !== null && ica >= 0.54) {
-                    d1Score += 1.5;
+                    pushD1(1.5, true);
                 }
             } else {
                 if (ica !== null) {
                     if (ica < 0.50) {
-                        d1Score -= 1.6;
+                        pushD1(-1.6, true);
                         protectiveFactors.push(`cintura-estatura saludable (ICA ${ica})`);
                     } else if (ica <= 0.54) {
-                        d1Score += 0.6;
+                        pushD1(0.6, true);
                     } else if (ica <= 0.60) {
-                        d1Score += 2.2;
+                        pushD1(2.2, true);
                         modifiableLoadFactors.push(`circunferencia abdominal central (ICA ${ica})`);
                     } else {
-                        d1Score += 4.2;
+                        pushD1(4.2, true);
                         modifiableLoadFactors.push(`adiposidad central marcada (ICA ${ica})`);
                     }
                 } else if (bmi !== null) {
                     if (bmi >= 18.5 && bmi < 25.0) {
-                        d1Score -= 1.2;
+                        pushD1(-1.2, true);
                         protectiveFactors.push(`índice de masa corporal en rango fisiológico (${bmi} kg/m²)`);
                     } else if (bmi >= 25.0 && bmi < 30.0) {
-                        d1Score += 1.6;
+                        pushD1(1.6, true);
                         modifiableLoadFactors.push(`sobrepeso moderado (IMC ${bmi} kg/m²)`);
                     } else if (bmi >= 30.0 && bmi < 35.0) {
-                        d1Score += 3.8;
+                        pushD1(3.8, true);
                         modifiableLoadFactors.push(`sobrecarga ponderal (IMC ${bmi} kg/m²)`);
                     } else if (bmi >= 35.0) {
-                        d1Score += 6.0;
+                        pushD1(6.0, true);
                         modifiableLoadFactors.push(`sobrecarga ponderal grado II+ (IMC ${bmi} kg/m²)`);
                     }
                 }
 
                 if (icc !== null) {
                     if (icc < iccThreshold) {
-                        d1Score -= 0.6;
+                        pushD1(-0.6, true);
                     } else {
-                        d1Score += icc >= (iccThreshold + 0.08) ? 1.8 : 1.0;
+                        pushD1(icc >= (iccThreshold + 0.08) ? 1.8 : 1.0, true);
                         modifiableLoadFactors.push(`relación cintura-cadera física (ICC ${icc})`);
                     }
                 }
 
                 if (bodyFatPct !== null) {
                     if (bodyFatPct <= optimalFatMax) {
-                        d1Score -= 0.8;
+                        pushD1(-0.8, true);
                         protectiveFactors.push(`porcentaje de grasa corporal conservado (${bodyFatPct} %)`);
                     } else if (bodyFatPct <= optimalFatMax + 5) {
-                        d1Score += 0.8;
+                        pushD1(0.8, true);
                     } else {
-                        d1Score += 2.2;
+                        pushD1(2.2, true);
                         modifiableLoadFactors.push(`porcentaje de grasa corporal elevado (${bodyFatPct} %)`);
                     }
                 }
             }
-            domains.push({
-                id: 'ANTHROPOMETRY_ADIPOSITY',
-                label: 'Composición Corporal y Reserva Magra',
-                weight: DOMAIN_WEIGHTS_SSOT.ANTHROPOMETRY_ADIPOSITY,
-                measured: true,
-                scoreEquivalentYears: Math.max(-6.0, Math.min(9.0, Number(d1Score.toFixed(2))))
-            });
+            domains.push(finalizeDomainWithSubRules(
+                'ANTHROPOMETRY_ADIPOSITY',
+                'Composición Corporal y Reserva Magra',
+                DOMAIN_WEIGHTS_SSOT.ANTHROPOMETRY_ADIPOSITY,
+                d1Sub,
+                -6.0,
+                9.0
+            ));
         } else {
             domains.push({ id: 'ANTHROPOMETRY_ADIPOSITY', label: 'Composición Corporal', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
         }
@@ -1227,55 +1359,57 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
         const spo2Val = Number(vitalsSnap.spo2 || vitals.spo2 || vitals.saturacion || 0);
         const restHr = Number(vitals.heart_rate || vitals.heartRate || vitals.hr || cab.ecgHrBpm || 0);
         const tempC = Number(vitals.temperature || vitalsSnap.temp || 0);
+        let isCleanAthleticVagalBradycardiaGlobal = false;
 
         const hasHemodynamicDomain = Boolean(sysBp > 0 || spo2Val > 0 || restHr > 0 || hasActiveExercise || isExplicitSedentary || cab.hasCabinetStudies);
         if (hasHemodynamicDomain) {
-            let d2Score = 0;
+            const d2Sub = [];
+            const pushD2 = (delta, modifiable = true) => { if (delta !== 0) d2Sub.push({ delta, modifiable }); };
             if (sysBp > 0 && diaBp > 0) {
                 if (sysBp < 122 && diaBp < 80) {
                     if (anamnesis.hasAntihypertensiveMed) {
-                        d2Score += 0.5;
+                        pushD2(0.5, false);
                         protectiveFactors.push(`presión arterial controlada bajo tratamiento médico (${sysBp}/${diaBp} mmHg)`);
                     } else {
-                        d2Score -= 1.2;
+                        pushD2(-1.2, true);
                         protectiveFactors.push(`presión arterial óptima (${sysBp}/${diaBp} mmHg)`);
                     }
                 } else if (sysBp < 130 && diaBp < 85) {
-                    d2Score += anamnesis.hasAntihypertensiveMed ? 0.5 : -0.3;
+                    pushD2(anamnesis.hasAntihypertensiveMed ? 0.5 : -0.3, !anamnesis.hasAntihypertensiveMed);
                 } else if (sysBp < 140 && diaBp < 90) {
-                    d2Score += 2.0;
+                    pushD2(2.0, true);
                     modifiableLoadFactors.push(`tensión arterial limítrofe (${sysBp}/${diaBp} mmHg)`);
                 } else {
-                    d2Score += 4.8;
+                    pushD2(4.8, true);
                     modifiableLoadFactors.push(`hipertensión arterial activa (${sysBp}/${diaBp} mmHg)`);
                 }
             }
             if (spo2Val > 0) {
                 if (spo2Val >= altitudeInfo.spo2NormalFloor) {
-                    d2Score -= spo2Val >= (altitudeInfo.spo2NormalFloor + 3) ? 0.6 : 0.2;
+                    pushD2(spo2Val >= (altitudeInfo.spo2NormalFloor + 3) ? -0.6 : -0.2, true);
                     protectiveFactors.push(
                         altitudeInfo.msnm >= 1500
                             ? `oxigenación fisiológica adaptada a altitud (${spo2Val} % en ${altitudeInfo.msnm} msnm)`
                             : `saturación de oxígeno adecuada (${spo2Val} %)`
                     );
                 } else {
-                    d2Score += spo2Val < 89 ? 3.5 : 1.8;
+                    pushD2(spo2Val < 89 ? 3.5 : 1.8, true);
                     modifiableLoadFactors.push(`hipoxemia relativa para altitud (${spo2Val} %)`);
                 }
             }
             if (restHr > 90 && !(tempC >= 37.8)) {
-                d2Score += restHr > 100 ? 2.4 : 1.4;
+                pushD2(restHr > 100 ? 2.4 : 1.4, true);
                 modifiableLoadFactors.push(`frecuencia cardiaca basal elevada en reposo (${restHr} lpm)`);
             }
             if (hasActiveExercise) {
-                d2Score -= (wkMin >= 240 || routes.has('GOAL_MUSCLE')) ? 2.2 : 1.4;
+                pushD2((wkMin >= 240 || routes.has('GOAL_MUSCLE')) ? -2.2 : -1.4, true);
                 protectiveFactors.push(
                     tcxValid
                         ? `actividad física estructurada validada (${wkMin || tcxValid.daily_minutes} min${wkMin ? '/sem' : '/día'})`
                         : 'hábito de ejercicio físico activo'
                 );
             } else if (isExplicitSedentary) {
-                d2Score += 1.4;
+                pushD2(1.4, true);
                 modifiableLoadFactors.push('bajo volumen actual de movimiento estructurado');
             }
             // EGM-64: Eximir bradicardia sinusal vagal limpia (45–59 lpm sin bloqueo de rama) en atleta/activo
@@ -1286,16 +1420,18 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
                 (hasActiveExercise || isAthleticHighLeanMass) &&
                 (!cab.ecgHrBpm || (cab.ecgHrBpm >= 44 && cab.ecgHrBpm < 60))
             );
+            isCleanAthleticVagalBradycardiaGlobal = isCleanAthleticVagalBradycardia;
             if ((cab.hasCardiacConductionOrBradycardia && !isCleanAthleticVagalBradycardia) || cab.hasActiveTachyarrhythmia) {
-                d2Score += cab.hasActiveTachyarrhythmia ? 2.2 : 0.9;
+                pushD2(cab.hasActiveTachyarrhythmia ? 2.2 : 0.9, cab.hasActiveTachyarrhythmia);
             }
-            domains.push({
-                id: 'HEMODYNAMICS_ALTITUDE_FITNESS',
-                label: 'Hemodinámica, Oxigenación por Altitud y Aptitud Física',
-                weight: DOMAIN_WEIGHTS_SSOT.HEMODYNAMICS_ALTITUDE_FITNESS,
-                measured: true,
-                scoreEquivalentYears: Math.max(-5.5, Math.min(8.5, Number(d2Score.toFixed(2))))
-            });
+            domains.push(finalizeDomainWithSubRules(
+                'HEMODYNAMICS_ALTITUDE_FITNESS',
+                'Hemodinámica, Oxigenación por Altitud y Aptitud Física',
+                DOMAIN_WEIGHTS_SSOT.HEMODYNAMICS_ALTITUDE_FITNESS,
+                d2Sub,
+                -5.5,
+                8.5
+            ));
         } else {
             domains.push({ id: 'HEMODYNAMICS_ALTITUDE_FITNESS', label: 'Hemodinámica y Aptitud', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
         }
@@ -1315,51 +1451,53 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
 
         const hasGlycemicDomain = Boolean(effGlucose > 0 || effHba1c > 0 || effHoma > 0);
         if (hasGlycemicDomain) {
-            let d3Score = 0;
+            const d3Sub = [];
+            const pushD3 = (delta, modifiable = true) => { if (delta !== 0) d3Sub.push({ delta, modifiable }); };
             if (isPostprandialCapillaryOnly && !(effHba1c >= 6.5)) {
                 if (effGlucose >= 200) {
-                    d3Score += 8.0;
+                    pushD3(8.0, true);
                     modifiableLoadFactors.push(`hiperglucemia postprandial marcada (${effGlucose} mg/dL)`);
                 } else if (effGlucose >= 140 || (effHba1c >= 5.7 && effHba1c < 6.5)) {
-                    d3Score += 3.2;
+                    pushD3(3.2, true);
                     modifiableLoadFactors.push(`glucemia postprandial elevada (${effGlucose} mg/dL)`);
                 } else if (effGlucose < 70) {
-                    d3Score += 2.0;
+                    pushD3(2.0, true);
                     modifiableLoadFactors.push(`hipoglucemia capilar (${effGlucose} mg/dL)`);
                 } else {
-                    d3Score += anamnesis.hasGlucoseLoweringMed ? 0.5 : -0.8;
+                    pushD3(anamnesis.hasGlucoseLoweringMed ? 0.5 : -0.8, !anamnesis.hasGlucoseLoweringMed);
                     protectiveFactors.push(`glucosa postprandial en rango fisiológico (${effGlucose} mg/dL)`);
                 }
             } else {
                 if (effGlucose >= 126 || effHba1c >= 6.5) {
-                    d3Score += (effGlucose >= 165 || effHba1c >= 7.5) ? 9.5 : 6.5;
+                    pushD3((effGlucose >= 165 || effHba1c >= 7.5) ? 9.5 : 6.5, true);
                     modifiableLoadFactors.push(`desregulación glucémica (${effGlucose ? `Glucosa ${effGlucose} mg/dL` : `HbA1c ${effHba1c} %`})`);
                 } else if ((effGlucose >= 100 && effGlucose < 126) || (effHba1c >= 5.7 && effHba1c < 6.5) || effHoma > 2.5) {
-                    d3Score += 3.2;
+                    pushD3(3.2, true);
                     modifiableLoadFactors.push(`resistencia glucémica/insulínica temprana (${effGlucose ? `Glucosa ${effGlucose} mg/dL` : `HbA1c ${effHba1c} %`})`);
                 } else if (effGlucose > 0 && effGlucose < 70) {
-                    d3Score += 2.0;
+                    pushD3(2.0, true);
                     modifiableLoadFactors.push(`hipoglucemia en ayuno (${effGlucose} mg/dL)`);
                 } else if (effGlucose >= 70 && effGlucose < 93 && (!effHba1c || effHba1c < 5.5)) {
                     if (anamnesis.hasGlucoseLoweringMed) {
-                        d3Score += 0.5;
+                        pushD3(0.5, false);
                         protectiveFactors.push(`glucemia controlada bajo tratamiento médico (${effGlucose} mg/dL)`);
                     } else {
-                        d3Score -= 1.8;
+                        pushD3(-1.8, true);
                         protectiveFactors.push(`normoglucemia óptima en ayuno (${effGlucose} mg/dL)`);
                     }
                 } else {
-                    d3Score += anamnesis.hasGlucoseLoweringMed ? 0.5 : -0.8;
+                    pushD3(anamnesis.hasGlucoseLoweringMed ? 0.5 : -0.8, !anamnesis.hasGlucoseLoweringMed);
                     protectiveFactors.push(`glucosa basal en rango saludable (${effGlucose || '--'} mg/dL)`);
                 }
             }
-            domains.push({
-                id: 'GLYCEMIC_METABOLISM',
-                label: 'Regulación Glucémica e Insulínica',
-                weight: DOMAIN_WEIGHTS_SSOT.GLYCEMIC_METABOLISM,
-                measured: true,
-                scoreEquivalentYears: Math.max(-4.0, Math.min(11.0, Number(d3Score.toFixed(2))))
-            });
+            domains.push(finalizeDomainWithSubRules(
+                'GLYCEMIC_METABOLISM',
+                'Regulación Glucémica e Insulínica',
+                DOMAIN_WEIGHTS_SSOT.GLYCEMIC_METABOLISM,
+                d3Sub,
+                -4.0,
+                11.0
+            ));
         } else {
             domains.push({ id: 'GLYCEMIC_METABOLISM', label: 'Regulación Glucémica', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
         }
@@ -1376,56 +1514,58 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
             (!hasAcuteFever && Number(labs.hscrpMgL) > 0)
         );
         if (hasLipidVascDomain) {
-            let d4Score = 0;
+            const d4Sub = [];
+            const pushD4 = (delta, modifiable = true) => { if (delta !== 0) d4Sub.push({ delta, modifiable }); };
             const hdlMin = isFemale ? 50 : 40;
             if (Number(labs.hdl) > 0) {
                 if (labs.hdl >= hdlMin + 12) {
-                    d4Score -= 1.2;
+                    pushD4(-1.2, true);
                     protectiveFactors.push(`colesterol HDL cardioprotector (${labs.hdl} mg/dL)`);
                 } else if (labs.hdl < hdlMin) {
-                    d4Score += 2.2;
+                    pushD4(2.2, true);
                     modifiableLoadFactors.push(`colesterol HDL reducido para su sexo (${labs.hdl} mg/dL)`);
                 }
             }
             if (Number(labs.triglycerides) > 0) {
                 const tgHdlRatio = Number(labs.hdl) > 0 ? (labs.triglycerides / labs.hdl) : 0;
                 if (labs.triglycerides < 110 && tgHdlRatio <= 3.0) {
-                    d4Score += anamnesis.hasLipidLoweringMed ? 0.0 : -0.8;
+                    pushD4(anamnesis.hasLipidLoweringMed ? 0.0 : -0.8, true);
                     protectiveFactors.push(`triglicéridos en rango óptimo (${labs.triglycerides} mg/dL)`);
                 } else if (labs.triglycerides >= 220) {
-                    d4Score += 3.5;
+                    pushD4(3.5, true);
                     modifiableLoadFactors.push(`hipertrigliceridemia (${labs.triglycerides} mg/dL)`);
                 } else if (labs.triglycerides >= 150) {
-                    d4Score += 1.8;
+                    pushD4(1.8, true);
                     modifiableLoadFactors.push(`triglicéridos elevados (${labs.triglycerides} mg/dL)`);
                 } else if (tgHdlRatio > 3.0) {
-                    d4Score += 1.0;
+                    pushD4(1.0, true);
                     modifiableLoadFactors.push(`relación TG/HDL elevada (${tgHdlRatio.toFixed(1)})`);
                 }
             }
             // EGM-64: Cobertura continua de Colesterol no-HDL >= 130 mg/dL sin doble conteo
             if (Number(labs.ldl) >= 130 || Number(labs.sdLdl) > 1.35 || Number(labs.nonHdl) >= 130) {
-                d4Score += (Number(labs.ldl) >= 160 || Number(labs.sdLdl) > 1.6 || Number(labs.nonHdl) >= 190) ? 2.8 : 1.6;
+                pushD4((Number(labs.ldl) >= 160 || Number(labs.sdLdl) > 1.6 || Number(labs.nonHdl) >= 190) ? 2.8 : 1.6, true);
                 modifiableLoadFactors.push(`carga lipoproteica LDL/sdLDL (${labs.ldl ? `LDL ${labs.ldl} mg/dL` : `no-HDL ${labs.nonHdl} mg/dL`})`);
             } else if (Number(labs.ldl) > 0 && labs.ldl < 100 && (!labs.nonHdl || labs.nonHdl < 130)) {
-                d4Score += anamnesis.hasLipidLoweringMed ? 0.5 : -0.8;
+                pushD4(anamnesis.hasLipidLoweringMed ? 0.5 : -0.8, !anamnesis.hasLipidLoweringMed);
             }
             if (!hasAcuteFever && Number(labs.hscrpMgL) > 0) {
                 if (labs.hscrpMgL <= 1.2) {
-                    d4Score -= 0.7;
+                    pushD4(-0.7, true);
                     protectiveFactors.push(`proteína C reactiva ultrasensible tranquila (${labs.hscrpMgL} mg/L)`);
                 } else if (labs.hscrpMgL > 3.0) {
-                    d4Score += 2.4;
+                    pushD4(2.4, true);
                     modifiableLoadFactors.push(`inflamación vascular ultrasensible (PCR-us ${labs.hscrpMgL} mg/L)`);
                 }
             }
-            domains.push({
-                id: 'LIPOPROTEIN_VASCULAR',
-                label: 'Transporte Lipoproteico e Inflamación Endotelial',
-                weight: DOMAIN_WEIGHTS_SSOT.LIPOPROTEIN_VASCULAR,
-                measured: true,
-                scoreEquivalentYears: Math.max(-4.0, Math.min(9.5, Number(d4Score.toFixed(2))))
-            });
+            domains.push(finalizeDomainWithSubRules(
+                'LIPOPROTEIN_VASCULAR',
+                'Transporte Lipoproteico e Inflamación Endotelial',
+                DOMAIN_WEIGHTS_SSOT.LIPOPROTEIN_VASCULAR,
+                d4Sub,
+                -4.0,
+                9.5
+            ));
         } else {
             domains.push({ id: 'LIPOPROTEIN_VASCULAR', label: 'Perfil Lipoproteico', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
         }
@@ -1447,66 +1587,68 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
             Number(labs.ferritin) > 0
         );
         if (hasHepatoRenalDomain) {
-            let d5Score = 0;
+            const d5Sub = [];
+            const pushD5 = (delta, modifiable = true) => { if (delta !== 0) d5Sub.push({ delta, modifiable }); };
             const crUpper = isFemale ? 1.1 : 1.3;
             const uricUpper = isFemale ? 6.0 : 7.0;
             if (Number(labs.creatinine) > crUpper || (Number(labs.gfr) > 0 && labs.gfr < 60)) {
-                d5Score += (Number(labs.creatinine) >= 1.6 || (Number(labs.gfr) > 0 && labs.gfr < 45)) ? 7.5 : 4.0;
+                pushD5((Number(labs.creatinine) >= 1.6 || (Number(labs.gfr) > 0 && labs.gfr < 45)) ? 7.5 : 4.0, true);
                 modifiableLoadFactors.push(`sobrecarga en filtración renal (Cr ${labs.creatinine} mg/dL${labs.gfr ? ` • TFGe ${labs.gfr}` : ''})`);
             } else if (chronoAge < 40 && Number(labs.gfr) >= 60 && Number(labs.gfr) < 75) {
-                d5Score += 1.8;
+                pushD5(1.8, true);
                 modifiableLoadFactors.push(`filtrado glomerular reducido para adulto joven (TFGe ${labs.gfr} mL/min)`);
             } else if (Number(labs.creatinine) > 0 || Number(labs.gfr) >= 60) {
-                d5Score -= 0.8;
+                pushD5(-0.8, true);
                 protectiveFactors.push(`función renal conservada (${labs.creatinine ? `Creatinina ${labs.creatinine} mg/dL` : `TFGe ${labs.gfr}`})`);
             }
             if (Number(labs.uricAcid) > uricUpper) {
-                d5Score += 1.6;
+                pushD5(1.6, true);
                 modifiableLoadFactors.push(`ácido úrico elevado para su sexo (${labs.uricAcid} mg/dL)`);
             }
             if (Number(labs.alt) > 61 || Number(labs.ast) > 40 || Number(labs.ggt) > 61 || Number(labs.bilirubin) > 1.3) {
-                d5Score += 2.6;
+                pushD5(2.6, true);
                 modifiableLoadFactors.push('sobrecarga enzimática o pigmentaria hepatobiliar');
             } else if (Number(labs.alt) > 0 && Number(labs.ast) > 0) {
-                d5Score -= 0.6;
+                pushD5(-0.6, true);
                 protectiveFactors.push('enzimas hepáticas en rango fisiológico');
             }
             if (Number(labs.albumin) > 0 && labs.albumin < 3.8) {
-                d5Score += labs.albumin < 3.5 ? 4.0 : 2.0;
+                pushD5(labs.albumin < 3.5 ? 4.0 : 2.0, true);
                 modifiableLoadFactors.push(`reserva proteica visceral disminuida (Albúmina ${labs.albumin} g/dL)`);
             }
             if (Number(labs.rdw) > 14.8) {
-                d5Score += 1.8;
+                pushD5(1.8, true);
                 modifiableLoadFactors.push(`anisocitosis eritrocitaria (RDW ${labs.rdw} %)`);
             }
             if (Number(labs.hemoglobin) > 0) {
                 const hbFloor = (isFemale ? 12.0 : 13.5) + altitudeInfo.hbAltitudeOffset;
                 if (labs.hemoglobin < hbFloor) {
-                    d5Score += 1.8;
+                    pushD5(1.8, true);
                     modifiableLoadFactors.push(`hemoglobina baja para altitud (${labs.hemoglobin} g/dL)`);
                 }
             }
             if (Number(labs.tsh) > 4.5 || (Number(labs.tsh) > 0 && labs.tsh < 0.35)) {
-                d5Score += 1.6;
+                pushD5(1.6, true);
                 modifiableLoadFactors.push(`desajuste del eje tiroideo (TSH ${labs.tsh} mUI/L)`);
             }
             if (Number(labs.ferritin) > 0) {
                 const ferrUpper = isFemale ? 250 : 350;
                 if (labs.ferritin < 20) {
-                    d5Score += 1.2;
+                    pushD5(1.2, true);
                     modifiableLoadFactors.push(`reserva férrica disminuida (Ferritina ${labs.ferritin} ng/mL)`);
                 } else if (labs.ferritin > ferrUpper) {
-                    d5Score += 1.4;
+                    pushD5(1.4, true);
                     modifiableLoadFactors.push(`hiperferritinemia metabólica/inflamatoria (${labs.ferritin} ng/mL)`);
                 }
             }
-            domains.push({
-                id: 'HEPATORENAL_HEMATOLOGY',
-                label: 'Filtración Hepatorrenal, Reserva Proteica y Hematología',
-                weight: DOMAIN_WEIGHTS_SSOT.HEPATORENAL_HEMATOLOGY,
-                measured: true,
-                scoreEquivalentYears: Math.max(-3.5, Math.min(10.5, Number(d5Score.toFixed(2))))
-            });
+            domains.push(finalizeDomainWithSubRules(
+                'HEPATORENAL_HEMATOLOGY',
+                'Filtración Hepatorrenal, Reserva Proteica y Hematología',
+                DOMAIN_WEIGHTS_SSOT.HEPATORENAL_HEMATOLOGY,
+                d5Sub,
+                -3.5,
+                10.5
+            ));
         } else {
             domains.push({ id: 'HEPATORENAL_HEMATOLOGY', label: 'Filtración Hepatorrenal', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
         }
@@ -1520,28 +1662,29 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
             anamnesis.hasStressRecord
         );
         if (hasAllostaticDomain) {
-            let d6Score = 0;
+            const d6Sub = [];
+            const pushD6 = (delta, modifiable = true) => { if (delta !== 0) d6Sub.push({ delta, modifiable }); };
             if (anamnesis.isSmoker) {
-                d6Score += anamnesis.isHeavySmoker ? 5.0 : 3.5;
+                pushD6(anamnesis.isHeavySmoker ? 5.0 : 3.5, true);
                 modifiableLoadFactors.push(anamnesis.isHeavySmoker ? 'tabaquismo activo intenso' : 'exposición activa a tabaco');
             }
             if (anamnesis.isHeavyAlcohol) {
-                d6Score += 2.8;
+                pushD6(2.8, true);
                 modifiableLoadFactors.push('consumo alcohólico elevado');
             } else if (anamnesis.isFrequentAlcohol) {
-                d6Score += 1.5;
+                pushD6(1.5, true);
                 modifiableLoadFactors.push('consumo frecuente de alcohol');
             }
             if (anamnesis.hasDrugUsage) {
-                d6Score += 3.0;
+                pushD6(3.0, true);
                 modifiableLoadFactors.push('exposición a sustancias psicoactivas');
             }
             if (anamnesis.hasPoorSleep) {
-                d6Score += 1.6;
+                pushD6(1.6, true);
                 modifiableLoadFactors.push(`deuda o fragmentación del sueño${anamnesis.sleepHours ? ` (${anamnesis.sleepHours} h/noche)` : ''}`);
             }
             if (anamnesis.hasHighStress) {
-                d6Score += 1.2;
+                pushD6(1.2, true);
                 modifiableLoadFactors.push('carga alostática de estrés crónico elevado');
             }
 
@@ -1553,17 +1696,18 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
                 anamnesis.hasOptimalSleep &&
                 anamnesis.hasLowStress
             ) {
-                d6Score -= 0.7;
+                pushD6(-0.7, true);
                 protectiveFactors.push('sueño reparador, estrés regulado y abstinencia de tabaco/alcohol');
             }
 
-            domains.push({
-                id: 'ALLOSTATIC_TOXICOLOGY',
-                label: 'Carga Alostática, Sueño y Exposición Toxicológica',
-                weight: DOMAIN_WEIGHTS_SSOT.ALLOSTATIC_TOXICOLOGY,
-                measured: true,
-                scoreEquivalentYears: Math.max(-1.0, Math.min(9.0, Number(d6Score.toFixed(2))))
-            });
+            domains.push(finalizeDomainWithSubRules(
+                'ALLOSTATIC_TOXICOLOGY',
+                'Carga Alostática, Sueño y Exposición Toxicológica',
+                DOMAIN_WEIGHTS_SSOT.ALLOSTATIC_TOXICOLOGY,
+                d6Sub,
+                -1.0,
+                9.0
+            ));
         } else {
             domains.push({ id: 'ALLOSTATIC_TOXICOLOGY', label: 'Carga Alostática y Descanso', weight: 0, measured: false, status: 'NO_MEDIDO', scoreEquivalentYears: 0 });
         }
@@ -1576,10 +1720,14 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
             : 0;
 
         if (!hasRealVenousLabs && hasElectretEvidence) {
-            const electretAbnormalNodes = (opts.serum?.nodes || []).filter((n) =>
-                Array.isArray(n.anomalies) && n.anomalies.some((a) => a.source === 'ELECTRET' && (a.severity === 'ALTA' || a.severity === 'CRÍTICA'))
-            ).length;
-            const pureBioelectricNudge = Math.min(1.0, electretAbnormalNodes * 0.2);
+            const electretAbnormalCategories = Object.values(rawElectretObj || {}).filter((cat) => {
+                const items = Array.isArray(cat?.items) ? cat.items : (Array.isArray(cat) ? cat : []);
+                return items.some((it) => {
+                    const st = String(it?.status || it?.level || '').toUpperCase();
+                    return st.includes('++') || st.includes('--') || st.includes('MODERAD') || st.includes('SEVER');
+                });
+            }).length;
+            const pureBioelectricNudge = Math.min(1.0, Math.min(5, electretAbnormalCategories) * 0.2);
             if (modifiableLoadFactors.length === 0) {
                 weightedDelta = Math.min(1.0, weightedDelta + pureBioelectricNudge);
             }
@@ -1589,6 +1737,18 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
         const metabolicAgeExact = Number(Math.max(18.0, chronoAge + clampedDeltaExact).toFixed(1));
         const metabolicAgeRounded = Math.round(metabolicAgeExact);
         const deltaYearsRounded = metabolicAgeRounded - chronoAge;
+
+        // Tracción Opuesta Sub-Regla por Sub-Regla (EGM-69)
+        const protectiveBonusYears = totalActiveWeight > 0
+            ? Number(Math.abs(rawProtectiveWeightedSum / totalActiveWeight).toFixed(1))
+            : 0;
+        const totalDragYears = totalActiveWeight > 0
+            ? Number((rawTotalDragWeightedSum / totalActiveWeight).toFixed(1))
+            : 0;
+        const modifiableDragYearsExact = totalActiveWeight > 0
+            ? Number((rawModifiableDragWeightedSum / totalActiveWeight).toFixed(2))
+            : 0;
+        const modifiableDragYears = Number(modifiableDragYearsExact.toFixed(1));
 
         let cycle1Delta28d = 0;
         let cycle3Delta90d = 0;
@@ -1604,16 +1764,61 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
         const cycle1TargetAge28d = Number((metabolicAgeExact + cycle1Delta28d).toFixed(1));
         const cycle3ProjectionAge90d = Number((metabolicAgeExact + cycle3Delta90d).toFixed(1));
 
+        // EGM-70: Detección de Compensación Fisiológica Activa (prohíbe falso "Equilibrio" si hay dominio >= +1.8 o foco de gabinete)
+        const maxSingleDomainScore = measuredDomains.reduce((mx, d) => Math.max(mx, d.scoreEquivalentYears), 0);
+        const hasRelevantCabinetFocus = Boolean(
+            cab.hasRbbbOrConductionBlock ||
+            (cab.hasCardiacConductionOrBradycardia && !isCleanAthleticVagalBradycardiaGlobal) ||
+            opts.serum?.cabinetSignals?.hasAorticOrThoracicRemodeling
+        );
+        const hasActiveCompensationFocalDrag = Boolean(
+            Math.abs(clampedDeltaExact) <= 1.0 &&
+            (maxSingleDomainScore >= 1.8 || hasRelevantCabinetFocus)
+        );
+
+        // EGM-69 (Fallo #4): Potencial Óptimo Desbloqueable separado en Ciclo 6 (180 Días)
+        const d1Obj = measuredDomains.find((d) => d.id === 'ANTHROPOMETRY_ADIPOSITY');
+        const hdlOptThreshold = isFemale ? 62 : 52;
+        const hasReserveOptimizationMargin = Boolean(
+            (d1Obj && d1Obj.scoreEquivalentYears > 0) ||
+            (Number(labs.hdl) > 0 && labs.hdl < hdlOptThreshold) ||
+            Number(labs.ldl) >= 100
+        );
+        const extraOptimizationMargin180d = hasReserveOptimizationMargin ? 0.5 : 0.2;
+        const rawOptimalMax180d = metabolicAgeExact - ((modifiableDragYearsExact * 0.90) + extraOptimizationMargin180d);
+        const floorAge180d = Math.max(18.0, Number((chronoAge - 8.0).toFixed(1)));
+        const ceilingBelow90d = Math.max(floorAge180d, Number((cycle3ProjectionAge90d - 0.8).toFixed(1)));
+        const cycle6OptimalMax180d = Math.max(floorAge180d, Math.min(ceilingBelow90d, Number(rawOptimalMax180d.toFixed(1))));
+        const cycle6OptimalMin180d = Math.max(floorAge180d, Number((cycle6OptimalMax180d - 0.5).toFixed(1)));
+        const cycle6RangeLabel180d = cycle6OptimalMin180d < cycle6OptimalMax180d
+            ? `${cycle6OptimalMin180d} a ${cycle6OptimalMax180d} años`
+            : `${cycle6OptimalMax180d} años`;
+
+        // Clasificación en 3 Marcos de Retención (EGM-69)
+        const narrativeMode = clampedDeltaExact >= 1.5
+            ? 'MODO_RECUPERACION_CELULAR'
+            : (clampedDeltaExact >= -0.9 && (modifiableDragYearsExact > 0 || hasActiveCompensationFocalDrag))
+                ? 'MODO_DESBLOQUEO_POTENCIAL'
+                : 'MODO_EXPANSION_RESERVA';
+
+        const statusBadgeLabel = narrativeMode === 'MODO_RECUPERACION_CELULAR'
+            ? `Sobrecarga Reversible: +${clampedDeltaExact} años`
+            : hasActiveCompensationFocalDrag
+                ? 'COMPENSACIÓN FISIOLÓGICA ACTIVA • FOCOS PRIORITARIOS POR OPTIMIZAR'
+                : narrativeMode === 'MODO_DESBLOQUEO_POTENCIAL'
+                    ? `Potencial por Desbloquear: ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años`
+                    : (clampedDeltaExact < -0.4 ? `Reserva Funcional Joven (${clampedDeltaExact} años)` : 'Reserva Funcional Conservada');
+
         const topProtectiveText = protectiveFactors.slice(0, 3).join(', ');
         const topModifiableText = modifiableLoadFactors.slice(0, 3).join(', ');
 
-        const patientSummary = clampedDeltaExact > 0.5
-            ? `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica estimada es de ${metabolicAgeExact} años (${clampedDeltaExact > 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años • ${evidenceTierBadge}). Sus fortalezas actuales (${topProtectiveText || 'homeostasis general'}) equilibran gran parte de los ejes por optimizar (${topModifiableText || 'adaptación metabólica'}). En su Ciclo 1 (28 días) proyectamos una mejora realista hacia ${cycle1TargetAge28d} años (${cycle1Delta28d} años), consolidando una proyección a 90 días hacia ${cycle3ProjectionAge90d} años.`
-            : clampedDeltaExact < -0.5
-                ? `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica actual es de ${metabolicAgeExact} años (${clampedDeltaExact} años • reserva funcional superior a su edad), respaldada por ${topProtectiveText || 'su composición corporal y vitalidad cardiometabólica'}. Nuestro objetivo a 28 y 90 días es preservar esta ventaja fisiológica (${cycle1TargetAge28d} años).`
-                : `Su Edad Cronológica (${chronoAge} años) y su Edad Metabólica actual (${metabolicAgeExact} años) se encuentran en equilibrio fisiológico (${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años • ${evidenceTierBadge}), respaldadas por ${topProtectiveText || 'sus constantes vitales conservadas'}${topModifiableText ? `, enfocando los próximos 28 días en optimizar ${topModifiableText} hacia ${cycle1TargetAge28d} años` : ''}.`;
+        const patientSummary = narrativeMode === 'MODO_RECUPERACION_CELULAR'
+            ? `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica estimada es de ${metabolicAgeExact} años (+${clampedDeltaExact} años • ${evidenceTierBadge}). Sus fortalezas actuales (${topProtectiveText || 'capacidad de adaptación funcional'}) le restan ya ${protectiveBonusYears} años de desgaste, mientras que los ejes modificables por atender (${topModifiableText || 'sobrecarga metabólica'}) retienen +${totalDragYears} años. En su Ciclo 1 (28 días) proyectamos avanzar hacia ${cycle1TargetAge28d} años (${cycle1Delta28d} años), en su Ciclo 3 (90 días) hacia ${cycle3ProjectionAge90d} años, y un Potencial Óptimo Desbloqueable en su Ciclo 6 (180 días) de ${cycle6RangeLabel180d}.`
+            : narrativeMode === 'MODO_DESBLOQUEO_POTENCIAL'
+                ? `Su Edad Cronológica (${chronoAge} años) y su Edad Metabólica actual (${metabolicAgeExact} años; ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} años • ${evidenceTierBadge}) reflejan una tracción opuesta activa: sus hábitos y constantes protectoras (${topProtectiveText || 'reserva cardiorrespiratoria y metabólica'}) ya le ganan -${protectiveBonusYears} años de vitalidad celular, pero hoy focos específicos (${topModifiableText || 'ejes clínicos prioritarios'}) le retienen +${totalDragYears} años. Al optimizarlos paso a paso, proyectamos ${cycle1TargetAge28d} años a 28 días, ${cycle3ProjectionAge90d} años a 90 días y un Potencial Óptimo Desbloqueable a 180 días (Ciclo 6) de ${cycle6RangeLabel180d}.`
+                : `Su Edad Cronológica es de ${chronoAge} años y su Edad Metabólica actual es de ${metabolicAgeExact} años (${clampedDeltaExact} años • ${evidenceTierBadge}), respaldada por ${topProtectiveText || 'su composición corporal y vitalidad cardiometabólica'}. Nuestro enfoque de expansión de reserva funcional proyecta sostener y blindar esta ventaja hacia ${cycle1TargetAge28d} años (28 días) y ${cycle6RangeLabel180d} en su horizonte de 180 días (Healthspan).`;
 
-        const clinicalSummary = `Estudio Multivariable EGM-51 v3 (${evidenceTier} • ${measuredDomains.length}/6 dominios medidos • Altitud ${altitudeInfo.msnm} msnm): Edad Cronológica ${chronoAge} a vs Edad Metabólica ${metabolicAgeExact} a (Delta ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} a). Meta Ciclo 1 (28d): ${cycle1TargetAge28d} a (${cycle1Delta28d} a) | Proyección Ciclo 3 (90d): ${cycle3ProjectionAge90d} a (${cycle3Delta90d} a).`;
+        const clinicalSummary = `Estudio Multivariable EGM-51 v4 (${evidenceTierBadge} • ${measuredDomains.length}/6 dominios • Altitud ${altitudeInfo.msnm} msnm • ${narrativeMode}${hasActiveCompensationFocalDrag ? ' • COMPENSACIÓN FISIOLÓGICA ACTIVA' : ''}): Edad Cronológica ${chronoAge} a vs Edad Metabólica ${metabolicAgeExact} a (Delta ${clampedDeltaExact >= 0 ? `+${clampedDeltaExact}` : clampedDeltaExact} a | Tracción Opuesta: -${protectiveBonusYears} a protectores vs +${totalDragYears} a retenidos [+${modifiableDragYears} a modificables]). Meta Ciclo 1 (28d): ${cycle1TargetAge28d} a (${cycle1Delta28d} a) | Proyección Ciclo 3 (90d): ${cycle3ProjectionAge90d} a (${cycle3Delta90d} a) | Potencial Óptimo Ciclo 6 (180d): ${cycle6RangeLabel180d}.`;
 
         return {
             engineVersion: ENGINE_VERSION_SSOT,
@@ -1629,10 +1834,19 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
             metabolicAgeExact,
             deltaYears: clampedDeltaExact,
             deltaYearsRounded,
+            protectiveBonusYears,
+            totalDragYears,
+            modifiableDragYears,
+            narrativeMode,
+            hasActiveCompensationFocalDrag,
+            statusBadgeLabel,
             cycle1TargetAge28d,
             cycle1Delta28d,
             cycle3ProjectionAge90d,
             cycle3Delta90d,
+            cycle6OptimalMin180d,
+            cycle6OptimalMax180d,
+            cycle6RangeLabel180d,
             evidenceTier,
             evidenceTierBadge,
             evidenceConfidencePct,
@@ -1673,13 +1887,22 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
             metabolicAgeExact: chronoAge,
             deltaYears: 0,
             deltaYearsRounded: 0,
+            protectiveBonusYears: 0,
+            totalDragYears: 0,
+            modifiableDragYears: 0,
+            narrativeMode: 'MODO_EXPANSION_RESERVA',
+            hasActiveCompensationFocalDrag: false,
+            statusBadgeLabel: 'Reserva Funcional Conservada',
             cycle1TargetAge28d: chronoAge,
             cycle1Delta28d: 0,
             cycle3ProjectionAge90d: chronoAge,
             cycle3Delta90d: 0,
+            cycle6OptimalMin180d: chronoAge,
+            cycle6OptimalMax180d: chronoAge,
+            cycle6RangeLabel180d: `${chronoAge} años`,
             evidenceTier: 'CLINICO_ANTROPOMETRICO',
-            evidenceTierBadge: 'Certeza Clínica y Antropométrica Basal',
-            evidenceConfidencePct: 72,
+            evidenceTierBadge: 'Nivel III — Evaluación Clínica y Antropométrica Basal',
+            evidenceConfidencePct: null,
             measuredDomainsCount: 0,
             totalDomainsPossible: 6,
             coverageWeightRatio: 0,
@@ -1695,7 +1918,7 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
             protectiveFactors: [],
             modifiableLoadFactors: [],
             patientSummary: `Su Edad Cronológica (${chronoAge} años) se mantiene como referencia basal segura mientras integramos sus indicadores clínicos.`,
-            clinicalSummary: `Respaldo seguro EGM-51 v3: Edad Cronológica ${chronoAge} años.`
+            clinicalSummary: `Respaldo seguro EGM-51 v4: Edad Cronológica ${chronoAge} años.`
         };
     }
 }
@@ -1703,6 +1926,8 @@ function calculateUniversalMetabolicAgeSSoT(rawPatientData = {}, opts = {}) {
 module.exports = {
     ENGINE_VERSION_SSOT,
     DOMAIN_WEIGHTS_SSOT,
+    sanitizeBioelectricScreeningLabel,
+    sanitizeArt215NonTherapeuticLexicon,
     extractUnifiedAnamnesisSignals,
     buildSafeDietaryExamplesSSoT,
     calculateUniversalMetabolicAgeSSoT

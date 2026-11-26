@@ -287,13 +287,16 @@ export const TabCalendar = ({
     };
     const dominantAxesProse = joinDynamicAxes(topAxisNames);
     const extraActiveNodesCount = Math.max(0, sortedDominantNodes.length - 3);
+    const hasActiveCompCal = Boolean(metabolicAgeStudy?.hasActiveCompensationFocalDrag);
     const metabolicCardSubLabel = deltaYearsExact > 1.5
         ? 'Sobrecarga Reversible'
-        : deltaYearsExact > 0.4
-            ? 'Ajuste Preventivo Leve'
-            : deltaYearsExact < -0.4
-                ? 'Reserva Funcional Joven'
-                : 'Homeostasis Conservada';
+        : hasActiveCompCal
+            ? 'Compensación Activa'
+            : deltaYearsExact > 0.4
+                ? 'Potencial por Desbloquear'
+                : deltaYearsExact < -0.4
+                    ? 'Reserva Funcional Joven'
+                    : 'Reserva Conservada';
 
     const isTcaSafetyCal = Boolean(
         metabolicAgeStudy?.isTcaBehavioralSafety ||
@@ -316,7 +319,7 @@ export const TabCalendar = ({
         patientData?.nutrition?.protocol?.target ||
         2200;
     const targetKcalFormatted = `${String(Math.round(Number(targetKcalVal) || 2200)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')} kcal`;
-    const menuDescriptorCal = isTcaSafetyCal ? 'su plan alimentario protector' : `su prescripción nutricional de ${targetKcalFormatted}`;
+    const menuDescriptorCal = isTcaSafetyCal ? 'su plan alimentario protector' : `su pauta nutricional sugerida de ${targetKcalFormatted}`;
     const mobileMenuDescriptorCal = isTcaSafetyCal ? 'su guía alimentaria personalizada' : `su menú de ${targetKcalFormatted}`;
     const mobileMovementClauseCal = isRelativeRestCal
         ? 'siga su pauta de reposo físico relativo bajo vigilancia médica'
@@ -378,7 +381,7 @@ export const TabCalendar = ({
                                             </div>
                                             <div>
                                                 <div className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">Enfoque Clínico Protector No Punitivo</div>
-                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Compuerta de Seguridad Activa (EGM-51 v3)</div>
+                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Compuerta de Seguridad Activa (EGM-51 v4)</div>
                                             </div>
                                         </div>
                                         <span className="bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/30 text-[10.5px] font-extrabold tracking-wider px-3 py-1 rounded-xl uppercase inline-flex items-center gap-1.5 w-fit">
@@ -400,7 +403,7 @@ export const TabCalendar = ({
                                             </div>
                                             <div>
                                                 <div className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">Estudio Multivariable de Edad Metabólica</div>
-                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Motor SSoTT EGM-51 v3 • {evidenceBadgeText} • {metabolicAgeStudy?.altitudeMsnm ?? 2240} msnm</div>
+                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Motor SSoTT EGM-51 v4 • {evidenceBadgeText} • {metabolicAgeStudy?.altitudeMsnm ?? 2240} msnm</div>
                                             </div>
                                         </div>
                                         <div className="flex flex-wrap items-center gap-3">
@@ -409,22 +412,27 @@ export const TabCalendar = ({
                                                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
                                                     <span>Sobrecarga Reversible: +{deltaYearsExact} años</span>
                                                 </span>
+                                            ) : hasActiveCompCal ? (
+                                                <span className="bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/15 text-[10.5px] font-extrabold tracking-wider px-3 py-1 rounded-xl uppercase inline-flex items-center gap-1.5 w-fit">
+                                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                                    <span>COMPENSACIÓN FISIOLÓGICA ACTIVA • FOCOS PRIORITARIOS POR OPTIMIZAR</span>
+                                                </span>
                                             ) : deltaYearsExact > 0.4 ? (
                                                 <span className="bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/15 text-[10.5px] font-extrabold tracking-wider px-3 py-1 rounded-xl uppercase inline-flex items-center gap-1.5 w-fit">
                                                     <Activity className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-                                                    <span>Ajuste Leve: +{deltaYearsExact} años</span>
+                                                    <span>Potencial por Desbloquear: +{deltaYearsExact} años</span>
                                                 </span>
                                             ) : (
                                                 <span className="bg-[#3AAA35]/10 text-[#3AAA35] border border-[#3AAA35]/30 text-[10.5px] font-extrabold tracking-wider px-3 py-1 rounded-xl uppercase inline-flex items-center gap-1.5 w-fit">
                                                     <CheckCircle2 className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-                                                    <span>{deltaYearsExact < -0.4 ? `Reserva Joven (${deltaYearsExact} años)` : 'Homeostasis Metabólica Conservada'}</span>
+                                                    <span>{deltaYearsExact < -0.4 ? `Reserva Funcional Joven (${deltaYearsExact} años)` : 'Reserva Funcional Conservada'}</span>
                                                 </span>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* Bento de Edades Comparativas y Metas Realistas (28d vs 90d) */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    {/* Bento de Edades Comparativas y Metas Realistas (28d vs 90d vs 180d) */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                                         <div className="bg-[#F8FAFC] dark:bg-[#0F172A] p-4 rounded-xl border border-slate-200/80 dark:border-[#334155] flex flex-col items-center justify-center text-center">
                                             <span className="text-[10px] uppercase font-extrabold text-[#334155] dark:text-[#CBD5E1] tracking-wider mb-1">
                                                 Edad Cronológica
@@ -435,14 +443,14 @@ export const TabCalendar = ({
                                             <span className="text-[9.5px] text-[#334155] dark:text-[#CBD5E1] mt-1 uppercase font-bold">Registro de Nacimiento</span>
                                         </div>
 
-                                        <div className={`${deltaYearsExact > 1.5 ? 'bg-[#B70E0C]/5 dark:bg-[#B70E0C]/15 border-[#B70E0C]/30' : 'bg-[#3AAA35]/5 dark:bg-[#3AAA35]/15 border-[#3AAA35]/30'} p-4 rounded-xl border flex flex-col items-center justify-center text-center`}>
-                                            <span className={`text-[10px] uppercase font-extrabold ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'} tracking-wider mb-1`}>
+                                        <div className={`${deltaYearsExact > 1.5 ? 'bg-[#B70E0C]/5 dark:bg-[#B70E0C]/15 border-[#B70E0C]/30' : hasActiveCompCal ? 'bg-[#FFCC00]/15 border-[#FFCC00]/50' : 'bg-[#3AAA35]/5 dark:bg-[#3AAA35]/15 border-[#3AAA35]/30'} p-4 rounded-xl border flex flex-col items-center justify-center text-center`}>
+                                            <span className={`text-[10px] uppercase font-extrabold ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : hasActiveCompCal ? 'text-[#0F172A] dark:text-[#F8FAFC]' : 'text-[#3AAA35]'} tracking-wider mb-1`}>
                                                 Edad Metabólica Actual
                                             </span>
-                                            <span className={`text-2xl font-black ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'} tabular-nums`}>
-                                                {metabolicAgeDisplay} <span className={`text-xs font-semibold ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'}`}>años</span>
+                                            <span className={`text-2xl font-black ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : hasActiveCompCal ? 'text-[#0F172A] dark:text-[#F8FAFC]' : 'text-[#3AAA35]'} tabular-nums`}>
+                                                {metabolicAgeDisplay} <span className={`text-xs font-semibold ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : hasActiveCompCal ? 'text-[#0F172A] dark:text-[#F8FAFC]' : 'text-[#3AAA35]'}`}>años</span>
                                             </span>
-                                            <span className={`text-[9.5px] ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : 'text-[#3AAA35]'} mt-1 uppercase font-bold`}>{metabolicCardSubLabel}</span>
+                                            <span className={`text-[9.5px] ${deltaYearsExact > 1.5 ? 'text-[#B70E0C]' : hasActiveCompCal ? 'text-[#334155] dark:text-[#CBD5E1]' : 'text-[#3AAA35]'} mt-1 uppercase font-bold`}>{metabolicCardSubLabel}</span>
                                         </div>
 
                                         <div className="bg-[#3AAA35]/5 dark:bg-[#3AAA35]/15 p-4 rounded-xl border border-[#3AAA35]/30 flex flex-col items-center justify-center text-center">
@@ -464,6 +472,16 @@ export const TabCalendar = ({
                                             </span>
                                             <span className="text-[9.5px] text-[#334155] dark:text-[#CBD5E1] mt-1 uppercase font-bold">Consolidación Trimestral</span>
                                         </div>
+
+                                        <div className="sm:col-span-2 lg:col-span-1 bg-[#1C75BC]/10 dark:bg-[#1C75BC]/20 p-4 rounded-xl border border-[#1C75BC]/35 flex flex-col items-center justify-center text-center">
+                                            <span className="text-[10px] uppercase font-extrabold text-[#1C75BC] dark:text-[#93C5FD] tracking-wider mb-1">
+                                                Potencial Ciclo 6 (180d)
+                                            </span>
+                                            <span className="text-lg font-black text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
+                                                {metabolicAgeStudy?.cycle6RangeLabel180d || `${cycle3Target90d} años`}
+                                            </span>
+                                            <span className="text-[9.5px] text-[#334155] dark:text-[#CBD5E1] mt-1 uppercase font-bold">Óptimo Desbloqueable</span>
+                                        </div>
                                     </div>
 
                                     {/* Párrafo de Poder Empático SSoTT */}
@@ -472,13 +490,13 @@ export const TabCalendar = ({
                                             <p className="text-[#334155] dark:text-[#CBD5E1] font-medium">
                                                 {metabolicAgeStudy.patientSummary}
                                             </p>
-                                        ) : deltaYearsExact > 0.5 ? (
+                                        ) : (deltaYearsExact > 0.5 || hasActiveCompCal) ? (
                                             <p>
-                                                {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica es de <strong>{chronoAgeDisplay} años</strong>, y la integración ponderada de sus ejes de <strong>{dominantAxesProse}</strong>{extraActiveNodesCount > 0 ? ` (junto con ${extraActiveNodesCount} ${extraActiveNodesCount === 1 ? 'nodo funcional adicional' : 'nodos funcionales adicionales'})` : ''} estima una <strong>Edad Metabólica de {metabolicAgeDisplay} años</strong>.
+                                                {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica es de <strong>{chronoAgeDisplay} años</strong>, y la integración ponderada de sus ejes de <strong>{dominantAxesProse}</strong>{extraActiveNodesCount > 0 ? ` (junto con ${extraActiveNodesCount} ${extraActiveNodesCount === 1 ? 'nodo funcional adicional' : 'nodos funcionales adicionales'})` : ''} estima una <strong>Edad Metabólica de {metabolicAgeDisplay} años</strong> con focos prioritarios por optimizar.
                                             </p>
                                         ) : (
                                             <p>
-                                                {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica de <strong>{chronoAgeDisplay} años</strong> guarda equilibrio fisiológico con su <strong>Edad Metabólica actual ({metabolicAgeDisplay} años)</strong>, reflejando una reserva funcional conservada en sus sistemas evaluados.
+                                                {resolvePatientSex(patientData).isFemale ? 'Estimada' : 'Estimado'} <strong>{patientName}</strong>: su edad cronológica de <strong>{chronoAgeDisplay} años</strong> refleja una <strong>Edad Metabólica actual de {metabolicAgeDisplay} años</strong>, con reserva funcional conservada en sus sistemas evaluados.
                                             </p>
                                         )}
                                         <p className="font-semibold text-[#0F172A] dark:text-[#F8FAFC] pt-2 border-t border-slate-200/80 dark:border-[#334155]">
@@ -614,6 +632,21 @@ export const TabCalendar = ({
                                         <Smartphone className="w-4 h-4" strokeWidth={2} />
                                         Sincronizar Guía Móvil
                                     </button>
+                                </div>
+                            </div>
+
+                            {/* Sub-bloque Abierto: Hito de Pulso Día 14 (Mitad de Ciclo — EGM-73) */}
+                            <div className="bg-[#3AAA35]/8 dark:bg-[#3AAA35]/15 border border-[#3AAA35]/30 rounded-xl p-4 flex items-start gap-3 tabular-nums">
+                                <Activity className="w-4 h-4 text-[#3AAA35] shrink-0 mt-0.5" strokeWidth={2} />
+                                <div className="space-y-1 text-xs">
+                                    <div className="font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+                                        🎯 Hito de Pulso Día 14 (Mitad de Ciclo 1)
+                                    </div>
+                                    <p className="text-[#334155] dark:text-[#CBD5E1] leading-relaxed font-medium">
+                                        {isTcaSafetyCal
+                                            ? 'A mitad de su Ciclo 1 (Día 14), registre cómo percibe su energía al despertar (escala 1 a 10), su confort digestivo y la constancia de sus 4 momentos diarios de hidratación y complementación.'
+                                            : 'A mitad de su Ciclo 1 (Día 14), tome por la mañana en ayunas su medida de cintura con cinta flexible a nivel del ombligo, califique su energía al despertar (escala 1 a 10) y confirme la constancia de sus 4 momentos diarios de hidratación y complementación.'}
+                                    </p>
                                 </div>
                             </div>
 

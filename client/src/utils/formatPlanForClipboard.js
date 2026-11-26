@@ -4,7 +4,10 @@ import {
   translateLogisticsProfile,
   resolveMetabolicAgeStudySSoT,
   resolveNom004IdentificationSheet,
-  resolveScheduledAppointmentSummary
+  resolveScheduledAppointmentSummary,
+  resolveElectretInformativeAnnex,
+  sanitizeBioelectricScreeningLabel,
+  sanitizeArt215NonTherapeuticLexicon
 } from './patientGuideAdapter.js';
 import { FORMULA_33PLUS, FORMULA_34PLUS } from './pharmacopeiaCatalogSSoT.js';
 
@@ -270,9 +273,13 @@ export const formatPlanForClipboard = function (options) {
       const exactAge = metPatient.metabolicAgeExact ?? metPatient.metabolicAge;
       const deltaVal = Number(metPatient.deltaYears ?? 0);
       const deltaFmt = deltaVal > 0 ? `+${deltaVal}` : `${deltaVal}`;
-      text += `⏱️ ESTUDIO DE EDAD METABÓLICA (${metPatient.evidenceTierBadge || 'Certeza Clínica'}):\n`;
+      const cycle6Suffix = metPatient.cycle6RangeLabel180d ? ` | Potencial Óptimo Ciclo 6 (180 Días): ${metPatient.cycle6RangeLabel180d}` : '';
+      text += `⏱️ ESTUDIO DE EDAD METABÓLICA (${metPatient.evidenceTierBadge || 'Nivel I — Evidencia Bioquímica y Clínica Completa'}):\n`;
+      if (metPatient.hasActiveCompensationFocalDrag) {
+        text += `   • Estado: COMPENSACIÓN FISIOLÓGICA ACTIVA • FOCOS PRIORITARIOS POR OPTIMIZAR\n`;
+      }
       text += `   • Edad Cronológica: ${metPatient.chronologicalAge} años | Edad Metabólica Actual: ${exactAge} años (${deltaFmt} años)\n`;
-      text += `   • Meta Ciclo 1 (28 Días): ${metPatient.cycle1TargetAge28d} años (${metPatient.cycle1Delta28d} años) | Proyección a 90 Días: ${metPatient.cycle3ProjectionAge90d} años\n`;
+      text += `   • Meta Ciclo 1 (28 Días): ${metPatient.cycle1TargetAge28d} años (${metPatient.cycle1Delta28d} años) | Proyección a 90 Días: ${metPatient.cycle3ProjectionAge90d} años${cycle6Suffix}\n`;
       if (metPatient.patientSummary) {
         text += `   • Lectura integral: ${metPatient.patientSummary}\n`;
       }
@@ -365,6 +372,12 @@ export const formatPlanForClipboard = function (options) {
     }
     text += `\n`;
 
+    const pulse14 = action.mid_cycle_pulse_day14;
+    if (pulse14?.summary) {
+      text += `5.5 🎯 ${pulse14.title || 'HITO DE PULSO DÍA 14 (MITAD DE CICLO)'}:\n`;
+      text += `   • ${pulse14.summary}\n\n`;
+    }
+
     const apptPatient = guide.scheduledAppointmentSummary || resolveScheduledAppointmentSummary(patientData);
     const sealShaPatient = resolveDossierSealSha256(patientData, folio);
     if (apptPatient?.formattedLine) {
@@ -379,7 +392,7 @@ export const formatPlanForClipboard = function (options) {
     text += `✨ Equipo en Acción® y Ecosistema T.I.L.O. (Visión 2030 • Expediente NOM-004)\n`;
     text += `==================================================\n`;
 
-    return text.replace(/\s*&\s*/g, ' y ').trim();
+    return sanitizeArt215NonTherapeuticLexicon(text.replace(/\s*&\s*/g, ' y ')).trim();
   }
 
   // --- VISTA MÉDICA (NOM-004 — SSoTT v3.2) ---
@@ -439,8 +452,8 @@ export const formatPlanForClipboard = function (options) {
     sanitizeClinicalSpanish(rawStr || '')
       .replace(/\(\s*null\s*\)/giu, '')
       .replace(/\[\s*⚠️?\s*REQUIERE_REVISI[ÓO]N\s*\]/giu, '')
-      .replace(/\(Matriz IFM SSoTT v2\.[45678]\)/giu, '(Matriz IFM SSoTT v3.2)')
-      .replace(/\[Readaptaci[óo]n F[íi]sica\]/giu, '[Readaptación Biomecánica y Prescripción de Movimiento]')
+      .replace(/\(Matriz IFM SSoTT v2\.[45678]\)/giu, '(Matriz IFM SSoTT v3.5)')
+      .replace(/\[Readaptaci[óo]n F[íi]sica\]/giu, '[Readaptación Biomecánica y Pauta de Movimiento Seguro]')
       .replace(/6,000[–-]8,000\s*pasos\/d[íi]a/giu, '6\u00A0000 a 8\u00A0000 pasos/día')
       .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+33Plus®/giu, `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus®`)
       .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+34Plus®/giu, `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus®`)
@@ -491,7 +504,14 @@ export const formatPlanForClipboard = function (options) {
         const exactAge = metStudy.metabolicAgeExact ?? metStudy.metabolicAge;
         const deltaVal = Number(metStudy.deltaYears ?? 0);
         const deltaFmt = deltaVal > 0 ? `+${deltaVal}` : `${deltaVal}`;
-        text += `   • Estudio Multivariable de Edad Metabólica (${sanitizeClinicalSpanish(metStudy.evidenceTierBadge || metStudy.evidenceTier)}): Edad Cronológica ${metStudy.chronologicalAge} años vs Edad Metabólica ${exactAge} años (Delta ${deltaFmt} años) | Meta Ciclo 1 (28d): ${metStudy.cycle1TargetAge28d} años (${metStudy.cycle1Delta28d} años) | Proyección Ciclo 3 (90d): ${metStudy.cycle3ProjectionAge90d} años.\n`;
+        const compTag = metStudy.hasActiveCompensationFocalDrag ? ' • COMPENSACIÓN FISIOLÓGICA ACTIVA' : '';
+        const tractionTag = (metStudy.protectiveBonusYears !== undefined && metStudy.totalDragYears !== undefined)
+          ? ` | Tracción Opuesta: -${metStudy.protectiveBonusYears} a protectores vs +${metStudy.totalDragYears} a retenidos`
+          : '';
+        const cycle6MedTag = metStudy.cycle6RangeLabel180d
+          ? ` | Potencial Óptimo Ciclo 6 (180d): ${metStudy.cycle6RangeLabel180d}`
+          : '';
+        text += `   • Estudio Multivariable de Edad Metabólica (${sanitizeClinicalSpanish(metStudy.evidenceTierBadge || metStudy.evidenceTier)}${compTag}): Edad Cronológica ${metStudy.chronologicalAge} años vs Edad Metabólica ${exactAge} años (Delta ${deltaFmt} años${tractionTag}) | Meta Ciclo 1 (28d): ${metStudy.cycle1TargetAge28d} años (${metStudy.cycle1Delta28d} años) | Proyección Ciclo 3 (90d): ${metStudy.cycle3ProjectionAge90d} años${cycle6MedTag}.\n`;
       }
     }
     if (ortho?.has_calcium_contraction_lock) {
@@ -505,18 +525,18 @@ export const formatPlanForClipboard = function (options) {
     text += `\n`;
   }
 
-  text += `1. DIAGNÓSTICOS CLÍNICOS APORTADOS (MATRIZ IFM DE 7 NODOS):\n`;
+  text += `1. EVALUACIÓN FUNCIONAL Y HALLAZGOS CLÍNICO-PARACLÍNICOS ACREDITADOS (NOM-004):\n`;
   if (effectiveDiagnoses.length > 0) {
     effectiveDiagnoses.forEach((d) => {
       const dStr = typeof d === 'object' ? (d.nombre || d.text || JSON.stringify(d)) : String(d);
       text += `   • ${normalizeFormalClinicalField(dStr)}\n`;
     });
   } else {
-    text += `   • Homeostasis Metabólica General (Sin Alteraciones Agudas Registradas).\n`;
+    text += `   • Homeostasis Clínica y Paraclínica Acreditada Conservada.\n`;
   }
   text += `\n`;
 
-  text += `2. PRESCRIPCIÓN BIOENERGÉTICA Y CRONOBIOLOGÍA ORTOMOLECULAR (33Plus® y 34Plus®):\n`;
+  text += `2. META BIOENERGÉTICA Y COMPLEMENTACIÓN NUTRICIONAL CIRCADIANA (33Plus® y 34Plus®):\n`;
   if (bio?.targetKcal) {
     const exclSuffix = personalExclList.length > 0
       ? ` | Exclusiones personalizadas: ${personalExclList.map(sanitizeClinicalSpanish).join(', ')}`
@@ -616,10 +636,12 @@ export const formatPlanForClipboard = function (options) {
   );
 
   const sealShaMedical = resolveDossierSealSha256(patientData, folio);
-  text += `4. SECUENCIACIÓN TERAPÉUTICA (CICLO DE 28 DÍAS), LOGÍSTICA Y SEGUIMIENTO:\n`;
+  const pulse14Med = ortho?.evolutionTimeline?.midCyclePulseDay14 || canonicalPlan?.evolutionTimeline?.midCyclePulseDay14 || null;
+  text += `4. SECUENCIACIÓN DE HÁBITOS Y COMPLEMENTACIÓN (CICLO DE 28 DÍAS), PULSO DÍA 14 Y SEGUIMIENTO:\n`;
   phases.forEach((p, idx) => {
     text += `   • Fase ${p.phase || (idx + 1)} (${sanitizeClinicalSpanish(p.rangeLabel)} • ${sanitizeClinicalSpanish(p.weekLabel)} — ${sanitizeClinicalSpanish(p.title)}): ${sanitizeClinicalSpanish(p.description)}\n`;
   });
+  text += `   • Hito de Pulso Día 14 (Mitad de Ciclo): ${sanitizeClinicalSpanish(pulse14Med?.clinicalInstruction || 'Control intermedio Día 14: circunferencia abdominal matutina en ayunas (nivel umbilical), vitalidad al despertar (escala 1–10) y verificación de constancia en sus 4 momentos de hidratación y complementación.')}\n`;
   text += `   • Logística Operativa: ${logistics.operationalSummary || `Entorno Principal: ${logistics.venueLabel} | Preparación de Alimentos: ${logistics.cookLabel}`}\n`;
   text += `   • Ruta de Evolución: ${timelineSummary}.\n`;
   if (apptMedical?.formattedLine) {
@@ -628,9 +650,31 @@ export const formatPlanForClipboard = function (options) {
   if (sealShaMedical) {
     text += `   • Huella de Integridad Criptográfica NOM-004 (SHA-256): ${sealShaMedical}\n`;
   }
+
+  const electretAnnex = resolveElectretInformativeAnnex(patientData);
+  if (electretAnnex && electretAnnex.totalItems > 0) {
+    text += `\n--------------------------------------------------\n`;
+    text += `${electretAnnex.title}:\n`;
+    text += `   ℹ️ Descargo Normativo COFEPRIS / NOM-004: ${electretAnnex.disclaimer}\n`;
+    if (electretAnnex.items.length > 0) {
+      const sampleBio = electretAnnex.items
+        .slice(0, 14)
+        .map((it) => `${sanitizeBioelectricScreeningLabel(it.label)} (${it.detail})`)
+        .join(' | ');
+      const extraBioCount = Math.max(0, electretAnnex.items.length - 14);
+      text += `   • Bioseñales orientativas registradas (${electretAnnex.items.length}): ${sampleBio}${extraBioCount > 0 ? ` y ${extraBioCount} bioseñales adicionales` : ''}.\n`;
+    }
+    if (electretAnnex.meridianItems.length > 0) {
+      const sampleMer = electretAnnex.meridianItems
+        .slice(0, 6)
+        .map((m) => `${sanitizeBioelectricScreeningLabel(m.label)} (${m.detail})`)
+        .join(' | ');
+      text += `   • Bioenergética auxiliar orientativa (${electretAnnex.meridianItems.length}): ${sampleMer}.\n`;
+    }
+  }
   text += `\n==================================================\n`;
 
-  return text.replace(/\s*&\s*/g, ' y ').trim();
+  return sanitizeArt215NonTherapeuticLexicon(text.replace(/\s*&\s*/g, ' y ')).trim();
 };
 
 /**
