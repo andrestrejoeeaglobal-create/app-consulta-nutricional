@@ -2096,11 +2096,11 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                         className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                                             lingualActiveTab === 'dorsal'
                                                 ? 'bg-white dark:bg-slate-700 text-[#1C75BC] dark:text-blue-300 shadow-xs'
-                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                                : 'text-slate-600 dark:text-[#CBD5E1] hover:text-slate-900'
                                         }`}
                                     >
                                         <span>👅 Cara Dorsal</span>
-                                        {lingualFile && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
+                                        {lingualFile && <span className="w-1.5 h-1.5 rounded-full bg-[#3AAA35]"></span>}
                                     </button>
                                     <button 
                                         type="button"
@@ -2108,11 +2108,11 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                         className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                                             lingualActiveTab === 'ventral'
                                                 ? 'bg-white dark:bg-slate-700 text-[#1C75BC] dark:text-blue-300 shadow-xs'
-                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                                : 'text-slate-600 dark:text-[#CBD5E1] hover:text-slate-900'
                                         }`}
                                     >
                                         <span>🔬 Cara Ventral (Venas)</span>
-                                        {ventralFile && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
+                                        {ventralFile && <span className="w-1.5 h-1.5 rounded-full bg-[#3AAA35]"></span>}
                                     </button>
                                 </div>
 
@@ -2176,13 +2176,13 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                                     <button 
                                                         type="button"
                                                         onClick={() => { setLingualFile(null); setLingualPreview(null); }}
-                                                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold"
+                                                        className="absolute -top-1.5 -right-1.5 bg-[#B70E0C] text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold"
                                                     >
                                                         ✕
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <div className="w-20 h-20 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg flex items-center justify-center text-[10px] text-slate-400 text-center px-1">
+                                                <div className="w-20 h-20 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg flex items-center justify-center text-[10px] text-[#334155] dark:text-[#CBD5E1] text-center px-1">
                                                     Sin captura
                                                 </div>
                                             )}
@@ -2196,13 +2196,13 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                                     <button 
                                                         type="button"
                                                         onClick={() => { setVentralFile(null); setVentralPreview(null); }}
-                                                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold"
+                                                        className="absolute -top-1.5 -right-1.5 bg-[#B70E0C] text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold"
                                                     >
                                                         ✕
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <div className="w-20 h-20 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg flex items-center justify-center text-[10px] text-slate-400 text-center px-1">
+                                                <div className="w-20 h-20 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg flex items-center justify-center text-[10px] text-[#334155] dark:text-[#CBD5E1] text-center px-1">
                                                     Opcional
                                                 </div>
                                             )}
@@ -2280,7 +2280,7 @@ Para evitar falsos positivos en disbiosis, anemia o congestión, por favor reali
                                                 <div className="flex items-center gap-2 truncate">
                                                     <span className="text-slate-500">📄</span>
                                                     <span className="font-semibold text-slate-700 truncate">{file.name}</span>
-                                                    <span className="text-[10px] text-slate-400 font-mono">({(file.size / 1024).toFixed(1)} KB)</span>
+                                                    <span className="text-[10px] text-[#334155] dark:text-[#CBD5E1] font-mono tabular-nums">({(file.size / 1024).toFixed(1)} KB)</span>
                                                 </div>
                                                 <button 
                                                     onClick={() => setPdfFiles(prev => prev.filter((_, i) => i !== idx))}

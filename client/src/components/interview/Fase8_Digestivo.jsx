@@ -270,7 +270,7 @@ export default function Fase8_SaludDigestiva({ patientData, setPatientData, onPh
                 } else {
                     setMessages(prev => [...prev, { 
                         role: 'assistant', 
-                        content: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No.", 
+                        content: "Por favor seleccione Sí o No.", 
                         options: [{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }] 
                     }]);
                 }

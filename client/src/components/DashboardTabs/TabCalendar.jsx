@@ -163,7 +163,7 @@ export const TabCalendar = ({
             nutrition: hasRenalIssue 
                 ? "Nutrición Geriátrica de Protección Renal (Proteína Fraccionada 0.8g/kg + Densidad de Micronutrientes)"
                 : "Nutrición Inmunointestinal Antiinflamatoria (Cero Gluten/Lácteos, Fácil Masticación y Digestibilidad)",
-            supplementation: "Mañana: Soporte Celular 33Plus® (Dosificación Geriátrica) | Noche: Soporte Tisular 34Plus® (Disuelto en 350-500 ml de agua 💧 según tolerancia cardíaca/renal)",
+            supplementation: "Mañana: Soporte Celular 33Plus® (Pauta Geriátrica Gradual) | Noche: Soporte Tisular 34Plus® (Disuelto en 350-500 ml de agua 💧 según tolerancia cardíaca/renal)",
             movement: "Caminatas Ligeras Postprandiales de 10-15 min a paso cómodo + Respiración Diafragmática y Movilidad Articular Suave"
         },
         fase2: {

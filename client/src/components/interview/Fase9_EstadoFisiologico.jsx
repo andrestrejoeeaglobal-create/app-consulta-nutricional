@@ -402,9 +402,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                 if (isNaN(weeks) || weeks < 1 || weeks > 42) {
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: isMinor 
-                            ? "Valor fuera de rango clínico (1-42 semanas).\n\nPor favor, ingresa un número válido de semanas de gestación:" 
-                            : "Valor fuera de rango clínico (1-42 semanas).\n\nPor favor, ingrese un número válido de semanas de gestación:",
+                        content: "Valor fuera de rango clínico (1-42 semanas).\n\nPor favor, ingrese un número válido de semanas de gestación:",
                         inputType: 'number'
                     }]);
                 } else {
@@ -472,7 +470,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                     setMessages(prev => [...prev, { 
                         role: 'assistant', 
                         content: isMinor 
-                            ? "Selección requerida.\n\nPor favor indica si está lactando o no." 
+                            ? "Selección requerida.\n\nPor favor indique si se encuentra lactando o no." 
                             : "Selección requerida.\n\nPor favor indique si se encuentra lactando o no.", 
                         options: [{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }] 
                     }]);
@@ -483,9 +481,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                 if (input !== "Exclusiva" && input !== "Mixta") {
                     setMessages(prev => [...prev, { 
                         role: 'assistant', 
-                        content: isMinor 
-                            ? "Opción no reconocida.\n\nPor favor selecciona Exclusiva o Mixta." 
-                            : "Opción no reconocida.\n\nPor favor seleccione Exclusiva o Mixta.", 
+                        content: "Opción no reconocida.\n\nPor favor seleccione Exclusiva o Mixta.", 
                         options: [{ label: "Exclusiva", value: "Exclusiva" }, { label: "Mixta", value: "Mixta" }] 
                     }]);
                     return;
@@ -511,7 +507,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                     setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: isMinor 
-                            ? "Edad fuera de rango de lactancia (0-48 meses).\n\nPor favor, ingresa una edad de meses válida para el bebé:" 
+                            ? "Edad fuera de rango de lactancia (0-48 meses).\n\nPor favor, ingrese una edad de meses válida para el bebé:" 
                             : "Edad fuera de rango de lactancia (0-48 meses).\n\nPor favor, ingrese una edad de meses válida para su bebé:",
                         inputType: 'number'
                     }]);
@@ -621,9 +617,7 @@ export default function Fase9_EstadoFisiologico({ patientData, setPatientData, o
                 if (isNaN(days) || days < 0 || days > 365) {
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: isMinor 
-                            ? "Por favor, ingresa un número de días válido (0-365) o una frase descriptiva (ej. 'hace 2 semanas'):" 
-                            : "Por favor, ingrese un número de días válido (0-365) o una frase descriptiva (ej. 'hace 2 semanas'):",
+                        content: "Por favor, ingrese un número de días válido (0-365) o una frase descriptiva (ej. 'hace 2 semanas'):",
                         inputType: 'number'
                     }]);
                 } else {

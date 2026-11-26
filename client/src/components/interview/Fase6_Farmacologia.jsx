@@ -209,9 +209,9 @@ const Fase6_Farmacologia = ({
 
              const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
              
-             // Timeout de 1000ms
+             // Timeout clínico de 8000ms para análisis farmacológico asíncrono
              const timeoutPromise = new Promise((_, reject) => 
-                 setTimeout(() => reject(new Error("Timeout de red")), 1000)
+                 setTimeout(() => reject(new Error("Timeout de red")), 8000)
              );
              
              const fetchPromise = (async () => {
@@ -496,9 +496,7 @@ const Fase6_Farmacologia = ({
                     setIsSingleLineEdit(true);
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: isMinor 
-                            ? "Alineando Vademécum PLM. Por favor, selecciona el medicamento de la lista interactiva o escribe su nombre:" 
-                            : "Alineando Vademécum PLM. Por favor, seleccione el medicamento de la lista interactiva o escriba su nombre:",
+                        content: "Alineando Vademécum PLM. Por favor, seleccione el medicamento de la lista interactiva o escriba su nombre:",
                         options: plmOptionsList
                     }]);
                     setStep('meds_select');
@@ -508,7 +506,7 @@ const Fase6_Farmacologia = ({
                     setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: isMinor
-                            ? `¿Qué vitaminas, proteínas, tés o suplementos consume **${pName}**? Por favor escribe el nombre comercial o principio activo:`
+                            ? `¿Qué vitaminas, proteínas, tés o suplementos consume **${pName}**? Por favor escriba el nombre comercial o principio activo:`
                             : "¿Qué vitaminas, proteínas, tés o suplementos consume usted? Por favor escriba el nombre comercial o principio activo:"
                     }]);
                 } else if (input === "MODIFY_SELECT") {
@@ -781,9 +779,7 @@ const Fase6_Farmacologia = ({
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: isMinor
-                            ? "Alineando Vademécum PLM. Por favor, selecciona el medicamento de la lista interactiva o escribe su nombre:"
-                            : "Alineando Vademécum PLM. Por favor, seleccione el medicamento de la lista interactiva o escriba su nombre:",
+                        content: "Alineando Vademécum PLM. Por favor, seleccione el medicamento de la lista interactiva o escriba su nombre:",
                         options: plmOptionsList
                     }]);
                     setStep('meds_select');
@@ -792,7 +788,7 @@ const Fase6_Farmacologia = ({
                 } else {
                     setMessages(prev => [...prev, { 
                         role: 'assistant', 
-                        content: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No.",
+                        content: "Por favor seleccione Sí o No.",
                         options: [
                             { label: "✅ Sí", value: "Sí" },
                             { label: "❌ No", value: "No" },
@@ -965,9 +961,7 @@ const Fase6_Farmacologia = ({
                 if (input === "Sí") {
                     setMessages(prev => [...prev, {
                         role: 'assistant',
-                        content: isMinor 
-                            ? "Alineando Vademécum PLM. Por favor, selecciona el medicamento de la lista interactiva o escribe su nombre:" 
-                            : "Alineando Vademécum PLM. Por favor, seleccione el medicamento de la lista interactiva o escriba su nombre:",
+                        content: "Alineando Vademécum PLM. Por favor, seleccione el medicamento de la lista interactiva o escriba su nombre:",
                         options: plmOptionsList
                     }]);
                     setStep('meds_select');
@@ -976,7 +970,7 @@ const Fase6_Farmacologia = ({
                 } else {
                     setMessages(prev => [...prev, { 
                         role: 'assistant', 
-                        content: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No.",
+                        content: "Por favor seleccione Sí o No.",
                         options: [{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }]
                     }]);
                 }
@@ -996,7 +990,7 @@ const Fase6_Farmacologia = ({
                 } else {
                     setMessages(prev => [...prev, { 
                         role: 'assistant', 
-                        content: isMinor ? "Por favor selecciona Sí o No." : "Por favor seleccione Sí o No.",
+                        content: "Por favor seleccione Sí o No.",
                         options: [{ label: "✅ Sí", value: "Sí" }, { label: "❌ No", value: "No" }]
                     }]);
                 }

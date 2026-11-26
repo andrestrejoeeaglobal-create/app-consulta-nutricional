@@ -8317,7 +8317,7 @@ const approveDossier = async (req, res) => {
         stmtSave.run(citationId.toString(), validUid, nextPhase, nextBlock, cipherSnapshot, wasAlreadyCompleted ? 1 : 0);
 
         cryptoVault.appendAuditLedger({
-            actorId: 'SPECIALIST_SHERPA',
+            actorId: 'CLINICAL_SPECIALIST',
             action: 'APPROVE_DOSSIER',
             patientId: citationId.toString(),
             payload: { phase: nextPhase, approvedAt: new Date().toISOString() }

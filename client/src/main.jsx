@@ -1,9 +1,12 @@
-import React, { Component, StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import { useJsApiLoader } from '@react-google-maps/api'
-import './index.css'
-import './App.css'
-import App from './App.jsx'
+import React, { Component, StrictMode, useEffect, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { useJsApiLoader } from '@react-google-maps/api';
+import './index.css';
+import './App.css';
+import App from './App.jsx';
+import { installClinicalApiInterceptors } from './utils/clinicalApiAuth';
+
+installClinicalApiInterceptors();
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -47,31 +50,33 @@ if (!GOOGLE_MAPS_KEY) {
 
 const libraries = ['places'];
 
-export const RootComponent = () => {
-  const hasKey = Boolean(GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY.trim().length > 5);
-
-  if (!hasKey) {
-    return (
-      <StrictMode>
-        <ErrorBoundary>
-          <App />
-        </ErrorBoundary>
-      </StrictMode>
-    );
-  }
-  const { isLoaded } = useJsApiLoader({
+function GoogleMapsBackgroundLoader() {
+  useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: GOOGLE_MAPS_KEY,
-    libraries: libraries
+    libraries
   });
+  return null;
+}
 
-  if (!isLoaded) {
-    return <div className="w-screen h-screen flex items-center justify-center bg-slate-50"><p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Cargando Cartografía de Inmunidad...</p></div>;
-  }
+export const RootComponent = () => {
+  const hasKey = Boolean(GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY.trim().length > 5);
+  const [isMapsAuthReady, setIsMapsAuthReady] = useState(false);
+
+  useEffect(() => {
+    const handleAuthChanged = (evt) => {
+      if (evt?.detail?.isLoggedIn) {
+        setIsMapsAuthReady(true);
+      }
+    };
+    window.addEventListener('tilo-auth-changed', handleAuthChanged);
+    return () => window.removeEventListener('tilo-auth-changed', handleAuthChanged);
+  }, []);
 
   return (
     <StrictMode>
       <ErrorBoundary>
+        {hasKey && isMapsAuthReady ? <GoogleMapsBackgroundLoader /> : null}
         <App />
       </ErrorBoundary>
     </StrictMode>

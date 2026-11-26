@@ -211,9 +211,9 @@ const VisualBodyMap = ({ gender = 'MALE', onComplete }) => {
 
     // Helper: Determine Slider Color based on Intensity
     const getSliderColor = (val) => {
-        if (val <= 3) return 'bg-blue-500';
-        if (val <= 6) return 'bg-yellow-500';
-        return 'bg-red-500';
+        if (val <= 3) return 'bg-[#1C75BC]';
+        if (val <= 6) return 'bg-[#FFCC00]';
+        return 'bg-[#B70E0C]';
     };
 
     return (
@@ -228,7 +228,7 @@ const VisualBodyMap = ({ gender = 'MALE', onComplete }) => {
                     margin: 0 auto;
                     border-radius: 12px;
                     overflow: visible; /* FIX: Allow tooltips to overflow */
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                    box-shadow: 0 4px 20px rgba(15,23,42,0.08);
                     background-color: #fff;
                 }
                 .anatomy-base {
@@ -324,10 +324,10 @@ const VisualBodyMap = ({ gender = 'MALE', onComplete }) => {
                     <img src={bgImage} className="anatomy-base" alt="Mapa Corporal" />
 
                     {/* OVERLAY LABELS (SPANISH) - Covering English Text */}
-                    <div className="absolute top-[2%] left-[25%] transform -translate-x-1/2 bg-white px-2 py-0.5 rounded text-[10px] font-bold text-slate-400 uppercase tracking-wider z-0">
+                    <div className="absolute top-[2%] left-[25%] transform -translate-x-1/2 bg-white px-2 py-0.5 rounded text-[10px] font-bold text-[#334155] uppercase tracking-wider z-0">
                         Vista Anterior
                     </div>
-                    <div className="absolute top-[2%] left-[75%] transform -translate-x-1/2 bg-white px-2 py-0.5 rounded text-[10px] font-bold text-slate-400 uppercase tracking-wider z-0">
+                    <div className="absolute top-[2%] left-[75%] transform -translate-x-1/2 bg-white px-2 py-0.5 rounded text-[10px] font-bold text-[#334155] uppercase tracking-wider z-0">
                         Vista Posterior
                     </div>
 
@@ -363,7 +363,7 @@ const VisualBodyMap = ({ gender = 'MALE', onComplete }) => {
             <div className="w-full md:w-32 flex flex-col items-center gap-6">
                 {/* INTENSITY SLIDER */}
                 <div className="w-full md:w-24 flex flex-col items-center justify-between py-6 bg-slate-50 rounded-2xl border border-slate-100 h-[400px]">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 rotated-text md:writing-mode-vertical-rl">Intensidad</span>
+                    <span className="text-xs font-bold text-[#334155] uppercase tracking-widest mb-2 rotated-text md:writing-mode-vertical-rl">Intensidad</span>
 
                     <div className="relative flex-1 w-6 bg-gradient-to-t from-blue-100 via-yellow-100 to-red-100 rounded-full border border-slate-200 mx-auto">
                         {/* Fill Level */}
@@ -392,14 +392,14 @@ const VisualBodyMap = ({ gender = 'MALE', onComplete }) => {
                         </div>
                     </div>
 
-                    <div className={`text-2xl font-bold mt-4 ${intensity >= 8 ? 'text-red-600 animate-pulse' : 'text-slate-700'}`}>
+                    <div className={`text-2xl font-bold mt-4 tabular-nums ${intensity >= 8 ? 'text-[#B70E0C] animate-pulse' : 'text-slate-700'}`}>
                         {intensity}
                     </div>
                 </div>
 
                 {/* ACTION BUTTON */}
                 <div className="w-full">
-                    <div className="text-center text-[10px] text-slate-400 mb-2">
+                    <div className="text-center text-[10px] text-[#334155] tabular-nums mb-2">
                         {selectedZones.length} zonas seleccionadas
                     </div>
                     <button

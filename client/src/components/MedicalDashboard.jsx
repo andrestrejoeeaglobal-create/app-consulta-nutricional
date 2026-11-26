@@ -56,6 +56,36 @@ const NomField = ({ label, name, value, onChange, placeholder, isEditing, active
     </motion.div>
 );
 
+// V15.6 GLOW EFFECT ENCAPSULATION (Hoisted top-level component — preserva estado entre re-renders)
+const GlowDisplay = ({ val, isNeg, cClass, placeholder }) => {
+    const [glow, setGlow] = useState(false);
+    const prevVal = useRef(val);
+
+    useEffect(() => {
+        if (val !== prevVal.current) {
+            if (val && val !== '--' && val !== '---' && typeof val === 'string') {
+                setGlow(true);
+                const timer = setTimeout(() => setGlow(false), 2000);
+                prevVal.current = val;
+                return () => clearTimeout(timer);
+            }
+            prevVal.current = val;
+        }
+    }, [val]);
+
+    return (
+        <div className={`p-3 rounded-xl border min-h-[50px] flex ${cClass ? 'items-start' : 'items-center'} transition-all duration-700 transform ${glow ? 'bg-tilo-primary/10 border-tilo-primary ring-2 ring-tilo-primary/25 shadow-md scale-[1.02] text-tilo-primary' : `bg-tilo-bg-base/40 border-tilo-border ${cClass ? cClass : 'text-tilo-text-main font-medium'}`}`}>
+            {val ? (
+                <span className={`w-full transition-colors duration-500 ${isNeg ? "text-tilo-text-muted italic font-medium" : ""}`}>
+                    {val}
+                </span>
+            ) : (
+                <span className="text-tilo-text-muted/40 font-light select-none">{placeholder || '---'}</span>
+            )}
+        </div>
+    );
+};
+
 // COMPONENTE INFOROW (Simple)
 const InfoRow = ({ label, value, icon }) => (
     <div className="flex justify-between items-center py-2 border-b border-tilo-border last:border-0">
@@ -721,36 +751,6 @@ export const MedicalDashboard = ({
 
         const activeField = isEditing;
 
-        // V15.6 GLOW EFFECT ENCAPSULATION
-        const GlowDisplay = ({ val, isNeg, cClass, placeholder }) => {
-            const [glow, setGlow] = useState(false);
-            const prevVal = useRef(val);
-
-            useEffect(() => {
-                if (val !== prevVal.current) {
-                    if (val && val !== '--' && val !== '---' && typeof val === 'string') {
-                        setGlow(true);
-                        const timer = setTimeout(() => setGlow(false), 2000);
-                        prevVal.current = val;
-                        return () => clearTimeout(timer);
-                    }
-                    prevVal.current = val;
-                }
-            }, [val]);
-
-            return (
-                <div className={`p-3 rounded-xl border min-h-[50px] flex ${cClass ? 'items-start' : 'items-center'} transition-all duration-700 transform ${glow ? 'bg-tilo-primary/10 border-tilo-primary ring-2 ring-tilo-primary/25 shadow-md scale-[1.02] text-tilo-primary' : `bg-tilo-bg-base/40 border-tilo-border ${cClass ? cClass : 'text-tilo-text-main font-medium'}`}`}>
-                    {val ? (
-                        <span className={`w-full transition-colors duration-500 ${isNeg ? "text-tilo-text-muted italic font-medium" : ""}`}>
-                            {val}
-                        </span>
-                    ) : (
-                        <span className="text-tilo-text-muted/40 font-light select-none">{placeholder || '---'}</span>
-                    )}
-                </div>
-            );
-        };
-
         return (
             <div className={`flex flex-col gap-1 ${isLongText ? 'col-span-full' : ''}`}>
                 <label className="text-[10px] uppercase font-bold text-tilo-text-muted tracking-wider flex justify-between">
@@ -790,7 +790,7 @@ export const MedicalDashboard = ({
         const Icon = icon;
         return (
             <div className="flex justify-between items-center mb-4 border-b border-tilo-border/60 pb-2">
-                <h3 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 font-prototype ${colorClass}`}>
+                <h3 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 font-sans ${colorClass}`}>
                     <Icon className="w-4 h-4" /> {title}
                 </h3>
             </div>
@@ -818,7 +818,7 @@ export const MedicalDashboard = ({
                                 <div className="flex gap-3 text-xs opacity-80 mt-1">
                                     <span className="flex items-center gap-1">👤 {docData.patient}</span>
                                     <span>|</span>
-                                    <span className="bg-blue-500/20 px-2 rounded border border-blue-500/30">IA VERIFIED</span>
+                                    <span className="bg-blue-500/20 px-2 rounded border border-blue-500/30">VERIFICADO NOM-004</span>
                                 </div>
                             </div>
                         </div>
@@ -844,7 +844,7 @@ export const MedicalDashboard = ({
                                 <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                                     <div className="bg-red-50 px-6 py-3 border-b border-red-100 flex justify-between items-center">
                                         <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> {section}
+                                            <span className="w-2 h-2 rounded-full bg-[#B70E0C] animate-pulse"></span> {section}
                                         </h4>
                                         <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold border border-red-200">{abnormalRows.length} ALERTAS</span>
                                     </div>
@@ -879,7 +879,7 @@ export const MedicalDashboard = ({
 
     // --- RENDERIZADO PRINCIPAL (LAYOUT NUEVO) ---
     return (
-        <div className="h-full bg-slate-50 p-6 overflow-y-auto font-sansation custom-scrollbar">
+        <div className="h-full bg-[#F8FAFC] dark:bg-[#0F172A] p-6 overflow-y-auto font-sansation custom-scrollbar">
 
             {/* BOTÓN FLOTANTE O FIJO PARA GUARDAR REMOVIDO PARA EVITAR DUPLICIDAD CON EL HEADER */}
 

@@ -61,7 +61,7 @@ export const ProgressRing = ({
             </div>
             {/* Label and Percentage */}
             <div className="text-center">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{label}</div>
+                <div className="text-[10px] font-bold text-[#334155] dark:text-[#CBD5E1] uppercase tracking-tighter">{label}</div>
                 <div className="text-sm font-black text-slate-700">{progress}%</div>
             </div>
         </div>
@@ -110,21 +110,21 @@ export const StreakCard = ({ gamificationState }) => {
             transition={{ duration: 0.6 }}
             className="flex items-center gap-4 bg-gradient-to-r from-orange-50 to-amber-50 p-4 rounded-3xl border border-orange-100 shadow-sm"
         >
-            <div className="bg-orange-500 text-white rounded-2xl w-14 h-14 flex items-center justify-center text-2xl shadow-lg shadow-orange-200 ring-4 ring-orange-100 font-prototype">
+            <div className="bg-[#1C75BC] text-white rounded-2xl w-14 h-14 flex items-center justify-center text-2xl shadow-lg shadow-[#0F172A]/10 ring-4 ring-blue-100 font-sans">
                 🔥
             </div>
             <div>
                 <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-black text-orange-600 font-prototype">{gamificationState.current_streak_days || 0}</span>
-                    <span className="text-sm font-bold text-orange-400 uppercase tracking-widest">Días Seguidos</span>
+                    <span className="text-2xl font-black text-[#0F172A] font-sans tabular-nums">{gamificationState.current_streak_days || 0}</span>
+                    <span className="text-sm font-bold text-[#334155] uppercase tracking-widest">Días Seguidos</span>
                 </div>
-                <p className="text-xs text-orange-600/80 font-medium">{gamificationState.milestone_alert || "¡Mantén el ritmo vital!"}</p>
+                <p className="text-xs text-[#334155] font-medium">{gamificationState.milestone_alert || "¡Mantenga su ritmo vital!"}</p>
             </div>
 
             <div className="ml-auto text-right">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Puntos XP</div>
-                <div className="text-lg font-black text-emerald-500 font-prototype flex items-center justify-end gap-1">
-                    +{gamificationState.xp_earned_today || 0} <span className="text-[10px] text-emerald-400">XP</span>
+                <div className="text-[10px] font-bold text-[#334155] uppercase tracking-widest mb-1">Puntos XP</div>
+                <div className="text-lg font-black text-[#3AAA35] font-sans tabular-nums flex items-center justify-end gap-1">
+                    +{gamificationState.xp_earned_today || 0} <span className="text-[10px] text-[#3AAA35]">XP</span>
                 </div>
             </div>
         </motion.div>

@@ -529,7 +529,7 @@ const rescueAndMigrateFlatLocalStorageSession = () => {
     }
 };
 
-export const useCortex = () => {
+export const useCortex = ({ isAuthenticated = false } = {}) => {
     const { validateCitation } = useCitationValidation();
 
     // Invariante de orden de Hooks React preservada (sin inyección de datos mock — Regla 8.3 NOM-004)
@@ -856,6 +856,7 @@ export const useCortex = () => {
             String(patientData?.identificacion?.nombre || '').trim()
         );
         if (
+            isAuthenticated &&
             !hasSyncedRescueRef.current.synced &&
             hasSyncedRescueRef.current.verifiedHydration &&
             hasRescueBaseIdentity &&
@@ -913,7 +914,7 @@ export const useCortex = () => {
                 });
             }
         }
-    }, [currentPhase, patientData, apiContext, activeTab, messages, fase3State]);
+    }, [isAuthenticated, currentPhase, patientData, apiContext, activeTab, messages, fase3State]);
 
     // --- AUTO-SAVE EFFECT (AISLADO POR userId O cita_${id} - NOM-004) ---
     useEffect(() => {
@@ -958,6 +959,7 @@ export const useCortex = () => {
 
     // 🛡️ NOM-004 AUTO-HYDRATION: Si la cita/usuario activo cuenta con expediente completado en SQLite y la sesión local está vacía, auto-cargar
     useEffect(() => {
+        if (!isAuthenticated) return undefined;
         let isCancelled = false;
         const checkAndHydrateSession = async () => {
             const currentCita = resolveCanonicalCitationId(patientData, apiContext);
@@ -1216,7 +1218,7 @@ export const useCortex = () => {
         };
         checkAndHydrateSession();
         return () => { isCancelled = true; };
-    }, [patientData?.profile?.citaId, patientData?.profile?.name, apiContext?.citaId, apiContext?.idCita, 'v3.1.2-ssott-heal']);
+    }, [isAuthenticated, patientData?.profile?.citaId, patientData?.profile?.name, apiContext?.citaId, apiContext?.idCita, 'v3.1.2-ssott-heal']);
 
     // Auto-focus tabs based on phase transitions (Interface Event Dispatcher)
     useEffect(() => {
@@ -2601,7 +2603,7 @@ export const useCortex = () => {
                         system_prompt_addon = ` Persona menor de edad (${age} años, nombre: ${firstName}). El usuario interactuando con la pantalla es su representante o tutor legal. Dirígete al tutor de 'USTED' de forma respetuosa y refiérete a ${firstName} por su nombre en tercera persona. Prohibido usar barras o/a o paréntesis (a).`;
                     } else if (age >= 12 && age < 18) {
                         interaction_mode = "TEENAGER_MODE";
-                        system_prompt_addon = ` Persona adolescente de ${age} años (${firstName}). Dirígete directamente de 'TÚ' usando su nombre propio, con tono empático y autoridad clínica, concordando adjetivos con su sexo biológico sin barras o/a ni (a).`;
+                        system_prompt_addon = ` Persona adolescente de ${age} años (${firstName}). Dirígete directamente de 'USTED' usando su nombre propio, con tono empático y autoridad clínica, concordando adjetivos con su sexo biológico sin barras o/a ni (a).`;
                     } else if (age >= 18 && age < 65) {
                         interaction_mode = "ADULT_MODE";
                         system_prompt_addon = ` Persona adulta de ${age} años (${firstName}). Dirígete directamente de 'USTED' usando su nombre propio, con tono profesional, empático y concordancia estricta de sexo biológico sin barras o/a ni (a).`;

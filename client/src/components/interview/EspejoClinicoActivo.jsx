@@ -298,7 +298,7 @@ const EspejoClinicoActivo = ({ patientData }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {/* 1. Perfil */}
                 <div className={`bg-tilo-bg-base/40 p-4 rounded-2xl shadow-sm border border-tilo-border transition-all duration-300 ${chronoGlow}`}>
-                    <h4 className="text-[10px] font-bold text-tilo-text-muted uppercase tracking-widest mb-2 font-prototype flex items-center gap-2">
+                    <h4 className="text-[10px] font-bold text-tilo-text-muted uppercase tracking-widest mb-2 font-sans flex items-center gap-2">
                         <User size={14} className="text-tilo-primary" /> Perfil
                     </h4>
                     <p className="text-sm font-semibold text-tilo-text-main leading-relaxed">
@@ -308,7 +308,7 @@ const EspejoClinicoActivo = ({ patientData }) => {
 
                 {/* 2. Eje Crítico */}
                 <div className={`bg-tilo-bg-panel/80 p-4 rounded-2xl shadow-sm border border-tilo-primary/20 transition-all duration-300 ${anchorGlow}`}>
-                    <h4 className="text-[10px] font-bold text-tilo-primary/80 uppercase tracking-widest mb-2 font-prototype flex items-center gap-2">
+                    <h4 className="text-[10px] font-bold text-tilo-primary/80 uppercase tracking-widest mb-2 font-sans flex items-center gap-2">
                         <Target size={14} className="text-tilo-primary" /> Eje Crítico
                     </h4>
                     <p className="text-sm font-semibold text-tilo-text-main leading-relaxed">
@@ -335,7 +335,7 @@ const EspejoClinicoActivo = ({ patientData }) => {
 
                     return (
                         <div className={`backdrop-blur-sm border rounded-2xl p-4 shadow-sm transition-all duration-300 ${suspicionGlow} ${cardColorClass}`}>
-                            <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-2 font-prototype flex items-center gap-2 ${headerColorClass}`}>
+                            <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-2 font-sans flex items-center gap-2 ${headerColorClass}`}>
                                 <AlertTriangle size={14} />
                                 {isRedFlag || cleanRisk === 'SEVERE' ? 'Riesgo Crítico' : 'Riesgo / Estado'}
                             </h4>
@@ -349,7 +349,7 @@ const EspejoClinicoActivo = ({ patientData }) => {
 
             {/* ANÁLISIS DE REQUERIMIENTO Y OBJETIVOS ESTRATÉGICOS (PÁRRAFOS DE PODER) */}
             <div className={`bg-tilo-bg-panel p-5 rounded-2xl shadow-sm border border-tilo-border transition-all duration-300 ${quoteGlow}`}>
-                <h4 className="text-[10px] font-bold text-tilo-text-muted uppercase tracking-widest mb-2 font-prototype flex items-center gap-2">
+                <h4 className="text-[10px] font-bold text-tilo-text-muted uppercase tracking-widest mb-2 font-sans flex items-center gap-2">
                     <ClipboardList size={14} className="text-tilo-primary/80" /> Análisis de Requerimiento (Motivo de Consulta)
                 </h4>
                 <div className="text-[0.95rem] text-tilo-text-main font-medium leading-relaxed font-sansation space-y-3">
@@ -380,7 +380,7 @@ const EspejoClinicoActivo = ({ patientData }) => {
                 {/* Contenedor Glassmorphism */}
                 <div className="relative bg-tilo-bg-panel/75 backdrop-blur-xl border border-tilo-border p-5 rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)]">
                     <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-[10px] font-bold text-tilo-primary uppercase tracking-widest font-prototype flex items-center gap-2">
+                        <h4 className="text-[10px] font-bold text-tilo-primary uppercase tracking-widest font-sans flex items-center gap-2">
                             <Sparkles size={14} className="text-tilo-primary/80" /> Deducción Sugerida (Matriz IFM)
                         </h4>
                         {aiAnalysis.secondaryRoute && (

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FlaskConical, AlertTriangle, Filter, CheckCircle2, ChevronDown } from 'lucide-react';
 import { parseElectretData, isSyntheticElectretPayload } from '../../utils/electretParser';
 import { useClinicalGenome } from '../../store/useClinicalGenome';
+import { formatSingleSachetActiveCitation } from '../../utils/pharmacopeiaCatalogSSoT';
 
 const getValidImageUrl = (rawUrl) => {
     if (!rawUrl || typeof rawUrl !== 'string') return null;
@@ -295,13 +296,13 @@ export const TabBiochemicals = ({
                                                 let badgeLabel = "Normal";
                                                 if (status === 'low' || status === 'high') {
                                                     badgeClass = "bg-amber-50 text-amber-700 border-amber-200";
-                                                    badgeLabel = status === 'high' ? "Anormal Leve ⬆" : "Anormal Leve ⬇";
+                                                    badgeLabel = status === 'high' ? "Observación Leve ⬆" : "Observación Leve ⬇";
                                                 } else if (status === 'warning_low' || status === 'warning_high') {
                                                     badgeClass = "bg-orange-50 text-orange-700 border-orange-200";
-                                                    badgeLabel = status === 'warning_high' ? "Anormal Moderado ⬆" : "Anormal Moderado ⬇";
+                                                    badgeLabel = status === 'warning_high' ? "Observación Moderada ⬆" : "Observación Moderada ⬇";
                                                 } else if (status === 'critical_low' || status === 'critical_high') {
                                                     badgeClass = "bg-red-50 text-[#B70E0C] border-red-200 font-extrabold";
-                                                    badgeLabel = status === 'critical_high' ? "Anormal Severo ⬆" : "Anormal Severo ⬇";
+                                                    badgeLabel = status === 'critical_high' ? "Observación Severa ⬆" : "Observación Severa ⬇";
                                                 }
                                                 return (
                                                     <tr key={rIdx} className="hover:bg-red-50/10 transition-colors tabular-nums">
@@ -477,7 +478,7 @@ export const TabBiochemicals = ({
         brain: "Nervio Cerebral",
         bone_disease: "Padecimientos Óseos",
         bone_density: "Densidad Mineral Ósea",
-        rheumatoid: "Enfermedad de Hueso Reumatoide",
+        rheumatoid: "Balance Osteoarticular Orientativo",
         bone_growth: "Índice de Crecimiento Óseo",
         ndice_de_crecimiento_seo: "Índice de Crecimiento Óseo",
         blood_glucose: "Glucosa en la Sangre",
@@ -490,8 +491,8 @@ export const TabBiochemicals = ({
         endocrine: "Sistema Endocrino",
         immune: "Sistema Inmunológico",
         thyroid: "Tiroides",
-        toxins: "Toxina Humana",
-        heavy_metals: "Metales Pesados",
+        toxins: "Carga Xenobiótica Orientativa",
+        heavy_metals: "Balance de Oligoelementos y Metales",
         basic_physical: "Condición Física Básica",
         allergies: "Alergias",
         obesity: "Obesidad",
@@ -551,7 +552,7 @@ export const TabBiochemicals = ({
                 borderLeft: "border-l-[#B70E0C]",
                 calloutBg: "bg-[#B70E0C] text-white",
                 calloutArrow: "border-b-[#B70E0C]",
-                label: "ANORMAL SEVERO (+++)",
+                label: "OBSERVACIÓN SEVERA (+++)",
                 icon: <AlertTriangle size={12} className="text-[#B70E0C] animate-pulse" />
             };
         } else if (s.includes('MODERADO') || s === 'WARNING' || s === '++') {
@@ -560,7 +561,7 @@ export const TabBiochemicals = ({
                 borderLeft: "border-l-orange-500",
                 calloutBg: "bg-orange-600 text-white",
                 calloutArrow: "border-b-orange-600",
-                label: "ANORMAL MODERADO (++)",
+                label: "OBSERVACIÓN MODERADA (++)",
                 icon: <AlertTriangle size={12} className="text-orange-600" />
             };
         } else if (s.includes('LEVE') || s === '+') {
@@ -569,7 +570,7 @@ export const TabBiochemicals = ({
                 borderLeft: "border-l-amber-500",
                 calloutBg: "bg-amber-600 text-white",
                 calloutArrow: "border-b-amber-600",
-                label: "ANORMAL LEVE (+)",
+                label: "OBSERVACIÓN LEVE (+)",
                 icon: <AlertTriangle size={12} className="text-amber-600" />
             };
         } else if (s.includes('NORMAL') || s === '-') {
@@ -814,36 +815,36 @@ export const TabBiochemicals = ({
             return `${name} dentro de rango fisiológico saludable en ${subjectPossessive}, compatible con equilibrio funcional.`;
         }
 
-        // Correlación funcional oficial Equipo en Acción® (Estequiometría 33Plus® y 34Plus® • COFEPRIS-Safe • Usted Global)
+        // Correlación funcional oficial Equipo en Acción® (SSoTT pharmacopeiaCatalogSSoT.js • COFEPRIS-Safe • Usted Global)
         if (normKey.includes('coenzima_q10') || normKey.includes('hipoxia') || normKey.includes('capacidad_vital') || normKey.includes('resistencia_vascular')) {
-            return `Demanda bioenergética y de oxigenación microvascular en ${subjectPossessive}. Dentro del acompañamiento nutricional de Equipo en Acción®, se correlaciona con el soporte matutino de 33Plus® (Coenzima Q10 MP104 31.25 mg y polifenoles antioxidantes).`;
+            return `Demanda bioenergética y de oxigenación microvascular en ${subjectPossessive}. Dentro del acompañamiento nutricional de Equipo en Acción®, se correlaciona con el soporte matutino de 33Plus® (${formatSingleSachetActiveCitation('33PLUS', 'MP104')} y polifenoles antioxidantes).`;
         }
         if (normKey.includes('vitamina_b3') || normKey.includes('niacina')) {
-            return `Requerimiento de cofactor energético NAD+ y microcirculación en ${subjectPossessive}. Se acompaña en el esquema matutino con 33Plus® (Niacina B3 MP046 31.25 mg) junto a su alimentación diaria.`;
+            return `Requerimiento de cofactor energético NAD+ y microcirculación en ${subjectPossessive}. Se acompaña en el esquema matutino con 33Plus® (${formatSingleSachetActiveCitation('33PLUS', 'MP046')}) junto a su alimentación diaria.`;
         }
         if (normKey.includes('vitamina_c')) {
-            return `Mayor demanda antioxidante endotelial y de síntesis estructural en ${subjectPossessive}. El protocolo matutino de Equipo en Acción® aporta soporte nutricional mediante 33Plus® (Vitamina C MP048 1,000 mg).`;
+            return `Mayor demanda antioxidante endotelial y de síntesis estructural en ${subjectPossessive}. El protocolo matutino de Equipo en Acción® aporta soporte nutricional mediante 33Plus® (${formatSingleSachetActiveCitation('33PLUS', 'MP048')}).`;
         }
         if (normKey === 'silicio' || normKey.includes('silicio')) {
-            return `Variación en reserva de silicio estructural para matriz vascular y tejido conectivo en ${subjectPossessive}. Se vincula al soporte micronutricional de 33Plus® (Silicio MP119) en sincronía con su hidratación diaria.`;
+            return `Variación en reserva de silicio estructural para matriz vascular y tejido conectivo en ${subjectPossessive}. Se vincula al soporte micronutricional de 33Plus® (${formatSingleSachetActiveCitation('33PLUS', 'MP119')}) en sincronía con su hidratación diaria.`;
         }
         if (normKey.includes('metabolismo_lipidico') || normKey.includes('triglicerido') || normKey.includes('grasas_neutras') || normKey.includes('hdl') || normCat === 'obesity') {
-            return `Indicador de movilización y oxidación de lípidos en ${subjectPossessive}. Se acompaña con alimentación limpia libre de azúcares refinados y soporte metabólico matutino de 33Plus® (L-Carnitina MP080 500 mg).`;
+            return `Indicador de movilización y oxidación de lípidos en ${subjectPossessive}. Se acompaña con alimentación limpia libre de azúcares refinados y soporte metabólico matutino de 33Plus® (${formatSingleSachetActiveCitation('33PLUS', 'MP080')}).`;
         }
         if (normKey.includes('peristalsis') || normKey.includes('absorcion') || normKey.includes('pepsina') || normCat === 'gastrointestinal' || normCat === 'colon') {
-            return `Sensibilidad en motilidad o absorción enterocitaria en ${subjectPossessive}. Se sugiere alimentación libre de irritantes y acompañamiento vespertino/nocturno con 34Plus® (L-Glutamina MP024 100 mg, Bromelina MP008, Papaína MP033 y fibra prebiótica disueltos en mínimo 500 ml de agua simple).`;
+            return `Sensibilidad en motilidad o absorción enterocitaria en ${subjectPossessive}. Se sugiere alimentación libre de irritantes y acompañamiento vespertino/nocturno con 34Plus® (${formatSingleSachetActiveCitation('34PLUS', 'MP024')}, Bromelina MP008, Papaína MP033 y fibra prebiótica disueltos en mínimo 500 ml de agua simple).`;
         }
         if (normCat === 'collagen' || normKey.includes('colageno')) {
-            return `Mayor demanda de recambio estructural en matriz extracelular y paredes vasculares de ${subjectPossessive}. Se vincula al soporte regenerativo nocturno de 34Plus® (Colágeno Hidrolizado MP009 500 mg y L-Glicina MP023 200 mg).`;
+            return `Mayor demanda de recambio estructural en matriz extracelular y paredes vasculares de ${subjectPossessive}. Se vincula al soporte regenerativo nocturno de 34Plus® (${formatSingleSachetActiveCitation('34PLUS', 'MP009')} y ${formatSingleSachetActiveCitation('34PLUS', 'MP023')}).`;
         }
         if (normKey === 'zinc' || normKey.includes('testosterona') || normKey.includes('prostatitis')) {
-            return `Indicador funcional de equilibrio mineral, prostático y endocrino en ${subjectPossessive}. Dentro del protocolo de Equipo en Acción® recibe soporte nutricional complementario en 34Plus® (Zinc Optizinc MP171 18.75 mg) junto a valoración clínica integral.`;
+            return `Indicador funcional de equilibrio mineral, prostático y endocrino en ${subjectPossessive}. Dentro del protocolo de Equipo en Acción® recibe soporte nutricional complementario en 34Plus® (${formatSingleSachetActiveCitation('34PLUS', 'MP171')}) junto a valoración clínica integral.`;
         }
         if (normKey.includes('pantotenico') || normKey.includes('biotina')) {
-            return `Requerimiento de cofactores enzimáticos celulares en ${subjectPossessive}. Se acompaña en la fase nocturna con 34Plus® (Ácido Pantoténico B5 MP149 6.25 mg y Biotina B7 MP053 1 mg).`;
+            return `Requerimiento de cofactores enzimáticos celulares en ${subjectPossessive}. Se acompaña en la fase nocturna con 34Plus® (${formatSingleSachetActiveCitation('34PLUS', 'MP149')} y ${formatSingleSachetActiveCitation('34PLUS', 'MP053')}).`;
         }
         if (normKey.includes('vitamina_k') || normKey.includes('paratiroides') || normKey.includes('calcificacion')) {
-            return `Indicador de regulación y orientación fisiológica del calcio tisular en ${subjectPossessive}. Se correlaciona con el soporte nutricional de 34Plus® (Vitamina K2 MK-7 MP172 1 mg) bajo vigilancia médica responsable.`;
+            return `Indicador de regulación y orientación fisiológica del calcio tisular en ${subjectPossessive}. Se correlaciona con el soporte nutricional de 34Plus® (${formatSingleSachetActiveCitation('34PLUS', 'MP172')}) bajo vigilancia médica responsable.`;
         }
         if (normKey.includes('acido_urico') || normKey.includes('falta_de_agua') || normKey.includes('mercurio') || normKey.includes('arsenico') || normCat === 'renal') {
             return `Señal de demanda hídrica y depuración fisiológica renal en ${subjectPossessive}. Priorice hidratación constante con agua simple purificada y diluya siempre 34Plus® en un mínimo de 500 ml de agua natural.`;
@@ -1175,7 +1176,7 @@ export const TabBiochemicals = ({
                     </div>
                     <div>
                         <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Telemetría y Evaluaciones Multimodales (Fase 18)</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Secuencia cronológica estricta de expediente clínico conforme a la NOM-004-SSA3-2012</p>
+                        <p className="text-xs text-[#334155] dark:text-[#CBD5E1] font-medium">Secuencia cronológica estricta de expediente clínico conforme a la NOM-004-SSA3-2012</p>
                     </div>
                 </div>
                 <button
@@ -1394,7 +1395,7 @@ export const TabBiochemicals = ({
                                                                             }`}
                                                                         >
                                                                             <span className="truncate pr-2">
-                                                                                <span className={`font-mono text-[10px] mr-1.5 ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
+                                                                                <span className={`font-mono text-[10px] mr-1.5 tabular-nums ${isSelected ? 'text-white/80' : 'text-[#334155] dark:text-[#CBD5E1]'}`}>
                                                                                     {index + 1}.
                                                                                 </span>
                                                                                 {title}
@@ -1435,7 +1436,7 @@ export const TabBiochemicals = ({
 
                                         if (!targetCat || !activeMetrics[targetCat]) {
                                             return (
-                                                <div className="py-16 flex flex-col items-center justify-center text-slate-400">
+                                                <div className="py-16 flex flex-col items-center justify-center text-[#334155] dark:text-[#CBD5E1]">
                                                     <span className="text-4xl mb-2">🧬</span>
                                                     <p className="text-sm font-bold">Seleccione un sistema biológico</p>
                                                     <p className="text-xs">Elija una categoría en la barra superior para explorar sus Bento Cards Termodinámicas.</p>
@@ -1663,14 +1664,14 @@ export const TabBiochemicals = ({
                                                                 {spectrum.isRenderable && (
                                                                     <div className="pt-1 pb-2">
                                                                         {/* Etiquetas de los 3 tercios */}
-                                                                        <div className="grid grid-cols-3 text-[10px] font-extrabold uppercase tracking-wider mb-1.5">
-                                                                            <div className={`text-left ${spectrum.zone === 'LOW' ? 'text-amber-700 font-extrabold' : 'text-slate-400'}`}>
+                                                                        <div className="grid grid-cols-3 text-[10px] font-extrabold uppercase tracking-wider mb-1.5 tabular-nums">
+                                                                            <div className={`text-left ${spectrum.zone === 'LOW' ? 'text-amber-700 font-extrabold' : 'text-[#334155] dark:text-[#CBD5E1]'}`}>
                                                                                 DEFICIENCIA (&lt;{spectrum.min})
                                                                             </div>
                                                                             <div className="text-center text-[#3AAA35]">
                                                                                 ZONA ÓPTIMA FISIOLÓGICA ({spectrum.min} — {spectrum.max})
                                                                             </div>
-                                                                            <div className={`text-right ${spectrum.zone === 'HIGH' ? 'text-orange-600 font-extrabold' : 'text-slate-400'}`}>
+                                                                            <div className={`text-right ${spectrum.zone === 'HIGH' ? 'text-orange-600 font-extrabold' : 'text-[#334155] dark:text-[#CBD5E1]'}`}>
                                                                                 EXCESO (&gt;{spectrum.max})
                                                                             </div>
                                                                         </div>
@@ -1702,7 +1703,7 @@ export const TabBiochemicals = ({
                                                                 )}
 
                                                                 {/* 5. Inyección Biosemántica en Base de Tarjeta */}
-                                                                <div className="pt-2.5 border-t border-slate-100 dark:border-slate-700/70 flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+                                                                <div className="pt-2.5 border-t border-slate-100 dark:border-slate-700/70 flex items-center justify-between gap-3 text-xs text-[#334155] dark:text-[#CBD5E1]">
                                                                     <div className="flex items-start gap-2">
                                                                         <span className="text-[#1C75BC] font-bold shrink-0">ⓘ</span>
                                                                         <span className="leading-relaxed">{inferenceText}</span>
@@ -1718,10 +1719,10 @@ export const TabBiochemicals = ({
                                                     })}
 
                                                     {showOnlyAbnormalities && displayedItems.length === 0 && (
-                                                        <div className="py-12 text-center bg-white rounded-2xl border border-slate-200/80 text-slate-400">
+                                                        <div className="py-12 text-center bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200/80 dark:border-[#334155] text-[#334155] dark:text-[#CBD5E1]">
                                                             <CheckCircle2 size={36} className="text-[#3AAA35] mx-auto mb-2 opacity-80" />
-                                                            <p className="text-sm font-bold text-slate-600">¡Homeostasis fisiológica en este sistema!</p>
-                                                            <p className="text-xs text-slate-400 mt-0.5">Todos los parámetros evaluados se encuentran dentro del rango clínico normal.</p>
+                                                            <p className="text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC]">¡Homeostasis fisiológica en este sistema!</p>
+                                                            <p className="text-xs text-[#334155] dark:text-[#CBD5E1] mt-0.5">Todos los parámetros evaluados se encuentran dentro del rango clínico normal.</p>
                                                         </div>
                                                     )}
                                                 </div>

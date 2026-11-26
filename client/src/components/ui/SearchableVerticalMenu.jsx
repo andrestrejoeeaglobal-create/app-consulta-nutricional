@@ -224,7 +224,7 @@ const SearchableVerticalMenu = ({
                         );
                     })
                 ) : (
-                    <div className="px-4 py-8 text-center text-sm text-slate-400 flex flex-col items-center gap-2">
+                    <div className="px-4 py-8 text-center text-sm text-[#334155] dark:text-[#CBD5E1] flex flex-col items-center gap-2">
                         <span className="text-xl">🔍</span>
                         <span>{emptyMessage}</span>
                     </div>

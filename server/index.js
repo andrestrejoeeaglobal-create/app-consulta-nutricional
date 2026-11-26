@@ -10,9 +10,26 @@ const cryptoVault = require('./utils/cryptoVault');
 const { normalizeForMatch, isPhysiologicallyNormal, sanitizeSnapshotStringsRecursively, sanitizeClinicalSpanish } = require('./utils/clinicalTextSanitizer');
 const axios = require('axios');
 const https = require('https');
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+// Trampa Forense #4: TLS estricto por defecto (verificado 200 OK contra equipoenaccion.app); agente encapsulado exclusivamente para ea_lab_login.asp
+const legacyAspHttpsAgent = new https.Agent({
+    rejectUnauthorized: process.env.LEGACY_ASP_ALLOW_INCOMPLETE_SSL === 'true' ? false : true
+});
+const { requireClinicalAuth } = require('./middleware/requireClinicalAuth');
 const BiomarkerScoringEngine = require('./services/BiomarkerScoringEngine');
 const app = express();
+
+// Asegurar columnas aditivas de revisión optimista tab-safe en session_persistence (EGM-79)
+try {
+    const spCols = db.prepare('PRAGMA table_info(session_persistence)').all().map((c) => c.name);
+    if (!spCols.includes('revision')) {
+        db.exec('ALTER TABLE session_persistence ADD COLUMN revision INTEGER DEFAULT 1;');
+    }
+    if (!spCols.includes('last_client_tab_id')) {
+        db.exec('ALTER TABLE session_persistence ADD COLUMN last_client_tab_id TEXT DEFAULT NULL;');
+    }
+} catch (migSpErr) {
+    console.warn('⚠️ Aviso migración aditiva session_persistence:', migSpErr.message);
+}
 
 // 🛡️ REGLA 8 NOM-004: Normalización estricta de userId (0 / '0' / 'null' / 'undefined' => null)
 // y asignación explícita institucional autorizada para Cita #21161 (Roberto Carlos Valdez Santana -> userId 32071)
@@ -48,25 +65,66 @@ if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const upload = multer({
-    dest: uploadsDir
+const ALLOWED_UPLOAD_EXT_RE = /\.(pdf|htm|html|jpg|jpeg|png|webp|tcx|gpx)$/i;
+const ALLOWED_UPLOAD_MIME_SET = new Set([
+    'application/pdf',
+    'text/html',
+    'application/xhtml+xml',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/xml',
+    'text/xml',
+    'application/gpx+xml',
+    'application/vnd.garmin.tcx+xml',
+    'application/octet-stream'
+]);
+
+const uploadStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
+    filename: (_req, file, cb) => {
+        const ext = path.extname(String(file.originalname || '')).toLowerCase().replace(/[^.a-z0-9]/g, '');
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        cb(null, `doc-${uniqueSuffix}${ext}`);
+    }
 });
-app.use(cors());
-app.use('/uploads', express.static(uploadsDir));
+
+const upload = multer({
+    storage: uploadStorage,
+    limits: { fileSize: 25 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        const extOk = ALLOWED_UPLOAD_EXT_RE.test(String(file.originalname || ''));
+        const mimeOk = !file.mimetype || ALLOWED_UPLOAD_MIME_SET.has(String(file.mimetype).toLowerCase());
+        if (!extOk || !mimeOk) {
+            return cb(new Error('Tipo de archivo no permitido por protocolo de bioseguridad NOM-004.'));
+        }
+        return cb(null, true);
+    }
+});
+
+app.use(cors({
+    origin: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Tab-Id', 'Cache-Control', 'Pragma'],
+    exposedHeaders: ['X-Session-Revision']
+}));
+app.use('/uploads', (_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    next();
+}, express.static(uploadsDir));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-// app.use('/api', require('./routes/authRoutes')); // Rutas de Autenticación Auditada (COMENTADO PARA USAR LOGICA DIRECTA)
-app.use('/api/agent', require('./agent')); // Agente Nutricional (Nueva Lógica)
-app.use('/api/cortex', require('./routes/cortexRoutes')); // Inteligencia Clínica GEM (Gemini)
-app.use('/api/bio/scan', require('./routes/bioRoutes')); // Bio-integración (Fase 18 - Legacy Path)
-app.use('/api/bio', require('./routes/bioRoutes')); // Bio-integración (Fase 18 - Standard Path)
+app.use('/api/agent', requireClinicalAuth, require('./agent')); // Agente Nutricional (Protegido NOM-004)
+app.use('/api/cortex', requireClinicalAuth, require('./routes/cortexRoutes')); // Inteligencia Clínica GEM (Protegido NOM-004)
+app.use('/api/bio/scan', requireClinicalAuth, require('./routes/bioRoutes')); // Bio-integración (Fase 18 - Legacy Path)
+app.use('/api/bio', requireClinicalAuth, require('./routes/bioRoutes')); // Bio-integración (Fase 18 - Standard Path)
 
 
 // ==========================================
 // 🧠 CEREBRO CLÍNICO REAL (Conexión a EquipoEnAccion.app)
 // ==========================================
 
-app.post('/api/clinical/validate-appointment', (req, res) => {
+app.post('/api/clinical/validate-appointment', requireClinicalAuth, (req, res) => {
     const { appointmentId } = req.body;
     const apiUrl = `${process.env.EXTERNAL_API_URL}/ea_lab_login.asp`;
 
@@ -75,7 +133,7 @@ app.post('/api/clinical/validate-appointment', (req, res) => {
     axios.get(apiUrl, {
         params: { action: 'CITA_AG', dateId: appointmentId },
         timeout: 5000,
-        httpsAgent
+        httpsAgent: legacyAspHttpsAgent
     })
         .then(response => {
             const data = response.data;
@@ -111,7 +169,7 @@ app.post('/api/clinical/validate-appointment', (req, res) => {
 // ==========================================
 // 🧠 CEREBRO CLÍNICO APP 2 (Seguimiento & Bio-Auditoría)
 // ==========================================
-app.post('/api/followup/validate-citation', async (req, res) => {
+app.post('/api/followup/validate-citation', requireClinicalAuth, async (req, res) => {
     const { appointmentId } = req.body;
     if (!appointmentId) {
         return res.status(400).json({ valid: false, reason: 'MISSING_ID', message: 'Se requiere un número de cita.' });
@@ -128,7 +186,7 @@ app.post('/api/followup/validate-citation', async (req, res) => {
             const response = await axios.get(apiUrl, {
                 params: { action: 'CITA_AG', dateId: cleanCitationId },
                 timeout: 5000,
-                httpsAgent
+                httpsAgent: legacyAspHttpsAgent
             });
             if (response.data && response.data.dataSet && response.data.dataSet.length > 0) {
                 citaRecord = response.data.dataSet[0];
@@ -220,7 +278,7 @@ app.post('/api/followup/validate-citation', async (req, res) => {
 // ==========================================
 // 🧬 COMPARACIÓN LONGITUDINAL BIOELÉCTRICA ELECTRET (T0 vs T1) & BRS SCORE
 // ==========================================
-app.post('/api/followup/longitudinal-compare', async (req, res) => {
+app.post('/api/followup/longitudinal-compare', requireClinicalAuth, async (req, res) => {
     const { appointmentId, currentScanData, baselineScanData } = req.body;
     if (!appointmentId && !baselineScanData && !currentScanData) {
         return res.status(400).json({ success: false, message: "Se requiere appointmentId o datos de escaneo." });
@@ -449,10 +507,46 @@ const handleCheckCitationRequest = async (req, res) => {
     // URL EXACTA proporcionada por los encargados
     const apiUrl = `${process.env.EXTERNAL_API_URL}/ea_lab_login.asp`;
 
+    const hydrateLocalSessionByCitation = (citationKey, fallbackMasterUid = null) => {
+        const cleanCita = normalizeValidCitationId(citationKey);
+        if (!cleanCita) return null;
+        let persistedSession = null;
+        if (fallbackMasterUid) {
+            persistedSession = db.prepare("SELECT * FROM session_persistence WHERE user_id = ? AND user_id != '0' ORDER BY last_updated DESC LIMIT 1").get(fallbackMasterUid);
+        }
+        if (!persistedSession) {
+            persistedSession = db.prepare('SELECT * FROM session_persistence WHERE citation_id = ?').get(cleanCita);
+        }
+        if (!persistedSession) return null;
+
+        let parsedSnapObj = null;
+        if (typeof persistedSession.patient_data_snapshot === 'string' && persistedSession.patient_data_snapshot.trim()) {
+            const decryptedStr = cryptoVault.decryptClinicalData(persistedSession.patient_data_snapshot);
+            if (!decryptedStr) return null;
+            const cleanedControlChars = String(decryptedStr).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ');
+            try {
+                parsedSnapObj = JSON.parse(cleanedControlChars);
+                const effectiveUid = fallbackMasterUid || normalizeRealUserId(persistedSession.user_id, cleanCita);
+                if (effectiveUid) {
+                    if (!parsedSnapObj.profile) parsedSnapObj.profile = {};
+                    if (!normalizeRealUserId(parsedSnapObj.profile.usuarioId)) parsedSnapObj.profile.usuarioId = effectiveUid;
+                    if (!parsedSnapObj.identificacion) parsedSnapObj.identificacion = {};
+                    if (!normalizeRealUserId(parsedSnapObj.identificacion.usuarioId)) parsedSnapObj.identificacion.usuarioId = effectiveUid;
+                }
+                persistedSession.patient_data_snapshot = JSON.stringify(sanitizeSnapshotStringsRecursively(parsedSnapObj));
+            } catch (_) {
+                persistedSession.patient_data_snapshot = cleanedControlChars;
+            }
+        }
+        persistedSession.revision = Number(persistedSession.revision || 1);
+        return { persistedSession, parsedSnapObj };
+    };
+
     try {
         const response = await axios.get(apiUrl, {
             params: { action: 'CITA_AG', dateId: id },
-            timeout: 5000
+            timeout: 5000,
+            httpsAgent: legacyAspHttpsAgent
         });
 
         const data = response.data;
@@ -460,10 +554,10 @@ const handleCheckCitationRequest = async (req, res) => {
         // Validación básica de respuesta externa
         if (!data || !data.dataSet || data.dataSet.length === 0) {
             console.warn(`❌ SAFE-ID: Cita #${id} NO encontrada.`);
-            // Simular respuesta estructura vacía/error para el frontend
             return res.json({
                 response: { code: 404, message: "Not Found" },
-                dataSet: []
+                dataSet: [],
+                revision: null
             });
         }
 
@@ -473,51 +567,30 @@ const handleCheckCitationRequest = async (req, res) => {
 
         // --- PERSISTENCE LAYER CHECK (LLAVE MAESTRA: user_id != '0', FALLBACK EXCLUSIVO: citation_id) ---
         let sessionProgress = null;
+        let currentRevision = null;
         try {
-            let persistedSession = null;
-            if (resolvedMasterUid) {
-                persistedSession = db.prepare("SELECT * FROM session_persistence WHERE user_id = ? AND user_id != '0' ORDER BY last_updated DESC LIMIT 1").get(resolvedMasterUid);
-            }
-            if (!persistedSession && citationId) {
-                persistedSession = db.prepare('SELECT * FROM session_persistence WHERE citation_id = ?').get(citationId);
-            }
-            if (persistedSession) {
-                console.log(`💾 Sesión encontrada para Usuario #${resolvedMasterUid || `cita_${citationId}`}: Fase ${persistedSession.last_active_phase}`);
-                if (typeof persistedSession.patient_data_snapshot === 'string') {
-                    const decryptedStr = cryptoVault.decryptClinicalData(persistedSession.patient_data_snapshot) || '{}';
-                    const cleanedControlChars = String(decryptedStr).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ');
-                    try {
-                        const parsedSnap = JSON.parse(cleanedControlChars);
-                        if (resolvedMasterUid) {
-                            if (!parsedSnap.profile) parsedSnap.profile = {};
-                            if (!normalizeRealUserId(parsedSnap.profile.usuarioId)) parsedSnap.profile.usuarioId = resolvedMasterUid;
-                            if (!parsedSnap.identificacion) parsedSnap.identificacion = {};
-                            if (!normalizeRealUserId(parsedSnap.identificacion.usuarioId)) parsedSnap.identificacion.usuarioId = resolvedMasterUid;
-                        }
-                        persistedSession.patient_data_snapshot = JSON.stringify(sanitizeSnapshotStringsRecursively(parsedSnap));
-                    } catch (_) {
-                        persistedSession.patient_data_snapshot = cleanedControlChars;
-                    }
-                }
+            const localHydrated = hydrateLocalSessionByCitation(citationId, resolvedMasterUid);
+            if (localHydrated?.persistedSession) {
+                const persistedSession = localHydrated.persistedSession;
+                console.log(`💾 Sesión encontrada para Usuario #${resolvedMasterUid || `cita_${citationId}`}: Fase ${persistedSession.last_active_phase} (rev ${persistedSession.revision})`);
                 if (resolvedMasterUid && !normalizeRealUserId(persistedSession.user_id)) {
                     persistedSession.user_id = resolvedMasterUid;
                 }
+                currentRevision = Number(persistedSession.revision || 1);
                 sessionProgress = persistedSession;
                 try {
                     cryptoVault.appendAuditLedger({
                         actorId: 'SAFE_ID_CHECK_CITATION',
                         action: 'READ_CITATION_NOM004',
                         patientId: resolvedMasterUid || String(id),
-                        payload: { citationId: String(id), userId: resolvedMasterUid, lastPhase: persistedSession.last_active_phase }
+                        payload: { citationId: String(id), userId: resolvedMasterUid, lastPhase: persistedSession.last_active_phase, revision: currentRevision }
                     });
                 } catch (_) {}
             }
         } catch (dbErr) {
             console.error("⚠️ Error reading session persistence:", dbErr.message);
         }
-        // -------------------------------
 
-        // Mapeo ESTRICTO según Documento Maestro V4.0 + Asignación NOM-004 de userId y cita
         const mappedRecord = {
             idCita: rawRecord.idCita,
             userId: resolvedMasterUid ? (Number(resolvedMasterUid) || resolvedMasterUid) : null,
@@ -529,32 +602,77 @@ const handleCheckCitationRequest = async (req, res) => {
 
         console.log(`✅ SAFE-ID: Cita #${id} encontrada. Estatus: ${mappedRecord.estatus}`);
 
+        if (currentRevision !== null) {
+            res.setHeader('X-Session-Revision', String(currentRevision));
+        }
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.json({
+        return res.json({
             response: { code: 0, message: "ok" },
             dataSet: [mappedRecord],
-            session_progress: sessionProgress // NEW: Adjuntar progreso si existe
+            revision: currentRevision,
+            session_progress: sessionProgress
         });
 
     } catch (error) {
-        console.error("🔥 SAFE-ID Error:", error.message);
+        console.warn("🔥 SAFE-ID Upstream Error (activando rescate local SQLite si existe):", error.message);
+        try {
+            const offlineHydrated = hydrateLocalSessionByCitation(id, null);
+            if (offlineHydrated?.persistedSession) {
+                const ps = offlineHydrated.persistedSession;
+                const snapObj = offlineHydrated.parsedSnapObj || {};
+                const localUid = normalizeRealUserId(ps.user_id, id);
+                const holderName = snapObj?.profile?.name || snapObj?.identificacion?.nombreCompleto || [snapObj?.identificacion?.nombre, snapObj?.identificacion?.apellidoPaterno, snapObj?.identificacion?.apellidoMaterno].filter(Boolean).join(' ') || 'Paciente Verificado Local';
+                const revNum = Number(ps.revision || 1);
+                try {
+                    cryptoVault.appendAuditLedger({
+                        actorId: 'SAFE_ID_OFFLINE_FALLBACK',
+                        action: 'READ_CITATION_OFFLINE_NOM004',
+                        patientId: localUid || String(id),
+                        payload: { citationId: String(id), userId: localUid, lastPhase: ps.last_active_phase, revision: revNum }
+                    });
+                } catch (_) {}
+                res.setHeader('X-Session-Revision', String(revNum));
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                return res.json({
+                    response: { code: 0, message: "ok" },
+                    offlineFallback: true,
+                    revision: revNum,
+                    dataSet: [{
+                        idCita: Number(id) || id,
+                        userId: localUid ? (Number(localUid) || localUid) : null,
+                        cita: Number(id) || id,
+                        name: holderName,
+                        estatus: Number(ps.is_completed) === 1 ? 'ESTUDIO_COMPLETO' : 'ESTUDIO_PENDIENTE',
+                        info: 'Rescate resiliente desde bóveda local SQLite (NOM-004)'
+                    }],
+                    session_progress: ps
+                });
+            }
+        } catch (fallbackErr) {
+            console.error("⚠️ Fallback local SQLite falló:", fallbackErr.message);
+        }
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.status(500).json({
-            response: { code: 500, message: "Internal Server Error" },
-            dataSet: []
+        return res.status(503).json({
+            response: { code: 503, message: "Upstream Unavailable" },
+            dataSet: [],
+            revision: null
         });
     }
 };
 
-app.get('/checkCitation', handleCheckCitationRequest);
-app.get('/api/citations/check/:id', handleCheckCitationRequest);
+app.get('/checkCitation', requireClinicalAuth, handleCheckCitationRequest);
+app.get('/api/citations/check/:id', requireClinicalAuth, handleCheckCitationRequest);
 
 // ==========================================
-// 💾 AUTO-SAVE ENDPOINT (New V15.5 - AES-256-GCM & NOM-004 Isolated)
+// 💾 AUTO-SAVE ENDPOINT (New V15.5 - AES-256-GCM, Tab-Safe Optimistic Revision & NOM-004 Isolated)
 // ==========================================
-app.patch('/api/citations/:id/progress', (req, res) => {
+app.patch('/api/citations/:id/progress', requireClinicalAuth, (req, res) => {
     const cleanId = normalizeValidCitationId(req.params.id);
-    const { phase, block, patientData, is_completed, is_rescue, reset_study } = req.body || {};
+    const { phase, block, patientData, is_completed, is_rescue, reset_study, expected_revision } = req.body || {};
+    const clientTabId = String(req.body?.client_tab_id || req.clientTabId || '').trim() || null;
+    const expectedRevNum = (expected_revision !== undefined && expected_revision !== null && Number.isFinite(Number(expected_revision)))
+        ? Number(expected_revision)
+        : null;
     const resetInt = reset_study ? 1 : 0;
 
     if (!cleanId) {
@@ -601,17 +719,61 @@ app.patch('/api/citations/:id/progress', (req, res) => {
             ...(validUserId ? { usuarioId: validUserId } : {})
         };
 
-        // Consultar fila previa para blindaje de monotonicidad NOM-004 y preservación de SSoTT
+        // Consultar fila previa para blindaje de monotonicidad NOM-004, concurrencia tab-safe y preservación de SSoTT
         let existingRow = null;
+        let currentStoredRevision = 0;
+        let storedTabId = null;
         try {
-            existingRow = db.prepare('SELECT last_active_phase, last_active_block, is_completed, patient_data_snapshot FROM session_persistence WHERE citation_id = ?').get(cleanId);
+            existingRow = db.prepare('SELECT last_active_phase, last_active_block, is_completed, patient_data_snapshot, COALESCE(revision, 1) AS revision, last_client_tab_id FROM session_persistence WHERE citation_id = ?').get(cleanId);
+            currentStoredRevision = existingRow ? Number(existingRow.revision || 1) : 0;
+            storedTabId = existingRow?.last_client_tab_id ? String(existingRow.last_client_tab_id).trim() : null;
+
             if (resetInt === 0 && Number(existingRow?.is_completed) === 1 && Boolean(is_rescue)) {
                 console.log(`🛡️ [NOM-004 MONOTONIC GUARD] Ignorando rescate regresivo sobre Cita cerrada #${cleanId}.`);
                 return res.json({
                     success: true,
                     ignored_rescue_on_completed: true,
                     citationId: cleanId,
-                    userId: validUserId
+                    userId: validUserId,
+                    revision: currentStoredRevision
+                });
+            }
+
+            // Trampa Forense #2: Disparar HTTP 409 IN_CONFLICT_QUARANTINE SOLO si expected_revision < revision Y proviene de un client_tab_id distinto
+            if (
+                resetInt === 0 &&
+                existingRow &&
+                Number(existingRow.is_completed) === 0 &&
+                expectedRevNum !== null &&
+                expectedRevNum < currentStoredRevision &&
+                clientTabId &&
+                storedTabId &&
+                clientTabId !== storedTabId
+            ) {
+                console.warn(`🚨 [IN_CONFLICT_QUARANTINE] Cita #${cleanId}: expected_revision=${expectedRevNum} < current=${currentStoredRevision} desde pestaña distinta (${clientTabId} !== ${storedTabId}).`);
+                try {
+                    cryptoVault.appendAuditLedger({
+                        actorId: 'CONCURRENCY_GUARD_NOM004',
+                        action: 'IN_CONFLICT_QUARANTINE',
+                        patientId: validUserId || cleanId,
+                        payload: {
+                            citationId: cleanId,
+                            userId: validUserId,
+                            expectedRevision: expectedRevNum,
+                            currentRevision: currentStoredRevision,
+                            incomingClientTabId: clientTabId,
+                            ownerClientTabId: storedTabId
+                        }
+                    });
+                } catch (_) {}
+                res.setHeader('X-Session-Revision', String(currentStoredRevision));
+                return res.status(409).json({
+                    success: false,
+                    status: 'IN_CONFLICT_QUARANTINE',
+                    quarantine: 'IN_CONFLICT_QUARANTINE',
+                    citationId: cleanId,
+                    revision: currentStoredRevision,
+                    message: 'Conflicto de concurrencia entre dos pestañas o terminales activas; actualización puesta en cuarentena preventiva (NOM-004).'
                 });
             }
 
@@ -626,6 +788,7 @@ app.patch('/api/citations/:id/progress', (req, res) => {
                         ignored_stale_before_rewind: true,
                         citationId: cleanId,
                         userId: validUserId,
+                        revision: currentStoredRevision,
                         patientData: parsedPrev
                     });
                 }
@@ -669,9 +832,12 @@ app.patch('/api/citations/:id/progress', (req, res) => {
             parsedData.is_completed = true;
         }
 
+        const nextRevision = resetInt === 1 ? 1 : (currentStoredRevision + 1);
+        const effectiveTabOwner = clientTabId || storedTabId || null;
+
         const stmt = db.prepare(`
-            INSERT INTO session_persistence (citation_id, user_id, last_active_phase, last_active_block, patient_data_snapshot, is_completed, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO session_persistence (citation_id, user_id, last_active_phase, last_active_block, patient_data_snapshot, is_completed, revision, last_client_tab_id, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(citation_id) DO UPDATE SET
                 user_id = CASE
                     WHEN excluded.user_id IS NOT NULL AND excluded.user_id != '0' THEN excluded.user_id
@@ -694,6 +860,8 @@ app.patch('/api/citations/:id/progress', (req, res) => {
                     WHEN excluded.is_completed = 1 THEN 1
                     ELSE session_persistence.is_completed
                 END,
+                revision = excluded.revision,
+                last_client_tab_id = COALESCE(excluded.last_client_tab_id, session_persistence.last_client_tab_id),
                 last_updated = CURRENT_TIMESTAMP
         `);
 
@@ -723,6 +891,8 @@ app.patch('/api/citations/:id/progress', (req, res) => {
             effectiveBlock,
             cipherSnapshot,
             completedInt,
+            nextRevision,
+            effectiveTabOwner,
             resetInt,
             resetInt,
             resetInt
@@ -742,31 +912,16 @@ app.patch('/api/citations/:id/progress', (req, res) => {
                     userId: validUserId,
                     phase: numericPhase,
                     block: effectiveBlock,
+                    revision: nextRevision,
                     reset_study: Boolean(resetInt),
                     changedFields
                 }
             });
         } catch (_) {}
 
-        // Sincronizar ocupacion_descriptor y factor_pal EXCLUSIVAMENTE cuando existe validUserId real (Prohibido MAX(user_id) por Regla 8)
-        try {
-            const ocupacion = parsedData.profile?.ocupacion_descriptor || parsedData.identificacion?.ocupacion_descriptor || null;
-            const pal = parsedData.profile?.factor_pal || parsedData.identificacion?.factor_pal || null;
-            
-            if (validUserId && (ocupacion || pal)) {
-                const stmtPat = db.prepare(`
-                    UPDATE patients 
-                    SET ocupacion_descriptor = ?, factor_pal = ?
-                    WHERE user_id = ?
-                `);
-                stmtPat.run(ocupacion, pal, validUserId);
-            }
-        } catch (patErr) {
-            console.error("⚠️ DB Sync Warning:", patErr.message);
-        }
-
-        console.log(`💾 Auto-Save Cita #${cleanId} (userId=${validUserId || 'NULL'}): [Phase ${numericPhase}, Block ${block}] (AES-256-GCM)`);
-        res.json({ success: true, citationId: cleanId, userId: validUserId, patientData: parsedData });
+        console.log(`💾 Auto-Save Cita #${cleanId} (userId=${validUserId || 'NULL'}, rev=${nextRevision}): [Phase ${numericPhase}, Block ${block}] (AES-256-GCM)`);
+        res.setHeader('X-Session-Revision', String(nextRevision));
+        res.json({ success: true, citationId: cleanId, userId: validUserId, revision: nextRevision, patientData: parsedData });
 
     } catch (err) {
         console.error("🔥 Auto-Save Error:", err.message);
@@ -777,7 +932,7 @@ app.patch('/api/citations/:id/progress', (req, res) => {
 // ==========================================
 // 🗑️ REINICIO AUDITADO DE PROGRESO EN CURSO (Protege Expedientes Sellados NOM-004)
 // ==========================================
-app.delete('/api/citations/:id/progress', (req, res) => {
+app.delete('/api/citations/:id/progress', requireClinicalAuth, (req, res) => {
     const cleanId = normalizeValidCitationId(req.params.id);
     if (!cleanId) return res.status(400).json({ success: false, message: "Missing Citation ID" });
 
@@ -849,14 +1004,15 @@ app.post('/api/login', async (req, res) => {
     console.log(`🔗 Connecting to Auth URL: ${authUrl}`);
 
     try {
-        // 1. Petición al servidor Legacy (ASP)
+        // 1. Petición al servidor Legacy (ASP) con agente encapsulado exclusivo
         const response = await axios.get(`${process.env.EXTERNAL_API_URL}/ea_lab_login.asp`, {
             params: {
                 action: 'SINGIN', // Recordar la ortografía peculiar del legacy
                 User: username,
                 Password: password
             },
-            httpsAgent
+            timeout: 8000,
+            httpsAgent: legacyAspHttpsAgent
         });
 
         const apiData = response.data;
@@ -866,7 +1022,7 @@ app.post('/api/login', async (req, res) => {
         const userRecord = apiData.dataSet && apiData.dataSet.length > 0 ? apiData.dataSet[0] : null;
 
         // 🛑 EL FILTRO CRÍTICO (NOM-004 & Servidor Institucional)
-        // Verificamos si response.code es 0 (Éxito) y se tiene un userRecord válido con token
+        // Verificamos si response.code es 0 (Éxito) y se tiene un userRecord válido
         const isResponseOk = apiData?.response?.code === 0;
         if (!userRecord || !isResponseOk) {
             console.warn(`⛔ Intento de acceso fallido para: ${username} | Code: ${apiData?.response?.code} | Status Legacy: ${userRecord?.status}`);
@@ -876,11 +1032,12 @@ app.post('/api/login', async (req, res) => {
             });
         }
 
-        // ✅ SI LLEGAMOS AQUÍ, EL ACCESO ES LEGÍTIMO
-        console.log(`✅ Acceso autorizado: ${userRecord.name} (${userRecord.puesto}) | Token: ${userRecord.token}`);
+        // ✅ SI LLEGAMOS AQUÍ, EL ACCESO ES LEGÍTIMO (Cero impresión de tokens en stdout)
+        console.log(`✅ Acceso autorizado: ${userRecord.name} (${userRecord.puesto})`);
 
         // Mapeo de Roles para Tilo
         const role = userRecord.puesto === 'NUTRIOLOGO' ? 'SPECIALIST' : 'ASSISTANT';
+        const issuedToken = userRecord.token || `tilo_srv_${require('crypto').randomUUID().replace(/-/g, '')}`;
 
         // Responder al Frontend
         res.json({
@@ -892,7 +1049,7 @@ app.post('/api/login', async (req, res) => {
                 puesto: userRecord.puesto,
                 legacy_id: userRecord.warehouseId,
                 urlFoto: userRecord.urlFoto || "",
-                token: userRecord.token // <--- TOKEN INSTITUCIONAL ALMACENADO PARA FUNCIONES
+                token: issuedToken
             }
         });
 
@@ -903,7 +1060,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+app.post('/api/upload', requireClinicalAuth, upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).send('Error de carga');
 
     try {
@@ -1055,37 +1212,6 @@ FORMATO DE SALIDA (JSON ONLY):
 `;
 
 
-// 3. ENDPOINT DE GUARDADO DE PACIENTES (V15.0 Persistence)
-app.put('/api/patients/data', (req, res) => {
-    const { history_data, ...otherData } = req.body;
-
-    try {
-        // En un entorno real, usaríamos req.body.id o req.user.id
-        // Aquí actualizamos el Triage/History del registro más reciente (Development Mode)
-        const stmt = db.prepare(`
-            UPDATE patients 
-            SET history_data = ?
-            WHERE id = (SELECT MAX(id) FROM patients)
-        `);
-
-        // Serialización JSON explícita como pidió el usuario (aunque el frontend ya lo mande string, aseguramos)
-        // Si el frontend manda objeto, lo stringificamos. Si manda string, lo usamos.
-        let historyJson = null;
-        if (history_data) {
-            historyJson = typeof history_data === 'string' ? history_data : JSON.stringify(history_data);
-        }
-
-        const info = stmt.run(historyJson);
-
-        console.log(`💾 Datos guardados para Paciente ID (Latest): Changes=${info.changes}`);
-        res.json({ success: true, changes: info.changes });
-
-    } catch (err) {
-        console.error("Error saving patient data:", err.message);
-        res.status(500).json({ error: 'Error interno al guardar datos.' });
-    }
-});
-
 // Arrancar el Servidor
 const PORT = 5000;
 app.listen(PORT, () => {
@@ -1096,7 +1222,7 @@ app.listen(PORT, () => {
 // ==========================================
 // 🛡️ SESIÓN POR LLAVE MAESTRA (userId)
 // ==========================================
-app.get('/api/session/user/:userId', (req, res) => {
+app.get('/api/session/user/:userId', requireClinicalAuth, (req, res) => {
     const validUid = normalizeRealUserId(req.params.userId);
     if (!validUid) {
         return res.json({ success: false, message: "Invalid userId (0 or unassigned not permitted)" });
@@ -1112,17 +1238,19 @@ app.get('/api/session/user/:userId', (req, res) => {
             } catch (e) {
                 try { snapshot = JSON.parse(snapshot); } catch (e2) {}
             }
+            const revNum = Number(row.revision || 1);
             try {
                 cryptoVault.appendAuditLedger({
                     actorId: 'SESSION_HYDRATION_BY_USER',
                     action: 'READ_USER_SESSION_NOM004',
                     patientId: validUid,
-                    payload: { citationId: row.citation_id, userId: validUid, lastPhase: row.last_active_phase }
+                    payload: { citationId: row.citation_id, userId: validUid, lastPhase: row.last_active_phase, revision: revNum }
                 });
             } catch (_) {}
-            return res.json({ success: true, session: { ...row, patient_data: snapshot } });
+            res.setHeader('X-Session-Revision', String(revNum));
+            return res.json({ success: true, revision: revNum, session: { ...row, revision: revNum, patient_data: snapshot } });
         }
-        res.json({ success: false, message: "No session found for this user" });
+        res.json({ success: false, revision: null, message: "No session found for this user" });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }

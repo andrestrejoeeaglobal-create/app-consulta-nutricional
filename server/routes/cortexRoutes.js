@@ -2,6 +2,18 @@ const express = require('express');
 const router = express.Router();
 const { GoogleGenAI } = require('@google/genai');
 
+function withCortexAiTimeout(promise, timeoutMs = 20000, label = 'Gemini Cortex') {
+    let timer = null;
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            reject(new Error(`Timeout de ${timeoutMs}ms excedido en ${label}`));
+        }, timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
+}
+
 function sanitizeJsonString(jsonStr) {
     if (!jsonStr) return "";
     let cleaned = jsonStr.trim();
@@ -103,10 +115,9 @@ INSTRUCCIONES Y REGLAS DE RAZONAMIENTO:
    - "GOAL_ALLERGIES" (Alergias Graves / Protocolo Anafilaxia)
    - "GOAL_ADDICTIONS" (Adicciones y Sustancias)
    - "GOAL_DISABILITY" (Discapacidad y Rehabilitación)
-5. Red Flags: Si detectas una emergencia inminente (ej. dolor de pecho opresivo, dificultad severa para respirar, sangr6. Categorización Dinámica: Determina la categoría del paciente (CLINICAL, WELLNESS, PEDIATRICS, ONCOLOGY, SURGICAL, GERIATRICS), si está embarazada (isPregnant) o si su consulta es una meta de rendimiento/bienestar sin patología aparente (isGoal).
 5. Red Flags: Si detectas una emergencia inminente (ej. dolor de pecho opresivo, dificultad severa para respirar, sangrado).
 6. Categorización Dinámica: Determina la categoría del paciente (CLINICAL, WELLNESS, PEDIATRICS, ONCOLOGY, SURGICAL, GERIATRICS), si está embarazada (isPregnant) o si su consulta es una meta de rendimiento/bienestar sin patología aparente (isGoal).
-7. Compliance (NOM-004): Todas tus deducciones clínicas deben considerarse "soporte metabólico coadyuvante". No debes prescribir curas mágicas ni diagnósticos alopáticos definitivos.
+7. Compliance (NOM-004): Todas las deducciones clínicas deben considerarse "soporte metabólico coadyuvante". No se deben prescribir curas mágicas ni diagnósticos alopáticos definitivos.
 8. Tono y Empatía ("Asistente de Longevidad"): NO uses jerga fría, de ciencia ficción o términos como "procesando biosensores". Si el paciente es menor de 18 años (detectado en la telemetría), debes asumir rigurosamente que te estás dirigiendo al TUTOR legal (tercera persona). Todas tus interacciones en "patientMessage" deben dirigirse al tutor formalmente (de "Usted") y referirse al menor por su nombre propio en tercera persona (ej. "¿qué disciplina practica Rosa?" o "¿cuál es el nivel de entrenamiento de Rosa?"). Queda estrictamente prohibido usar la primera o segunda persona para dirigirse al paciente menor como si él fuera el lector (por ejemplo, nunca uses frases ambiguas como "¿cuál es su nivel de entrenamiento?" o "¿qué disciplina practicas?"). Si el tutor describe retos comunes (ej. "melindrosa", "no come"), DEBES validar el problema explícitamente con empatía clínica dirigida al tutor (ej. "Comprendo el reto que representa la selectividad alimentaria en esta etapa de desarrollo..."). El lenguaje debe inspirar confianza, profesionalismo y evitar el tuteo (nunca uses "tus", "vienes", "quieres").
 9. Regla de Idioma y Evitación de Enums: ESTÁ ESTRICTAMENTE PROHIBIDO mencionar los identificadores internos de las rutas (ej. GOAL_PREGNANCY, GOAL_WEIGHT_LOSS, GOAL_GERIATRICS, etc.), códigos técnicos de dolor en inglés (ej. F_OVARY_R, F_OVARY_L, M_HEAD, etc.) o valores constantes de nivel de riesgo en inglés (ej. MEDIUM, LOW, HIGH, SEVERE) en los textos explicativos dirigidos al usuario o médico ("patientMessage", "reasoning", "clinicalJustification"). En su lugar, debes referirte a ellos únicamente por su nombre natural y correcto en español (ej. "Ovario Derecho", "Ovario Izquierdo", "Geriatría", "Moderado", "Estable", "Alto", "Crítico", etc.). Todas las explicaciones y justificaciones clínicas deben redactarse en español fluido, profesional y humano.
 10. REGLA CRÍTICA DE IDENTIDAD Y CONCORDANCIA DE SEXO BIOLÓGICO (NOM-004): Si en el objeto "telemetry" se te proporciona el nombre del paciente en "firstName" (o "first_name") y su sexo biológico en "sex" (o "gender"), es un requisito clínico obligatorio dirigirte a la persona por su nombre propio y concordar TODOS los adjetivos y participios estrictamente con su sexo biológico declarado (ej. "Estimada Carmen, ha sido usted evaluada..." para mujer, o "Estimado Roberto, ha sido usted evaluado..." para hombre). Queda ESTRICTAMENTE PROHIBIDO utilizar formas ambiguas con barra o paréntesis como "Estimado/a", "Estimado(a)", "sometido/a", "cansado/a", "él/ella" o "@", así como términos genéricos como "Estimado paciente" cuando dispongas de su nombre propio y sexo en la telemetría.
@@ -218,14 +229,14 @@ Analiza este caso y devuelve el JSON correspondiente.
             for (let attempt = 1; attempt <= 2; attempt++) {
                 try {
                     console.log(`🤖 [Model ${targetModel} | Attempt ${attempt}] Calling Gemini to analyze motive...`);
-                    const response = await ai.models.generateContent({
+                    const response = await withCortexAiTimeout(ai.models.generateContent({
                         model: targetModel,
                         contents: prompt,
                         config: {
                             systemInstruction: SYSTEM_PROMPT,
                             responseMimeType: "application/json",
                         }
-                    });
+                    }), 20000, 'analyzeMotive');
 
                     const rawText = response.text;
                     const sanitizedText = sanitizeJsonString(rawText);
@@ -327,14 +338,14 @@ router.post('/analyzeMedication', async (req, res) => {
 
         const prompt = `Analiza el siguiente medicamento: "${medicationName}". Devuelve la información estructurada en JSON.`;
 
-        const response = await ai.models.generateContent({
+        const response = await withCortexAiTimeout(ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
                 systemInstruction: MED_SYSTEM_PROMPT,
                 responseMimeType: "application/json",
             }
-        });
+        }), 20000, 'analyzeMedication');
 
         let jsonResponse;
         try {
@@ -398,14 +409,14 @@ REGLAS:
 `;
         const prompt = `Consulta del usuario: "${query}"`;
 
-        const response = await ai.models.generateContent({
+        const response = await withCortexAiTimeout(ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
                 systemInstruction: systemPrompt,
                 responseMimeType: "application/json",
             }
-        });
+        }), 12000, 'searchMedication');
 
         let jsonResponse;
         try {

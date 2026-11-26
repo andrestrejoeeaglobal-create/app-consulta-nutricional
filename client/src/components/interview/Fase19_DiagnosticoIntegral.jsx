@@ -481,8 +481,6 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
         };
     }, [data]);
 
-    if (!data) return null;
-
     const activeNodeMeta = selectedNodeId === 'ALL'
         ? null
         : processedNodes.find(n => n.nodeId === selectedNodeId) || null;
@@ -528,13 +526,15 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
         return filtered;
     }, [alertItems, orthomolecularPrescription]);
 
+    if (!data) return null;
+
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
             {/* 1. SELECTOR HORIZONTAL DE PÍLDORAS INTERACTIVAS (❖ NODOS IFM:) */}
             {processedNodes.length > 0 && (
-                <div className="bg-white rounded-2xl border border-slate-200/90 p-3 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
+                <div className="bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200/90 dark:border-[#334155] p-3 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 px-2 shrink-0 select-none">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] px-2 shrink-0 select-none">
                             ❖ NODOS IFM:
                         </span>
 
@@ -651,7 +651,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                 <p className="text-xs text-[#334155] dark:text-[#CBD5E1] leading-relaxed">
                     {activeNodeMeta
                         ? activeNodeMeta.clinicalDescription
-                        : 'Evaluación funcional integrativa de los 7 Nodos del Institute for Functional Medicine (IFM) con cobertura ontológica completa y dosificación de precisión.'}
+                        : 'Evaluación funcional integrativa de los 7 Nodos del Institute for Functional Medicine (IFM) con cobertura ontológica completa y pauta micronutricional de precisión.'}
                 </p>
             </div>
 
@@ -1015,7 +1015,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                         )}
 
                         <div className="pt-3 border-t border-slate-100 mt-4 flex items-center justify-between text-[10px]">
-                            <span className="text-slate-400 font-medium">Doctrina Médica Funcional IFM</span>
+                            <span className="text-[#334155] dark:text-[#CBD5E1] font-medium">Doctrina Médica Funcional IFM</span>
                         </div>
                     </div>
                 )}
@@ -1242,7 +1242,7 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                     {/* Sistemas Fisiológicos Implicados Aplanados */}
                     {Array.isArray(sistemas) && sistemas.length > 0 && (
                         <div className="my-2 text-[10.5px] text-slate-500 font-medium flex flex-wrap items-center gap-x-2 gap-y-1 pt-2.5 border-t border-slate-100 dark:border-slate-800">
-                            <span className="font-extrabold text-slate-400 uppercase tracking-wider text-[9.5px]">Sistemas Fisiológicos:</span>
+                            <span className="font-extrabold text-[#334155] dark:text-[#CBD5E1] uppercase tracking-wider text-[9.5px]">Sistemas Fisiológicos:</span>
                             {sistemas.map((sistema, idx) => (
                                 <span key={idx} className="inline-flex items-center gap-1.5">
                                     <span className="text-slate-700 dark:text-slate-200 font-semibold">{formatClinicalText(sistema)}</span>

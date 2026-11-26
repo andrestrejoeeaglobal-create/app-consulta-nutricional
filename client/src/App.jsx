@@ -22,6 +22,7 @@ import useCitationValidation from "./hooks/useCitationValidation"; // <--- SAFE-
 import { AntigravityBlobs } from "./components/AntigravityBlobs"; // V15.6 Glow Blobs
 import ThemeToggleButton from "./components/ui/ThemeToggleButton";
 import { enqueueCitationProgressPatch } from "./utils/syncOutboxQueue";
+import { ensureClinicalSessionToken } from "./utils/clinicalApiAuth";
 import VisualIdentityCard from "./components/VisualIdentityCard"; // <--- V8.0 Visual Identity Card
 import VisualBodyMap from "./components/VisualBodyMap"; // <--- V9.6 Visual Body Map
 import useCortex, { buildSessionRecoveryCardMessage } from "./hooks/useCortex"; // <--- T.I.L.O Logical Engine
@@ -770,7 +771,13 @@ function App() {
     triggerPhase7Summary,
     triggerPhase8Summary,
     triggerPhase9Summary
-  } = useCortex();
+  } = useCortex({ isAuthenticated: isLoggedIn });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tilo-auth-changed', { detail: { isLoggedIn } }));
+    }
+  }, [isLoggedIn]);
 
   const messagesList = messages || [];
 
@@ -1846,6 +1853,13 @@ function App() {
         }
       }
     } catch (err) {
+      if (err?.response?.status === 409) {
+        console.error("🚨 [IN_CONFLICT_QUARANTINE] Escritura concurrente detectada desde otra pestaña:", err?.response?.data);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tilo-conflict-quarantine', { detail: err?.response?.data || {} }));
+        }
+        return;
+      }
       console.warn("⚠️ Persistence Sync Error (Encolando en Outbox FIFO):", err.message);
       enqueueCitationProgressPatch(patchUrl, patchPayload);
     }
@@ -1854,7 +1868,7 @@ function App() {
   // 🔒 GUARDADO PROGRESIVO POR FASE (FASES 1 A 18 -> SQLite CIFRADO AES-256-GCM)
   const lastPersistedPhaseKeyRef = useRef(null);
   useEffect(() => {
-    if (!currentPhase) return;
+    if (!isLoggedIn || !currentPhase) return;
     const match = /^PHASE_(\d+)_/i.exec(String(currentPhase));
     if (!match) return;
     const phaseNum = parseInt(match[1], 10);
@@ -1875,7 +1889,7 @@ function App() {
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [currentPhase, patientData, apiContext, sessionMetadata, resolveValidCitationId, saveSessionProgress]);
+  }, [isLoggedIn, currentPhase, patientData, apiContext, sessionMetadata, resolveValidCitationId, saveSessionProgress]);
 
   // V15.5 RECOVERY HANDLER
   const handleResumeSession = () => {
@@ -1949,27 +1963,10 @@ function App() {
     return undefined;
   }, [messages, scrollToBottom, isSpecificLogisticsQuestion, hasVerticalMenuOpen]);
 
-  // --- AUTOSAVE EFFECT (PHASE 4 PERSISTENCE) ---
+  // --- AUTOSAVE EFFECT (PHASE 4 PERSISTENCE — DELEGADO A BÓVEDA CIFRADA AES-256-GCM) ---
   const saveHistoryToBackend = useCallback(async () => {
-    try {
-      if (!patientData.history) return;
-
-      console.log("💾 Saving Phase 4 Data...");
-      const payload = {
-        history_data: JSON.stringify(patientData.history) // Explicit Stringify
-      };
-
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      await fetch(`${apiUrl}/api/patients/data`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      console.log("✅ Phase 4 Verified & Saved.");
-
-    } catch (err) {
-      console.error("Save Error:", err);
-    }
+    if (!patientData.history) return;
+    // Persistido automáticamente vía PATCH /api/citations/:id/progress (cero PII en tabla plana patients)
   }, [patientData.history]);
 
   useEffect(() => {
@@ -6278,7 +6275,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      setError("Por favor ingresa usuario y contraseña");
+      setError("Por favor, ingrese su usuario y contraseña.");
       return;
     }
     setError(""); // Limpiar errores previos
@@ -6295,12 +6292,9 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
 
         if (userRecord.status === 0 && data.response?.code === 0) {
           // ✅ ACCESO CONCEDIDO: Credenciales VÁLIDAS confirmadas por el servidor institucional
+          ensureClinicalSessionToken(userRecord);
           setUser(userRecord);
           localStorage.setItem('ea_session', JSON.stringify(userRecord));
-          if (userRecord.token) {
-            localStorage.setItem('ea_token', userRecord.token);
-            localStorage.setItem('tilo_auth_token', userRecord.token);
-          }
           setIsLoggedIn(true);
         } else if (userRecord.status === 2) {
           setError("Contraseña incorrecta.");
@@ -7479,7 +7473,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                       </div>
                     ) : messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'none' ? (
                       // LOGIC RESTORATION: Bloqueo Visual de la barra de texto
-                      <div className="flex items-center justify-center p-2 text-slate-400 text-sm italic">
+                      <div className="flex items-center justify-center p-2 text-[#334155] dark:text-[#CBD5E1] text-sm italic">
                         Entrada bloqueada temporalmente.
                       </div>
                     ) : messagesList.length > 0 && messagesList[messagesList.length - 1].inputType === 'time_picker' ? (
@@ -7505,7 +7499,7 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
                                 handleSend(formattedTime);
                               }
                             }}
-                            className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors shadow-sm"
+                            className="bg-[#3AAA35] hover:bg-[#2F8D2B] text-white text-xs font-bold px-4 py-2 rounded-full transition-colors shadow-sm"
                           >
                             Confirmar Hora
                           </button>
@@ -7705,17 +7699,17 @@ Para descartar condiciones que requieran atención especial, ¿ha notado recient
             {!isIdentityConfirmed ? (
                 // Fase 0 Activa: Muro de Contención
                 showPrivacyPolicy ? (
-                    <div className="absolute inset-0 z-10 w-full h-full bg-slate-50">
+                    <div className="absolute inset-0 z-10 w-full h-full bg-[#F8FAFC] dark:bg-[#0F172A]">
                         <AvisoPrivacidad onAccept={handleAcceptPrivacy} onClose={() => setShowPrivacyPolicy(false)} />
                     </div>
                 ) : (
-                    <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
-                        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-                            <Lock className="w-16 h-16 text-slate-300 mb-6" />
-                            <h2 className="text-xl font-bold text-slate-700 uppercase tracking-widest font-prototype">
+                    <div className="h-full w-full bg-[#F8FAFC] dark:bg-[#0F172A] flex flex-col items-center justify-center p-8 text-center">
+                        <div className="bg-white dark:bg-[#1E293B] p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-[#334155] flex flex-col items-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                            <Lock className="w-16 h-16 text-slate-300 dark:text-slate-600 mb-6" />
+                            <h2 className="text-xl font-bold text-[#0F172A] dark:text-[#F8FAFC] uppercase tracking-widest font-sans">
                                 Espejo Clínico Bloqueado
                             </h2>
-                            <p className="text-slate-500 mt-3 text-sm font-medium max-w-sm">
+                            <p className="text-[#334155] dark:text-[#CBD5E1] mt-3 text-sm font-medium max-w-sm">
                                 Esperando validación de identidad y aceptación del aviso de privacidad (NOM-004).
                             </p>
                         </div>

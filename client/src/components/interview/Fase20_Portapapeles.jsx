@@ -36,7 +36,7 @@ export function buildSSoTExecutiveSummaryContent(patientData) {
     const semBadge = semLevel === 'ROJO'
         ? `🔴 Semáforo ROJO — ${sem?.badgeLabel || 'Prioridad Médica • Pausa Preventiva'} (0 sobres activos)`
         : semLevel === 'AMARILLO'
-            ? `🟡 Semáforo AMARILLO — ${sem?.badgeLabel || 'Inicio Gradual Preventivo • Micro-Dosis Calibrada'}`
+            ? `🟡 Semáforo AMARILLO — ${sem?.badgeLabel || 'Inicio Gradual Preventivo • Fracción Inicial Gradual'}`
             : `🟢 Semáforo VERDE — ${sem?.badgeLabel || 'Vía Libre Biosegura • Protocolo Completo'}`;
 
     const rawKcal = Number(bio?.targetKcal || guide?.homeActionPlan?.protective_nutrition?.targetKcal);
@@ -55,11 +55,11 @@ export function buildSSoTExecutiveSummaryContent(patientData) {
 
     const line33 = semLevel === 'ROJO' || Boolean(sem?.isPaused)
         ? '0 sobres activos (Diferido hasta valoración médica de estudios de control)'
-        : (guide?.formula33Card?.dosage || 'Prescripción diurna sincronizada al despertar');
+        : (guide?.formula33Card?.dosage || 'Pauta diurna sincronizada al despertar');
 
     const line34 = semLevel === 'ROJO' || Boolean(sem?.isPaused)
         ? '0 sobres activos (Diferido hasta valoración médica de estudios de control)'
-        : (guide?.formula34Card?.dosage || 'Prescripción nocturna en mínimo 500 ml de agua simple 💧');
+        : (guide?.formula34Card?.dosage || 'Pauta nocturna en mínimo 500 ml de agua simple 💧');
 
     const patientLine = guide?.patientFullName
         ? `• **Titular del Expediente:** ${guide.patientFullName}${guide?.ageYears ? ` (${guide.ageYears} años)` : ''}\n\n`
@@ -67,7 +67,7 @@ export function buildSSoTExecutiveSummaryContent(patientData) {
 
     return (
         `📋 **Compuerta Ejecutiva de Despacho y Portapapeles (SSoTT — Fase 20)**\n\n` +
-        `El expediente clínico y la prescripción ortomolecular han quedado consolidados y sellados bajo **NOM-004-SSA3-2012**:\n\n` +
+        `El expediente clínico y la pauta de complementación nutricional han quedado consolidados y sellados bajo **NOM-004-SSA3-2012**:\n\n` +
         patientLine +
         `• **Bioseguridad:** ${semBadge}\n\n` +
         `• **Meta Bioenergética e Hidratación:** ${formattedKcal} | ${hydrationStr}\n\n` +

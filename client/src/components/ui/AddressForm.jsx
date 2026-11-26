@@ -82,8 +82,8 @@ export const AddressForm = ({ zipCode, initialValue, onSave, isEditing }) => {
 
             {/* Feedback de Salud del Sistema */}
             {selectedAddress && !selectedAddress.number && (
-                <p className="text-amber-600 text-[10px] font-bold mt-2 uppercase flex items-center gap-1">
-                    ⚠️ Incompleto: Por favor selecciona una dirección con número exterior.
+                <p className="text-[#0F172A] bg-[#FFCC00]/25 px-2.5 py-1 rounded-md text-[10px] font-bold mt-2 uppercase flex items-center gap-1">
+                    ⚠️ Incompleto: Por favor seleccione una dirección con número exterior.
                 </p>
             )}
 
@@ -91,7 +91,7 @@ export const AddressForm = ({ zipCode, initialValue, onSave, isEditing }) => {
                 <button 
                     onClick={handleCommit} 
                     disabled={!isAddressComplete}
-                    className="mt-3 w-full p-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold uppercase rounded-lg transition-colors flex justify-center items-center gap-2"
+                    className="mt-3 w-full p-2 bg-[#3AAA35] hover:bg-[#2F8D2B] text-white text-xs font-bold uppercase rounded-lg transition-colors flex justify-center items-center gap-2"
                 >
                     Sincronizar Dirección
                 </button>

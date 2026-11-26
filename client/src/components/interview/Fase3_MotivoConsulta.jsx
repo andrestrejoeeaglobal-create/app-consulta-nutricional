@@ -422,7 +422,7 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
 
                         // AI Semantic Triage (GEM Integration)
                         setStep('clinica_triage_ai_analysis');
-                        setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. está procesando tus biosensores y realizando el cruce forense de tu motivo de consulta..." }]);
+                        setMessages(prev => [...prev, { role: "assistant", content: "Analizando sus bioseñales e integrando el contexto clínico de su motivo de consulta..." }]);
                         
                         const telemetry = { 
                             age: age, 
@@ -478,7 +478,7 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                         responseMsg = "Por favor, describa brevemente el síntoma o detalle adicional:";
                         nextStep = 'clinica_triage_symptoms';
                     } else if (userMsg === 'ADD_DETAIL_NO') {
-                        responseMsg = "T.I.L.O. está procesando tus biosensores y evaluación clínica...";
+                        responseMsg = "Analizando sus bioseñales e integrando la evaluación clínica de su expediente...";
                         nextStep = 'clinica_triage_ai_analysis';
                         
                         setStep('clinica_triage_ai_analysis');
@@ -554,7 +554,7 @@ const Fase3_MotivoConsulta = ({ messages, setMessages, onPhaseComplete, patientD
                     } else {
                         // AI Semantic Triage (GEM Integration)
                         setStep('clinica_triage_ai_analysis');
-                        setMessages(prev => [...prev, { role: "assistant", content: "T.I.L.O. está procesando tus biosensores y evaluación clínica..." }]);
+                        setMessages(prev => [...prev, { role: "assistant", content: "Analizando sus bioseñales e integrando la evaluación clínica de su expediente..." }]);
                         
                         const freeText = (patientData.clinical_context?.primary_motive || "") + " " + (patientData.clinical_context?.secondary_symptoms || "") + " " + symptomsInput;
                         const telemetry = { 

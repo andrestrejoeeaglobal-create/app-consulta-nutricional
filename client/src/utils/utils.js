@@ -25,7 +25,7 @@ export const cleanServerInfo = (rawString) => {
             locationLower.includes('equipo en accion querétaro') || 
             locationLower.includes('equipo en acción queretaro') || 
             locationLower.includes('equipo en acción querétaro')) {
-            location = 'Equipo en Acción Querétaro';
+            location = 'Equipo en Acción® Querétaro';
         } else {
             location = location
                 .replace(/accion/gi, 'Acción')

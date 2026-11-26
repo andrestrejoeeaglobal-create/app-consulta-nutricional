@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getActiveClinicalBearerToken } from './clinicalApiAuth';
 
 const OUTBOX_STORAGE_KEY = 'tilo_sync_outbox_v1';
 
@@ -70,6 +71,7 @@ function scheduleBackoffRetry() {
 
 export async function drainCitationOutbox() {
     if (isProcessing || queue.length === 0) return;
+    if (!getActiveClinicalBearerToken()) return;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         notifyStatus();
         return;
@@ -99,6 +101,13 @@ export async function drainCitationOutbox() {
         } catch (err) {
             inFlightItemId = null;
             const status = err?.response?.status;
+            if (status === 409 && typeof window !== 'undefined') {
+                window.dispatchEvent(
+                    new CustomEvent('tilo-conflict-quarantine', {
+                        detail: err?.response?.data || { status: 'IN_CONFLICT_QUARANTINE' }
+                    })
+                );
+            }
             // Errores 4xx definitivos (excepto 408/429) no deben atascar eternamente la cola
             if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
                 console.warn('[SyncOutbox] Petición descartada por rechazo 4xx no recuperable:', status);
@@ -172,10 +181,12 @@ if (typeof window !== 'undefined') {
         notifyStatus();
         drainCitationOutbox();
     });
+    window.addEventListener('tilo-auth-changed', (evt) => {
+        if (evt?.detail?.isLoggedIn && queue.length > 0) {
+            drainCitationOutbox();
+        }
+    });
     window.addEventListener('offline', () => {
         notifyStatus();
     });
-    if (queue.length > 0) {
-        setTimeout(() => drainCitationOutbox(), 800);
-    }
 }

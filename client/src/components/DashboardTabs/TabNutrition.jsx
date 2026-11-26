@@ -189,7 +189,7 @@ export const TabNutrition = ({
                                     <div className="flex items-center gap-2">
                                         <ShoppingBag className="w-5 h-5 text-tilo-text-muted" />
                                         <div>
-                                            <div className="text-sm font-bold text-tilo-text-main font-prototype">Entorno y Cocina</div>
+                                            <div className="text-sm font-bold text-tilo-text-main font-sans tabular-nums">Entorno y Cocina</div>
                                             <div className="text-xs text-tilo-text-muted font-medium font-sansation">
                                                 {patientData.logistics_profile?.cook_type === 'SELF' ? 'Cocina Propia' :
                                                     patientData.logistics_profile?.cook_type === 'FAMILY' ? 'Familiar Cocina' :
@@ -206,7 +206,7 @@ export const TabNutrition = ({
                                     {/* Constraints Badges */}
                                     <div className="flex flex-col gap-1 items-end">
                                         {!patientData.logistics_profile ? (
-                                            <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-text-muted/20 font-prototype">SIN EVALUAR</span>
+                                            <span className="bg-tilo-text-muted/10 text-tilo-text-muted text-[10px] px-2 py-0.5 rounded font-bold border border-tilo-text-muted/20 font-sans tabular-nums">SIN EVALUAR</span>
                                         ) : (
                                             <>
                                                 {patientData.logistics_profile?.recipe_filters?.requires_reheating === false && (
@@ -229,7 +229,7 @@ export const TabNutrition = ({
                                         <div className="flex items-center gap-2">
                                             <Users className="w-5 h-5 text-tilo-text-muted" />
                                             <div>
-                                                <div className="text-sm font-bold text-tilo-text-main font-prototype">Dinámica Familiar y Social</div>
+                                                <div className="text-sm font-bold text-tilo-text-main font-sans tabular-nums">Dinámica Familiar y Social</div>
                                                 <div className="text-xs text-tilo-text-muted font-medium font-sansation">
                                                     Acompañamiento: <span className="text-tilo-text-main font-semibold">{socialCompany}</span>
                                                 </div>
@@ -237,12 +237,12 @@ export const TabNutrition = ({
                                         </div>
                                         <div className="flex flex-col gap-1 items-end">
                                             {hasIsolationRisk && (
-                                                <span className="bg-tilo-danger/10 text-tilo-danger border border-tilo-danger/20 text-[10px] px-2.5 py-0.5 rounded font-bold animate-pulse font-prototype">
+                                                <span className="bg-tilo-danger/10 text-tilo-danger border border-tilo-danger/20 text-[10px] px-2.5 py-0.5 rounded font-bold animate-pulse font-sans tabular-nums">
                                                     RIESGO AISLAMIENTO
                                                 </span>
                                             )}
                                             {hasWorkloadRisk && (
-                                                <span className="bg-tilo-danger/10 text-tilo-danger border border-tilo-danger/20 text-[10px] px-2.5 py-0.5 rounded font-bold animate-pulse font-prototype">
+                                                <span className="bg-tilo-danger/10 text-tilo-danger border border-tilo-danger/20 text-[10px] px-2.5 py-0.5 rounded font-bold animate-pulse font-sans tabular-nums">
                                                     CARGA COCINA ELEVADA
                                                 </span>
                                             )}
@@ -291,7 +291,7 @@ export const TabNutrition = ({
                                     <div className="flex items-center gap-2">
                                         <Utensils className="w-5 h-5 text-tilo-text-muted" />
                                         <div>
-                                            <div className="text-sm font-bold text-tilo-text-main font-prototype">Estrategia Nutricional</div>
+                                            <div className="text-sm font-bold text-tilo-text-main font-sans tabular-nums">Estrategia Nutricional</div>
                                             <div className="text-xs text-tilo-text-muted font-sansation">
                                                 Solicitado: <span className="italic">{patientData.nutrition?.preferences?.user_selected_diet || '--'}</span>
                                             </div>
@@ -308,7 +308,7 @@ export const TabNutrition = ({
                                             {patientData.nutrition?.preferences?.assigned_diet || 'PENDIENTE'}
                                         </span>
                                         {patientData.nutrition?.preferences?.safety_lock?.override_applied && (
-                                            <div className="text-[9px] text-tilo-warning font-semibold mt-1 flex items-center justify-end gap-1 font-prototype uppercase">
+                                            <div className="text-[9px] text-tilo-warning font-semibold mt-1 flex items-center justify-end gap-1 font-sans tabular-nums uppercase">
                                                 <AlertTriangle size={10} />
                                                 Autorización Clínica
                                             </div>
@@ -320,7 +320,7 @@ export const TabNutrition = ({
                                 <div className="grid grid-cols-2 gap-4">
                                     {/* Dislikes */}
                                     <div className="bg-tilo-danger/5 p-3 rounded-2xl border border-tilo-danger/10">
-                                        <div className="text-[10px] font-bold text-tilo-danger uppercase tracking-wider mb-2 flex items-center gap-1 font-prototype">
+                                        <div className="text-[10px] font-bold text-tilo-danger uppercase tracking-wider mb-2 flex items-center gap-1 font-sans tabular-nums">
                                             <XCircle size={10} /> Aversiones (Excluir)
                                         </div>
                                         <div className="flex flex-wrap gap-1">
@@ -333,7 +333,7 @@ export const TabNutrition = ({
                                     </div>
                                     {/* Likes */}
                                     <div className="bg-tilo-success/5 p-3 rounded-2xl border border-tilo-success/15">
-                                        <div className="text-[10px] font-bold text-tilo-success uppercase tracking-wider mb-2 flex items-center gap-1 font-prototype">
+                                        <div className="text-[10px] font-bold text-tilo-success uppercase tracking-wider mb-2 flex items-center gap-1 font-sans tabular-nums">
                                             <Heart size={10} /> Favoritos (Incluir)
                                         </div>
                                         <div className="flex flex-wrap gap-1">
@@ -360,25 +360,25 @@ export const TabNutrition = ({
                             {/* METRICS ROW */}
                             <div className="flex justify-between items-center mb-6 bg-tilo-bg-base/30 p-4 rounded-2xl border border-tilo-border">
                                 <div className="text-center">
-                                    <div className="text-[10px] uppercase text-tilo-text-muted font-bold tracking-wider font-prototype">Ventana Comida</div>
-                                    <div className="text-xl font-bold text-tilo-text-main font-prototype">
+                                    <div className="text-[10px] uppercase text-tilo-text-muted font-bold tracking-wider font-sans tabular-nums">Ventana Comida</div>
+                                    <div className="text-xl font-bold text-tilo-text-main font-sans tabular-nums">
                                         {feedingWindow}{feedingWindow !== '--' ? 'h' : ''}
                                     </div>
                                 </div>
                                 <div className="h-8 w-px bg-tilo-border"></div>
                                 <div className="text-center">
-                                    <div className="text-[10px] uppercase text-tilo-text-muted font-bold tracking-wider font-prototype">Ayuno Nocturno</div>
-                                    <div className="text-xl font-bold text-tilo-text-main font-prototype">
+                                    <div className="text-[10px] uppercase text-tilo-text-muted font-bold tracking-wider font-sans tabular-nums">Ayuno Nocturno</div>
+                                    <div className="text-xl font-bold text-tilo-text-main font-sans tabular-nums">
                                         {fastingWindow}{fastingWindow !== '--' ? 'h' : ''}
                                     </div>
                                 </div>
                                 <div className="h-8 w-px bg-tilo-border"></div>
                                 <div className="text-center">
-                                    <div className="text-[10px] uppercase text-tilo-text-muted font-bold tracking-wider font-prototype mb-0.5">Cena Tardía</div>
+                                    <div className="text-[10px] uppercase text-tilo-text-muted font-bold tracking-wider font-sans tabular-nums mb-0.5">Cena Tardía</div>
                                     {lateDinnerRisk ? (
-                                        <span className="text-[10px] bg-tilo-danger/10 text-tilo-danger px-2 py-0.5 rounded font-bold border border-tilo-danger/20 font-prototype">RIESGO</span>
+                                        <span className="text-[10px] bg-tilo-danger/10 text-tilo-danger px-2 py-0.5 rounded font-bold border border-tilo-danger/20 font-sans tabular-nums">RIESGO</span>
                                     ) : (
-                                        <span className="text-[10px] bg-tilo-success/15 text-tilo-success px-2 py-0.5 rounded font-bold border border-tilo-success/20 font-prototype">OK</span>
+                                        <span className="text-[10px] bg-tilo-success/15 text-tilo-success px-2 py-0.5 rounded font-bold border border-tilo-success/20 font-sans tabular-nums">OK</span>
                                     )}
                                 </div>
                             </div>
@@ -399,9 +399,9 @@ export const TabNutrition = ({
                                         <div className="absolute -left-[19px] bg-tilo-text-muted/40 w-2 h-2 rounded-full border-2 border-tilo-bg-panel mt-1.5"></div>
                                         <div className="bg-tilo-bg-base/30 p-2.5 rounded-xl border border-tilo-border text-xs">
                                             <div className="flex justify-between mb-1.5 items-center">
-                                                <span className="font-bold text-tilo-text-main font-prototype">{entry.time}</span>
+                                                <span className="font-bold text-tilo-text-main font-sans tabular-nums">{entry.time}</span>
                                                 {entry.hunger_level !== null && entry.hunger_level !== undefined && (
-                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded border font-prototype uppercase ${
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded border font-sans tabular-nums uppercase ${
                                                         entry.hunger_level >= 8 
                                                             ? 'bg-tilo-success/15 text-tilo-success border-tilo-success/20' 
                                                             : entry.hunger_level <= 3 
@@ -445,74 +445,74 @@ export const TabNutrition = ({
                             ) : (
                                 <div className="grid grid-cols-2 gap-3 text-xs font-sansation">
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🥛 Lácteos</span>
-                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-prototype">{patientData.evaluacionDietetica.ffq.leche || 0} d/sem</span>
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🥛 Lácteos</span>
+                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-sans tabular-nums">{patientData.evaluacionDietetica.ffq.leche || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🥩 C. Rojas (Magra/Grasa)</span>
-                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-prototype">
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🥩 C. Rojas (Magra/Grasa)</span>
+                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-sans tabular-nums">
                                             {patientData.evaluacionDietetica.ffq.carne_magra || 0}/{patientData.evaluacionDietetica.ffq.carne_grasa || 0} d
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🥓 C. Procesadas</span>
-                                        <span className={`px-2 py-0.5 rounded font-bold font-prototype ${
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🥓 C. Procesadas</span>
+                                        <span className={`px-2 py-0.5 rounded font-bold font-sans tabular-nums ${
                                             (patientData.evaluacionDietetica.ffq.carne_procesada || 0) >= 3 
                                                 ? 'bg-tilo-danger/10 text-tilo-danger' 
                                                 : 'bg-tilo-success/10 text-tilo-success'
                                         }`}>{patientData.evaluacionDietetica.ffq.carne_procesada || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🍗 C. Blancas</span>
-                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-prototype">{patientData.evaluacionDietetica.ffq.pollo || 0} d/sem</span>
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🍗 C. Blancas</span>
+                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-sans tabular-nums">{patientData.evaluacionDietetica.ffq.pollo || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🌾 Cereales</span>
-                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-prototype">{patientData.evaluacionDietetica.ffq.cereales || 0} d/sem</span>
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🌾 Cereales</span>
+                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-sans tabular-nums">{patientData.evaluacionDietetica.ffq.cereales || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🫘 Leguminosas</span>
-                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-prototype">{patientData.evaluacionDietetica.ffq.leguminosas || 0} d/sem</span>
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🫘 Leguminosas</span>
+                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-sans tabular-nums">{patientData.evaluacionDietetica.ffq.leguminosas || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🥦 Verduras</span>
-                                        <span className={`px-2 py-0.5 rounded font-bold font-prototype ${
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🥦 Verduras</span>
+                                        <span className={`px-2 py-0.5 rounded font-bold font-sans tabular-nums ${
                                             (patientData.evaluacionDietetica.ffq.verduras || 0) >= 5 
                                                 ? 'bg-tilo-success/10 text-tilo-success' 
                                                 : 'bg-tilo-warning/10 text-tilo-warning'
                                         }`}>{patientData.evaluacionDietetica.ffq.verduras || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🍎 Frutas</span>
-                                        <span className={`px-2 py-0.5 rounded font-bold font-prototype ${
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🍎 Frutas</span>
+                                        <span className={`px-2 py-0.5 rounded font-bold font-sans tabular-nums ${
                                             (patientData.evaluacionDietetica.ffq.frutas || 0) >= 5 
                                                 ? 'bg-tilo-success/10 text-tilo-success' 
                                                 : 'bg-tilo-warning/10 text-tilo-warning'
                                         }`}>{patientData.evaluacionDietetica.ffq.frutas || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🥑 Grasas Saludables</span>
-                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-prototype">{patientData.evaluacionDietetica.ffq.grasas || 0} d/sem</span>
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🥑 Grasas Saludables</span>
+                                        <span className="bg-tilo-primary/10 text-tilo-primary px-2 py-0.5 rounded font-bold font-sans tabular-nums">{patientData.evaluacionDietetica.ffq.grasas || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🍬 Azúcares</span>
-                                        <span className={`px-2 py-0.5 rounded font-bold font-prototype ${
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🍬 Azúcares</span>
+                                        <span className={`px-2 py-0.5 rounded font-bold font-sans tabular-nums ${
                                             (patientData.evaluacionDietetica.ffq.azucares || 0) >= 3 
                                                 ? 'bg-tilo-danger/10 text-tilo-danger' 
                                                 : 'bg-tilo-success/10 text-tilo-success'
                                         }`}>{patientData.evaluacionDietetica.ffq.azucares || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">🍕 Comida Rápida</span>
-                                        <span className={`px-2 py-0.5 rounded font-bold font-prototype ${
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">🍕 Comida Rápida</span>
+                                        <span className={`px-2 py-0.5 rounded font-bold font-sans tabular-nums ${
                                             (patientData.evaluacionDietetica.ffq.chatarra || 0) >= 3 
                                                 ? 'bg-tilo-danger/10 text-tilo-danger' 
                                                 : 'bg-tilo-success/10 text-tilo-success'
                                         }`}>{patientData.evaluacionDietetica.ffq.chatarra || 0} d/sem</span>
                                     </div>
                                     <div className="flex justify-between items-center bg-tilo-bg-base/20 p-2.5 rounded-xl border border-tilo-border">
-                                        <span className="font-semibold text-tilo-text-main font-prototype">💧 Agua Natural</span>
-                                        <span className={`px-2 py-0.5 rounded font-bold font-prototype ${
+                                        <span className="font-semibold text-tilo-text-main font-sans tabular-nums">💧 Agua Natural</span>
+                                        <span className={`px-2 py-0.5 rounded font-bold font-sans tabular-nums ${
                                             (patientData.evaluacionDietetica.ffq.agua || 0) >= 8 
                                                 ? 'bg-tilo-success/10 text-tilo-success' 
                                                 : (patientData.evaluacionDietetica.ffq.agua || 0) <= 4 

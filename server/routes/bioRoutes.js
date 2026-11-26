@@ -109,9 +109,42 @@ const storage = multer.diskStorage({
     }
 });
 
+const BIO_ALLOWED_EXT_RE = /\.(pdf|htm|html|jpg|jpeg|png|webp|tcx|gpx)$/i;
+const BIO_ALLOWED_MIME_SET = new Set([
+    'application/pdf',
+    'text/html',
+    'application/xhtml+xml',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/xml',
+    'text/xml',
+    'application/gpx+xml',
+    'application/vnd.garmin.tcx+xml',
+    'application/octet-stream'
+]);
+
+function withAiTimeout(promise, timeoutMs = 20000, label = 'Gemini Vision') {
+    let timer = null;
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timeout (${timeoutMs}ms) en ${label}`)), timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
+}
+
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 25 * 1024 * 1024 } // Límite expandido a 25MB para prevenir error 413
+    limits: { fileSize: 25 * 1024 * 1024 }, // Límite expandido a 25MB para prevenir error 413
+    fileFilter: (_req, file, cb) => {
+        const extOk = BIO_ALLOWED_EXT_RE.test(String(file.originalname || ''));
+        const mimeOk = !file.mimetype || BIO_ALLOWED_MIME_SET.has(String(file.mimetype).toLowerCase());
+        if (!extOk || !mimeOk) {
+            return cb(new Error('Extensión o tipo MIME no autorizado en telemetría clínica (NOM-004).'));
+        }
+        return cb(null, true);
+    }
 });
 
 // Almacén en memoria para las sesiones de escaneo activas (polling)
@@ -1407,11 +1440,11 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
                 for (const targetModel of candidateModels) {
                     try {
                         console.log(`🤖 Intentando inferencia oculómica con modelo: ${targetModel}...`);
-                        response = await ai.models.generateContent({
+                        response = await withAiTimeout(ai.models.generateContent({
                             model: targetModel,
                             contents: parts,
                             config: { responseMimeType: 'application/json' }
-                        });
+                        }), 20000, `Ocular ${targetModel}`);
                         if (response?.text) {
                             console.log(`✅ Inferencia oculómica completada con éxito usando ${targetModel}`);
                             break;
@@ -1708,11 +1741,11 @@ Responde ÚNICAMENTE en JSON estricto con esta estructura:
             for (const targetModel of candidateModels) {
                 try {
                     console.log(`🤖 Intentando inferencia lingual con modelo: ${targetModel}...`);
-                    response = await ai.models.generateContent({
+                    response = await withAiTimeout(ai.models.generateContent({
                         model: targetModel,
                         contents: parts,
                         config: { responseMimeType: 'application/json' }
-                    });
+                    }), 20000, `Lingual ${targetModel}`);
                     if (response?.text) {
                         console.log(`✅ Inferencia lingual completada con éxito usando ${targetModel}`);
                         break;
@@ -1936,13 +1969,13 @@ Responde ÚNICAMENTE con el objeto JSON válido.`);
                 let response = null;
                 for (const targetModel of candidateModels) {
                     try {
-                        response = await ai.models.generateContent({
+                        response = await withAiTimeout(ai.models.generateContent({
                             model: targetModel,
                             contents,
                             config: {
                                 responseMimeType: "application/json",
                             }
-                        });
+                        }), 20000, `Somatic ${targetModel}`);
                         if (response?.text) break;
                     } catch (mErr) {
                         console.warn(`⚠️ Modelo ${targetModel} no disponible (${mErr.message}), probando siguiente...`);
@@ -2209,13 +2242,13 @@ Responde ÚNICAMENTE con el objeto JSON válido.`
                     for (const targetModel of candidateModels) {
                         try {
                             console.log(`🤖 Consultando ${targetModel} para documentos escaneados sin capa de texto (${visionFiles.length})...`);
-                            response = await ai.models.generateContent({
+                            response = await withAiTimeout(ai.models.generateContent({
                                 model: targetModel,
                                 contents,
                                 config: {
                                     responseMimeType: "application/json",
                                 }
-                            });
+                            }), 20000, `ExternalDocs ${targetModel}`);
                             if (response?.text) break;
                         } catch (mErr) {
                             console.warn(`⚠️ Modelo ${targetModel} no disponible en external-docs (${mErr.message}), probando siguiente...`);

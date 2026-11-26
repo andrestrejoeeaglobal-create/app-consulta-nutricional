@@ -1,9 +1,25 @@
 const crypto = require('crypto');
 const { db } = require('../db');
 
-// Clave simétrica de cifrado clínico de 32 bytes (256 bits)
-const rawKey = process.env.CLINICAL_ENCRYPTION_KEY || '01234567890123456789012345678901';
-const ENCRYPTION_KEY = Buffer.from(rawKey.padEnd(32, '0').slice(0, 32), 'utf8');
+// Clave simétrica de cifrado clínico de 32 bytes (256 bits reales NIST AES-256-GCM — Cero llaves públicas hardcodeadas)
+function resolveClinicalEncryptionKey() {
+    const rawKey = String(process.env.CLINICAL_ENCRYPTION_KEY || '').trim();
+    if (!rawKey || rawKey === '01234567890123456789012345678901') {
+        throw new Error(
+            '[NOM-004 FAIL-CLOSED] CLINICAL_ENCRYPTION_KEY ausente o insegura en variables de entorno. Configure una clave criptográfica real de 256 bits (64 caracteres hex o >= 32 bytes).'
+        );
+    }
+    if (/^[0-9a-f]{64}$/i.test(rawKey)) {
+        return Buffer.from(rawKey, 'hex');
+    }
+    const utf8Buf = Buffer.from(rawKey, 'utf8');
+    if (utf8Buf.length < 32) {
+        throw new Error('[NOM-004 FAIL-CLOSED] CLINICAL_ENCRYPTION_KEY debe tener al menos 32 bytes efectivos (o 64 caracteres hexadecimales).');
+    }
+    return utf8Buf.subarray(0, 32);
+}
+
+const ENCRYPTION_KEY = resolveClinicalEncryptionKey();
 
 // Asegurar existencia de la tabla audit_ledger en SQLite para bitácora inmutable bajo NOM-004
 db.exec(`
@@ -92,12 +108,17 @@ function decryptClinicalData(cipherText) {
         return trimmed;
     }
 
-    const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, Buffer.from(ivHex, 'hex'));
-    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+    try {
+        const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, Buffer.from(ivHex, 'hex'));
+        decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
 
-    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+        let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    } catch (decErr) {
+        console.error('🛑 [NOM-004 CRYPTOVAULT] Fallo de autenticación GCM o clave incompatible al descifrar registro:', decErr.message);
+        return null;
+    }
 }
 
 const selectLastHashStmt = db.prepare('SELECT current_hash FROM audit_ledger ORDER BY id DESC LIMIT 1');

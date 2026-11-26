@@ -2,8 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { db } = require('./db');
 
+const backupsDir = path.join(__dirname, '..', 'backups_vault_nom004');
+if (!fs.existsSync(backupsDir)) {
+    fs.mkdirSync(backupsDir, { recursive: true });
+}
 const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
-let sqlDump = `-- DUMP OF TILO & SINERGIX HEALTH SYSTEM DATABASE\n-- Generated: ${new Date().toISOString()}\n\n`;
+let sqlDump = `-- DUMP OF EQUIPO EN ACCION - T.I.L.O. CLINICAL VAULT\n-- Generated: ${new Date().toISOString()}\n\n`;
 
 for (const { name } of tables) {
     const schema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(name);
@@ -24,6 +28,6 @@ for (const { name } of tables) {
     sqlDump += '\n';
 }
 
-const targetPath = path.join(__dirname, 'database_dump.sql');
+const targetPath = path.join(backupsDir, `database_dump_${Date.now()}.sql`);
 fs.writeFileSync(targetPath, sqlDump);
-console.log(`✅ database_dump.sql exported successfully. Size: ${sqlDump.length} bytes`);
+console.log(`✅ SQL dump exported to vault successfully. Size: ${sqlDump.length} bytes`);

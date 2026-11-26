@@ -648,7 +648,7 @@ export const TabDiagnosis = ({
                                             </div>
                                         )}
                                         <div>
-                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#334155] dark:text-[#CBD5E1] block">
                                                 Semáforo Clínico de Bioseguridad Transparente
                                             </span>
                                             <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
@@ -702,7 +702,7 @@ export const TabDiagnosis = ({
                                             {semaphore.recommendedLabs.map((lab, lIdx) => (
                                                 <div
                                                     key={lIdx}
-                                                    className="bg-white dark:bg-[#1A1A1A] border border-slate-200/80 dark:border-slate-800 rounded-lg px-3 py-2 text-[11.5px] font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2"
+                                                    className="bg-white dark:bg-[#0F172A] border border-slate-200/80 dark:border-slate-800 rounded-lg px-3 py-2 text-[11.5px] font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2"
                                                 >
                                                     <span className="w-2 h-2 rounded-full bg-[#1C75BC] shrink-0" />
                                                     <span>{lab}</span>
@@ -893,7 +893,7 @@ export const TabDiagnosis = ({
                                                                 {sys.title}
                                                             </h4>
                                                             {sys.subtitle && (
-                                                                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium block">
+                                                                <span className="text-[11px] text-[#334155] dark:text-[#CBD5E1] font-medium block">
                                                                     {sys.subtitle}
                                                                 </span>
                                                             )}
@@ -994,13 +994,13 @@ export const TabDiagnosis = ({
 
                                         <div className="bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 text-[11px] space-y-2">
                                             <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
-                                                <span className="text-slate-500 dark:text-slate-400 font-bold sm:w-32 shrink-0">Pauta indicada:</span>
+                                                <span className="text-[#334155] dark:text-[#CBD5E1] font-bold sm:w-32 shrink-0">Pauta indicada:</span>
                                                 <span className="font-extrabold text-slate-900 dark:text-slate-100 flex-1 text-left">
                                                     {String(formula33.dosage || '').replace(/(\d+)\s+(ml|g)\b/gi, '$1\u00A0$2')}
                                                 </span>
                                             </div>
                                             <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
-                                                <span className="text-slate-500 dark:text-slate-400 font-bold sm:w-32 shrink-0">Momento ideal:</span>
+                                                <span className="text-[#334155] dark:text-[#CBD5E1] font-bold sm:w-32 shrink-0">Momento ideal:</span>
                                                 <span className="font-bold text-[#B70E0C] dark:text-[#FECACA] flex-1 text-left">
                                                     ☀️ {String(formula33.timing || '').replace(/(\d+:\d+)\s+(AM|PM)/gi, '$1\u00A0$2')}
                                                 </span>
@@ -1035,13 +1035,13 @@ export const TabDiagnosis = ({
 
                                         <div className="bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 text-[11px] space-y-2">
                                             <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
-                                                <span className="text-slate-500 dark:text-slate-400 font-bold sm:w-32 shrink-0">Pauta indicada:</span>
+                                                <span className="text-[#334155] dark:text-[#CBD5E1] font-bold sm:w-32 shrink-0">Pauta indicada:</span>
                                                 <span className="font-extrabold text-slate-900 dark:text-slate-100 flex-1 text-left">
                                                     {String(formula34.dosage || '').replace(/(\d+)\s+(ml|g)\b/gi, '$1\u00A0$2')}
                                                 </span>
                                             </div>
                                             <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
-                                                <span className="text-slate-500 dark:text-slate-400 font-bold sm:w-32 shrink-0">Hidratación clave:</span>
+                                                <span className="text-[#334155] dark:text-[#CBD5E1] font-bold sm:w-32 shrink-0">Hidratación clave:</span>
                                                 <span className="font-bold text-[#3AAA35] dark:text-[#DCFCE7] flex-1 text-left">
                                                     💧 Mínimo 500{'\u00A0'}ml de agua simple
                                                 </span>

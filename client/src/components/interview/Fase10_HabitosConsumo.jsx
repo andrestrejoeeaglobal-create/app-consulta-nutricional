@@ -384,7 +384,7 @@ export default function Fase10_HabitosConsumo({ messages, setMessages, patientDa
                         });
                         setCurrentStep('ALCOHOL_GATE');
                     } else {
-                        addMessage('assistant', isMinor ? 'Por favor selecciona Sí o No.' : 'Por favor seleccione Sí o No.', {
+                        addMessage('assistant', 'Por favor seleccione Sí o No.', {
                             avatar: tiloImg,
                             options: [
                                 { label: '✅ Sí', value: 'Sí' },

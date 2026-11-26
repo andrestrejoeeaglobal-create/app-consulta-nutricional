@@ -142,7 +142,7 @@ export default function Fase16_BiometriaGeneral({
             } else if (patientAge >= 13 && patientAge < 18) {
                 target = 'Adolescente';
                 p1Text = `He registrado y sellado su cuestionario de frecuencia de consumo (FFQ) de manera exitosa para la calibración de su expediente clínico bajo la **NOM-004-SSA3-2012**. Hemos terminado la entrevista verbal. Ahora pasaremos a tomar sus medidas físicas para calibrar el algoritmo.`;
-                p2Text = `📢 Diga a **${pName}**:\n\n'Por favor sube a la báscula sin zapatos y retira objetos pesados de tus bolsillos.'\n\n(Espere a que el peso se estabilice y registre en kg):`;
+                p2Text = `📢 Diga a **${pName}**:\n\n'Por favor suba a la báscula sin calzado y retire objetos pesados de sus bolsillos.'\n\n(Espere a que el peso se estabilice y registre en kg):`;
             }
 
             const initialMsg = `<binary_gate_execution>\n` +
@@ -805,7 +805,7 @@ export default function Fase16_BiometriaGeneral({
                     p2Text = `📢 Solicite al tutor:\n\n'Por favor solicite que **${pName}** suba a la báscula sin zapatos y retire objetos pesados de sus bolsillos.'\n\n(Espere a que el peso se estabilice y registre en kg):`;
                 } else if (patientAge >= 13 && patientAge < 18) {
                     target = 'Adolescente';
-                    p2Text = `📢 Diga a **${pName}**:\n\n'Por favor sube a la báscula sin zapatos y retira objetos pesados de tus bolsillos.'\n\n(Espere a que el peso se estabilice y registre en kg):`;
+                    p2Text = `📢 Diga a **${pName}**:\n\n'Por favor suba a la báscula sin calzado y retire objetos pesados de sus bolsillos.'\n\n(Espere a que el peso se estabilice y registre en kg):`;
                 }
 
                 const resetMsg = `<binary_gate_execution>\n` +
