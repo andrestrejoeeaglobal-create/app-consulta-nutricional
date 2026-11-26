@@ -491,6 +491,18 @@ export const formatPlanForClipboard = function (options) {
         .replace(/(?<![\p{L}\p{N}_])disu[ée]lvelo(?![\p{L}\p{N}_])/giu, (m) => (m[0] === 'D' ? 'Disuélvalo' : 'disuélvalo'))
         .replace(/(?<![\p{L}\p{N}_])tus(?=\s+\p{L})/giu, (m) => (m[0] === 'T' ? 'Sus' : 'sus'))
         .replace(/(?<![\p{L}\p{N}_])tu(?=\s+\p{L})/giu, (m) => (m[0] === 'T' ? 'Su' : 'su'))
+        .replace(
+          /(Reactividad\s+Cut[áa]nea\s+Microvascular|Integridad\s+D[ée]rmica\s+y\s+Trofismo\s+Cut[áa]neo|Compromiso\s+Estructural\s*\/\s*Articular)\s*\(\s*Cara\s+(anterior|medial|lateral|posterior)\s+de\s+(?:la\s+)?extremidad\s+inferior(?:\s+distal)?(?:\s*[\(\[][^)\]]+[\)\]])?\s*\)\s*(?:,\s*|\s+y\s+|\s+e\s+)\1\s*\(\s*Cara\s+(anterior|medial|lateral|posterior)\s+de\s+(?:la\s+)?extremidad\s+inferior(?:\s+distal)?(?:\s*[\(\[][^)\]]+[\)\]])?\s*\)/giu,
+          (_, baseTitle, f1, f2) => {
+            const faces = Array.from(new Set([String(f1).toLowerCase(), String(f2).toLowerCase()]));
+            return faces.length >= 2
+              ? `${baseTitle} en extremidades inferiores (caras ${faces.join(' y ')})`
+              : `${baseTitle} en extremidad inferior (cara ${faces[0]})`;
+          }
+        )
+        .replace(/,\s*(Integridad\s+D[ée]rmica\s+y\s+Trofismo\s+Cut[áa]neo\s+en\s+extremidades\s+inferiores\s*\([^()]+\))\./gu, ' e $1.')
+        .replace(/([\p{L}\p{N}\])])\s*,\s+(y|e)\s+(?=(?:alteraciones|integridad|reactividad|estasis|ingurgitaci[óo]n|arco|cambios|part[íi]culas|antecedentes|relaci[óo]n|[íi]ndice|bloqueo|eje|ausencia)(?![\p{L}\p{N}_]))/giu, '$1 $2 ')
+        .replace(/(?<![\p{L}\p{N}_])y\s+(?=(?:[iíIÍ]|[hH][iíIÍ](?![aeouáéóúAEOUÁÉÓÚ]))\p{L})/gu, 'e ')
         .replace(/\s*&\s*/gu, ' y ')
     );
 

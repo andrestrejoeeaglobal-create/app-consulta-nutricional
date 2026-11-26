@@ -4044,7 +4044,7 @@ function buildCanonicalTherapeuticContract({
         const isRecalibrationMode = Boolean(isMicroDose && !isPaused && priorAdherence?.hasPriorAdherence);
 
         return {
-            contractVersion: '3.6.0-EGM76-SSOTT',
+            contractVersion: '3.6.2-EGM78-SSOTT',
             biometricMonitorLabel,
             regimen,
             regimenBadge,
@@ -4057,6 +4057,9 @@ function buildCanonicalTherapeuticContract({
             calciumLocked,
             hasThyroidAlert,
             hasLabResultsLoaded,
+            labValues: serum?.labValues || {},
+            precedence: serum?.precedence || {},
+            ecgQrsAxisDeg: serum?.cabinetSignals?.ecgQrsAxisDeg ?? null,
             isPaused,
             isMicroDose,
             isCardioprotective1Plus2Continuity,
@@ -4241,17 +4244,255 @@ function stripUnaccreditedCodesAndFlags(rawText) {
         .trim();
 }
 
-function formatCleanAnomalyDescriptorForSummary(anomaly) {
-    const cleanLabel = sanitizeClinicalSpanish(String(anomaly?.label || '').trim());
-    if (!cleanLabel) return '';
-    const detail = String(anomaly?.detail || '');
+function joinClinicalSpanishFindings(rawItems) {
+    const items = (Array.isArray(rawItems) ? rawItems : [])
+        .map((x) => String(x || '').trim())
+        .filter(Boolean);
+    if (items.length === 0) return '';
+    if (items.length === 1) return items[0];
+    const head = items.slice(0, -1).join(', ');
+    const last = items[items.length - 1];
+    const firstTokenOfLast = last.replace(/^[^\p{L}\p{N}]+/u, '');
+    const conj = /^(?:i|í|hi(?![aeouáéóú]))/iu.test(firstTokenOfLast) ? 'e' : 'y';
+    return `${head} ${conj} ${last}`;
+}
+
+function fixSpanishEuphonicConjunctions(rawText = '') {
+    return String(rawText || '')
+        .replace(/([\p{L}\p{N}\])])\s*,\s+(y|e)\s+(?=(?:alteraciones|integridad|reactividad|estasis|ingurgitaci[óo]n|arco|cambios|part[íi]culas|antecedentes|relaci[óo]n|[íi]ndice|bloqueo|eje|ausencia)(?![\p{L}\p{N}_]))/giu, '$1 $2 ')
+        .replace(/(?<![\p{L}\p{N}_])y\s+(?=(?:[iíIÍ]|[hH][iíIÍ](?![aeouáéóúAEOUÁÉÓÚ]))\p{L})/gu, 'e ')
+        .replace(/(?<![\p{L}\p{N}_])Y\s+(?=(?:[iíIÍ]|[hH][iíIÍ](?![aeouáéóúAEOUÁÉÓÚ]))\p{L})/gu, 'E ');
+}
+
+function normalizeUngroupedLowerLimbProse(rawText = '') {
+    let out = String(rawText || '');
+    const patterns = [
+        'Reactividad Cutánea Microvascular',
+        'Integridad Dérmica y Trofismo Cutáneo',
+        'Compromiso Estructural / Articular',
+        'Estasis Venosa Cutánea y Cambios Hemosiderínicos'
+    ];
+    for (const baseTitle of patterns) {
+        const escapedTitle = baseTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pairRe = new RegExp(
+            `${escapedTitle}\\s*\\(\\s*Cara\\s+(anterior|medial|lateral|posterior)\\s+de\\s+(?:la\\s+)?extremidad\\s+inferior(?:\\s+distal)?(?:\\s*[\\(\\[][^)\\]]+[\\)\\]])?\\s*\\)\\s*(?:,\\s*|\\s+y\\s+|\\s+e\\s+)${escapedTitle}\\s*\\(\\s*Cara\\s+(anterior|medial|lateral|posterior)\\s+de\\s+(?:la\\s+)?extremidad\\s+inferior(?:\\s+distal)?(?:\\s*[\\(\\[][^)\\]]+[\\)\\]])?\\s*\\)`,
+            'giu'
+        );
+        out = out.replace(pairRe, (_, f1, f2) => {
+            const faces = Array.from(new Set([String(f1).toLowerCase(), String(f2).toLowerCase()]));
+            return faces.length >= 2
+                ? `${baseTitle} en extremidades inferiores (caras ${joinClinicalSpanishFindings(faces)})`
+                : `${baseTitle} en extremidad inferior (cara ${faces[0]})`;
+        });
+    }
+    return fixSpanishEuphonicConjunctions(out);
+}
+
+function isPreventiveOnlyGfrStageG2Node(node, contract = null) {
+    if (!node || node.id !== 'NODO_2_BIOTRANSFORMACION') return false;
+    const anomalies = Array.isArray(node.anomalies) ? node.anomalies : [];
+    if (anomalies.length === 0) return false;
+    const allArePreventiveGfr = anomalies.every((a) =>
+        /filtrado\s+glomerular|\btfge\b/i.test(`${a?.label || ''} ${a?.detail || ''}`) &&
+        !/sobrecarga\s+de\s+biotransformaci[óo]n|carga\s+xenobi[óo]tica|antecedente\s+(?:hepatobiliar|nefrourol[óo]gico)/i.test(String(a?.label || ''))
+    );
+    if (!allArePreventiveGfr) return false;
+    const labs = contract?.labValues || {};
+    const prec = contract?.precedence || {};
+    const renalOk = prec.venousRenalNormal !== false && !(Number(labs.creatinine) > 1.2) && !(Number(labs.gfr) > 0 && Number(labs.gfr) < 60);
+    const hepaticOk = prec.venousHepaticNormal !== false && !(Number(labs.alt) > 61) && !(Number(labs.ast) > 40) && !(Number(labs.ggt) > 61) && !(Number(labs.bilirubin) > 1.2);
+    return renalOk && hepaticOk;
+}
+
+function formatCleanAnomalyDescriptorForSummary(anomaly, contract = null) {
+    const rawLabel = sanitizeClinicalSpanish(String(anomaly?.label || '').trim());
+    if (!rawLabel) return '';
+    const cleanLabel = /^sd\s*ldl$/i.test(rawLabel) ? 'sdLDL' : rawLabel;
+    const detail = sanitizeClinicalSpanish(String(anomaly?.detail || '').trim());
+    const source = String(anomaly?.source || '').toUpperCase();
+    const labs = contract?.labValues || {};
+
+    // 1. Nodo 2: TFGe KDIGO G2 en seguimiento preventivo con azoados normales
+    if (/filtrado\s+glomerular|\btfge\b/i.test(cleanLabel) && /seguimiento\s+preventivo|kdigo\s+g2/i.test(`${cleanLabel} ${detail}`)) {
+        const gfrM = detail.match(/^([0-9]+(?:\.[0-9]+)?)\s*mL\/min\/1\.73\s*m²/i);
+        const gfrVal = gfrM ? gfrM[1] : (Number(labs.gfr) > 0 ? String(labs.gfr) : null);
+        const creatM = detail.match(/Creatinina\s+([0-9]+(?:\.[0-9]+)?)\s*mg\/dL/i);
+        const creatVal = creatM ? creatM[1] : (Number(labs.creatinine) > 0 ? String(labs.creatinine) : null);
+        const uricM = detail.match(/[ÁA]cido\s+[úu]rico\s+([0-9]+(?:\.[0-9]+)?)\s*mg\/dL/i);
+        const uricVal = uricM ? uricM[1] : (Number(labs.uricAcid) > 0 ? String(labs.uricAcid) : null);
+        if (gfrVal) {
+            const normCompanions = [
+                creatVal ? `Creatinina ${creatVal} mg/dL` : null,
+                uricVal ? `Ácido úrico ${uricVal} mg/dL` : null
+            ].filter(Boolean);
+            const companionClause = normCompanions.length >= 2
+                ? ` con ${joinClinicalSpanishFindings(normCompanions)} normales`
+                : (normCompanions.length === 1 ? ` con ${normCompanions[0]} normal` : '');
+            return `TFGe de ${gfrVal} mL/min/1.73 m² [estadio preventivo KDIGO G2${companionClause}]`;
+        }
+    }
+
+    // 2. Compuestos OCR_LAB (Dislipidemia Nodo 5, Sobrecarga Hepatorrenal Nodo 2, Serie Blanca/Fase Aguda Nodo 6, Endocrino Nodo 4)
+    const compositePrefixM = detail.match(/^(?:Marcadores\s+vasculares|Par[áa]metros\s+alterados|Analitos|Hormonas):\s*(.+)$/i);
+    if (compositePrefixM) {
+        const items = compositePrefixM[1]
+            .split(/\s*•\s*/)
+            .map((seg) => seg.replace(/\s*\([^()]*\)/g, '').replace(/:\s*/g, ' ').trim())
+            .filter(Boolean);
+        if (items.length > 0) {
+            const baseClean = cleanLabel.replace(/\s*\([^()]*\)\s*$/, '').trim();
+            return `${baseClean} (${joinClinicalSpanishFindings(items)})`;
+        }
+    }
+
+    // 3. Calcio Sérico / Vitamina D / Índices Funcionales (HOMA-IR, Ratio TG/HDL)
+    if (source === 'FUNCTIONAL_INDEX') {
+        const ratioM = detail.match(/(?:Ratio|HOMA-IR)\s*=\s*([0-9]+(?:\.[0-9]+)?)/i);
+        if (ratioM && !/\([0-9]/.test(cleanLabel)) {
+            return `${cleanLabel} (${ratioM[1]})`;
+        }
+    }
+    if (source === 'OCR_LAB' && !/\(\s*[+-]?\d/.test(cleanLabel)) {
+        const explicitColonVal = detail.match(/^(?:Calcio\s+s[ée]rico|Vitamina\s+D(?:\s*\(25-OH\))?)\s*:\s*([0-9]+(?:\.[0-9]+)?\s*(?:mg\/dL|ng\/mL))/i);
+        if (explicitColonVal) {
+            const flatBase = cleanLabel.replace(/\(\s*25-OH\s*\)/i, '25-OH').replace(/\s*\([^()]*\)\s*$/, '').trim();
+            return `${flatBase} (${explicitColonVal[1].trim()})`;
+        }
+        const leadValM = detail.match(/^([+-]?\d+(?:\.\d+)?(?:\s*(?:mg\/dL|g\/dL|ng\/mL|pg\/mL|µg\/dL|mcg\/dL|µmol\/L|mmol\/L|mEq\/L|meq\/L|U\/L|UI\/L|µUI\/mL|mUI\/L|mL\/min(?:\/1\.73\s*m²)?|mm\/h|%|fL|pg|miles\/µL|\/µL))?)\s*(?:\(|$)/i);
+        if (leadValM) {
+            return `${cleanLabel} (${leadValM[1].trim()})`;
+        }
+    }
+
+    // 4. Antropometría Física (ICC + ICA)
+    if (source === 'ANTHRO_ICC') {
+        const icaM = detail.match(/\bICA:\s*([0-9]+(?:\.[0-9]+)?)/i);
+        if (icaM && /\(ICC:\s*[0-9.]+\)/i.test(cleanLabel) && !/ICA/i.test(cleanLabel)) {
+            return cleanLabel.replace(/\(ICC:\s*([0-9.]+)\)/i, `(ICC: $1; ICA: ${icaM[1]})`);
+        }
+        return cleanLabel;
+    }
+
+    // 5. Gabinete RX e Imagenología/Ultrasonido (sin paréntesis anidados)
+    if (source === 'CABINET_RX') {
+        const ictM = detail.match(/\[ICT\]\s*([0-9]+(?:\.[0-9]+)?)/i) || detail.match(/\bICT\s*[:=]?\s*([0-9]+(?:\.[0-9]+)?)/i);
+        if (ictM) {
+            if (/\(([^()]+)\)\s*$/.test(cleanLabel)) {
+                return cleanLabel.replace(/\(([^()]+)\)\s*$/, `($1; ICT ${ictM[1]})`);
+            }
+            return `${cleanLabel} (ICT ${ictM[1]})`;
+        }
+        return cleanLabel;
+    }
+    if (source === 'CABINET_IMAGING') {
+        const multiParenM = cleanLabel.match(/^(.+?)\s*\(([^()]+)\)\s*\((\d{2}\/\d{2}\/\d{4})\)\s*$/);
+        const hasPostSurgNoHernia = /cambios\s+postquir[úu]rgicos/i.test(detail) && /sin\s+defectos\s+herniarios/i.test(detail);
+        const briefFinding = hasPostSurgNoHernia ? '; cambios postquirúrgicos sin defectos herniarios activos' : '';
+        if (multiParenM) {
+            const titleBase = multiParenM[1].trim();
+            const regionLower = multiParenM[2].trim().replace(/^Regi[óo]n\s+/i, 'región ').toLowerCase();
+            const dateStr = multiParenM[3].trim();
+            return `${titleBase} en ${regionLower} (${dateStr}${briefFinding})`;
+        }
+    }
+
+    // 6. Sueño / Estrés / Ayuno con cifra medible
+    if (source === 'LIFESTYLE_SLEEP' && !/\(\d/.test(cleanLabel)) {
+        const hM = detail.match(/Horas\s+reportadas:\s*([0-9]+(?:\.[0-9]+)?)\s*h\/noche/i);
+        if (hM) return `${cleanLabel} (${hM[1]} h/noche)`;
+    }
+    if (source === 'LIFESTYLE_STRESS' && !/\(\d/.test(cleanLabel)) {
+        const sM = detail.match(/estr[ée]s\s+percibido:\s*([0-9]+\/10)/i);
+        if (sM) return `${cleanLabel.replace(/\s*\(Eje\s+HPA\)/i, '')} (${sM[1]})`;
+    }
+    if (source === 'R24H_FASTING' && !/\(\d/.test(cleanLabel)) {
+        const fM = detail.match(/estimado\s+de\s*([0-9]+(?:\.[0-9]+)?)\s*h\b/i);
+        if (fM) return `${cleanLabel} (${fM[1]} h)`;
+    }
+
     if (/•\s*Bajo\b/i.test(detail) || anomaly?.direction === 'LOW') {
         return `${cleanLabel} disminuido`;
     }
     if (/•\s*Elevado\b/i.test(detail) || anomaly?.direction === 'HIGH') {
         return `${cleanLabel} elevado`;
     }
-    return cleanLabel;
+    return cleanLabel.replace(/\(\s*([^()]+?)\s*\(\s*([^()]+?)\s*\)\s*\)/g, '($1 [$2])');
+}
+
+function buildGroupedAnomalyDescriptorsForSummary(anomalies = [], contract = null, maxDescriptors = 6) {
+    const entries = [];
+    const somaticGroupIndexByKey = new Map();
+
+    for (const anom of anomalies) {
+        const src = String(anom?.source || '').toUpperCase();
+        const rawLbl = sanitizeClinicalSpanish(String(anom?.label || '').trim());
+        const firstParen = rawLbl.indexOf('(');
+        const lastParen = rawLbl.lastIndexOf(')');
+
+        if (src === 'SOMATIC_VISION' && firstParen > 0 && lastParen > firstParen) {
+            const baseTitle = rawLbl.slice(0, firstParen).trim();
+            const rawRegion = rawLbl.slice(firstParen + 1, lastParen).trim();
+            const lowerLimbFaceM = rawRegion.match(/^cara\s+(anterior|medial|lateral|posterior|interna|externa)\s+de\s+(?:la\s+)?extremidad\s+inferior(?:\s+distal)?(?:\s*\(?pierna\)?)?$/i);
+            const groupKey = lowerLimbFaceM
+                ? `${normalizeForMatch(baseTitle)}::LOWER_LIMB`
+                : `${normalizeForMatch(baseTitle)}::GENERAL`;
+
+            if (somaticGroupIndexByKey.has(groupKey)) {
+                const grp = entries[somaticGroupIndexByKey.get(groupKey)];
+                grp.rawCount += 1;
+                if (lowerLimbFaceM) {
+                    const faceNorm = lowerLimbFaceM[1].toLowerCase();
+                    if (!grp.faces.includes(faceNorm)) grp.faces.push(faceNorm);
+                } else {
+                    const cleanReg = rawRegion.replace(/\s*\([^()]*\)/g, '').trim();
+                    if (cleanReg && !grp.regions.includes(cleanReg)) grp.regions.push(cleanReg);
+                }
+                continue;
+            }
+
+            const newEntry = {
+                isSomaticGroup: true,
+                baseTitle,
+                isLowerLimb: Boolean(lowerLimbFaceM),
+                faces: lowerLimbFaceM ? [lowerLimbFaceM[1].toLowerCase()] : [],
+                regions: lowerLimbFaceM ? [] : [rawRegion.replace(/\s*\([^()]*\)/g, '').trim()].filter(Boolean),
+                rawCount: 1
+            };
+            somaticGroupIndexByKey.set(groupKey, entries.length);
+            entries.push(newEntry);
+            continue;
+        }
+
+        const formatted = formatCleanAnomalyDescriptorForSummary(anom, contract);
+        if (!formatted) continue;
+        const existingIdx = entries.findIndex((e) => !e.isSomaticGroup && e.text.toLowerCase() === formatted.toLowerCase());
+        if (existingIdx >= 0) {
+            entries[existingIdx].rawCount += 1;
+        } else {
+            entries.push({ isSomaticGroup: false, text: formatted, rawCount: 1 });
+        }
+    }
+
+    const materialized = entries.map((e) => {
+        if (!e.isSomaticGroup) return { text: e.text, rawCount: e.rawCount };
+        if (e.isLowerLimb) {
+            const text = e.faces.length >= 2
+                ? `${e.baseTitle} en extremidades inferiores (caras ${joinClinicalSpanishFindings(e.faces)})`
+                : `${e.baseTitle} en extremidad inferior (cara ${e.faces[0] || 'distal'})`;
+            return { text, rawCount: e.rawCount };
+        }
+        const text = e.regions.length > 0
+            ? `${e.baseTitle} (${joinClinicalSpanishFindings(e.regions)})`
+            : e.baseTitle;
+        return { text, rawCount: e.rawCount };
+    });
+
+    const sliced = materialized.slice(0, maxDescriptors);
+    const accountedRawCount = sliced.reduce((acc, it) => acc + it.rawCount, 0);
+    return {
+        descriptors: sliced.map((it) => it.text),
+        accountedRawCount
+    };
 }
 
 function formatMedicalBiomarkerSummary(rawItem) {
@@ -4269,7 +4510,8 @@ function formatMedicalBiomarkerSummary(rawItem) {
 }
 
 /**
- * Construye una síntesis médica determinista en prosa clínica limpia (cero CIE-10 no acreditados y cero banderas de debug).
+ * Construye una síntesis médica determinista en prosa clínica limpia con guarismos medidos (`tabular-nums`),
+ * cero duplicación semiológica en `Nodo 5`, conectores españoles naturales (`y`/`e`) y agrupación anatómica (`EGM-78`).
  */
 function buildDeterministicNodeSynthesis(node, contract = null) {
     const rawAnomalies = Array.isArray(node.anomalies) ? node.anomalies : [];
@@ -4278,15 +4520,14 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
     );
     const count = anomalies.length;
     const hasCritical = anomalies.some(a => a.severity === 'CRÍTICA');
+    const isPreventiveGfrG2 = isPreventiveOnlyGfrStageG2Node(node, contract);
     const status = count === 0
         ? 'HOMEOSTASIS'
-        : (hasCritical && count >= 3 ? 'CRÍTICO' : (count >= 2 ? 'PRIORIDAD_ALTA' : 'ALERTA_MODERADA'));
+        : isPreventiveGfrG2
+            ? 'ALERTA_MODERADA'
+            : (hasCritical && count >= 3 ? 'CRÍTICO' : (count >= 2 ? 'PRIORIDAD_ALTA' : 'ALERTA_MODERADA'));
 
     const cleanNodeTitle = sanitizeClinicalSpanish(String(node.name || '').replace(/^\d+\.\s*/, '').trim());
-    const topDescriptors = Array.from(
-        new Set(anomalies.slice(0, 6).map(formatCleanAnomalyDescriptorForSummary).filter(Boolean))
-    );
-    const remainingCount = Math.max(0, count - topDescriptors.length);
     const hasConfirmedLabOrCabinet = anomalies.some(a =>
         a.source === 'OCR_LAB' || a.source === 'FUNCTIONAL_INDEX' || String(a.source || '').startsWith('CABINET_')
     );
@@ -4297,21 +4538,59 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
 
     let summary = orphanHomeostasisSummary;
     if (count > 0) {
-        const countLabel = count === 1 ? '1 hallazgo integrado' : `${count} hallazgos integrados`;
-        const remClause = remainingCount > 0
-            ? ` y ${remainingCount === 1 ? '1 parámetro complementario' : `${remainingCount} parámetros complementarios`}`
-            : '';
-        const listClause = topDescriptors.join(', ') + remClause;
         const triad = contract?.multimodalTriad || {};
+        const n5LowerLimbFaces = [];
+        if (node.id === 'NODO_5_TRANSPORTE' && triad.hasLowerLimbVenousStasis) {
+            for (const a of anomalies) {
+                if (a?.source === 'SOMATIC_VISION' && /estasis|hemosider/i.test(String(a?.label || ''))) {
+                    const fm = String(a?.label || '').match(/cara\s+(anterior|medial|lateral|posterior)/i);
+                    if (fm && !n5LowerLimbFaces.includes(fm[1].toLowerCase())) {
+                        n5LowerLimbFaces.push(fm[1].toLowerCase());
+                    }
+                }
+            }
+        }
+        const lowerLimbTriadLabel = n5LowerLimbFaces.length >= 2
+            ? `estasis venosa con cambios hemosiderínicos en extremidades inferiores (caras ${joinClinicalSpanishFindings(n5LowerLimbFaces)})`
+            : 'estasis venosa con cambios hemosiderínicos en extremidades inferiores';
+
         const triadDetParts = node.id === 'NODO_5_TRANSPORTE'
             ? [
                 triad.hasCornealArcus ? 'arco corneal limbar (OD+OI)' : null,
                 triad.hasSublingualVenousStasis ? 'ingurgitación de venas raninas sublinguales' : null,
-                triad.hasLowerLimbVenousStasis ? 'estasis venosa con cambios hemosiderínicos en extremidades inferiores' : null
+                triad.hasLowerLimbVenousStasis ? lowerLimbTriadLabel : null
             ].filter(Boolean)
             : [];
+
+        const isRepresentedByTriadSuffix = (a) => {
+            if (node.id !== 'NODO_5_TRANSPORTE' || triadDetParts.length === 0) return false;
+            const lbl = String(a?.label || '');
+            if (triad.hasCornealArcus && a?.source === 'OCULAR_VISION' && /arco\s+corneal|limbar/i.test(lbl)) return true;
+            if (triad.hasSublingualVenousStasis && a?.source === 'LINGUAL_VISION' && /raninas|sublingual/i.test(lbl)) return true;
+            if (triad.hasLowerLimbVenousStasis && a?.source === 'SOMATIC_VISION' && /estasis|hemosider/i.test(lbl)) return true;
+            return false;
+        };
+
+        const triadAnomaliesCount = anomalies.filter(isRepresentedByTriadSuffix).length;
+        const primaryListAnomalies = triadAnomaliesCount > 0
+            ? anomalies.filter((a) => !isRepresentedByTriadSuffix(a))
+            : anomalies;
+
+        const grouped = buildGroupedAnomalyDescriptorsForSummary(primaryListAnomalies, contract, 6);
+        const topDescriptors = grouped.descriptors;
+        const remainingCount = Math.max(0, count - triadAnomaliesCount - grouped.accountedRawCount);
+
+        const countLabel = count === 1 ? '1 hallazgo integrado' : `${count} hallazgos integrados`;
+        const listItems = remainingCount > 0
+            ? [
+                ...topDescriptors,
+                remainingCount === 1 ? '1 parámetro complementario' : `${remainingCount} parámetros complementarios`
+            ]
+            : topDescriptors;
+        const listClause = joinClinicalSpanishFindings(listItems);
+
         const triadDetSuffix = triadDetParts.length > 0
-            ? ` Triangulación semiológica convergente: ${joinSpanishList(triadDetParts)}.`
+            ? ` Triangulación semiológica convergente: ${joinClinicalSpanishFindings(triadDetParts)}.`
             : '';
         const eubiosisDetSuffix = (node.id === 'NODO_1_ASIMILACION' && contract?.isClinicalEubiosis)
             ? ' Se documenta en coexistencia con eubiosis clínica (0 síntomas digestivos referidos).'
@@ -4334,7 +4613,7 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
                 hasLeftDet ? `eje eléctrico de QRS desviado a la izquierda${qAxisV !== null ? ` (${qAxisV}°)` : ''}` : null,
                 hasRightDet ? `eje eléctrico de QRS desviado a la derecha${qAxisV !== null ? ` (${qAxisV}°)` : ''}` : null
             ].filter(Boolean);
-            return parts.length > 0 ? ` El trazo electrocardiográfico consigna ${joinSpanishList(parts)}.` : '';
+            return parts.length > 0 ? ` El trazo electrocardiográfico consigna ${joinClinicalSpanishFindings(parts)}.` : '';
         })();
         const isPureLingualScallopingCoatingEubiosis =
             node.id === 'NODO_1_ASIMILACION' &&
@@ -4345,16 +4624,26 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
             Boolean(contract?.isClinicalEubiosis);
         if (isPureLingualScallopingCoatingEubiosis) {
             summary = 'Se observa saburra dorsal moderada acompañada de indentaciones marginales bilaterales, hallazgo morfológico orientativo de demanda preventiva en el equilibrio hidrosalino intersticial con tránsito digestivo conservado (en coexistencia con eubiosis clínica asintomática: 0 síntomas digestivos).';
-        } else if (hasConfirmedLabOrCabinet) {
+        } else if (isPreventiveGfrG2) {
             summary = sanitizeClinicalSpanish(
-                `Correlación clínica y paraclínica en ${cleanNodeTitle} (${countLabel}), destacando ${listClause}.${ecgDetSuffix}${triadDetSuffix} El perfil sugiere demanda adaptativa prioritaria dentro del ${node.preAssignedLabel || 'eje funcional evaluado'}.`
+                `Correlación clínica y paraclínica en ${cleanNodeTitle} (${countLabel}), destacando ${listClause}. El perfil corresponde a seguimiento preventivo dentro del ${node.preAssignedLabel || 'Eje Funcional de Biotransformación y Depuración Hepatorrenal'}, con azoados y enzimas hepáticas conservados en rango fisiológico.`
+            );
+        } else if (hasConfirmedLabOrCabinet) {
+            const highlightSegment = listClause ? `, destacando ${listClause}` : '';
+            summary = sanitizeClinicalSpanish(
+                `Correlación clínica y paraclínica en ${cleanNodeTitle} (${countLabel})${highlightSegment}.${ecgDetSuffix}${triadDetSuffix} El perfil sugiere demanda adaptativa prioritaria dentro del ${node.preAssignedLabel || 'eje funcional evaluado'}.`
             );
         } else {
+            const semiolLead = listClause
+                ? `, con predominio en ${listClause}`
+                : (triadDetParts.length > 0 ? `, con triangulación semiológica convergente en ${joinClinicalSpanishFindings(triadDetParts)}` : '');
             summary = sanitizeClinicalSpanish(
-                `Se registran ${count === 1 ? '1 hallazgo clínico/semiológico' : `${count} hallazgos clínicos/semiológicos`} en ${cleanNodeTitle}, con predominio en ${listClause}.${ecgDetSuffix}${eubiosisDetSuffix} Hallazgos compatibles con sobrecarga adaptativa funcional sujeta a correlación clínica.`
+                `Se registran ${count === 1 ? '1 hallazgo clínico/semiológico' : `${count} hallazgos clínicos/semiológicos`} en ${cleanNodeTitle}${semiolLead}.${ecgDetSuffix}${eubiosisDetSuffix} Hallazgos compatibles con sobrecarga adaptativa funcional sujeta a correlación clínica.`
             );
         }
     }
+
+    summary = fixSpanishEuphonicConjunctions(summary);
 
     return {
         nodeId: node.id,
@@ -4373,6 +4662,90 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
                 : 'Mantenimiento fisiológico preventivo e hidratación cotidiana.'
         )
     };
+}
+
+function parseIfmBatchJsonSafe(rawText = '') {
+    const clean = String(rawText || '')
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+    if (!clean) return null;
+    try {
+        return JSON.parse(clean);
+    } catch (_) {
+        const firstBrace = clean.indexOf('{');
+        const lastBrace = clean.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            const candidate = clean
+                .slice(firstBrace, lastBrace + 1)
+                .replace(/,\s*([}\]])/g, '$1');
+            return JSON.parse(candidate);
+        }
+        throw new Error('INVALID_IFM_JSON_ENVELOPE');
+    }
+}
+
+function enforcePostLlmNumericAndClinicalParity(validSummary, node, deterministicNode, resolvedContract) {
+    let out = normalizeUngroupedLowerLimbProse(validSummary);
+    const anomalies = Array.isArray(node?.anomalies) ? node.anomalies : [];
+    const labs = resolvedContract?.labValues || {};
+
+    if (node.id === 'NODO_2_BIOTRANSFORMACION' && isPreventiveOnlyGfrStageG2Node(node, resolvedContract)) {
+        out = out.replace(
+            /demanda\s+adaptativa\s+prioritaria|sobrecarga\s+(?:de\s+biotransformaci[óo]n\s+)?hepatorrenal|compromiso\s+renal/giu,
+            'seguimiento preventivo'
+        );
+        const gfrVal = Number(labs.gfr) > 0 ? String(labs.gfr) : null;
+        if ((gfrVal && !out.includes(gfrVal)) || !/seguimiento\s+preventivo/i.test(out)) {
+            return deterministicNode.summary;
+        }
+    }
+
+    if (node.id === 'NODO_3_ENERGIA') {
+        const inlineLabInjections = [
+            [labs.totalCholesterol > 200 ? String(labs.totalCholesterol) : null, `${labs.totalCholesterol} mg/dL`, /(?<![\p{L}\p{N}_])colesterol\s+total(?![\p{L}\p{N}_])(?!\s*[\(\[]?\s*\d)/iu],
+            [labs.ldl > 130 ? String(labs.ldl) : null, `${labs.ldl} mg/dL`, /(?<![\p{L}\p{N}_])(?:colesterol\s+)?LDL(?:\s+directo)?(?![\p{L}\p{N}_])(?!\s*(?:\/HDL|[\(\[]?\s*\d))/iu],
+            [labs.nonHdl > 130 ? String(labs.nonHdl) : null, `${labs.nonHdl} mg/dL`, /(?<![\p{L}\p{N}_])(?:colesterol\s+)?no[-\s]*HDL(?![\p{L}\p{N}_])(?!\s*[\(\[]?\s*\d)/iu],
+            [labs.atherogenicIndex >= 4.5 ? String(labs.atherogenicIndex) : null, `${labs.atherogenicIndex}`, /(?<![\p{L}\p{N}_])[íi]ndice\s+aterog[ée]nico(?![\p{L}\p{N}_])(?!\s*[\(\[]?\s*\d)/iu],
+            [labs.ldlHdlRatio >= 3.0 ? String(labs.ldlHdlRatio) : null, `${labs.ldlHdlRatio}`, /(?<![\p{L}\p{N}_])relaci[óo]n\s+LDL\/HDL(?![\p{L}\p{N}_])(?!\s*[\(\[]?\s*\d)/iu],
+            [labs.sdLdl > 1.35 ? String(labs.sdLdl) : null, `${labs.sdLdl}`, /(?<![\p{L}\p{N}_])sd\s*LDL(?![\p{L}\p{N}_])(?!\s*[\(\[]?\s*\d)/iu]
+        ];
+        for (const [rawNumStr, badgeStr, targetRe] of inlineLabInjections) {
+            if (rawNumStr && !out.includes(rawNumStr) && targetRe.test(out)) {
+                out = out.replace(targetRe, (m) => `${m} (${badgeStr})`);
+            }
+        }
+        const requiredPrimaryNums = [
+            labs.totalCholesterol > 200 ? String(labs.totalCholesterol) : null,
+            labs.ldl > 130 ? String(labs.ldl) : null,
+            labs.sdLdl > 1.35 ? String(labs.sdLdl) : null,
+            labs.glucose >= 100 ? String(labs.glucose) : null,
+            labs.hba1c >= 5.7 ? String(labs.hba1c) : null
+        ].filter(Boolean);
+        if (requiredPrimaryNums.some((numStr) => deterministicNode.summary.includes(numStr) && !out.includes(numStr))) {
+            return deterministicNode.summary;
+        }
+    }
+
+    if (node.id === 'NODO_7_ESTRUCTURAL') {
+        const iccAnom = anomalies.find((a) => a?.source === 'ANTHRO_ICC');
+        const iccM = String(iccAnom?.label || '').match(/ICC:\s*([0-9]+(?:\.[0-9]+)?)/i);
+        if (iccM && !out.includes(iccM[1])) {
+            if (/cintura[-\s]*cadera|\bICC\b/i.test(out)) {
+                out = out.replace(/(relaci[óo]n\s+cintura[-\s]*cadera(?:\s+f[íi]sica)?|\bICC\b)/iu, `$1 (${iccM[1]})`);
+            } else {
+                out = `${out.replace(/\.+$/, '')}, acompañado de relación cintura-cadera física (ICC: ${iccM[1]}).`;
+            }
+        }
+    }
+
+    return fixSpanishEuphonicConjunctions(
+        out
+            .replace(/\(\s*([^()]+?)\s*\(\s*([^()]+?)\s*\)\s*\)/g, '($1 [$2])')
+            .replace(/\.\s*\.+/g, '.')
+            .replace(/\s{2,}/g, ' ')
+            .trim()
+    );
 }
 
 /**
@@ -4417,24 +4790,26 @@ async function synthesizeAllIfmNodesSSoTT(nodes, contract = null, ai = null) {
         return `NODO "${node.id}" (${node.name} | Eje: ${node.functionalCode || 'IFM'} | ${node.anomalies.length} hallazgos totales):\n${topLines}`;
     }).join('\n\n');
 
-    const prompt = `Eres el motor médico funcional CORTEX v3.2 SSoTT (Cumplimiento NOM-004-SSA3-2012 y COFEPRIS).
+    const prompt = `Eres el motor médico funcional CORTEX v3.6.2 SSoTT (Cumplimiento NOM-004-SSA3-2012 y COFEPRIS).
 Tu única tarea es redactar la síntesis observacional concisa ("summary") para cada uno de los siguientes ${activeNodes.length} Nodos IFM con hallazgos.
 
 REGLAS EPISTEMOLÓGICAS Y NORMATIVAS ESTRICTAS (OBLIGATORIAS):
 1. Devuelve exactamente un elemento en "nodes" por cada nodo listado, respetando el "nodeId" exacto.
-2. En "summary" redacta máximo 2 oraciones en español médico impecable (con ortografía y acentuación perfectas, sin viñetas numeradas ni paréntesis anidados; expresa SIEMPRE cualquier biomarcador, tasa o constante vital con guarismos arábigos exactos y unidades estándar como "71.8 mL/min/1.73 m²", "168 mg/dL" o "55 lpm", quedando ESTRICTAMENTE PROHIBIDO escribir cifras clínicas con letra).
+2. En "summary" redacta máximo 2 oraciones en español médico impecable (con ortografía y acentuación perfectas, sin viñetas numeradas ni paréntesis anidados; expresa SIEMPRE cualquier biomarcador, índice, tasa o constante vital con sus guarismos arábigos medidos y unidades estándar como "71.8 mL/min/1.73 m²", "231 mg/dL", "168 mg/dL", "1.95", "55 lpm", "QRS 165 ms", "-66°", "ICT 0.43" o "ICC 0.95", quedando ESTRICTAMENTE PROHIBIDO escribir cifras clínicas con letra u omitir los valores numéricos principales).
 3. Todo hallazgo con etiqueta "[ELECTRET]" corresponde a bioimpedancia funcional orientativa (NO es estudio de laboratorio sanguíneo ni imagenología). Queda ESTRICTAMENTE PROHIBIDO afirmar diagnósticos orgánicos cerrados como "esteatosis hepática", "congestión hepatobiliar escleral", "elevación azoada", "inflamación sistémica aguda", "intoxicación de metales pesados", "disbiosis confirmada" o "prostatitis" si no están acreditados en "[OCR_LAB]" o "[CABINET_*]".
 4. CERO CÓDIGOS CIE-10 NI PRESCRIPCIONES EN "summary": Queda prohibido incluir códigos CIE-10 (ej. E78.5, I10, Z00.0) o recomendar dietas, calorías, suplementos o fármacos dentro de "summary".
-5. ESTILO EDITORIAL MÉDICO SIN REPETICIONES LÉXICAS: Emplea conectores variados ("asociado a", "acompañado de", "compatible con").
-6. FIDELIDAD LITERAL DE GABINETE Y LABORATORIO (EGM-50): Queda ESTRICTAMENTE PROHIBIDO suavizar o alterar el grado de severidad reportado en "[CABINET_*]" (ej. NUNCA conviertas un "BLOQUEO DE LA RAMA DERECHA DEL HAZ DE HIS" o "QRS >= 120 ms" en "bloqueo incompleto", ni omitas cambios postquirúrgicos o vasculares acreditados) y NUNCA cites analitos no medidos en la lista (ej. no menciones "apo B" si solo constan LDL, no-HDL o sdLDL).
-7. EXACTITUD SEMIOLÓGICA GLOSÓMICA (EGM-74): Cuando en NODO_1_ASIMILACION existan indentaciones marginales o marcas dentales bilaterales (festoneado lingual), queda ESTRICTAMENTE PROHIBIDO afirmar "equilibrio hidrosalino adecuado"; descríbelas como demanda preventiva en el equilibrio hidrosalino intersticial.
+5. CONECTORES ESPAÑOLES NATURALES Y AGRUPACIÓN ANATÓMICA (EGM-78): Une enumeraciones con coma y conjunción final "y" ("e" ante palabras iniciadas con i-/hi- como "e Integridad" o "e Índice"); cuando un mismo hallazgo cutáneo aplique a cara anterior y cara medial de pierna, agrúpalo limpiamente como "en extremidades inferiores (caras anterior y medial)".
+6. FIDELIDAD LITERAL DE GABINETE Y LABORATORIO (EGM-50 / EGM-78): Queda ESTRICTAMENTE PROHIBIDO suavizar o alterar el grado de severidad reportado en "[CABINET_*]" (ej. NUNCA conviertas un "BLOQUEO DE LA RAMA DERECHA DEL HAZ DE HIS" o "QRS >= 120 ms" en "bloqueo incompleto", cita siempre FC, duración QRS y eje eléctrico QRS como "-66°" cuando consten) y NUNCA cites analitos no medidos en la lista (ej. no menciones "apo B" si solo constan LDL, no-HDL o sdLDL). En NODO_5_TRANSPORTE menciona cada signo semiológico (arco corneal limbar, venas raninas sublinguales, estasis venosa en extremidades inferiores) UNA SOLA VEZ sin repetirlo en otra oración.
+7. EXACTITUD GLOSÓMICA Y KDIGO G2 PREVENTIVO (EGM-74 / EGM-78): En NODO_1_ASIMILACION, cuando existan indentaciones marginales bilaterales, descríbelas como demanda preventiva en el equilibrio hidrosalino intersticial (jamás "equilibrio hidrosalino adecuado"). En NODO_2_BIOTRANSFORMACION, cuando el único hallazgo sea TFGe en estadio KDIGO G2 (60–89 mL/min/1.73 m²) con Creatinina y Ácido úrico normales, cita los valores exactos y califícalo estrictamente como "seguimiento preventivo" (prohibido llamarlo "demanda adaptativa prioritaria" o "sobrecarga hepatorrenal").
 
 NODOS ACTIVOS A SINTETIZAR:
 ${nodesDigestText}`;
 
     const candidateModels = [
+        'gemini-3.8-flash',
+        'gemini-flash-latest',
         'gemini-flash-lite-latest',
-        'gemini-2.5-flash'
+        'gemini-3.1-flash-lite'
     ];
 
     let llmSummariesByNodeId = new Map();
@@ -4455,6 +4830,7 @@ ${nodesDigestText}`;
                 config: {
                     temperature: 0.1,
                     topP: 0.8,
+                    maxOutputTokens: 2048,
                     abortSignal: controller.signal,
                     responseMimeType: 'application/json',
                     responseSchema: IFM_BATCH_SUMMARY_SCHEMA
@@ -4463,8 +4839,7 @@ ${nodesDigestText}`;
 
             const response = await Promise.race([callPromise, timeoutPromise]);
             if (response && response.text) {
-                const cleanedJson = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-                const parsed = JSON.parse(cleanedJson);
+                const parsed = parseIfmBatchJsonSafe(response.text);
                 if (Array.isArray(parsed?.nodes) && parsed.nodes.length > 0) {
                     parsed.nodes.forEach((item) => {
                         if (item?.nodeId && item?.summary) {
@@ -4472,6 +4847,7 @@ ${nodesDigestText}`;
                         }
                     });
                     if (llmSummariesByNodeId.size > 0) {
+                        console.log(`✅ [CORTEX SSoTT v3.6.2] Síntesis observacional IFM completada con modelo ${modelName} (${llmSummariesByNodeId.size}/${activeNodes.length} nodos).`);
                         break;
                     }
                 }
@@ -4644,21 +5020,54 @@ ${nodesDigestText}`;
                             (hasCompleteRbbbInNode && !/rama\s+derecha/i.test(validSummary)) ? `bloqueo de la rama derecha del Haz de His${qrsMsVal !== null ? ` (QRS ${qrsMsVal} ms)` : ''}` : null,
                             axisClause
                         ].filter(Boolean);
-                        validSummary = `${validSummary.replace(/\.+$/, '')}. El trazo electrocardiográfico consigna ${joinSpanishList(ecgExtraParts)}.`;
+                        validSummary = `${validSummary.replace(/\.+$/, '')}. El trazo electrocardiográfico consigna ${joinClinicalSpanishFindings(ecgExtraParts)}.`;
                     }
+                }
+            }
+            if (hasCompleteRbbbInNode && !/rama\s+derecha|brdhh/i.test(validSummary)) {
+                if (qrsMsVal !== null && new RegExp(`(?:duraci[óo]n\\s+(?:de\\s+)?)?QRS\\s+(?:de\\s+)?${qrsMsVal}\\s*ms`, 'iu').test(validSummary)) {
+                    validSummary = validSummary.replace(
+                        new RegExp(`(?:duraci[óo]n\\s+(?:de\\s+)?)?QRS\\s+(?:de\\s+)?${qrsMsVal}\\s*ms`, 'iu'),
+                        `bloqueo de la rama derecha del Haz de His (QRS ${qrsMsVal} ms)`
+                    );
+                } else {
+                    validSummary = `${validSummary.replace(/\.+$/, '')}, con bloqueo de la rama derecha del Haz de His${qrsMsVal !== null ? ` (QRS ${qrsMsVal} ms)` : ''}.`;
+                }
+            }
+            if (qrsMsVal !== null && /Haz\s+de\s+His/i.test(validSummary) && !new RegExp(`\\b${qrsMsVal}\\s*ms\\b`, 'i').test(validSummary)) {
+                validSummary = validSummary.replace(/Haz\s+de\s+His/i, `Haz de His (QRS ${qrsMsVal} ms)`);
+            }
+            if (ecgHrVal !== null && !new RegExp(`\\b${ecgHrVal}\\s*lpm\\b`, 'i').test(validSummary)) {
+                if (/bradicardia\s+sinusal/i.test(validSummary)) {
+                    validSummary = validSummary.replace(/bradicardia\s+sinusal/i, `bradicardia sinusal (${ecgHrVal} lpm)`);
+                } else {
+                    validSummary = `${validSummary.replace(/\.+$/, '')} (FC ${ecgHrVal} lpm).`;
                 }
             }
 
             const triad = resolvedContract.multimodalTriad || {};
-            const missingTriadItems = [
-                (triad.hasCornealArcus && !/arco\s+corneal|limbar/i.test(validSummary)) ? 'arco corneal limbar (OD+OI)' : null,
-                (triad.hasSublingualVenousStasis && !/raninas|sublingual/i.test(validSummary)) ? 'ingurgitación de venas raninas sublinguales' : null,
-                (triad.hasLowerLimbVenousStasis && !/hemosider|estasis\s+venosa|extremidades\s+inferiores/i.test(validSummary)) ? 'estasis venosa con cambios hemosiderínicos en extremidades inferiores' : null
-            ].filter(Boolean);
-            if (missingTriadItems.length > 0) {
-                validSummary = sanitizeClinicalSpanish(
-                    `${validSummary.replace(/\.+$/, '')}. Triangulación semiológica multimodal convergente: ${joinSpanishList(missingTriadItems)}.`
-                );
+            const arcusMentionRe = /arco\s+(?:corneal|senil|lip[íi]dico)|limbar|limbo\s+corneal|gerontoxon/iu;
+            const raninasMentionRe = /ranin[ao]s?|sublingual(?:es)?|cara\s+ventral\s+lingual/iu;
+            const lowerStasisMentionRe = /hemosider\p{L}*|estasis\s+(?:venosa|cut[áa]nea|distal)|venosa\s+(?:cut[áa]nea|cr[óo]nica|distal|perif[ée]rica)|extremidades\s+inferiores|miembros\s+inferiores|\bpiernas?\b/iu;
+
+            const countMatches = (str, re) => (String(str || '').match(re) || []).length;
+            if (
+                countMatches(validSummary, /arco\s+(?:corneal|senil|lip[íi]dico)|gerontoxon/giu) >= 2 ||
+                countMatches(validSummary, /ranin[ao]s?/giu) >= 2 ||
+                countMatches(validSummary, /estasis\s+venosa/giu) >= 2
+            ) {
+                validSummary = deterministicNode.summary;
+            } else {
+                const missingTriadItems = [
+                    (triad.hasCornealArcus && !arcusMentionRe.test(validSummary)) ? 'arco corneal limbar (OD+OI)' : null,
+                    (triad.hasSublingualVenousStasis && !raninasMentionRe.test(validSummary)) ? 'ingurgitación de venas raninas sublinguales' : null,
+                    (triad.hasLowerLimbVenousStasis && !lowerStasisMentionRe.test(validSummary)) ? 'estasis venosa con cambios hemosiderínicos en extremidades inferiores' : null
+                ].filter(Boolean);
+                if (missingTriadItems.length > 0) {
+                    validSummary = sanitizeClinicalSpanish(
+                        `${validSummary.replace(/\.+$/, '')}. Triangulación semiológica convergente: ${joinClinicalSpanishFindings(missingTriadItems)}.`
+                    );
+                }
             }
             validSummary = validSummary.replace(/\.\s*\.+/g, '.');
         }
@@ -4686,9 +5095,18 @@ ${nodesDigestText}`;
             }
         }
 
-        const validStatus = (llmCandidate.status && ['ALERTA_MODERADA', 'PRIORIDAD_ALTA', 'CRÍTICO'].includes(llmCandidate.status))
-            ? llmCandidate.status
-            : deterministicNode.status;
+        validSummary = sanitizeArt215NonTherapeuticLexicon(
+            stripUnaccreditedCodesAndFlags(
+                enforcePostLlmNumericAndClinicalParity(validSummary, node, deterministicNode, resolvedContract)
+            )
+        );
+
+        const isPrevG2 = isPreventiveOnlyGfrStageG2Node(node, resolvedContract);
+        const validStatus = isPrevG2
+            ? 'ALERTA_MODERADA'
+            : ((llmCandidate.status && ['ALERTA_MODERADA', 'PRIORIDAD_ALTA', 'CRÍTICO'].includes(llmCandidate.status))
+                ? llmCandidate.status
+                : deterministicNode.status);
 
         return {
             ...deterministicNode,
@@ -7644,7 +8062,7 @@ const synthesizeDossier = async (req, res) => {
                     metabolicAge: metabolicAgeStudy?.metabolicAgeExact ?? null
                 }))
                 .digest('hex'),
-            ssot_contract_version: "3.6.1-Platinum-SSoTT",
+            ssot_contract_version: "3.6.2-Gold-Final",
             status: "SYNTHESIZED_READY_FOR_REVIEW"
         };
 
@@ -7846,7 +8264,7 @@ const approveDossier = async (req, res) => {
                     status: 'approved'
                 }))
                 .digest('hex'),
-            ssot_contract_version: "3.6.1-Platinum-SSoTT",
+            ssot_contract_version: "3.6.2-Gold-Final",
             status: "approved"
         };
 
@@ -8015,6 +8433,7 @@ module.exports = {
     detectSelective34PlusContraindication,
     resolveDynamicMacronutrientsAndRegimen,
     resolveNodeTherapeuticFocus,
+    buildDeterministicNodeSynthesis,
     synthesizeAllIfmNodesSSoTT,
     evaluateBiosecurityAndTitration,
     buildOrthomolecularPrescription,
