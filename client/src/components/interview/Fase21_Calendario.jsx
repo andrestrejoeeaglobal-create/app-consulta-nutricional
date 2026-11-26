@@ -76,9 +76,18 @@ export function buildPhase21InstitutionalClosureMessage(patientData = {}) {
             ? `El **Calendario y Ruta de Ejecución de 28\u00A0Días** ya se encuentra desplegado a la vista en el panel derecho para acompañar día a día el cuidado en casa.`
             : `Su **Calendario y Ruta de Ejecución de 28\u00A0Días** ya se encuentra desplegado a la vista en el panel derecho para acompañarle día a día.`;
 
+        const semLevelClosure = String(
+            patientData?.clinical_dossier?.orthomolecular_prescription?.biosecurity_semaphore?.level ||
+            patientData?.clinical_dossier?.patient_friendly_guide?.biosecurity_semaphore?.level ||
+            ''
+        ).toUpperCase();
+        const isRedClosure = semLevelClosure === 'ROJO';
+
         const followupClause = explicitDate
             ? `en su próxima consulta de seguimiento el **${explicitDate}**${explicitTime ? ` (${explicitTime})` : ''}`
-            : `en su próxima consulta de revaloración al cumplir sus primeros **28\u00A0días** (a partir del **${fallbackWindowDate}**)`;
+            : isRedClosure
+                ? `en su revaloración clínica prioritaria dentro de **72\u00A0horas a 7\u00A0días** (posterior a su revisión médica y estudios de control)`
+                : `en su próxima consulta de revaloración al cumplir sus primeros **28\u00A0días** (a partir del **${fallbackWindowDate}**)`;
 
         const paragraph2 = isTutorMode
             ? (hasValidName
@@ -353,10 +362,14 @@ const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessa
                 const m = ssotBio?.macros || defaultMacros;
                 const eqName = ssotBio?.equationUsed || bio.equationUsed || 'Mifflin-St Jeor';
 
+                let isTcaBehavioralSafetyGate = Boolean(ssotBio?.isTcaBehavioralSafety);
                 let metabolicBullet = '';
                 let logisticsBullet = '';
                 try {
                     const metStudy = resolveMetabolicAgeStudySSoT(patientData);
+                    if (metStudy?.isTcaBehavioralSafety || metStudy?.safetyGateReasonCode === 'TCA_BEHAVIORAL_SAFETY') {
+                        isTcaBehavioralSafetyGate = true;
+                    }
                     if (metStudy?.isSuppressedBySafetyGate) {
                         const safeProtectiveNote = sanitizeClinicalSpanish(
                             metStudy.suppressionReasonText ||
@@ -389,14 +402,18 @@ const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessa
                     ? `Seleccione la acción de cierre clínico para concluir la valoración en acompañamiento de madre, padre o tutor bajo **NOM-004-SSA3-2012**:`
                     : `Seleccione la acción de cierre clínico para concluir su estudio bajo **NOM-004-SSA3-2012**:`;
 
+                const bioenergeticsBulletsBlock = isTcaBehavioralSafetyGate
+                    ? `• **Pauta Nutricional Protectora:** Alimentación variada centrada en saciedad amable, energía diaria y bienestar integral (sin marcadores numéricos de conteo calórico)\n\n`
+                    : `• **Ecuación Bioenergética:** ${eqName}\n\n` +
+                      `• **Meta Calórica Prescrita:** **${formattedKcal}**\n\n` +
+                      `• **Distribución de Macronutrientes:** ${m.carbs}% Hidratos de Carbono | ${m.protein}% Proteínas | ${m.fat}% Lípidos\n\n`;
+
                 const gateContent =
                     `**Calendario y Periodización Celular de 28 Días (SSoTT — Fase 21)**\n\n` +
                     (isTutorMode
                         ? `La arquitectura crononutricional pediátrica se encuentra sincronizada en el panel derecho con los parámetros sellados del expediente:\n\n`
                         : `Su arquitectura crononutricional se encuentra sincronizada en el panel derecho con los parámetros sellados de su expediente:\n\n`) +
-                    `• **Ecuación Bioenergética:** ${eqName}\n\n` +
-                    `• **Meta Calórica Prescrita:** **${formattedKcal}**\n\n` +
-                    `• **Distribución de Macronutrientes:** ${m.carbs}% Hidratos de Carbono | ${m.protein}% Proteínas | ${m.fat}% Lípidos\n\n` +
+                    bioenergeticsBulletsBlock +
                     metabolicBullet +
                     logisticsBullet +
                     closingInstruction;
@@ -417,7 +434,17 @@ const Fase21_Calendario = ({ onPhaseComplete, setPatientData, messages, setMessa
                         content: gateContent,
                         avatar: tiloImg,
                         options: [
-                            { label: 'Agendar Cita de Seguimiento (4 Semanas)', value: 'SCHEDULE_FOLLOWUP_APPOINTMENT', iconKey: 'calendar' },
+                            {
+                                label: String(
+                                    patientData?.clinical_dossier?.orthomolecular_prescription?.biosecurity_semaphore?.level ||
+                                    patientData?.clinical_dossier?.patient_friendly_guide?.biosecurity_semaphore?.level ||
+                                    ''
+                                ).toUpperCase() === 'ROJO'
+                                    ? 'Agendar Revaloración Prioritaria (72 h – 7 Días)'
+                                    : 'Agendar Cita de Seguimiento (4 Semanas)',
+                                value: 'SCHEDULE_FOLLOWUP_APPOINTMENT',
+                                iconKey: 'calendar'
+                            },
                             { label: 'Sincronizar Plataforma Digital Equipo en Acción®', value: 'SYNC_VITALLOOP_APP', iconKey: 'smartphone' },
                             { label: 'Sellar y Cerrar Consulta NOM-004', value: 'FINAL_CONSULTATION_CLOSE', iconKey: 'check' }
                         ]

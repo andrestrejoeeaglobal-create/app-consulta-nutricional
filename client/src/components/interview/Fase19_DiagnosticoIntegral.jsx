@@ -697,10 +697,10 @@ export function DiagnosticoRenderizado({ cortexSynthesis }) {
                                 </div>
                                 <div>
                                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#1C75BC] block">
-                                        ESTUDIO MULTIVARIABLE DE EDAD METABÓLICA • EGM-51 v2
+                                        ESTUDIO MULTIVARIABLE DE EDAD METABÓLICA • EGM-51 v3
                                     </span>
                                     <h4 className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
-                                        Ponderación por Evidencia, Sexo Biológico y Altitud ({metabolicAgeStudy.altitudeMsnm || 2240} msnm)
+                                        Ponderación por Evidencia, Sexo Biológico y Altitud ({metabolicAgeStudy.altitudeMsnm ?? 2240} msnm)
                                     </h4>
                                 </div>
                             </div>

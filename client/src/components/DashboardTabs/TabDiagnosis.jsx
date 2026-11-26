@@ -1195,11 +1195,16 @@ export const TabDiagnosis = ({
                                                     </h4>
                                                 </div>
                                             </div>
-                                            {hydrationCard.litersPerDay && (
+                                            {hydrationCard.fluidRestrictionActive ? (
+                                                <span className="px-2.5 py-1 rounded-lg bg-[#FFCC00] text-[#0F172A] border border-[#0F172A]/20 text-[10.5px] font-extrabold inline-flex items-center gap-1">
+                                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                                    <span>Techo Hídrico Médico</span>
+                                                </span>
+                                            ) : hydrationCard.litersPerDay ? (
                                                 <span className="px-2.5 py-1 rounded-lg bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/25 text-[11px] font-extrabold tabular-nums">
                                                     💧 {hydrationCard.litersPerDay} L/día
                                                 </span>
-                                            )}
+                                            ) : null}
                                         </div>
 
                                         <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium flex-1">

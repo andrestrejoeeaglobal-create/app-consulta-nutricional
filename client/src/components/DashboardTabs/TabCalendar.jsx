@@ -295,15 +295,38 @@ export const TabCalendar = ({
                 ? 'Reserva Funcional Joven'
                 : 'Homeostasis Conservada';
 
+    const isTcaSafetyCal = Boolean(
+        metabolicAgeStudy?.isTcaBehavioralSafety ||
+        metabolicAgeStudy?.safetyGateReasonCode === 'TCA_BEHAVIORAL_SAFETY' ||
+        patientData?.clinical_dossier?.bioenergetics?.isTcaBehavioralSafety
+    );
+    const isRelativeRestCal = Boolean(
+        patientData?.clinical_dossier?.patient_friendly_guide?.home_action_plan?.gentle_movement?.isRelativeRestActive
+    );
+    const semLevelCal = String(
+        orthoPrescription?.biosecurity_semaphore?.level ||
+        patientData?.clinical_dossier?.patient_friendly_guide?.biosecurity_semaphore?.level ||
+        ''
+    ).toUpperCase();
+    const isRedFollowupCal = semLevelCal === 'ROJO';
+
     const targetKcalVal =
         patientData?.clinical_dossier?.bioenergetics?.targetKcal ||
         orthoPrescription?.bioenergetics_summary?.targetKcal ||
         patientData?.nutrition?.protocol?.target ||
         2200;
     const targetKcalFormatted = `${String(Math.round(Number(targetKcalVal) || 2200)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0')} kcal`;
+    const menuDescriptorCal = isTcaSafetyCal ? 'su plan alimentario protector' : `su prescripción nutricional de ${targetKcalFormatted}`;
+    const mobileMenuDescriptorCal = isTcaSafetyCal ? 'su guía alimentaria personalizada' : `su menú de ${targetKcalFormatted}`;
+    const mobileMovementClauseCal = isRelativeRestCal
+        ? 'siga su pauta de reposo físico relativo bajo vigilancia médica'
+        : 'registre su movilidad diaria segura';
 
-    // Cálculo dinámico de ventana de seguimiento a 28 días (Ciclo 2 - Período de 28 Días)
+    // Cálculo dinámico de ventana de seguimiento: Prioritaria 72 h – 7 días en ROJO vs Ciclo de 28 Días
     const defaultFollowupDate = (() => {
+        if (isRedFollowupCal) {
+            return 'Prioritaria en 72 h a 7 días (tras valoración médica y estudios)';
+        }
         const d = new Date();
         d.setDate(d.getDate() + 28);
         if (d.getDay() === 0) d.setDate(d.getDate() + 1);
@@ -314,7 +337,7 @@ export const TabCalendar = ({
 
     const scheduledAppt = patientData?.scheduledAppointment || patientData?.proxima_cita || {};
     const apptDate = scheduledAppt.chosenDate || scheduledAppt.fecha || defaultFollowupDate;
-    const apptTime = scheduledAppt.chosenTime || scheduledAppt.horario || '10:00 AM';
+    const apptTime = scheduledAppt.chosenTime || scheduledAppt.horario || (isRedFollowupCal ? 'Prioridad Médica' : '10:00 AM');
     const citationFolio =
         patientData?.profile?.citationId ||
         patientData?.profile?.citaId ||
@@ -355,7 +378,7 @@ export const TabCalendar = ({
                                             </div>
                                             <div>
                                                 <div className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">Enfoque Clínico Protector No Punitivo</div>
-                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Compuerta de Seguridad Activa (EGM-51 v2)</div>
+                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Compuerta de Seguridad Activa (EGM-51 v3)</div>
                                             </div>
                                         </div>
                                         <span className="bg-[#1C75BC]/10 text-[#1C75BC] border border-[#1C75BC]/30 text-[10.5px] font-extrabold tracking-wider px-3 py-1 rounded-xl uppercase inline-flex items-center gap-1.5 w-fit">
@@ -377,7 +400,7 @@ export const TabCalendar = ({
                                             </div>
                                             <div>
                                                 <div className="text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">Estudio Multivariable de Edad Metabólica</div>
-                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Motor SSoTT EGM-51 v2 • {evidenceBadgeText}</div>
+                                                <div className="text-[10px] text-[#334155] dark:text-[#CBD5E1] uppercase font-bold tracking-wider">Motor SSoTT EGM-51 v3 • {evidenceBadgeText} • {metabolicAgeStudy?.altitudeMsnm ?? 2240} msnm</div>
                                             </div>
                                         </div>
                                         <div className="flex flex-wrap items-center gap-3">
@@ -460,9 +483,9 @@ export const TabCalendar = ({
                                         )}
                                         <p className="font-semibold text-[#0F172A] dark:text-[#F8FAFC] pt-2 border-t border-slate-200/80 dark:border-[#334155]">
                                             {(has33Plus || has34Plus) ? (
-                                                <>Al apegarse a su prescripción nutricional de {targetKcalFormatted} y activar la modulación celular con <strong>33Plus®</strong> y la reparación tisular con <strong>34Plus®</strong> conforme a su pauta personalizada, nuestra meta realista en estos primeros 28 días es alcanzar <strong>{cycle1Target28d} años</strong> y consolidar hacia los 90 días una proyección de <strong>{cycle3Target90d} años</strong>.</>
+                                                <>Al apegarse a {menuDescriptorCal} y activar la modulación celular con <strong>33Plus®</strong> y la reparación tisular con <strong>34Plus®</strong> conforme a su pauta personalizada, nuestra meta realista en estos primeros 28 días es alcanzar <strong>{cycle1Target28d} años</strong> y consolidar hacia los 90 días una proyección de <strong>{cycle3Target90d} años</strong>.</>
                                             ) : (
-                                                <>Al apegarse a su prescripción nutricional antiinflamatoria de {targetKcalFormatted}, hidratación constante y estudios clínicos de control (manteniendo en pausa preventiva la suplementación concentrada), nuestra meta realista en estos primeros 28 días es avanzar hacia <strong>{cycle1Target28d} años</strong> con total bioseguridad.</>
+                                                <>Al apegarse a {menuDescriptorCal}, hidratación controlada y estudios clínicos de seguimiento (manteniendo en pausa preventiva la suplementación concentrada), nuestra meta realista en estos primeros 28 días es avanzar hacia <strong>{cycle1Target28d} años</strong> con total bioseguridad.</>
                                             )}
                                         </p>
                                     </div>
@@ -487,7 +510,7 @@ export const TabCalendar = ({
                                     </div>
                                     <div>
                                         <div className="text-sm font-bold text-tilo-text-main">Control Clínico y Evaluación de Evolución</div>
-                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">Ciclo 2 • Período de 28 Días</div>
+                                        <div className="text-[10px] text-tilo-text-muted uppercase font-bold tracking-wider">{isRedFollowupCal ? 'Revaloración Prioritaria • Ventana de 72 h a 7 Días' : 'Ciclo 2 • Período de 28 Días'}</div>
                                     </div>
                                 </div>
                                 <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-[10px] font-black tracking-wider px-3 py-1 rounded-full uppercase w-fit">
@@ -566,8 +589,8 @@ export const TabCalendar = ({
                                     </div>
                                     <p className="text-xs text-tilo-text-muted leading-relaxed tabular-nums">
                                         {(has33Plus || has34Plus)
-                                            ? `Consulte desde su dispositivo su menú de ${targetKcalFormatted}, registre su caminata diaria (6\u00A0000 a 8\u00A0000 pasos/día), confirme sus tomas programadas de 33Plus® y 34Plus® y dé seguimiento a su descanso nocturno.`
-                                            : `Consulte desde su dispositivo su menú de ${targetKcalFormatted}, registre su caminata diaria e hidratación constante (mientras se validan sus estudios de control) y dé seguimiento a su descanso nocturno.`}
+                                            ? `Consulte desde su dispositivo ${mobileMenuDescriptorCal}, ${mobileMovementClauseCal}, confirme sus tomas programadas de 33Plus® y 34Plus® y dé seguimiento a su descanso.`
+                                            : `Consulte desde su dispositivo ${mobileMenuDescriptorCal}, ${mobileMovementClauseCal} e hidratación controlada (mientras se validan sus estudios de control) y dé seguimiento a su descanso.`}
                                     </p>
                                     <div className="pt-1.5 flex flex-wrap items-center gap-3 text-[11px] font-semibold text-[#334155] dark:text-[#CBD5E1] tabular-nums">
                                         <span>🏠 Entorno: <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{logisticsSummary.venueLabel}</strong></span>

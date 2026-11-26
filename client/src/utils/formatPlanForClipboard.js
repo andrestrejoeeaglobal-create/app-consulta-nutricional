@@ -348,7 +348,10 @@ export const formatPlanForClipboard = function (options) {
     }
     text += `\n`;
 
-    text += `4. 💧 ${hyd.title || 'HIDRATACIÓN INTELIGENTE'} (${hyd.litersPerDay ? `${hyd.litersPerDay} L/día` : '2.0 L/día'}):\n`;
+    const hydHeaderBadge = hyd.fluidRestrictionActive
+      ? 'Techo hídrico médico'
+      : (hyd.litersPerDay ? `${hyd.litersPerDay} L/día` : (guide.isLactante ? 'Etapa de lactancia' : '2.0 L/día'));
+    text += `4. 💧 ${hyd.title || 'HIDRATACIÓN INTELIGENTE'} (${hydHeaderBadge}):\n`;
     text += `   ${hyd.summary || ''}\n`;
     if (hyd.keyRule34Plus) {
       text += `   Importante: ${hyd.keyRule34Plus}\n`;
@@ -395,9 +398,19 @@ export const formatPlanForClipboard = function (options) {
       : 'Alimentación Antiinflamatoria (0 Picante • 0 Cerdo • 0 Azúcares)')
   );
   const weightForWater = Number(bio?.weightKg) > 0 ? Number(bio.weightKg) : 70;
-  const hydrationLiters = Number(canonicalPlan?.hydrationTargetLiters || ortho?.hydrationTargetLiters) > 0
-    ? Number(canonicalPlan?.hydrationTargetLiters || ortho?.hydrationTargetLiters)
-    : Math.min(3.2, Math.max(1.8, Number(((weightForWater * 32) / 1000).toFixed(1))));
+  const hasFluidRestrictionMedical = Boolean(
+    canonicalPlan?.hydrationTargetLiters === null ||
+    ortho?.hydrationTargetLiters === null ||
+    dossier?.patient_friendly_guide?.home_action_plan?.smart_hydration?.fluidRestrictionActive
+  );
+  const hydrationLiters = hasFluidRestrictionMedical
+    ? null
+    : (Number(canonicalPlan?.hydrationTargetLiters || ortho?.hydrationTargetLiters) > 0
+      ? Number(canonicalPlan?.hydrationTargetLiters || ortho?.hydrationTargetLiters)
+      : Math.min(3.2, Math.max(1.8, Number(((weightForWater * 32) / 1000).toFixed(1)))));
+  const hydrationMedicalText = hasFluidRestrictionMedical
+    ? 'Techo hídrico estricto individualizado bajo indicación médica nefro-cardiológica'
+    : `${hydrationLiters} L/día`;
   const personalExclList = Array.isArray(canonicalPlan?.patientSpecificExclusions)
     ? canonicalPlan.patientSpecificExclusions
     : (Array.isArray(ortho?.dietaryPlan?.patientSpecificExclusions) ? ortho.dietaryPlan.patientSpecificExclusions : []);
@@ -483,7 +496,7 @@ export const formatPlanForClipboard = function (options) {
     }
     if (ortho?.has_calcium_contraction_lock) {
       const clinicalMineralSafeguard = ortho?.calcium_clinical_safeguard_text ||
-        `Riesgo biofísico de calcificación ectópica: se excluye suplementación aislada con sales de calcio inorgánico; priorizar hidratación estructurada (${hydrationLiters} L/día), magnesio y vitamina K2 alimentaria.`;
+        `Riesgo biofísico de calcificación ectópica: se excluye suplementación aislada con sales de calcio inorgánico; priorizar hidratación (${hydrationMedicalText}), magnesio y vitamina K2 alimentaria.`;
       text += `   • Salvaguarda Mineral (Bloqueo de Calcio Exógeno): ${normalizeFormalClinicalField(clinicalMineralSafeguard)}\n`;
     }
     if (Array.isArray(sem?.recommendedLabs) && sem.recommendedLabs.length > 0) {
@@ -508,7 +521,7 @@ export const formatPlanForClipboard = function (options) {
     const exclSuffix = personalExclList.length > 0
       ? ` | Exclusiones personalizadas: ${personalExclList.map(sanitizeClinicalSpanish).join(', ')}`
       : '';
-    text += `   • Régimen y Meta Energética: ${dynamicRegimenBadge} | Meta: ${bio.targetKcal} kcal/día (${macros.carbs}% Carbohidratos / ${macros.protein}% Proteínas / ${macros.fat}% Lípidos) | Hidratación Meta: ${hydrationLiters} L/día${exclSuffix}.\n`;
+    text += `   • Régimen y Meta Energética: ${dynamicRegimenBadge} | Meta: ${bio.targetKcal} kcal/día (${macros.carbs}% Carbohidratos / ${macros.protein}% Proteínas / ${macros.fat}% Lípidos) | Hidratación Meta: ${hydrationMedicalText}${exclSuffix}.\n`;
   }
   const normalizeCanonicalFormulaBrand = (raw = '') =>
     sanitizeClinicalSpanish(raw)
@@ -574,12 +587,12 @@ export const formatPlanForClipboard = function (options) {
           ? 'Pausa Selectiva de 33Plus® y Reparación Nocturna Gradual con 34Plus®'
           : (sem?.isMicroDose ? 'Adaptación Mucosa y Micro-Dosis Calibrada' : 'Sincronización Circadiana y Sellado de Barrera Mucosa'),
       description: sem?.isPaused
-        ? `Alimentación antiinflamatoria (${bio?.targetKcal || 2000} kcal/día), hidratación (${hydrationLiters} L/día) y estudios de control (0 sobres activos).`
+        ? `Alimentación antiinflamatoria (${bio?.targetKcal || 2000} kcal/día), hidratación (${hydrationMedicalText}) y estudios de control (0 sobres activos).`
         : isSel33Paused
-          ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationLiters} L/día), 0 sobres activos de 33Plus® (pausa selectiva) y micro-dosis de 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
+          ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationMedicalText}), 0 sobres activos de 33Plus® (pausa selectiva) y micro-dosis de 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
           : (sem?.isMicroDose
-            ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationLiters} L/día) y micro-dosis de 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® matutino y 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
-            : `Integración alimentaria (${bio?.targetKcal || 2000} kcal/día), hidratación (${hydrationLiters} L/día) y protocolo completo de 33Plus® y 34Plus®.`)
+            ? `Sellado epitelial (0 Picante, 0 Cerdo, 0 Azúcares), hidratación (${hydrationMedicalText}) y micro-dosis de 1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus® matutino y 1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus® nocturno en mínimo 500 ml de agua simple 💧.`
+            : `Integración alimentaria (${bio?.targetKcal || 2000} kcal/día), hidratación (${hydrationMedicalText}) y protocolo completo de 33Plus® y 34Plus®.`)
     },
     {
       rangeLabel: 'Días 8 a 21',
