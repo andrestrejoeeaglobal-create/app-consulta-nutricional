@@ -2754,8 +2754,8 @@ function distillClinicalSerum(rawPatientData, isLactanteExplicit = false) {
         if (hasLingualCoatingOrScalloping) {
             pushAnomaly('NODO_1_ASIMILACION', 'LINGUAL_VISION', 'Topografía Lingual: Saburra Dorsal e Indentación Marginal',
                 isDigestiveEubiosisInSerum
-                    ? 'Saburra dorsal moderada e indentaciones marginales bilaterales por equilibrio hidrosalino y tránsito digestivo pausado (en paciente asintomático con eubiosis clínica)'
-                    : 'Topografía lingual con capa saburral o bordes festoneados sugestivos de tránsito digestivo lento y demanda prebiótica',
+                    ? 'Saburra dorsal moderada acompañada de indentaciones marginales bilaterales, hallazgo morfológico orientativo de demanda preventiva en el equilibrio hidrosalino intersticial con tránsito digestivo conservado (en coexistencia con eubiosis clínica asintomática: 0 síntomas digestivos)'
+                    : 'Topografía lingual con capa saburral o bordes festoneados orientativos de demanda preventiva en el equilibrio hidrosalino intersticial, tránsito digestivo lento y soporte prebiótico',
                 'MODERADA');
         }
 
@@ -3568,8 +3568,22 @@ function buildCanonicalTherapeuticContract({
         const doseFactor33 = isPaused || isSelective33Paused ? 0 : (isMicroDose ? 0.5 : 2);
         const doseFactor34 = isPaused || isSelective34Paused ? 0 : (isMicroDose ? 0.5 : 2);
 
-        const scaled33 = formatScaledActives('33PLUS', doseFactor33);
-        const scaled34 = formatScaledActives('34PLUS', doseFactor34);
+        const sanitizeScaledFormulaArt215 = (scaledObj) => {
+            if (!scaledObj || typeof scaledObj !== 'object') return scaledObj;
+            const fixLex = (txt = '') => String(txt || '')
+                .replace(/Aporte\s+neto\s+en\s+la\s+dosis\s+prescrita\s*\(/giu, 'Aporte neto en la pauta nutricional sugerida (')
+                .replace(/Aporte\s+neto\s+prescrito:/giu, 'Aporte neto diario sugerido:')
+                .replace(/—\s*Aporte\s+neto\s+diario:/giu, '— Aporte neto diario sugerido:')
+                .replace(/\bdosis\s+prescrita\b/giu, 'pauta nutricional sugerida');
+            return {
+                ...scaledObj,
+                clinicalHeaderName: fixLex(scaledObj.clinicalHeaderName),
+                regulatorySummary: fixLex(scaledObj.regulatorySummary)
+            };
+        };
+
+        const scaled33 = sanitizeScaledFormulaArt215(formatScaledActives('33PLUS', doseFactor33));
+        const scaled34 = sanitizeScaledFormulaArt215(formatScaledActives('34PLUS', doseFactor34));
 
         const hasCardioConductionCaution = Boolean(serum?.cabinetSignals?.hasCardiacConductionOrBradycardia);
         const monitorPrepClause = formatBiometricMonitorPrepClause();
@@ -3986,7 +4000,17 @@ function buildDeterministicNodeSynthesis(node, contract = null) {
         const eubiosisDetSuffix = (node.id === 'NODO_1_ASIMILACION' && contract?.isClinicalEubiosis)
             ? ' Se documenta en coexistencia con eubiosis clínica (0 síntomas digestivos referidos).'
             : '';
-        if (hasConfirmedLabOrCabinet) {
+        const nodeAnomCombinedDet = anomalies.map((a) => `${a.label || ''} ${a.detail || ''}`).join(' | ');
+        const isPureLingualScallopingCoatingEubiosis =
+            node.id === 'NODO_1_ASIMILACION' &&
+            anomalies.length === 1 &&
+            anomalies[0]?.source === 'LINGUAL_VISION' &&
+            /indentaci[óo]n|festonead/i.test(nodeAnomCombinedDet) &&
+            /saburra/i.test(nodeAnomCombinedDet) &&
+            Boolean(contract?.isClinicalEubiosis);
+        if (isPureLingualScallopingCoatingEubiosis) {
+            summary = 'Se observa saburra dorsal moderada acompañada de indentaciones marginales bilaterales, hallazgo morfológico orientativo de demanda preventiva en el equilibrio hidrosalino intersticial con tránsito digestivo conservado (en coexistencia con eubiosis clínica asintomática: 0 síntomas digestivos).';
+        } else if (hasConfirmedLabOrCabinet) {
             summary = sanitizeClinicalSpanish(
                 `Correlación clínica y paraclínica en ${cleanNodeTitle} (${count} hallazgos integrados), destacando ${listClause}.${triadDetSuffix} El perfil sugiere demanda adaptativa prioritaria dentro del ${node.preAssignedLabel || 'eje funcional evaluado'}.`
             );
@@ -4068,6 +4092,7 @@ REGLAS EPISTEMOLÓGICAS Y NORMATIVAS ESTRICTAS (OBLIGATORIAS):
 4. CERO CÓDIGOS CIE-10 NI PRESCRIPCIONES EN "summary": Queda prohibido incluir códigos CIE-10 (ej. E78.5, I10, Z00.0) o recomendar dietas, calorías, suplementos o fármacos dentro de "summary".
 5. ESTILO EDITORIAL MÉDICO SIN REPETICIONES LÉXICAS: Emplea conectores variados ("asociado a", "acompañado de", "compatible con").
 6. FIDELIDAD LITERAL DE GABINETE Y LABORATORIO (EGM-50): Queda ESTRICTAMENTE PROHIBIDO suavizar o alterar el grado de severidad reportado en "[CABINET_*]" (ej. NUNCA conviertas un "BLOQUEO DE LA RAMA DERECHA DEL HAZ DE HIS" o "QRS >= 120 ms" en "bloqueo incompleto", ni omitas cambios postquirúrgicos o vasculares acreditados) y NUNCA cites analitos no medidos en la lista (ej. no menciones "apo B" si solo constan LDL, no-HDL o sdLDL).
+7. EXACTITUD SEMIOLÓGICA GLOSÓMICA (EGM-74): Cuando en NODO_1_ASIMILACION existan indentaciones marginales o marcas dentales bilaterales (festoneado lingual), queda ESTRICTAMENTE PROHIBIDO afirmar "equilibrio hidrosalino adecuado"; descríbelas como demanda preventiva en el equilibrio hidrosalino intersticial.
 
 NODOS ACTIVOS A SINTETIZAR:
 ${nodesDigestText}`;
@@ -4199,10 +4224,28 @@ ${nodesDigestText}`;
                 );
             }
         }
-        if (node.id === 'NODO_1_ASIMILACION' && resolvedContract.isClinicalEubiosis && !/eubiosis/i.test(validSummary)) {
-            validSummary = sanitizeClinicalSpanish(
-                `${validSummary.replace(/\.+$/, '')} (en coexistencia con eubiosis clínica asintomática: 0 síntomas digestivos).`
-            );
+        if (node.id === 'NODO_1_ASIMILACION') {
+            const isSingleLingualScallopEubiosis =
+                Array.isArray(node.anomalies) &&
+                node.anomalies.length === 1 &&
+                node.anomalies[0]?.source === 'LINGUAL_VISION' &&
+                /indentaci[óo]n|festonead/i.test(nodeAnomText) &&
+                /saburra/i.test(nodeAnomText) &&
+                Boolean(resolvedContract.isClinicalEubiosis);
+            if (isSingleLingualScallopEubiosis) {
+                validSummary = 'Se observa saburra dorsal moderada acompañada de indentaciones marginales bilaterales, hallazgo morfológico orientativo de demanda preventiva en el equilibrio hidrosalino intersticial con tránsito digestivo conservado (en coexistencia con eubiosis clínica asintomática: 0 síntomas digestivos).';
+            } else {
+                if (/indentaci[óo]n|festonead/i.test(nodeAnomText)) {
+                    validSummary = validSummary
+                        .replace(/(?:lo\s+cual\s+es\s+)?compatible\s+con\s+(?:un\s+)?equilibrio\s+hidrosalino\s+(?:adecuado|normal|conservado|[óo]ptimo)/giu, 'hallazgo morfológico orientativo de demanda preventiva en el equilibrio hidrosalino intersticial')
+                        .replace(/equilibrio\s+hidrosalino\s+(?:adecuado|normal|conservado|[óo]ptimo)/giu, 'demanda preventiva en el equilibrio hidrosalino intersticial');
+                }
+                if (resolvedContract.isClinicalEubiosis && !/eubiosis/i.test(validSummary)) {
+                    validSummary = sanitizeClinicalSpanish(
+                        `${validSummary.replace(/\.+$/, '')} (en coexistencia con eubiosis clínica asintomática: 0 síntomas digestivos).`
+                    );
+                }
+            }
         }
 
         const validStatus = (llmCandidate.status && ['ALERTA_MODERADA', 'PRIORIDAD_ALTA', 'CRÍTICO'].includes(llmCandidate.status))
@@ -5098,8 +5141,21 @@ function buildOrthomolecularPrescription(
     const anamnesisOrtho = serum?.anamnesisUnified || extractUnifiedAnamnesisSignals(patientData);
     const isSelective33Paused = Boolean(contract.isSelective33Paused || semaphore.isSelective33Paused) && !semaphore.isPaused;
     const isSelective34Paused = Boolean(contract.isSelective34Paused || semaphore.isSelective34Paused) && !semaphore.isPaused;
-    const scaled33 = contract.posology?.scaled33 || formatScaledActives('33PLUS', (semaphore.isPaused || isSelective33Paused) ? 0 : (semaphore.isMicroDose ? 0.5 : 2));
-    const scaled34 = contract.posology?.scaled34 || formatScaledActives('34PLUS', (semaphore.isPaused || isSelective34Paused) ? 0 : (semaphore.isMicroDose ? 0.5 : 2));
+    const sanitizeScaledOrthoLex = (sc) => {
+        if (!sc || typeof sc !== 'object') return sc;
+        const fix = (t = '') => String(t || '')
+            .replace(/Aporte\s+neto\s+en\s+la\s+dosis\s+prescrita\s*\(/giu, 'Aporte neto en la pauta nutricional sugerida (')
+            .replace(/Aporte\s+neto\s+prescrito:/giu, 'Aporte neto diario sugerido:')
+            .replace(/—\s*Aporte\s+neto\s+diario:/giu, '— Aporte neto diario sugerido:')
+            .replace(/\bdosis\s+prescrita\b/giu, 'pauta nutricional sugerida');
+        return {
+            ...sc,
+            clinicalHeaderName: fix(sc.clinicalHeaderName),
+            regulatorySummary: fix(sc.regulatorySummary)
+        };
+    };
+    const scaled33 = sanitizeScaledOrthoLex(contract.posology?.scaled33 || formatScaledActives('33PLUS', (semaphore.isPaused || isSelective33Paused) ? 0 : (semaphore.isMicroDose ? 0.5 : 2)));
+    const scaled34 = sanitizeScaledOrthoLex(contract.posology?.scaled34 || formatScaledActives('34PLUS', (semaphore.isPaused || isSelective34Paused) ? 0 : (semaphore.isMicroDose ? 0.5 : 2)));
     const hasConductionCaution = Boolean(serum?.cabinetSignals?.hasCardiacConductionOrBradycardia);
     const hasFluidRestrictionOrtho = contract.hydrationTargetLiters === null || Boolean(anamnesisOrtho.hasMedicalFluidRestriction);
     const isNightShift = Boolean(anamnesisOrtho.isNightOrRotatingShift);
@@ -6927,7 +6983,7 @@ const synthesizeDossier = async (req, res) => {
                     metabolicAge: metabolicAgeStudy?.metabolicAgeExact ?? null
                 }))
                 .digest('hex'),
-            ssot_contract_version: "3.5.0-Aniversario19-SSoTT",
+            ssot_contract_version: "3.5.1-Aniversario19-SSoTT",
             status: "SYNTHESIZED_READY_FOR_REVIEW"
         };
 
@@ -7129,7 +7185,7 @@ const approveDossier = async (req, res) => {
                     status: 'approved'
                 }))
                 .digest('hex'),
-            ssot_contract_version: "3.5.0-Aniversario19-SSoTT",
+            ssot_contract_version: "3.5.1-Aniversario19-SSoTT",
             status: "approved"
         };
 

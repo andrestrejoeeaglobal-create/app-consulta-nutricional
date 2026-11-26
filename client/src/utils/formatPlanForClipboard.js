@@ -7,7 +7,8 @@ import {
   resolveScheduledAppointmentSummary,
   resolveElectretInformativeAnnex,
   sanitizeBioelectricScreeningLabel,
-  sanitizeArt215NonTherapeuticLexicon
+  sanitizeArt215NonTherapeuticLexicon,
+  sanitizeSupplementPosologyLexiconEgm74
 } from './patientGuideAdapter.js';
 import { FORMULA_33PLUS, FORMULA_34PLUS } from './pharmacopeiaCatalogSSoT.js';
 
@@ -449,25 +450,35 @@ export const formatPlanForClipboard = function (options) {
   text += `--------------------------------------------------\n\n`;
 
   const normalizeFormalClinicalField = (rawStr) =>
-    sanitizeClinicalSpanish(rawStr || '')
-      .replace(/\(\s*null\s*\)/giu, '')
-      .replace(/\[\s*⚠️?\s*REQUIERE_REVISI[ÓO]N\s*\]/giu, '')
-      .replace(/\(Matriz IFM SSoTT v2\.[45678]\)/giu, '(Matriz IFM SSoTT v3.5)')
-      .replace(/\[Readaptaci[óo]n F[íi]sica\]/giu, '[Readaptación Biomecánica y Pauta de Movimiento Seguro]')
-      .replace(/6,000[–-]8,000\s*pasos\/d[íi]a/giu, '6\u00A0000 a 8\u00A0000 pasos/día')
-      .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+33Plus®/giu, `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus®`)
-      .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+34Plus®/giu, `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus®`)
-      .replace(/\btus\s+laboratorios\b/giu, 'sus estudios de laboratorio')
-      .replace(/\btu\s+cuerpo\b/giu, 'su organismo')
-      .replace(/\bantes\s+de\s+acostarte\b/giu, 'antes de dormir')
-      .replace(/\bcuando\s+te\s+levantas\b/giu, 'al despertar')
-      .replace(/(?<![\p{L}\p{N}_])hidrata(?=\s+(?:tus|sus|el|la|los|las)\b)/giu, (m) => (m[0] === 'H' ? 'Hidrate' : 'hidrate'))
-      .replace(/(?<![\p{L}\p{N}_])t[óo]malo(?![\p{L}\p{N}_])/giu, (m) => (m[0] === 'T' ? 'Tómelo' : 'tómelo'))
-      .replace(/(?<![\p{L}\p{N}_])t[óo]mala(?![\p{L}\p{N}_])/giu, (m) => (m[0] === 'T' ? 'Tómela' : 'tómela'))
-      .replace(/(?<![\p{L}\p{N}_])disu[ée]lvelo(?![\p{L}\p{N}_])/giu, (m) => (m[0] === 'D' ? 'Disuélvalo' : 'disuélvalo'))
-      .replace(/(?<![\p{L}\p{N}_])tus(?=\s+\p{L})/giu, (m) => (m[0] === 'T' ? 'Sus' : 'sus'))
-      .replace(/(?<![\p{L}\p{N}_])tu(?=\s+\p{L})/giu, (m) => (m[0] === 'T' ? 'Su' : 'su'))
-      .replace(/\s*&\s*/gu, ' y ');
+    sanitizeSupplementPosologyLexiconEgm74(
+      sanitizeClinicalSpanish(rawStr || '')
+        .replace(/\(\s*null\s*\)/giu, '')
+        .replace(/\[\s*⚠️?\s*REQUIERE_REVISI[ÓO]N\s*\]/giu, '')
+        .replace(/\(Matriz IFM SSoTT v2\.[45678]\)/giu, '(Matriz IFM SSoTT v3.5)')
+        .replace(/\[Readaptaci[óo]n F[íi]sica\]/giu, '[Readaptación Biomecánica y Pauta de Movimiento Seguro]')
+        .replace(/6,000[–-]8,000\s*pasos\/d[íi]a/giu, '6\u00A0000 a 8\u00A0000 pasos/día')
+        .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+33Plus®/giu, `1/2 sobre (${FORMULA_33PLUS.halfSachetGramsDisplay}) de 33Plus®`)
+        .replace(/1\/2\s+sobre\s*\(5\s*g\)\s+de\s+34Plus®/giu, `1/2 sobre (${FORMULA_34PLUS.halfSachetGramsDisplay}) de 34Plus®`)
+        .replace(
+          /Se\s+observa\s+(?:una\s+)?saburra\s+dorsal\s+moderada\s+acompañada\s+de\s+indentaciones\s+marginales\s+bilaterales,\s+lo\s+cual\s+es\s+compatible\s+con\s+un\s+equilibrio\s+hidrosalino\s+adecuado\s+y\s+un\s+tr[áa]nsito\s+digestivo\s+conservado\s*\(en\s+coexistencia\s+con\s+eubiosis\s+cl[íi]nica\s+asintom[áa]tica:\s*0\s+s[íi]ntomas\s+digestivos\)\./giu,
+          'Se observa saburra dorsal moderada acompañada de indentaciones marginales bilaterales, hallazgo morfológico orientativo de demanda preventiva en el equilibrio hidrosalino intersticial con tránsito digestivo conservado (en coexistencia con eubiosis clínica asintomática: 0 síntomas digestivos).'
+        )
+        .replace(
+          /(indentaciones\s+marginales[^.]*?)(?:lo\s+cual\s+es\s+)?compatible\s+con\s+(?:un\s+)?equilibrio\s+hidrosalino\s+(?:adecuado|normal|conservado|[óo]ptimo)/giu,
+          '$1hallazgo morfológico orientativo de demanda preventiva en el equilibrio hidrosalino intersticial'
+        )
+        .replace(/\btus\s+laboratorios\b/giu, 'sus estudios de laboratorio')
+        .replace(/\btu\s+cuerpo\b/giu, 'su organismo')
+        .replace(/\bantes\s+de\s+acostarte\b/giu, 'antes de dormir')
+        .replace(/\bcuando\s+te\s+levantas\b/giu, 'al despertar')
+        .replace(/(?<![\p{L}\p{N}_])hidrata(?=\s+(?:tus|sus|el|la|los|las)\b)/giu, (m) => (m[0] === 'H' ? 'Hidrate' : 'hidrate'))
+        .replace(/(?<![\p{L}\p{N}_])t[óo]malo(?![\p{L}\p{N}_])/giu, (m) => (m[0] === 'T' ? 'Tómelo' : 'tómelo'))
+        .replace(/(?<![\p{L}\p{N}_])t[óo]mala(?![\p{L}\p{N}_])/giu, (m) => (m[0] === 'T' ? 'Tómela' : 'tómela'))
+        .replace(/(?<![\p{L}\p{N}_])disu[ée]lvelo(?![\p{L}\p{N}_])/giu, (m) => (m[0] === 'D' ? 'Disuélvalo' : 'disuélvalo'))
+        .replace(/(?<![\p{L}\p{N}_])tus(?=\s+\p{L})/giu, (m) => (m[0] === 'T' ? 'Sus' : 'sus'))
+        .replace(/(?<![\p{L}\p{N}_])tu(?=\s+\p{L})/giu, (m) => (m[0] === 'T' ? 'Su' : 'su'))
+        .replace(/\s*&\s*/gu, ' y ')
+    );
 
   const metStudy = resolveMetabolicAgeStudySSoT(patientData);
   const logistics = translateLogisticsProfile(patientData);
@@ -544,7 +555,7 @@ export const formatPlanForClipboard = function (options) {
     text += `   • Régimen y Meta Energética: ${dynamicRegimenBadge} | Meta: ${bio.targetKcal} kcal/día (${macros.carbs}% Carbohidratos / ${macros.protein}% Proteínas / ${macros.fat}% Lípidos) | Hidratación Meta: ${hydrationMedicalText}${exclSuffix}.\n`;
   }
   const normalizeCanonicalFormulaBrand = (raw = '') =>
-    sanitizeClinicalSpanish(raw)
+    sanitizeSupplementPosologyLexiconEgm74(sanitizeClinicalSpanish(raw))
       .replace(/\b33\s*PLUS\s*®?/gi, '33Plus®')
       .replace(/\b34\s*PLUS\s*®?/gi, '34Plus®')
       .replace(/\b33Plus(?!®)\b/g, '33Plus®')

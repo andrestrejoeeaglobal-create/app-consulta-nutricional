@@ -20,6 +20,14 @@ import {
 
 export { enforcePatientGenderConcordance, sanitizeBioelectricScreeningLabel, sanitizeArt215NonTherapeuticLexicon };
 
+export function sanitizeSupplementPosologyLexiconEgm74(rawText = '') {
+    return String(rawText || '')
+        .replace(/Aporte\s+neto\s+en\s+la\s+dosis\s+prescrita\s*\(/giu, 'Aporte neto en la pauta nutricional sugerida (')
+        .replace(/Aporte\s+neto\s+prescrito\b/giu, 'Aporte neto diario sugerido')
+        .replace(/—\s*Aporte\s+neto\s+diario:/giu, '— Aporte neto diario sugerido:')
+        .replace(/\bdosis\s+prescrita\b(?!\s+por\s+su\s+(?:m[ée]dico|especialista|cardi[óo]logo|nefr[óo]logo|endocrin[óo]logo|pediatra|obstetra))/giu, 'pauta nutricional sugerida');
+}
+
 export function resolveElectretInformativeAnnex(patientData = {}) {
     const dossier = patientData?.clinical_dossier || {};
     const persisted = dossier?.electret_informative_annex;
@@ -2351,9 +2359,11 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
                         : anamCardClient.isNightOrRotatingShift
                             ? 'Sincronizado a su despertar real (suspender al menos 8 h antes de su horario programado de sueño diurno)'
                             : 'Sincronizado a su despertar real (corte estricto antes de las 2:00 PM)')),
-        explanation: (!raw33Expl || hasLegacyTuteo(raw33Expl) || mismatch33Tutor || mismatch33Adult || hasFictionalSkuIn33 || addr.isLactante)
-            ? default33Explanation
-            : raw33Expl
+        explanation: sanitizeSupplementPosologyLexiconEgm74(
+            (!raw33Expl || hasLegacyTuteo(raw33Expl) || mismatch33Tutor || mismatch33Adult || hasFictionalSkuIn33 || addr.isLactante)
+                ? default33Explanation
+                : raw33Expl
+        )
     };
 
     const formula34Card = {
@@ -2385,9 +2395,11 @@ export function resolvePatientFriendlyGuide(patientData = {}) {
             : isSelective34Paused
                 ? 'En pausa selectiva estricta mientras mantenga anticoagulación cumarínica'
                 : (raw34.timing && !hasLegacyTuteo(String(raw34.timing)) ? sanitizeClinicalSpanish(raw34.timing) : 'Tarde y 30 a 60 min antes de dormir (siempre en medio litro de agua simple 💧)'),
-        explanation: (!raw34Expl || hasLegacyTuteo(raw34Expl) || mismatch34Tutor || mismatch34Adult || addr.isLactante)
-            ? default34Explanation
-            : raw34Expl
+        explanation: sanitizeSupplementPosologyLexiconEgm74(
+            (!raw34Expl || hasLegacyTuteo(raw34Expl) || mismatch34Tutor || mismatch34Adult || addr.isLactante)
+                ? default34Explanation
+                : raw34Expl
+        )
     };
 
     const isMeaningfulExclusion = (val) => {
